@@ -1,0 +1,17 @@
+[project]
+name = "pylander"
+version = "0.1.0"
+description = "Lunar lander game with procedural terrain and bot support."
+requires-python = ">=3.13"
+dependencies = [
+    "opensimplex>=0.4.5.1",
+    "pygame>=2.6.1",
+    "pymunk>=7.1.0",
+    "matplotlib>=3.9.2",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.13.2",
+    "vulture>=2.14",
+]
