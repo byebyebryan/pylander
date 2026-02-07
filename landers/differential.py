@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from lander import Lander
+from core.lander import Lander
 
 
 class DifferentialLander(Lander):

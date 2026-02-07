@@ -210,6 +210,21 @@ class TargetAwardsModifier:
         return Target(target.x, target.y, target.size, {**target.info, "award": award})
 
 
+class TargetFuelPriceModifier:
+    def __init__(
+        self, seed: int = 0, min_price: float = 5.0, max_price: float = 15.0
+    ):
+        self.rng = random.Random(seed)
+        self.min_price = min_price
+        self.max_price = max_price
+
+    def __call__(self, target: Target, _direction: int) -> Target:
+        price = self.rng.uniform(self.min_price, self.max_price)
+        # Round to nearest 0.5 for nice numbers
+        price = round(price * 2) / 2
+        return Target(target.x, target.y, target.size, {**target.info, "fuel_price": price})
+
+
 class CompositeTargetGenerator:
     def __init__(self, target_generators):
         self.target_generators = target_generators
@@ -255,3 +270,10 @@ class TargetManager:
         if targets:
             return targets[0].y
         return y
+
+
+from typing import Protocol
+
+class Terrain(Protocol):
+    def __call__(self, x: float, lod: int = 0) -> float: ...
+

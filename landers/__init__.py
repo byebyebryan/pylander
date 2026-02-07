@@ -14,7 +14,7 @@ import pkgutil
 from types import ModuleType
 from typing import List, Type
 
-from lander import Lander
+from core.lander import Lander
 
 
 def _package_path() -> str:

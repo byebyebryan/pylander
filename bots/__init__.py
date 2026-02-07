@@ -14,7 +14,7 @@ import pkgutil
 from types import ModuleType
 from typing import List, Type
 
-from bot import Bot
+from core.bot import Bot
 
 
 def _package_path() -> str:

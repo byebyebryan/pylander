@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 
-from bot import Bot, PassiveSensors, ActiveSensors, BotAction
+from core.bot import Bot, PassiveSensors, ActiveSensors, BotAction
 
 
 class TurtleBot(Bot):

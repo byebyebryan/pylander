@@ -2,14 +2,15 @@
 
 import math
 from typing import Any
-from sensor import closest_point_on_terrain as sensor_closest_point_on_terrain
+from .sensor import closest_point_on_terrain as sensor_closest_point_on_terrain
 
 # New engine dependencies
 import pymunk as pm
+from .maths import Vector2
 
 
 # World is y-up. Gravity accelerates downward (negative y).
-GRAVITY = -9.8
+from .config import GRAVITY
 # No local closest_point_on_terrain; use sensor.closest_point_on_terrain instead
 
 
@@ -190,13 +191,14 @@ class PhysicsEngine:
         """Override body pose angle this step (radians)."""
         self._override_angle = float(angle)
 
-    def apply_force(self, x: float, y: float, angle: float | None = None, f: float | None = None) -> None:
-        """Queue a world-space force to apply at the COM this step.
-
-        Extra angle/f parameters are accepted for a uniform call site but are
-        ignored by physics; rendering uses lander-provided visuals instead.
-        """
-        self._pending_force = (float(x), float(y))
+    def apply_force(self, force: Vector2 | tuple[float, float], point: Vector2 | tuple[float, float] | None = None) -> None:
+        """Queue a world-space force to apply at the COM or specific point this step."""
+        if isinstance(force, Vector2):
+            fx, fy = force.x, force.y
+        else:
+            fx, fy = force[0], force[1]
+            
+        self._pending_force = (fx, fy)
 
     def step(self, dt: float) -> None:
         if self._lander_body is None:
@@ -230,17 +232,17 @@ class PhysicsEngine:
 
         self.space.step(max(1e-4, float(dt)))
 
-    def get_pose(self) -> tuple[float, float, float]:
+    def get_pose(self) -> tuple[Vector2, float]:
         if self._lander_body is None:
-            return 0.0, 0.0, 0.0
+            return Vector2(0.0, 0.0), 0.0
         p = self._lander_body.position
-        return float(p.x), float(p.y), float(self._lander_body.angle)
+        return Vector2(p.x, p.y), float(self._lander_body.angle)
 
-    def get_velocity(self) -> tuple[float, float, float]:
+    def get_velocity(self) -> tuple[Vector2, float]:
         if self._lander_body is None:
-            return 0.0, 0.0, 0.0
+            return Vector2(0.0, 0.0), 0.0
         v = self._lander_body.velocity
-        return float(v.x), float(v.y), float(self._lander_body.angular_velocity)
+        return Vector2(v.x, v.y), float(self._lander_body.angular_velocity)
 
     def get_contact_report(self) -> dict:
         return (
@@ -255,13 +257,19 @@ class PhysicsEngine:
         )
 
     def raycast(
-        self, origin_xy: tuple[float, float], angle: float, max_distance: float
+        self, origin: Vector2 | tuple[float, float], angle: float, max_distance: float
     ) -> dict:
         dx = math.cos(angle)
         dy = math.sin(angle)
-        p1 = pm.Vec2d(origin_xy[0], origin_xy[1])
+        
+        if isinstance(origin, Vector2):
+            ox, oy = origin.x, origin.y
+        else:
+            ox, oy = origin[0], origin[1]
+            
+        p1 = pm.Vec2d(ox, oy)
         p2 = pm.Vec2d(
-            origin_xy[0] + dx * max_distance, origin_xy[1] + dy * max_distance
+            ox + dx * max_distance, oy + dy * max_distance
         )
         info = self.space.segment_query_first(p1, p2, 0.0, pm.ShapeFilter())
         if info is None:
@@ -274,9 +282,12 @@ class PhysicsEngine:
         }
 
     def closest_point(
-        self, origin_xy: tuple[float, float], search_radius: float
+        self, origin: Vector2 | tuple[float, float], search_radius: float
     ) -> dict:
-        x0, y0 = float(origin_xy[0]), float(origin_xy[1])
+        if isinstance(origin, Vector2):
+            x0, y0 = origin.x, origin.y
+        else:
+            x0, y0 = float(origin[0]), float(origin[1])
         cx, cy, dist = sensor_closest_point_on_terrain(
             self.height_sampler, x0, y0, lod=0, search_radius=search_radius
         )
@@ -366,15 +377,19 @@ class PhysicsEngine:
 
     def teleport_lander(
         self,
-        x: float,
-        y: float,
+        pos: Vector2 | tuple[float, float],
         angle: float | None = None,
         clear_velocity: bool = True,
     ) -> None:
         """Instantly move the lander to a new pose (used for takeoff bump)."""
         if self._lander_body is None:
             return
-        self._lander_body.position = (float(x), float(y))
+            
+        if isinstance(pos, Vector2):
+            self._lander_body.position = (pos.x, pos.y)
+        else:
+            self._lander_body.position = (float(pos[0]), float(pos[1]))
+            
         if angle is not None:
             self._lander_body.angle = float(angle)
         if clear_velocity:

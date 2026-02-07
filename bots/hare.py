@@ -6,7 +6,7 @@ Currently aliases TurtleBot behavior until a dedicated controller is added.
 from __future__ import annotations
 
 from .turtle import TurtleBot as HareBot
-from bot import Bot
+from core.bot import Bot, BotAction
 
 
 def create_bot() -> Bot:

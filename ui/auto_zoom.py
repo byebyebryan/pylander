@@ -37,12 +37,12 @@ class AutoZoomController:
             screen_height: height in pixels
         """
         # Lazy import to avoid module cycles
-        from sensor import closest_point_on_terrain
+        from core.sensor import closest_point_on_terrain
 
         # Search radius in world units based on screen height and current zoom
         search_radius = (screen_height / max(camera.zoom, 1e-6)) * 1.0
         _, _, dist_world = closest_point_on_terrain(
-            get_height_at, camera.x, camera.y, search_radius=search_radius
+            get_height_at, (camera.x, camera.y), search_radius=search_radius
         )
 
         # Desired on-screen distance band (diameter ~80% of screen height)

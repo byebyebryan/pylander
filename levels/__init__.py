@@ -14,7 +14,7 @@ import pkgutil
 from types import ModuleType
 from typing import List, Type
 
-from level import Level
+from core.level import Level
 
 
 def _package_path() -> str:

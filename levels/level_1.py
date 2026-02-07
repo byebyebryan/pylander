@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import terrain as _terrain
+import core.terrain as _terrain
 from landers import create_lander
-from level import Level, LevelWorld
+from core.level import Level, LevelWorld
 from levels.common import should_end_default, compute_score_default
-from physics import PhysicsEngine
+from core.physics import PhysicsEngine
 
 
 class GentleStartLevel(Level):
@@ -19,6 +19,7 @@ class GentleStartLevel(Level):
                 _terrain.TargetHeightModifier(height_func, seed=seed),
                 _terrain.TargetSizeModifier(seed=seed),
                 _terrain.TargetAwardsModifier(seed=seed),
+                _terrain.TargetFuelPriceModifier(seed=seed),
             ]
         )
         targets = _terrain.TargetManager(tgt_gen)

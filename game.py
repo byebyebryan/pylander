@@ -2,22 +2,24 @@
 
 import random
 from dataclasses import dataclass
-from input import InputHandler
-from renderer import Renderer
-from bot import Bot, BotAction
-from level import Level
-from plot import Plotter
-from engine_adapter import EngineAdapter
-from protocols import ControlTuple
+from utils.input import InputHandler
+from ui.renderer import Renderer
+from core.bot import Bot, BotAction
+from core.level import Level
+from utils.plot import Plotter
+from core.engine_adapter import EngineAdapter
+from utils.protocols import ControlTuple
+from core.controllers import PlayerController
 
 
 # Centralized game defaults
-DEFAULT_SCREEN_WIDTH = 1280
-DEFAULT_SCREEN_HEIGHT = 720
-
-TARGET_RENDERING_FPS = 60
-PHYSICS_FPS = 120
-BOT_FPS = 60
+from core.config import (
+    DEFAULT_SCREEN_WIDTH,
+    DEFAULT_SCREEN_HEIGHT,
+    TARGET_RENDERING_FPS,
+    PHYSICS_FPS,
+    BOT_FPS,
+)
 
 
 @dataclass
@@ -47,6 +49,10 @@ class LoopTimers:
     def consume_bot(self) -> None:
         self.time_accum_bot -= self.bot_dt
 
+
+from core.ecs import World
+from core.systems.propulsion import PropulsionSystem
+from core.systems.physics_sync import PhysicsSyncSystem
 
 class LanderGame:
     """Main application for lunar lander game."""
@@ -81,6 +87,12 @@ class LanderGame:
         # Optional physics engine provided by the level
         self.engine = getattr(self.level, "engine", None)
         self.engine_adapter = EngineAdapter(self.engine)
+        
+        # ECS Setup
+        self.ecs_world = World()
+        self.ecs_world.add_entity(self.lander)
+        self.ecs_world.add_system(PropulsionSystem())
+        self.ecs_world.add_system(PhysicsSyncSystem(self.engine_adapter))
 
         self.bot_override_delay = 1.0
         self._bot_override_timer = 0.0
@@ -89,9 +101,11 @@ class LanderGame:
         if not headless and InputHandler is not None and Renderer is not None:
             self.input_handler = InputHandler()
             self.renderer = Renderer(self.level, width, height)
+            self.player_controller = PlayerController()
         else:
             self.input_handler = None
             self.renderer = None
+            self.player_controller = None
 
         # Pass static vehicle info to bot if available
         if self.bot is not None and hasattr(self.bot, "set_vehicle_info"):
@@ -145,94 +159,20 @@ class LanderGame:
                 break
 
             # Frame timing and event processing
-            if not self.headless and self.input_handler is not None:
-                input_events = self.input_handler.get_events()
-                if input_events.get("quit"):
-                    self.running = False
-                    break
-            else:
-                input_events = {}
+            user_controls, _ = self._process_input(frame_dt)
+            if not self.running:
+                break
 
             # frame dt from last frame
             timers.advance_frame(frame_dt)
 
             # update physics at fixed rate
-            while timers.should_step_physics():
-                timers.consume_physics()
-                # Fuel bookkeeping via lander intent
-                fuel_consumption = self.lander.get_fuel_burn(physics_dt)
-                if fuel_consumption > 0.0 and self.lander.fuel > 0.0:
-                    actual = min(fuel_consumption, self.lander.fuel)
-                    self.lander.fuel = max(0.0, self.lander.fuel - actual)
-                    self.engine_adapter.set_lander_mass(self.lander.get_mass())
-
-                # Apply control intents to engine
-                if self.engine_adapter.enabled:
-                    oa = self.lander.get_engine_override_angle()
-                    if oa is not None:
-                        self.engine_adapter.override(oa)
-
-                    force = self.lander.get_engine_force()
-                    if force is not None:
-                        fx, fy, visual_angle, visual_power = force
-                        self.engine_adapter.apply_force(
-                            fx, fy, visual_angle, visual_power
-                        )
-                    else:
-                        # Fallback to legacy single-thrust path
-                        thrust_force = 0.0
-                        if self.lander.thrust_level > 0 and self.lander.fuel > 0:
-                            thrust_force = (
-                                self.lander.thrust_level * self.lander.max_thrust_power
-                            )
-                        self.engine_adapter.set_lander_controls(
-                            thrust_force, self.lander.rotation
-                        )
-                    self.engine_adapter.step(physics_dt)
-                    # Advance physics frame id for caching
-                    self.lander._physics_frame_id += 1
-
-                    # Sync pose/vel back to lander
-                    px, py, _pang = self.engine_adapter.get_pose()
-                    vx, vy, _av = self.engine_adapter.get_velocity()
-                    self.lander.x, self.lander.y = px, py
-                    self.lander.vx, self.lander.vy = vx, vy
-
-                    # Landing/crash resolution using contact report
-                    report = self.engine_adapter.get_contact_report()
-                    self.lander.resolve_contact(report, self.targets)
+            self._update_physics_steps(timers)
 
             # Run bot at fixed rate to produce target controls
-            bot_controls: ControlTuple | None = None
-            while timers.should_step_bot():
-                timers.consume_bot()
-                if self.bot:
-                    passive_sensors, active_sensors = self.lander.update_sensors(
-                        self.terrain, self.targets, engine=self.engine_adapter
-                    )
-                    action: BotAction = self.bot.update(
-                        bot_dt, passive_sensors, active_sensors
-                    )
-                    bot_controls = (
-                        action.target_thrust,
-                        action.target_angle,
-                        action.refuel,
-                    )
+            bot_controls = self._update_bot_steps(timers)
 
-            # Collect player inputs once per frame
-            user_controls: ControlTuple | None = None
-            if not self.headless and self.input_handler is not None:
-                # Update lander control targets from input
-                if self.lander and self.lander.state in ("flying", "landed"):
-                    uc = self.lander.handle_input(input_events, frame_dt)
-                    if uc is not None:
-                        user_controls = uc
-
-                # Camera input (variable-rate)
-                if self.renderer is not None:
-                    cam = self.renderer.main_camera
-                    cam.handle_input(input_events, frame_dt)
-
+            # Manage bot override timer
             if user_controls is not None:
                 self._bot_override_timer = self.bot_override_delay
             else:
@@ -241,7 +181,7 @@ class LanderGame:
             # Resolve controls for this frame (user overrides bot)
             if user_controls is not None:
                 controls = user_controls
-            elif self._bot_override_timer == 0.0:
+            elif self._bot_override_timer == 0.0 and bot_controls is not None:
                 controls = bot_controls
             else:
                 controls = None
@@ -249,10 +189,20 @@ class LanderGame:
             if controls is None:
                 controls = (None, None, False)
 
-            # Apply control targets and actuator smoothing at frame rate
-            # Also process refuel when landed via the lander itself
+            # Economy / Refueling
+            _tgt_thm, _tgt_ang, refuel_requested = controls
+            if self.lander.state == "landed" and refuel_requested:
+                # Find target under lander
+                nearby = self.targets.get_targets(self.lander.x, self.lander.width)
+                if nearby:
+                    target = nearby[0] # Assume the first one is the platform
+                    price = target.info.get("fuel_price", 10.0) # Default if missing
+                    self._handle_refueling(frame_dt, price)
+
+            # Apply control targets (Set Intent only)
             _state_before = self.lander.state
             self.lander.apply_controls(frame_dt, controls)
+            
             # If we transitioned from landed -> flying, bump the engine body up slightly
             if (
                 self.engine_adapter.enabled
@@ -272,21 +222,12 @@ class LanderGame:
             # Headless: sample trajectory via Plotter
             self.plotter.update(frame_dt)
 
-            # Rendering at display rate (renderer handles camera and zoom)
-            if not self.headless and self.renderer is not None:
-                self.renderer.update(frame_dt)
-                self.renderer.draw()
-                frame_dt = self.renderer.tick(TARGET_RENDERING_FPS)
+            # Rendering
+            frame_dt = self._render(frame_dt)
 
-            # Headless logging at requested frequency (based on frame count)
+            # Headless logging at requested frequency
             if self.headless and print_freq > 0 and step_count % print_freq == 0:
-                parts = [f"t:{timers.elapsed_time:6.2f}"]
-                parts.append(self.lander.get_headless_stats(self.terrain))
-                if self.bot and hasattr(self.bot, "get_headless_stats"):
-                    bot_str = self.bot.get_headless_stats()
-                    if bot_str:
-                        parts.append(bot_str)
-                print(" | ".join(parts))
+                self._print_headless_stats(timers)
 
             step_count += 1
 
@@ -317,7 +258,120 @@ class LanderGame:
             result.update(plot_extras)
         return result
 
-    # Forwarding properties to level-owned world for compatibility
+    def _process_input(self, frame_dt: float) -> tuple[ControlTuple | None, dict]:
+        """Process input events and return user controls."""
+        if self.headless or self.input_handler is None:
+            return None, {}
+
+        input_events = self.input_handler.get_events()
+        if input_events.get("quit"):
+            self.running = False
+            return None, input_events
+
+        user_controls = None
+        if self.player_controller and self.lander and self.lander.state in ("flying", "landed"):
+            current_thrust = self.lander.target_thrust
+            current_angle = self.lander.target_angle
+            max_rot = self.lander.max_rotation_rate
+            
+            uc = self.player_controller.update(
+                input_events, 
+                frame_dt, 
+                current_thrust, 
+                current_angle, 
+                max_rot
+            )
+            if uc is not None:
+                user_controls = uc
+
+        # Camera input (variable-rate)
+        if self.renderer is not None:
+            cam = self.renderer.main_camera
+            if hasattr(cam, "handle_input"):
+                 cam.handle_input(input_events, frame_dt)
+
+        return user_controls, input_events
+
+    def _update_physics_steps(self, timers: LoopTimers) -> None:
+        """Run physics steps until timer accumulator is drained."""
+        physics_dt = timers.physics_dt
+        while timers.should_step_physics():
+            timers.consume_physics()
+            
+            # 1. ECS Update (Propulsion -> Forces, PhysicsSync -> Syncs old state)
+            self.ecs_world.update(physics_dt)
+            
+            # 2. Physics Step (Forces applied above, now integrate)
+            if self.engine_adapter.enabled:
+                self.engine_adapter.step(physics_dt)
+                
+                # Advance physics frame id for caching (legacy)
+                self.lander._physics_frame_id += 1
+
+                # Landing/crash resolution using contact report
+                # (Ideally this should be a System too, but keeping legacy hook for now)
+                report = self.engine_adapter.get_contact_report()
+                self.lander.resolve_contact(report, self.targets)
+
+
+    def _update_bot_steps(self, timers: LoopTimers) -> ControlTuple | None:
+        """Run bot steps until timer accumulator is drained."""
+        bot_controls = None
+        bot_dt = timers.bot_dt
+        while timers.should_step_bot():
+            timers.consume_bot()
+            if self.bot:
+                passive_sensors, active_sensors = self.lander.update_sensors(
+                    self.terrain, self.targets, engine=self.engine_adapter
+                )
+                action: BotAction = self.bot.update(
+                    bot_dt, passive_sensors, active_sensors
+                )
+                bot_controls = (
+                    action.target_thrust,
+                    action.target_angle,
+                    action.refuel,
+                )
+        return bot_controls
+
+    def _handle_refueling(self, dt: float, fuel_price: float) -> None:
+        """Handle refueling transaction."""
+        if self.lander.fuel >= self.lander.max_fuel:
+            return
+
+        fuel_needed = self.lander.max_fuel - self.lander.fuel
+        max_by_time = self.lander.refuel_rate * dt
+        
+        if fuel_price > 0:
+            max_by_credits = max(0.0, self.lander.credits) / fuel_price
+        else:
+            max_by_credits = float("inf")
+            
+        fuel_to_add = min(fuel_needed, max_by_time, max_by_credits)
+        
+        if fuel_to_add > 0:
+            self.lander.fuel += fuel_to_add
+            spent = fuel_to_add * max(0.0, fuel_price)
+            self.lander.credits = max(0.0, self.lander.credits - spent)
+
+    def _render(self, frame_dt: float) -> float:
+        """Update and draw renderer, returning new frame_dt."""
+        if not self.headless and self.renderer is not None:
+            self.renderer.update(frame_dt)
+            self.renderer.draw()
+            return self.renderer.tick(TARGET_RENDERING_FPS)
+        return 1.0 / TARGET_RENDERING_FPS
+
+    def _print_headless_stats(self, timers: LoopTimers) -> None:
+        """Print stats to stdout in headless mode."""
+        parts = [f"t:{timers.elapsed_time:6.2f}"]
+        parts.append(self.lander.get_headless_stats(self.terrain))
+        if self.bot and hasattr(self.bot, "get_headless_stats"):
+            bot_str = self.bot.get_headless_stats()
+            if bot_str:
+                parts.append(bot_str)
+        print(" | ".join(parts))
+
     @property
     def terrain(self):
         return self.level.world.terrain

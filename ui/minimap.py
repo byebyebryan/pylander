@@ -1,7 +1,7 @@
 """Minimap display showing camera position and terrain overview."""
 
 import pygame
-from camera import Camera, OffsetCamera
+from .camera import Camera, OffsetCamera
 
 
 class Minimap:

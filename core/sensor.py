@@ -4,13 +4,13 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 from collections import OrderedDict
+from .maths import Vector2
 # Note: import avoided to prevent unused warnings; refer to terrain.Target in docs if needed
 
 
 def closest_point_on_terrain(
     height_at: Any,
-    x: float,
-    y: float,
+    pos: Vector2 | tuple[float, float],
     lod: int = 0,
     search_radius: float = 200.0,
 ) -> tuple[float, float, float]:
@@ -35,6 +35,11 @@ def closest_point_on_terrain(
             return float(obj(xx))
         except Exception:
             return float("nan")
+
+    if isinstance(pos, Vector2):
+        x, y = pos.x, pos.y
+    else:
+        x, y = pos[0], pos[1]
 
     step = _get_res(height_at, lod)
     min_x = x - search_radius
@@ -86,12 +91,16 @@ class RadarContact:
 
 
 def get_radar_contacts(
-    x: float,
-    y: float,
+    pos: Vector2 | tuple[float, float],
     targets,
     inner_range: float = 1000.0,
     outer_range: float = 2000.0,
 ) -> list[RadarContact]:
+    if isinstance(pos, Vector2):
+        x, y = pos.x, pos.y
+    else:
+        x, y = pos[0], pos[1]
+        
     tgts = targets.get_targets(x, outer_range)
     contacts: list[RadarContact] = []
     for t in tgts:
@@ -137,11 +146,15 @@ class ProximityContact:
 
 
 def get_proximity_contact(
-    x: float,
-    y: float,
+    pos: Vector2 | tuple[float, float],
     terrain,
     range: float = 500.0,
 ) -> ProximityContact | None:
+    if isinstance(pos, Vector2):
+        x, y = pos.x, pos.y
+    else:
+        x, y = pos[0], pos[1]
+        
     # Cache check (LRU keyed by quantized x,y,range)
     cache = _PROX_CACHE
     q = max(1e-6, float(cache.quantize))
@@ -156,7 +169,7 @@ def get_proximity_contact(
         angle = math.atan2(cy - y, cx - x)
         return ProximityContact(cx, cy, angle, dist)
 
-    cx, cy, dist = closest_point_on_terrain(terrain, x, y, search_radius=range)
+    cx, cy, dist = closest_point_on_terrain(terrain, pos, search_radius=range)
 
     # If no point is within range, return None and do not cache
     if not math.isfinite(dist) or dist > range:

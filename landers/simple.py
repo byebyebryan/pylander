@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import math
-from lander import Lander
+from core.lander import Lander
+from core.maths import Vector2, Transform
 
 
 class SimpleLander(Lander):
@@ -148,24 +149,25 @@ class SimpleLander(Lander):
         usage = max(0.0, min(1.0, self.thrust_up + 0.5 * (self.thrust_left + self.thrust_right)))
         return max(0.0, self.fuel_burn_rate * usage * dt)
 
-    def get_body_polygon(self) -> list[tuple[float, float]]:
+    def get_body_polygon(self) -> list[Vector2]:
         # Upright rectangle in world space using current pose (always 0)
         half_w = self.width / 2.0
         half_h = self.height / 2.0
-        pts = [
-            (-half_w, -half_h),
-            (half_w, -half_h),
-            (half_w, half_h),
-            (-half_w, half_h),
+        local_pts = [
+            Vector2(-half_w, -half_h),
+            Vector2(half_w, -half_h),
+            Vector2(half_w, half_h),
+            Vector2(-half_w, half_h),
         ]
-        cos_r = math.cos(self.rotation)
-        sin_r = math.sin(self.rotation)
-        world = []
-        for px, py in pts:
-            wx = self.x + px * cos_r + py * sin_r
-            wy = self.y - px * sin_r + py * cos_r
-            world.append((wx, wy))
-        return world
+        
+        pos = getattr(self, "pos", Vector2(self.x, self.y))
+        tf = Transform(pos, self.rotation)
+        
+        world_pts = []
+        for pt in local_pts:
+            world_pts.append(tf.apply(pt))
+            
+        return world_pts
 
     def get_thrusts(self) -> list["Lander.Thrust"]:
         thrusts: list[Lander.Thrust] = []

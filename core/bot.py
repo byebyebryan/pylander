@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Protocol, Any
-from sensor import RadarContact, ProximityContact
+from core.sensor import RadarContact, ProximityContact
 
 
 @dataclass

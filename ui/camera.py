@@ -1,5 +1,7 @@
 """Camera system for moveable and zoomable viewport."""
 
+from core.maths import Vector2
+from core.components import Transform
 
 class Camera:
     """2D camera with pan and zoom for world-to-screen coordinate mapping."""
@@ -14,10 +16,9 @@ class Camera:
         self.screen_width = screen_width
         self.screen_height = screen_height
 
-        # Camera position in world coordinates (center point)
-        self.x = 0.0
-        self.y = 0.0
-
+        # Camera transform (position + rotation, though rotation unused for now)
+        self.trans = Transform()
+        
         # Zoom level (pixels per world unit)
         self.zoom = 2.0
         self.min_zoom = 0.02
@@ -27,35 +28,45 @@ class Camera:
         self.pan_speed = 5.0
         self.zoom_speed = 1.1
 
-    def world_to_screen(self, world_x: float, world_y: float) -> tuple[float, float]:
-        """Convert world coordinates to screen pixel coordinates.
+    @property
+    def x(self) -> float:
+        return self.trans.x
+    
+    @x.setter
+    def x(self, value: float):
+        self.trans.x = value
 
-        Args:
-            world_x: X coordinate in world space
-            world_y: Y coordinate in world space
+    @property
+    def y(self) -> float:
+        return self.trans.y
+    
+    @y.setter
+    def y(self, value: float):
+        self.trans.y = value
 
-        Returns:
-            (screen_x, screen_y) tuple in pixels
-        """
-        screen_x = (world_x - self.x) * self.zoom + self.screen_width / 2
+    def world_to_screen(self, pos: Vector2 | tuple[float, float], world_y: float | None = None) -> Vector2:
+        """Convert world coordinates to screen pixel coordinates."""
+        if isinstance(pos, Vector2):
+            wx, wy = pos.x, pos.y
+        else:
+            wx, wy = pos if world_y is None else (pos, world_y)
+            
+        screen_x = (wx - self.x) * self.zoom + self.screen_width / 2
         # Invert Y: world y-up -> screen y-down
-        screen_y = (self.y - world_y) * self.zoom + self.screen_height / 2
-        return screen_x, screen_y
+        screen_y = (self.y - wy) * self.zoom + self.screen_height / 2
+        return Vector2(screen_x, screen_y)
 
-    def screen_to_world(self, screen_x: float, screen_y: float) -> tuple[float, float]:
-        """Convert screen pixel coordinates to world coordinates.
-
-        Args:
-            screen_x: X coordinate in pixels
-            screen_y: Y coordinate in pixels
-
-        Returns:
-            (world_x, world_y) tuple
-        """
-        world_x = (screen_x - self.screen_width / 2) / self.zoom + self.x
+    def screen_to_world(self, pos: Vector2 | tuple[float, float], screen_y: float | None = None) -> Vector2:
+        """Convert screen pixel coordinates to world coordinates."""
+        if isinstance(pos, Vector2):
+            sx, sy = pos.x, pos.y
+        else:
+            sx, sy = pos if screen_y is None else (pos, screen_y)
+            
+        world_x = (sx - self.screen_width / 2) / self.zoom + self.x
         # Invert Y back to world
-        world_y = self.y - (screen_y - self.screen_height / 2) / self.zoom
-        return world_x, world_y
+        world_y = self.y - (sy - self.screen_height / 2) / self.zoom
+        return Vector2(world_x, world_y)
 
     def get_visible_world_bounds(self) -> tuple[float, float, float, float]:
         """Get the world coordinate bounds currently visible on screen.
@@ -67,15 +78,15 @@ class Camera:
         bottom_right = self.screen_to_world(self.screen_width, self.screen_height)
         return top_left[0], bottom_right[0], top_left[1], bottom_right[1]
 
-    def pan(self, dx: float, dy: float):
-        """Move camera by given amount in world coordinates.
-
-        Args:
-            dx: Change in x position
-            dy: Change in y position
-        """
+    def pan(self, delta: Vector2 | tuple[float, float], dy: float | None = None):
+        """Move camera by given amount in world coordinates."""
+        if isinstance(delta, Vector2):
+            dx, dy_val = delta.x, delta.y
+        else:
+            dx, dy_val = delta if dy is None else (delta, dy)
+            
         self.x += dx
-        self.y += dy
+        self.y += dy_val
 
     def zoom_at(self, screen_x: float, screen_y: float, factor: float):
         """Zoom in/out at a specific screen position (keeps point under cursor fixed).
@@ -153,8 +164,13 @@ class OffsetCamera:
         self._px = pixel_center_x
         self._py = pixel_center_y
 
-    def world_to_screen(self, world_x: float, world_y: float) -> tuple[int, int]:
-        sx = int(self._px + (world_x - self.x) * self.zoom)
+    def world_to_screen(self, pos: Vector2 | tuple[float, float], world_y: float | None = None) -> Vector2:
+        if isinstance(pos, Vector2):
+            wx, wy = pos.x, pos.y
+        else:
+            wx, wy = pos if world_y is None else (pos, world_y)
+            
+        sx = int(self._px + (wx - self.x) * self.zoom)
         # Invert Y for sub-viewports as well
-        sy = int(self._py + (self.y - world_y) * self.zoom)
-        return sx, sy
+        sy = int(self._py + (self.y - wy) * self.zoom)
+        return Vector2(sx, sy)

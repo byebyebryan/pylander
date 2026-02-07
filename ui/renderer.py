@@ -3,17 +3,18 @@
 import os
 import random  # noqa: F401 (may be used elsewhere by runtime effects)
 import pygame
-from camera import OffsetCamera, Camera
-from minimap import Minimap
+from .camera import OffsetCamera, Camera
+from .minimap import Minimap
 from typing import TYPE_CHECKING
 import math
-from auto_zoom import AutoZoomController
-from hud import HudOverlay
-from overlays import SensorOverlay
-from fps_overlay import FpsOverlay
+from .auto_zoom import AutoZoomController
+from .hud import HudOverlay
+from .overlays import SensorOverlay
+from .fps_overlay import FpsOverlay
+from core.maths import Vector2
 
 if TYPE_CHECKING:
-    from level import Level
+    from core.level import Level
 
 
 class Renderer:
@@ -142,8 +143,8 @@ class Renderer:
         wx = start_world_x
         while wx <= end_world_x:
             world_y = self.level.terrain(wx, lod=lod) * self.height_scale
-            px, py = self.main_camera.world_to_screen(wx, world_y)
-            screen_points.append((px, py))
+            # world_to_screen returns Vector2, which is compatible with aalines
+            screen_points.append(self.main_camera.world_to_screen(wx, world_y))
             wx += world_step
 
         if len(screen_points) >= 2:
@@ -166,10 +167,10 @@ class Renderer:
             tx = c.x
             ty = c.y * self.height_scale
             half = c.size / 2.0
-            start_screen_x, start_screen_y = self.main_camera.world_to_screen(
+            start_pos = self.main_camera.world_to_screen(
                 tx - half, ty
             )
-            end_screen_x, end_screen_y = self.main_camera.world_to_screen(tx + half, ty)
+            end_pos = self.main_camera.world_to_screen(tx + half, ty)
             color = (
                 self.visited_landing_target_color
                 if c.info["award"] == 0
@@ -178,8 +179,8 @@ class Renderer:
             pygame.draw.line(
                 self.screen,
                 color,
-                (start_screen_x, start_screen_y),
-                (end_screen_x, end_screen_y),
+                start_pos,
+                end_pos,
                 4,
             )
 
@@ -190,10 +191,12 @@ class Renderer:
 
         # Fetch polygon in world space and map to screen space
         poly_world = self.level.lander.get_body_polygon()
+        # poly_world is list[tuple], we can convert to Vector2 for consistency or just unpack
+        # get_body_polygon still returns tuples for now (Phase 4), so unpack
         rotated_points = []
         for wx, wy in poly_world:
-            sx, sy = camera.world_to_screen(wx, wy)
-            rotated_points.append((sx, sy))
+            rotated_points.append(camera.world_to_screen(wx, wy))
+            
         if rotated_points:
             pygame.draw.polygon(self.screen, (255, 255, 255), rotated_points, 2)
 
@@ -240,11 +243,12 @@ class Renderer:
             )
 
             # Transform to screen space and draw two lines
-            sx_tip, sy_tip = camera.world_to_screen(tip_x, tip_y)
-            sx_l, sy_l = camera.world_to_screen(left_x, left_y)
-            sx_r, sy_r = camera.world_to_screen(right_x, right_y)
-            pygame.draw.aaline(self.screen, color, (sx_tip, sy_tip), (sx_l, sy_l))
-            pygame.draw.aaline(self.screen, color, (sx_tip, sy_tip), (sx_r, sy_r))
+            tip_pos = camera.world_to_screen(tip_x, tip_y)
+            left_pos = camera.world_to_screen(left_x, left_y)
+            right_pos = camera.world_to_screen(right_x, right_y)
+            
+            pygame.draw.aaline(self.screen, color, tip_pos, left_pos)
+            pygame.draw.aaline(self.screen, color, tip_pos, right_pos)
 
     def draw_ui(self):
         """Draw UI text: credits + lander stats + bot stats (static color)."""

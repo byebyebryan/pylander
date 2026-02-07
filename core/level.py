@@ -9,7 +9,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TYPE_CHECKING
+
+from core.lander import Lander
+from core.terrain import Terrain
+from core.maths import Vector2
 
 
 @dataclass

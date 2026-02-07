@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from protocols import EngineProtocol
+from utils.protocols import EngineProtocol
+from core.maths import Vector2
 
 
 class EngineAdapter:
@@ -28,23 +29,23 @@ class EngineAdapter:
             self._engine.override(angle)
 
     def apply_force(
-        self, fx: float, fy: float, angle: float | None = None, power: float | None = None
+        self, force: Vector2 | tuple[float, float], point: Vector2 | tuple[float, float] | None = None
     ) -> None:
         if self._engine is not None and hasattr(self._engine, "apply_force"):
-            self._engine.apply_force(fx, fy, angle, power)
+            self._engine.apply_force(force, point)
 
     def step(self, dt: float) -> None:
         if self._engine is not None:
             self._engine.step(dt)
 
-    def get_pose(self) -> tuple[float, float, float]:
+    def get_pose(self) -> tuple[Vector2, float]:
         if self._engine is None:
-            return 0.0, 0.0, 0.0
+            return Vector2(0.0, 0.0), 0.0
         return self._engine.get_pose()
 
-    def get_velocity(self) -> tuple[float, float, float]:
+    def get_velocity(self) -> tuple[Vector2, float]:
         if self._engine is None:
-            return 0.0, 0.0, 0.0
+            return Vector2(0.0, 0.0), 0.0
         return self._engine.get_velocity()
 
     def get_contact_report(self) -> dict:
@@ -59,17 +60,16 @@ class EngineAdapter:
 
     def teleport_lander(
         self,
-        x: float,
-        y: float,
+        pos: Vector2 | tuple[float, float],
         angle: float | None = None,
         clear_velocity: bool = True,
     ) -> None:
         if self._engine is not None:
-            self._engine.teleport_lander(x, y, angle=angle, clear_velocity=clear_velocity)
+            self._engine.teleport_lander(pos, angle=angle, clear_velocity=clear_velocity)
 
     def raycast(
-        self, origin_xy: tuple[float, float], angle: float, max_distance: float
+        self, origin: Vector2 | tuple[float, float], angle: float, max_distance: float
     ) -> dict:
         if self._engine is None:
             return {"hit": False, "hit_x": 0.0, "hit_y": 0.0, "distance": None}
-        return self._engine.raycast(origin_xy, angle, max_distance)
+        return self._engine.raycast(origin, angle, max_distance)
