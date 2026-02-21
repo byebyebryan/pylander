@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from core.bot import Bot, BotAction
-from core.components import LanderState
+from core.components import ActorControlRole, LanderState, PlayerControlled, PlayerSelectable
 from core.landing_sites import LandingSiteSurfaceModel
 from core.maths import Vector2
 from core.lander import Lander
@@ -52,6 +52,43 @@ class _ShortLevel(Level):
             "elapsed_time": getattr(game, "_elapsed_time", 0.0),
             "state": ls.state,
         }
+
+
+class _TwoActorLevel(Level):
+    def __init__(self):
+        self.update_calls = 0
+
+    def setup(self, _game, seed: int) -> None:
+        _ = seed
+        actor_a = Lander(start_pos=Vector2(0.0, 100.0))
+        actor_a.uid = "actor_human"
+        actor_a.add_component(ActorControlRole(role="human"))
+        actor_a.add_component(PlayerSelectable(order=0))
+        actor_a.add_component(PlayerControlled(active=True))
+
+        actor_b = Lander(start_pos=Vector2(20.0, 100.0))
+        actor_b.uid = "actor_bot"
+        actor_b.add_component(ActorControlRole(role="bot"))
+        actor_b.add_component(PlayerSelectable(order=1))
+
+        self.world = LevelWorld(
+            terrain=_FlatTerrain(),
+            sites=LandingSiteSurfaceModel(),
+            lander=actor_a,
+            actors=[actor_a, actor_b],
+            primary_actor_uid=actor_a.uid,
+        )
+
+    def update(self, game, dt: float) -> None:
+        _ = game, dt
+        self.update_calls += 1
+
+    def should_end(self, game) -> bool:
+        _ = game
+        return self.update_calls >= 1
+
+    def end(self, game):
+        return {"active_uid": game.active_player_actor_uid}
 
 
 class _FakeEngine:
@@ -134,3 +171,25 @@ def test_state_transition_runs_once_per_frame_with_engine_enabled() -> None:
     result = game.run(print_freq=0, max_steps=3)
     assert result["updates"] == 3
     assert calls["count"] == 3
+
+
+def test_game_switches_active_actor_and_updates_alias() -> None:
+    level = _TwoActorLevel()
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True)
+
+    assert game.active_player_actor_uid == "actor_human"
+    assert game.lander.uid == "actor_human"
+
+    game._switch_active_actor()
+
+    assert game.active_player_actor_uid == "actor_bot"
+    assert game.lander.uid == "actor_bot"
+    assert game.level.world.primary_actor_uid == "actor_bot"
+
+
+def test_game_assigns_passed_bot_to_bot_role_actor() -> None:
+    level = _TwoActorLevel()
+    bot = _PassiveBot()
+    game = LanderGame(level=level, bot=bot, headless=True)
+
+    assert game.actor_bots == {"actor_bot": bot}

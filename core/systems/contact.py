@@ -18,8 +18,11 @@ class ContactSystem(System):
         if not self.world:
             return
 
-        report = self.engine_adapter.get_contact_report()
         for entity in self.world.get_entities_with(LanderState, PhysicsState, Transform, FuelTank):
+            try:
+                report = self.engine_adapter.get_contact_report(uid=entity.uid)
+            except TypeError:
+                report = self.engine_adapter.get_contact_report()
             self._resolve(entity, report, dt)
 
     def _resolve(self, entity: Entity, report: dict, dt: float) -> None:
@@ -119,11 +122,19 @@ class ContactSystem(System):
             wallet.credits += award
 
         if self.engine_adapter.enabled:
-            self.engine_adapter.teleport_lander(
-                Vector2(trans.pos.x, trans.pos.y),
-                angle=trans.rotation,
-                clear_velocity=True,
-            )
+            try:
+                self.engine_adapter.teleport_lander(
+                    Vector2(trans.pos.x, trans.pos.y),
+                    angle=trans.rotation,
+                    clear_velocity=True,
+                    uid=entity.uid,
+                )
+            except TypeError:
+                self.engine_adapter.teleport_lander(
+                    Vector2(trans.pos.x, trans.pos.y),
+                    angle=trans.rotation,
+                    clear_velocity=True,
+                )
 
     def _apply_crash(self, entity: Entity) -> None:
         ls = entity.get_component(LanderState)
@@ -143,8 +154,16 @@ class ContactSystem(System):
         if self.engine_adapter.enabled:
             trans = entity.get_component(Transform)
             if trans is not None:
-                self.engine_adapter.teleport_lander(
-                    Vector2(trans.pos.x, trans.pos.y),
-                    angle=trans.rotation,
-                    clear_velocity=True,
-                )
+                try:
+                    self.engine_adapter.teleport_lander(
+                        Vector2(trans.pos.x, trans.pos.y),
+                        angle=trans.rotation,
+                        clear_velocity=True,
+                        uid=entity.uid,
+                    )
+                except TypeError:
+                    self.engine_adapter.teleport_lander(
+                        Vector2(trans.pos.x, trans.pos.y),
+                        angle=trans.rotation,
+                        clear_velocity=True,
+                    )

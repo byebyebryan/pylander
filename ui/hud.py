@@ -15,32 +15,32 @@ class HudOverlay:
         self.screen = screen
         self.bot = bot
 
-    def draw(self, level, bot=None) -> None:
-        lander = level.lander
-        if not lander:
+    def draw(self, level, bot=None, actor=None) -> None:
+        focus_actor = actor if actor is not None else level.lander
+        if not focus_actor:
             return
         screen_rect = self.screen.get_rect()
 
         # Caller can pass a bot override; fall back to the stored reference
         effective_bot = bot if bot is not None else self.bot
 
-        info_lines = self._build_info_lines(level, effective_bot)
+        info_lines = self._build_info_lines(level, focus_actor, effective_bot)
         self._draw_text_lines(info_lines, 10, (220, 220, 220))
 
-        control_lines = self._build_control_lines(lander)
+        control_lines = self._build_control_lines(focus_actor)
         y_offset = screen_rect.bottom - 20 - (len(control_lines) * 18)
         self._draw_text_lines(control_lines, y_offset, (200, 200, 200))
 
-    def _build_info_lines(self, level, bot=None) -> list[str]:
-        wallet = level.lander.get_component(Wallet)
+    def _build_info_lines(self, level, actor, bot=None) -> list[str]:
+        wallet = actor.get_component(Wallet)
         if wallet is None:
             raise RuntimeError("Lander missing Wallet component")
-        trans = level.lander.get_component(Transform)
-        phys = level.lander.get_component(PhysicsState)
-        tank = level.lander.get_component(FuelTank)
-        eng = level.lander.get_component(Engine)
-        ls = level.lander.get_component(LanderState)
-        readings = level.lander.get_component(SensorReadings)
+        trans = actor.get_component(Transform)
+        phys = actor.get_component(PhysicsState)
+        tank = actor.get_component(FuelTank)
+        eng = actor.get_component(Engine)
+        ls = actor.get_component(LanderState)
+        readings = actor.get_component(SensorReadings)
         if None in (trans, phys, tank, eng, ls, readings):
             raise RuntimeError("Lander missing expected HUD components")
 
@@ -93,6 +93,7 @@ class HudOverlay:
             "A/LEFT: Rotate left",
             "D/RIGHT: Rotate right",
             "F: Refuel (when landed)",
+            "TAB: Switch actor",
             "R: Reset",
             "Q/ESC: Quit",
         ]

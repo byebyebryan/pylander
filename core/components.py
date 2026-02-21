@@ -88,11 +88,57 @@ class Wallet:
 
 
 @dataclass
+class ActorProfile:
+    """Generic actor metadata shared by controllable and scripted entities."""
+    kind: str = "lander"
+    name: str | None = None
+    tags: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ActorControlRole:
+    """Who drives this actor: human, bot, script, or none."""
+    role: str = "none"
+
+
+@dataclass
+class PlayerSelectable:
+    """Marker component for actors eligible for player focus switching."""
+    order: int = 0
+
+
+@dataclass
+class PlayerControlled:
+    """Marker component for the currently player-controlled actor."""
+    active: bool = True
+
+
+@dataclass
 class ControlIntent:
     """Per-frame control input selected by the game loop."""
     target_thrust: float | None = None
     target_angle: float | None = None
     refuel_requested: bool = False
+
+
+@dataclass
+class ScriptFrame:
+    """Deterministic scripted action for a finite duration."""
+    duration: float = 1.0
+    target_thrust: float | None = None
+    target_angle: float | None = None
+    refuel: bool = False
+    velocity: Vector2 | None = None
+
+
+@dataclass
+class ScriptController:
+    """Stateful timeline controller for scripted actors."""
+    frames: list[ScriptFrame] = field(default_factory=list)
+    loop: bool = True
+    enabled: bool = True
+    frame_index: int = 0
+    frame_elapsed: float = 0.0
 
 
 @dataclass

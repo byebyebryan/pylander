@@ -125,13 +125,14 @@ class Bot(ABC):
 class _ActiveSensorImpl:
     """Concrete ActiveSensors implementation backed by an engine adapter."""
 
-    def __init__(self, origin_fn, radar_range_fn, engine_adapter):
+    def __init__(self, origin_fn, radar_range_fn, engine_adapter, actor_uid: str | None = None):
         self._origin = origin_fn
         self._range = radar_range_fn
         self._engine = engine_adapter
+        self._actor_uid = actor_uid
 
     def raycast(self, dir_angle: float, max_range: float | None = None) -> dict:
         rng = self._range() if max_range is None else max_range
         if self._engine is None:
             return {"hit": False, "hit_x": 0.0, "hit_y": 0.0, "distance": None}
-        return self._engine.raycast(self._origin(), dir_angle, rng)
+        return self._engine.raycast(self._origin(), dir_angle, rng, uid=self._actor_uid)

@@ -26,7 +26,11 @@ class LevelWorld:
     terrain: Any
     sites: Any
     lander: Any  # Lander
+    actors: list[Any] = field(default_factory=list)
+    primary_actor_uid: str | None = None
     site_entities: list[Any] = field(default_factory=list)
+    extra_entities: list[Any] = field(default_factory=list)
+    actor_bots: dict[str, Any] = field(default_factory=dict)
 
 
 class Level(ABC):
@@ -85,7 +89,22 @@ class Level(ABC):
 
     @property
     def lander(self):
-        return None if self.world is None else self.world.lander
+        if self.world is None:
+            return None
+        if getattr(self.world, "primary_actor_uid", None):
+            for actor in getattr(self.world, "actors", []):
+                if actor.uid == self.world.primary_actor_uid:
+                    return actor
+        return self.world.lander
+
+    @property
+    def actors(self):
+        if self.world is None:
+            return []
+        actors = getattr(self.world, "actors", None)
+        if actors:
+            return actors
+        return [self.world.lander] if self.world.lander is not None else []
 
 
 __all__ = ["Level", "LevelWorld"]

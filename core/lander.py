@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from core.components import (
+    ActorControlRole,
+    ActorProfile,
     ControlIntent,
     Engine,
     FuelTank,
     LanderGeometry,
     LanderState,
+    PlayerSelectable,
     PhysicsState,
     Radar,
     RefuelConfig,
@@ -35,6 +38,9 @@ class Lander(Entity):
         self.add_component(Radar())
         self.add_component(LanderState())
         self.add_component(Wallet())
+        self.add_component(ActorProfile(kind="lander"))
+        self.add_component(ActorControlRole(role="none"))
+        self.add_component(PlayerSelectable())
         self.add_component(ControlIntent())
         self.add_component(RefuelConfig())
         self.add_component(SensorReadings())

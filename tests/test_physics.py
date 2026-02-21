@@ -56,3 +56,24 @@ def test_teleport_lander_clears_velocity_when_requested() -> None:
     assert math.isclose(angle, 0.25, abs_tol=1e-6)
     assert math.isclose(vel.length(), 0.0, abs_tol=1e-6)
     assert math.isclose(ang_vel, 0.0, abs_tol=1e-6)
+
+
+def test_engine_tracks_multiple_actor_bodies_by_uid() -> None:
+    engine = PhysicsEngine(height_sampler=_FlatTerrain(), gravity=(0.0, -9.8))
+    engine.attach_lander(
+        width=8.0, height=8.0, mass=10.0, uid="a", start_pos=Vector2(0.0, 50.0)
+    )
+    engine.attach_lander(
+        width=8.0, height=8.0, mass=10.0, uid="b", start_pos=Vector2(20.0, 50.0)
+    )
+
+    assert set(engine.get_actor_uids()) == {"a", "b"}
+
+    engine.teleport_lander(Vector2(5.0, 40.0), uid="a")
+    pose_a, _ = engine.get_pose(uid="a")
+    pose_b, _ = engine.get_pose(uid="b")
+
+    assert math.isclose(pose_a.x, 5.0, abs_tol=1e-6)
+    assert math.isclose(pose_a.y, 40.0, abs_tol=1e-6)
+    assert math.isclose(pose_b.x, 20.0, abs_tol=1e-6)
+    assert math.isclose(pose_b.y, 50.0, abs_tol=1e-6)

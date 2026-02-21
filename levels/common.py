@@ -10,6 +10,12 @@ def _require_component(entity, component_type):
     return comp
 
 
+def _get_focus_actor(game):
+    if hasattr(game, "get_active_actor"):
+        return game.get_active_actor()
+    return game.lander
+
+
 def should_end_default(
     game,
     *,
@@ -18,8 +24,9 @@ def should_end_default(
     stop_on_out_of_fuel=False,
     max_time=None,
 ) -> bool:
-    state = _require_component(game.lander, LanderState).state
-    tank = _require_component(game.lander, FuelTank)
+    actor = _get_focus_actor(game)
+    state = _require_component(actor, LanderState).state
+    tank = _require_component(actor, FuelTank)
     if stop_on_crash and state == "crashed":
         return True
     if stop_on_first_land and state == "landed":
@@ -45,8 +52,9 @@ def compute_score_default(
     landing_score=100.0,
     crash_penalty=-200.0,
 ) -> float:
-    wallet = _require_component(game.lander, Wallet)
-    tank = _require_component(game.lander, FuelTank)
+    actor = _get_focus_actor(game)
+    wallet = _require_component(actor, Wallet)
+    tank = _require_component(actor, FuelTank)
     return (
         wallet.credits * credits_score
         + tank.fuel * fuel_score

@@ -9,11 +9,14 @@ from typing import Type, TypeVar
 
 from core.bot import Bot, BotAction, PassiveSensors, VehicleInfo, _ActiveSensorImpl
 from core.components import (
+    ActorControlRole,
     ControlIntent,
     Engine,
     FuelTank,
     LanderGeometry,
     LanderState,
+    PlayerControlled,
+    PlayerSelectable,
     PhysicsState,
     Radar,
     RefuelConfig,
@@ -21,7 +24,7 @@ from core.components import (
     Transform,
 )
 from core.controllers import PlayerController
-from core.ecs import World
+from core.ecs import Entity, World
 from core.engine_adapter import EngineAdapter
 from core.level import Level
 from core.maths import Vector2
@@ -34,6 +37,7 @@ from core.systems.physics_sync import PhysicsSyncSystem
 from core.systems.propulsion import PropulsionSystem
 from core.systems.refuel import RefuelSystem
 from core.systems.sensor_update import SensorUpdateSystem
+from core.systems.scripted_control import ScriptedControlSystem
 from core.systems.state_transition import StateTransitionSystem
 from ui.renderer import Renderer
 from utils.input import InputHandler
@@ -93,6 +97,7 @@ def _build_active_sensors(entity, engine_adapter):
         origin_fn=lambda: Vector2(trans.pos),
         radar_range_fn=lambda: radar.inner_range,
         engine_adapter=engine_adapter,
+        actor_uid=entity.uid,
     )
 
 
@@ -207,18 +212,31 @@ class LanderGame:
 
         self.running = True
         self.level.setup(self, seed)
-        self.lander = self.level.world.lander
+        self.actors = self._collect_actor_entities()
+        if not self.actors:
+            raise RuntimeError("Level did not provide any actor entities")
+        self.active_player_actor_uid = self._find_initial_player_actor_uid()
+        self.lander = next(
+            (actor for actor in self.actors if actor.uid == self.active_player_actor_uid),
+            self.actors[0],
+        )
         self.sites = self.level.world.sites
         self.engine = getattr(self.level, "engine", None)
         self.engine_adapter = EngineAdapter(self.engine)
+        self.engine_adapter.set_primary_actor(self.active_player_actor_uid)
 
         self.ecs_world = World()
-        self.ecs_world.add_entity(self.lander)
+        for actor in self.actors:
+            self.ecs_world.add_entity(actor)
         for site_entity in getattr(self.level.world, "site_entities", []):
             self.ecs_world.add_entity(site_entity)
+        for extra_entity in getattr(self.level.world, "extra_entities", []):
+            self.ecs_world.add_entity(extra_entity)
+        self._set_active_actor(self.active_player_actor_uid)
 
         self.control_routing_system = ControlRoutingSystem()
         self.state_transition_system = StateTransitionSystem()
+        self.scripted_control_system = ScriptedControlSystem()
         self.landing_site_motion_system = LandingSiteMotionSystem()
         self.landing_site_projection_system = LandingSiteProjectionSystem(self.sites)
         self.refuel_system = RefuelSystem(self.sites)
@@ -231,6 +249,7 @@ class LanderGame:
         for system in (
             self.control_routing_system,
             self.state_transition_system,
+            self.scripted_control_system,
             self.landing_site_motion_system,
             self.landing_site_projection_system,
             self.refuel_system,
@@ -254,8 +273,27 @@ class LanderGame:
             self.renderer = None
             self.player_controller = None
 
-        if self.bot is not None and hasattr(self.bot, "set_vehicle_info"):
-            self.bot.set_vehicle_info(_build_vehicle_info(self.lander))
+        self.actor_bots: dict[str, Bot] = {}
+        world_bots = getattr(self.level.world, "actor_bots", None)
+        if isinstance(world_bots, dict):
+            for uid, actor_bot in world_bots.items():
+                if isinstance(actor_bot, Bot):
+                    self.actor_bots[uid] = actor_bot
+        if self.bot is not None:
+            bot_uid = self._find_first_actor_for_role("bot")
+            if bot_uid is None:
+                bot_uid = next(
+                    (a.uid for a in self.actors if a.uid != self.active_player_actor_uid),
+                    self.active_player_actor_uid,
+                )
+            if bot_uid is not None:
+                self.actor_bots[bot_uid] = self.bot
+        for uid, actor_bot in self.actor_bots.items():
+            actor = self.ecs_world.get_entity_by_id(uid)
+            if actor is None:
+                continue
+            if hasattr(actor_bot, "set_vehicle_info"):
+                actor_bot.set_vehicle_info(_build_vehicle_info(actor))
 
         self.level.start(self)
         self.plotter = Plotter(
@@ -264,6 +302,85 @@ class LanderGame:
             enabled=self.headless,
             mode=getattr(self.level, "plot_mode", "none"),
         )
+
+    def _collect_actor_entities(self) -> list[Entity]:
+        world = self.level.world
+        actors = list(getattr(world, "actors", []) or [])
+        if not actors and getattr(world, "lander", None) is not None:
+            actors = [world.lander]
+        return actors
+
+    @staticmethod
+    def _get_actor_control_role(entity: Entity) -> str:
+        role = entity.get_component(ActorControlRole)
+        if role is None:
+            return "none"
+        return role.role
+
+    def _find_first_actor_for_role(self, role: str) -> str | None:
+        for actor in self.actors:
+            if self._get_actor_control_role(actor) == role:
+                return actor.uid
+        return None
+
+    def _find_initial_player_actor_uid(self) -> str:
+        # Explicitly selected actor wins first.
+        for actor in self.actors:
+            selected = actor.get_component(PlayerControlled)
+            if selected is not None and selected.active:
+                return actor.uid
+
+        # Otherwise pick the first selectable actor by declared order.
+        selectable: list[tuple[int, str]] = []
+        for actor in self.actors:
+            marker = actor.get_component(PlayerSelectable)
+            if marker is not None:
+                selectable.append((marker.order, actor.uid))
+        if selectable:
+            selectable.sort(key=lambda item: item[0])
+            return selectable[0][1]
+
+        return self.actors[0].uid
+
+    def get_active_actor(self) -> Entity:
+        actor = self.ecs_world.get_entity_by_id(self.active_player_actor_uid)
+        if actor is None:
+            raise RuntimeError("Active actor is missing from ECS world")
+        return actor
+
+    def _set_active_actor(self, uid: str) -> None:
+        if self.ecs_world.get_entity_by_id(uid) is None:
+            return
+        for actor in self.actors:
+            marker = actor.get_component(PlayerControlled)
+            is_active = actor.uid == uid
+            if marker is None and is_active:
+                actor.add_component(PlayerControlled(active=True))
+            elif marker is not None:
+                marker.active = is_active
+        self.active_player_actor_uid = uid
+        self.lander = self.get_active_actor()  # compatibility alias
+        if getattr(self.level, "world", None) is not None:
+            self.level.world.primary_actor_uid = uid
+            self.level.world.lander = self.lander
+        self.engine_adapter.set_primary_actor(uid)
+
+    def _switch_active_actor(self, delta: int = 1) -> None:
+        selectable: list[tuple[int, str]] = []
+        for actor in self.actors:
+            marker = actor.get_component(PlayerSelectable)
+            if marker is not None:
+                selectable.append((marker.order, actor.uid))
+        if not selectable:
+            return
+        selectable.sort(key=lambda item: item[0])
+        ordered_ids = [uid for _, uid in selectable]
+        if self.active_player_actor_uid not in ordered_ids:
+            self._set_active_actor(ordered_ids[0])
+            return
+        idx = ordered_ids.index(self.active_player_actor_uid)
+        next_uid = ordered_ids[(idx + delta) % len(ordered_ids)]
+        self._set_active_actor(next_uid)
 
     def run(
         self,
@@ -305,32 +422,41 @@ class LanderGame:
             else:
                 self._bot_override_timer = max(0.0, self._bot_override_timer - frame_dt)
 
+            controls_by_uid: dict[str, ControlTuple | None] = {}
             if user_controls is not None:
-                controls = user_controls
-            elif self._bot_override_timer == 0.0 and bot_controls is not None:
-                controls = bot_controls
-            else:
-                controls = (None, None, False)
+                controls_by_uid[self.active_player_actor_uid] = user_controls
+            if self._bot_override_timer == 0.0:
+                for uid, controls in bot_controls.items():
+                    # Human input only suppresses bot control on the currently active actor.
+                    if uid == self.active_player_actor_uid and user_controls is not None:
+                        continue
+                    controls_by_uid[uid] = controls
 
-            ls = _require_component(self.lander, LanderState)
-            trans = _require_component(self.lander, Transform)
-            state_before = ls.state
+            state_before: dict[str, str] = {}
+            for actor in self.actors:
+                ls = actor.get_component(LanderState)
+                if ls is not None:
+                    state_before[actor.uid] = ls.state
 
-            self.control_routing_system.set_controls(controls)
+            self.control_routing_system.set_controls_map(controls_by_uid)
             self.control_routing_system.update(frame_dt)
             self.refuel_system.update(frame_dt)
             self.state_transition_system.update(frame_dt)
 
-            if (
-                self.engine_adapter.enabled
-                and state_before == "landed"
-                and ls.state == "flying"
-            ):
-                self.engine_adapter.teleport_lander(
-                    trans.pos,
-                    angle=trans.rotation,
-                    clear_velocity=True,
-                )
+            if self.engine_adapter.enabled:
+                for actor in self.actors:
+                    before = state_before.get(actor.uid)
+                    ls = actor.get_component(LanderState)
+                    trans = actor.get_component(Transform)
+                    if before != "landed" or ls is None or trans is None:
+                        continue
+                    if ls.state == "flying":
+                        self.engine_adapter.teleport_lander(
+                            trans.pos,
+                            angle=trans.rotation,
+                            clear_velocity=True,
+                            uid=actor.uid,
+                        )
 
             self.sensor_update_system.update(frame_dt)
             self.level.update(self, frame_dt)
@@ -341,7 +467,9 @@ class LanderGame:
                 self._print_headless_stats(timers)
 
             step_count += 1
-            state = ls.state
+            active_actor = self.get_active_actor()
+            active_ls = _require_component(active_actor, LanderState)
+            state = active_ls.state
             if state != prev_state:
                 if state == "landed":
                     landing_count += 1
@@ -376,10 +504,14 @@ class LanderGame:
         if input_events.get("reset"):
             self._do_reset()
             input_events = {**input_events, "reset": False}
+        if input_events.get("switch_actor"):
+            self._switch_active_actor()
+            input_events = {**input_events, "switch_actor": False}
 
         user_controls = None
-        ls = _require_component(self.lander, LanderState)
-        eng = _require_component(self.lander, Engine)
+        active_actor = self.get_active_actor()
+        ls = _require_component(active_actor, LanderState)
+        eng = _require_component(active_actor, Engine)
         if ls.state in ("flying", "landed") and self.player_controller is not None:
             user_controls = self.player_controller.update(
                 input_events,
@@ -397,13 +529,15 @@ class LanderGame:
         return user_controls, input_events
 
     def _do_reset(self) -> None:
-        _reset_lander_entity(self.lander)
-        trans = _require_component(self.lander, Transform)
+        active_actor = self.get_active_actor()
+        _reset_lander_entity(active_actor)
+        trans = _require_component(active_actor, Transform)
         if self.engine_adapter.enabled:
             self.engine_adapter.teleport_lander(
                 trans.pos,
                 angle=trans.rotation,
                 clear_velocity=True,
+                uid=active_actor.uid,
             )
         if self.renderer is not None:
             cam = self.renderer.main_camera
@@ -416,6 +550,7 @@ class LanderGame:
         physics_dt = timers.physics_dt
         while timers.should_step_physics():
             timers.consume_physics()
+            self.scripted_control_system.update(physics_dt)
             self.landing_site_motion_system.update(physics_dt)
             self.landing_site_projection_system.update(physics_dt)
             self.propulsion_system.update(physics_dt)
@@ -425,18 +560,29 @@ class LanderGame:
                 self.physics_sync_system.update(physics_dt)
                 self.contact_system.update(physics_dt)
 
-    def _update_bot_steps(self, timers: LoopTimers) -> ControlTuple | None:
-        bot_controls = None
+    def _update_bot_steps(self, timers: LoopTimers) -> dict[str, ControlTuple | None]:
+        bot_controls_by_uid: dict[str, ControlTuple | None] = {}
         bot_dt = timers.bot_dt
         while timers.should_step_bot():
             timers.consume_bot()
-            if self.bot:
+            if self.actor_bots:
                 self.sensor_update_system.update(bot_dt)
-                passive_sensors = _build_passive_sensors(self.lander)
-                active_sensors = _build_active_sensors(self.lander, self.engine_adapter)
-                action: BotAction = self.bot.update(bot_dt, passive_sensors, active_sensors)
-                bot_controls = (action.target_thrust, action.target_angle, action.refuel)
-        return bot_controls
+                for uid, bot in self.actor_bots.items():
+                    actor = self.ecs_world.get_entity_by_id(uid)
+                    if actor is None:
+                        continue
+                    ls = actor.get_component(LanderState)
+                    if ls is None or ls.state not in ("flying", "landed"):
+                        continue
+                    passive_sensors = _build_passive_sensors(actor)
+                    active_sensors = _build_active_sensors(actor, self.engine_adapter)
+                    action: BotAction = bot.update(bot_dt, passive_sensors, active_sensors)
+                    bot_controls_by_uid[uid] = (
+                        action.target_thrust,
+                        action.target_angle,
+                        action.refuel,
+                    )
+        return bot_controls_by_uid
 
     def _render(self, frame_dt: float) -> float:
         if not self.headless and self.renderer is not None:
@@ -446,12 +592,14 @@ class LanderGame:
         return 1.0 / TARGET_RENDERING_FPS
 
     def _print_headless_stats(self, timers: LoopTimers) -> None:
+        active_actor = self.get_active_actor()
         parts = [f"t:{timers.elapsed_time:6.2f}"]
-        parts.append(_build_headless_stats(self.lander, self.terrain))
-        if self.bot and hasattr(self.bot, "get_headless_stats"):
-            bot_str = self.bot.get_headless_stats()
-            if bot_str:
-                parts.append(bot_str)
+        parts.append(_build_headless_stats(active_actor, self.terrain))
+        for uid, bot in self.actor_bots.items():
+            if hasattr(bot, "get_headless_stats"):
+                bot_str = bot.get_headless_stats()
+                if bot_str:
+                    parts.append(f"{uid}:{bot_str}")
         print(" | ".join(parts))
 
     @property

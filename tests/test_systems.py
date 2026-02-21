@@ -41,18 +41,38 @@ class _FakeEngineAdapter:
         self.overrides: list[float] = []
         self.pose = (Vector2(10.0, 20.0), 0.0)
         self.velocity = (Vector2(1.0, -2.0), 0.0)
+        self.pose_by_uid: dict[str, tuple[Vector2, float]] = {}
+        self.velocity_by_uid: dict[str, tuple[Vector2, float]] = {}
+        self.actor_uids: set[str] = set()
 
-    def apply_force(self, force, _point=None) -> None:
+    def apply_force(self, force, _point=None, uid=None) -> None:
         self.forces.append((force.x, force.y))
+        if uid is not None:
+            self.actor_uids.add(uid)
 
-    def override(self, angle: float) -> None:
+    def apply_force_for(self, uid, force, _point=None) -> None:
+        self.apply_force(force, _point, uid=uid)
+
+    def override(self, angle: float, uid=None) -> None:
         self.overrides.append(angle)
+        if uid is not None:
+            self.actor_uids.add(uid)
 
-    def get_pose(self):
+    def override_for(self, uid, angle: float) -> None:
+        self.override(angle, uid=uid)
+
+    def get_pose(self, uid=None):
+        if uid is not None and uid in self.pose_by_uid:
+            return self.pose_by_uid[uid]
         return self.pose
 
-    def get_velocity(self):
+    def get_velocity(self, uid=None):
+        if uid is not None and uid in self.velocity_by_uid:
+            return self.velocity_by_uid[uid]
         return self.velocity
+
+    def get_actor_uids(self):
+        return set(self.actor_uids)
 
 
 def test_propulsion_system_slews_controls_and_burns_fuel() -> None:
@@ -151,6 +171,75 @@ def test_control_routing_updates_intent_and_engine_targets() -> None:
     assert math.isclose(engine.target_thrust, 0.75, abs_tol=1e-6)
     assert math.isclose(engine.target_angle, 0.25, abs_tol=1e-6)
     assert intent.refuel_requested is True
+
+
+def test_control_routing_accepts_per_actor_control_map() -> None:
+    a = Entity(uid="a")
+    b = Entity(uid="b")
+    a_intent = ControlIntent()
+    b_intent = ControlIntent()
+    a_engine = Engine(target_thrust=0.0, target_angle=0.0)
+    b_engine = Engine(target_thrust=0.5, target_angle=0.2)
+    a.add_component(a_intent)
+    a.add_component(a_engine)
+    b.add_component(b_intent)
+    b.add_component(b_engine)
+
+    world = World()
+    world.add_entity(a)
+    world.add_entity(b)
+
+    system = ControlRoutingSystem()
+    system.world = world
+    system.set_controls_map({"a": (0.8, 0.4, True)})
+    system.update(1.0 / 60.0)
+
+    assert math.isclose(a_engine.target_thrust, 0.8, abs_tol=1e-6)
+    assert math.isclose(a_engine.target_angle, 0.4, abs_tol=1e-6)
+    assert a_intent.refuel_requested is True
+
+    # b gets no explicit controls this frame (only refuel resets)
+    assert math.isclose(b_engine.target_thrust, 0.5, abs_tol=1e-6)
+    assert math.isclose(b_engine.target_angle, 0.2, abs_tol=1e-6)
+    assert b_intent.refuel_requested is False
+
+
+def test_physics_sync_updates_multiple_entities_with_actor_uids() -> None:
+    adapter = _FakeEngineAdapter()
+    adapter.actor_uids = {"a", "b"}
+    adapter.pose_by_uid = {
+        "a": (Vector2(1.0, 2.0), 0.0),
+        "b": (Vector2(3.0, 4.0), 0.0),
+    }
+    adapter.velocity_by_uid = {
+        "a": (Vector2(5.0, 6.0), 0.0),
+        "b": (Vector2(7.0, 8.0), 0.0),
+    }
+    system = PhysicsSyncSystem(adapter)
+
+    a = Entity(uid="a")
+    a.add_component(Transform(pos=Vector2(0.0, 0.0)))
+    a.add_component(PhysicsState(vel=Vector2(0.0, 0.0)))
+    b = Entity(uid="b")
+    b.add_component(Transform(pos=Vector2(0.0, 0.0)))
+    b.add_component(PhysicsState(vel=Vector2(0.0, 0.0)))
+
+    world = World()
+    world.add_entity(a)
+    world.add_entity(b)
+    system.world = world
+    system.update(1.0 / 60.0)
+
+    a_trans = a.get_component(Transform)
+    a_phys = a.get_component(PhysicsState)
+    b_trans = b.get_component(Transform)
+    b_phys = b.get_component(PhysicsState)
+    assert a_trans is not None and a_phys is not None
+    assert b_trans is not None and b_phys is not None
+    assert a_trans.pos == Vector2(1.0, 2.0)
+    assert a_phys.vel == Vector2(5.0, 6.0)
+    assert b_trans.pos == Vector2(3.0, 4.0)
+    assert b_phys.vel == Vector2(7.0, 8.0)
 
 
 def test_state_transition_takes_off_when_landed_and_thrust_requested() -> None:

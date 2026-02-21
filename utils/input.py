@@ -33,6 +33,8 @@ class InputHandler:
                     signals["quit"] = True
                 elif event.key == pygame.K_r:
                     signals["reset"] = True
+                elif event.key == pygame.K_TAB:
+                    signals["switch_actor"] = True
         # Keyboard-based zoom flags
         ks = pygame.key.get_pressed()
         signals["zoom_in"] = bool(ks[pygame.K_EQUALS] or ks[pygame.K_PAGEUP])
@@ -51,5 +53,6 @@ class InputHandler:
                 "pan_down": bool(ks[pygame.K_DOWN] or ks[pygame.K_s]),
             }
         )
+        signals.setdefault("switch_actor", False)
 
         return signals

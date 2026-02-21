@@ -2,13 +2,19 @@ from __future__ import annotations
 
 import core.terrain as _terrain
 from core.components import (
+    ActorControlRole,
+    ActorProfile,
     FuelTank,
     KinematicMotion,
     LandingSite as LandingSiteComponent,
     LandingSiteEconomy,
     LanderGeometry,
     LanderState,
+    PlayerControlled,
+    PlayerSelectable,
     PhysicsState,
+    ScriptController,
+    ScriptFrame,
     SiteAttachment,
     Transform,
     Wallet,
@@ -106,11 +112,26 @@ class GentleStartLevel(Level):
         start_pos = Vector2(0.0, terrain(0.0) + 100.0)
         # Create lander via dynamic loader; default to "classic" when unspecified
         lander_name = getattr(self, "lander_name", "classic")
-        lander = create_lander(lander_name)
-        lander.start_pos = Vector2(start_pos)
-        trans = _require_component(lander, Transform)
-        geo = _require_component(lander, LanderGeometry)
-        trans.pos = Vector2(start_pos)
+        player_lander = create_lander(lander_name)
+        player_lander.start_pos = Vector2(start_pos)
+        player_lander.add_component(ActorProfile(kind="lander", name="player"))
+        player_lander.add_component(ActorControlRole(role="human"))
+        player_lander.add_component(PlayerSelectable(order=0))
+        player_lander.add_component(PlayerControlled(active=True))
+        player_trans = _require_component(player_lander, Transform)
+        player_geo = _require_component(player_lander, LanderGeometry)
+        player_trans.pos = Vector2(start_pos)
+
+        bot_start = Vector2(start_pos.x + 120.0, start_pos.y + 20.0)
+        bot_lander = create_lander(lander_name)
+        bot_lander.start_pos = Vector2(bot_start)
+        bot_lander.add_component(ActorProfile(kind="lander", name="bot"))
+        bot_lander.add_component(ActorControlRole(role="bot"))
+        bot_lander.add_component(PlayerSelectable(order=1))
+        bot_trans = _require_component(bot_lander, Transform)
+        bot_geo = _require_component(bot_lander, LanderGeometry)
+        bot_trans.pos = Vector2(bot_start)
+        actors = [player_lander, bot_lander]
 
         # Create physics engine and attach lander body
         engine = PhysicsEngine(
@@ -120,20 +141,84 @@ class GentleStartLevel(Level):
             half_width=12000.0,
         )
         engine.attach_lander(
-            width=geo.width,
-            height=geo.height,
-            mass=_get_mass(lander),
+            width=player_geo.width,
+            height=player_geo.height,
+            mass=_get_mass(player_lander),
+            uid=player_lander.uid,
             friction=0.9,
             elasticity=0.0,
             start_pos=start_pos,
-            start_angle=trans.rotation,
+            start_angle=player_trans.rotation,
+        )
+        engine.attach_lander(
+            width=bot_geo.width,
+            height=bot_geo.height,
+            mass=_get_mass(bot_lander),
+            uid=bot_lander.uid,
+            friction=0.9,
+            elasticity=0.0,
+            start_pos=bot_start,
+            start_angle=bot_trans.rotation,
+        )
+
+        carrier_x = 350.0
+        carrier_y = terrain(carrier_x) + 80.0
+        carrier = Entity(uid="carrier_scripted")
+        carrier.add_component(Transform(pos=Vector2(carrier_x, carrier_y)))
+        carrier.add_component(KinematicMotion(velocity=Vector2(15.0, 0.0)))
+        carrier.add_component(ActorProfile(kind="carrier", name="train_target"))
+        carrier.add_component(ActorControlRole(role="script"))
+        carrier.add_component(
+            ScriptController(
+                frames=[
+                    ScriptFrame(duration=6.0, velocity=Vector2(15.0, 0.0)),
+                    ScriptFrame(duration=6.0, velocity=Vector2(-15.0, 0.0)),
+                ],
+                loop=True,
+            )
+        )
+
+        moving_site = Entity(uid="site_scripted_carrier")
+        moving_site.add_component(Transform(pos=Vector2(carrier_x, carrier_y)))
+        moving_site.add_component(
+            LandingSiteComponent(
+                size=40.0,
+                terrain_mode="elevated_supports",
+                terrain_bound=False,
+                support_height=20.0,
+            )
+        )
+        moving_site.add_component(LandingSiteEconomy(award=175.0, fuel_price=11.0))
+        moving_site.add_component(
+            SiteAttachment(parent_uid=carrier.uid, local_offset=Vector2(0.0, 0.0))
+        )
+        site_entities.append(moving_site)
+        initial_views.append(
+            to_view(
+                uid=moving_site.uid,
+                x=carrier_x,
+                y=carrier_y,
+                size=40.0,
+                vel=Vector2(15.0, 0.0),
+                award=175.0,
+                fuel_price=11.0,
+                terrain_mode="elevated_supports",
+                terrain_bound=False,
+                blend_margin=20.0,
+                cut_depth=30.0,
+                support_height=20.0,
+                visited=False,
+            )
         )
 
         self.world = LevelWorld(
             terrain=terrain,
             sites=site_model,
+            actors=actors,
+            primary_actor_uid=player_lander.uid,
             site_entities=site_entities,
-            lander=lander,
+            lander=player_lander,
+            extra_entities=[carrier],
         )
         # Expose engine on the level for the game loop
         setattr(self, "engine", engine)

@@ -34,7 +34,7 @@ class PhysicsEngine:
     - World coordinates are x-right, y-up.
     - Terrain is represented by static Segment shapes generated from a height
       sampler within a centered window.
-    - Supports a single lander body for now.
+    - Supports multiple dynamic actor bodies (indexed by uid).
     """
 
     def __init__(
@@ -59,15 +59,15 @@ class PhysicsEngine:
         self._terrain_shapes: list[pm.Shape] = []
         self._window_center_x: float | None = None
 
-        # Lander state
-        self._lander_body: pm.Body | None = None
-        self._lander_shape: pm.Shape | None = None
-        self._lander_controls: tuple[float, float] = (0.0, 0.0)  # thrust_force, angle
-        self._lander_contact: dict | None = None
-
-        # Pending control intents (set by game each frame)
-        self._override_angle: float | None = None
-        self._pending_force: tuple[float, float] | None = None
+        # Dynamic actor state, keyed by actor uid
+        self._bodies: dict[str, pm.Body] = {}
+        self._shapes: dict[str, list[pm.Shape]] = {}
+        self._controls: dict[str, tuple[float, float]] = {}  # thrust_force, angle
+        self._contacts: dict[str, dict] = {}
+        self._overrides: dict[str, float] = {}
+        self._pending_forces: dict[str, tuple[float, float]] = {}
+        self._shape_to_uid: dict[int, str] = {}
+        self._primary_uid: str | None = None
 
         # Install collision handler for lander vs terrain
         # Register collision callbacks using Space.on_collision (API in this Pymunk build)
@@ -87,6 +87,7 @@ class PhysicsEngine:
         width: float,
         height: float,
         mass: float,
+        uid: str = "lander",
         *,
         friction: float = 0.9,
         elasticity: float = 0.0,
@@ -95,8 +96,9 @@ class PhysicsEngine:
     ) -> str:
         """Create the lander dynamic body as a triangle based on width/height.
 
-        Returns a handle string (currently a constant 'lander').
+        Returns actor uid.
         """
+        self._remove_actor(uid)
         verts = [
             (0.0, height / 2.0),
             (-width / 2.0, -height / 2.0),
@@ -113,19 +115,25 @@ class PhysicsEngine:
         shape.collision_type = self._COLL_LANDER
 
         self.space.add(body, shape)
-        self._lander_body = body
-        self._lander_shape = shape
+        self._bodies[uid] = body
+        self._shapes[uid] = [shape]
+        self._shape_to_uid[id(shape)] = uid
+        self._controls.setdefault(uid, (0.0, float(start_angle)))
+        self._contacts[uid] = self._empty_contact()
+        if self._primary_uid is None:
+            self._primary_uid = uid
 
         # Initialize terrain window around start
         cx = body.position.x
         self._ensure_window_centered(cx)
 
-        return "lander"
+        return uid
 
     def attach_lander_from_polygons(
         self,
         polygons: list[list[tuple[float, float]]],
         mass: float,
+        uid: str = "lander",
         *,
         friction: float = 0.9,
         elasticity: float = 0.0,
@@ -137,11 +145,13 @@ class PhysicsEngine:
         Polygons are specified in local coordinates (y-up). Mass is distributed
         proportionally to polygon area for inertia calculation.
         """
+        self._remove_actor(uid)
         if not polygons:
             return self.attach_lander(
                 4.0,
                 4.0,
                 mass,
+                uid=uid,
                 start_pos=start_pos,
                 start_angle=start_angle,
             )
@@ -175,100 +185,131 @@ class PhysicsEngine:
             shapes.append(shape)
 
         self.space.add(body, *shapes)
-        self._lander_body = body
-        # keep a reference to the first shape for type/filters; list not needed elsewhere
-        self._lander_shape = shapes[0] if shapes else None
+        self._bodies[uid] = body
+        self._shapes[uid] = shapes
+        for shape in shapes:
+            self._shape_to_uid[id(shape)] = uid
+        self._controls.setdefault(uid, (0.0, float(start_angle)))
+        self._contacts[uid] = self._empty_contact()
+        if self._primary_uid is None:
+            self._primary_uid = uid
 
         cx = body.position.x
         self._ensure_window_centered(cx)
 
-        return "lander"
+        return uid
 
-    def set_lander_controls(self, thrust_force: float, angle_rad: float) -> None:
+    def set_lander_controls(
+        self, thrust_force: float, angle_rad: float, uid: str | None = None
+    ) -> None:
         """Set the instantaneous thrust force (Newtons) and body angle (radians)."""
-        self._lander_controls = (max(0.0, float(thrust_force)), float(angle_rad))
+        actor_uid = self._resolve_uid(uid)
+        if actor_uid is None:
+            return
+        self._controls[actor_uid] = (max(0.0, float(thrust_force)), float(angle_rad))
 
     # New explicit control intents
-    def override(self, angle: float) -> None:
+    def override(self, angle: float, uid: str | None = None) -> None:
         """Override body pose angle this step (radians)."""
-        self._override_angle = float(angle)
+        actor_uid = self._resolve_uid(uid)
+        if actor_uid is None:
+            return
+        self._overrides[actor_uid] = float(angle)
 
-    def apply_force(self, force: Vector2, point: Vector2 | None = None) -> None:
+    def apply_force(
+        self, force: Vector2, point: Vector2 | None = None, uid: str | None = None
+    ) -> None:
         """Queue a world-space force to apply at the COM or specific point this step."""
         _ = point
-        self._pending_force = (force.x, force.y)
+        actor_uid = self._resolve_uid(uid)
+        if actor_uid is None:
+            return
+        self._pending_forces[actor_uid] = (force.x, force.y)
 
     def step(self, dt: float) -> None:
-        if self._lander_body is None:
+        if not self._bodies:
             return
 
-        # Maintain terrain window around current lander x
-        cx = float(self._lander_body.position.x)
+        # Maintain terrain window around current primary actor x
+        anchor_uid = self._resolve_uid(None)
+        if anchor_uid is None:
+            return
+        anchor_body = self._bodies.get(anchor_uid)
+        if anchor_body is None:
+            return
+        cx = float(anchor_body.position.x)
         self._ensure_window_centered(cx)
 
-        # Apply explicit override/apply_force first if provided
-        if self._override_angle is not None:
-            self._lander_body.angle = self._override_angle
-            self._override_angle = None
+        for uid, body in self._bodies.items():
+            if uid in self._overrides:
+                body.angle = self._overrides.pop(uid)
 
-        if self._pending_force is not None:
-            fx, fy = self._pending_force
-            self._lander_body.apply_force_at_world_point(
-                (fx, fy), self._lander_body.position
-            )
-            self._pending_force = None
-        else:
-            # Fallback to legacy thrust/angle path
-            thrust_force, angle = self._lander_controls
-            self._lander_body.angle = angle
+            if uid in self._pending_forces:
+                fx, fy = self._pending_forces.pop(uid)
+                body.apply_force_at_world_point((fx, fy), body.position)
+                continue
+
+            thrust_force, angle = self._controls.get(uid, (0.0, float(body.angle)))
+            body.angle = angle
             if thrust_force > 0.0:
                 fx = math.sin(angle) * thrust_force
                 fy = math.cos(angle) * thrust_force
-                self._lander_body.apply_force_at_world_point(
-                    (fx, fy), self._lander_body.position
-                )
+                body.apply_force_at_world_point((fx, fy), body.position)
 
         self.space.step(max(1e-4, float(dt)))
 
-    def get_pose(self) -> tuple[Vector2, float]:
-        if self._lander_body is None:
+    def get_pose(self, uid: str | None = None) -> tuple[Vector2, float]:
+        actor_uid = self._resolve_uid(uid)
+        if actor_uid is None:
             return Vector2(0.0, 0.0), 0.0
-        p = self._lander_body.position
-        return Vector2(p.x, p.y), float(self._lander_body.angle)
-
-    def get_velocity(self) -> tuple[Vector2, float]:
-        if self._lander_body is None:
+        body = self._bodies.get(actor_uid)
+        if body is None:
             return Vector2(0.0, 0.0), 0.0
-        v = self._lander_body.velocity
-        return Vector2(v.x, v.y), float(self._lander_body.angular_velocity)
+        p = body.position
+        return Vector2(p.x, p.y), float(body.angle)
 
-    def get_contact_report(self) -> dict:
-        return (
-            dict(self._lander_contact)
-            if self._lander_contact
-            else {
-                "colliding": False,
-                "normal": None,
-                "rel_speed": 0.0,
-                "point": None,
-            }
-        )
+    def get_velocity(self, uid: str | None = None) -> tuple[Vector2, float]:
+        actor_uid = self._resolve_uid(uid)
+        if actor_uid is None:
+            return Vector2(0.0, 0.0), 0.0
+        body = self._bodies.get(actor_uid)
+        if body is None:
+            return Vector2(0.0, 0.0), 0.0
+        v = body.velocity
+        return Vector2(v.x, v.y), float(body.angular_velocity)
 
-    def raycast(self, origin: Vector2, angle: float, max_distance: float) -> dict:
+    def get_contact_report(self, uid: str | None = None) -> dict:
+        actor_uid = self._resolve_uid(uid)
+        if actor_uid is None:
+            return self._empty_contact()
+        report = self._contacts.get(actor_uid)
+        return dict(report) if report is not None else self._empty_contact()
+
+    def raycast(
+        self, origin: Vector2, angle: float, max_distance: float, uid: str | None = None
+    ) -> dict:
         dx = math.cos(angle)
         dy = math.sin(angle)
         p1 = pm.Vec2d(origin.x, origin.y)
         p2 = pm.Vec2d(
             origin.x + dx * max_distance, origin.y + dy * max_distance
         )
-        info = self.space.segment_query_first(p1, p2, 0.0, pm.ShapeFilter())
-        if info is None:
+        ignored_uid = self._resolve_uid(uid)
+        infos = self.space.segment_query(p1, p2, 0.0, pm.ShapeFilter())
+        hit_info = None
+        for info in infos:
+            owner_uid = self._shape_to_uid.get(id(info.shape))
+            if ignored_uid is not None and owner_uid == ignored_uid:
+                continue
+            hit_info = info
+            break
+        if hit_info is None:
             return {"hit": False, "hit_x": 0.0, "hit_y": 0.0, "distance": None}
         return {
             "hit": True,
-            "hit_x": float(info.point.x),
-            "hit_y": float(info.point.y),
-            "distance": float(info.alpha * max_distance),
+            "hit_x": float(hit_info.point.x),
+            "hit_y": float(hit_info.point.y),
+            "distance": float(hit_info.alpha * max_distance),
         }
 
     def closest_point(self, origin: Vector2, search_radius: float) -> dict:
@@ -316,27 +357,26 @@ class PhysicsEngine:
     # ----- Collision callbacks -----
 
     def _on_contact_begin(self, arbiter: pm.Arbiter, _space: pm.Space, _data) -> None:
-        # Mark colliding; details populated in post_solve
-        self._lander_contact = {
-            "colliding": True,
-            "normal": None,
-            "rel_speed": 0.0,
-            "point": None,
-        }
+        uid = self._uid_from_arbiter(arbiter)
+        if uid is None:
+            return
+        # Mark colliding; details populated in post_solve.
+        self._contacts[uid] = self._empty_contact(colliding=True)
 
     def _on_contact_separate(
         self, _arbiter: pm.Arbiter, _space: pm.Space, _data
     ) -> None:
-        self._lander_contact = {
-            "colliding": False,
-            "normal": None,
-            "rel_speed": 0.0,
-            "point": None,
-        }
+        uid = self._uid_from_arbiter(_arbiter)
+        if uid is None:
+            return
+        self._contacts[uid] = self._empty_contact(colliding=False)
 
     def _on_contact_post_solve(
         self, arbiter: pm.Arbiter, _space: pm.Space, _data
     ) -> None:
+        uid = self._uid_from_arbiter(arbiter)
+        if uid is None:
+            return
         n = arbiter.normal  # points from second to first shape
         point = None
         cps = arbiter.contact_point_set
@@ -344,10 +384,11 @@ class PhysicsEngine:
             # Use world-space point on first shape
             point = (float(cps.points[0].point_a.x), float(cps.points[0].point_a.y))
         rel_speed = 0.0
-        if self._lander_body is not None and n is not None:
-            v = self._lander_body.velocity
+        body = self._bodies.get(uid)
+        if body is not None and n is not None:
+            v = body.velocity
             rel_speed = abs(float(v.x * n.x + v.y * n.y))
-        self._lander_contact = {
+        self._contacts[uid] = {
             "colliding": True,
             "normal": (float(n.x), float(n.y)) if n is not None else None,
             "rel_speed": rel_speed,
@@ -355,23 +396,85 @@ class PhysicsEngine:
         }
 
     # Mass update (for fuel burn effects)
-    def set_lander_mass(self, mass: float) -> None:
-        if self._lander_body is not None:
-            self._lander_body.mass = max(0.001, float(mass))
+    def set_lander_mass(self, mass: float, uid: str | None = None) -> None:
+        actor_uid = self._resolve_uid(uid)
+        if actor_uid is None:
+            return
+        body = self._bodies.get(actor_uid)
+        if body is not None:
+            body.mass = max(0.001, float(mass))
 
     def teleport_lander(
         self,
         pos: Vector2,
         angle: float | None = None,
         clear_velocity: bool = True,
+        uid: str | None = None,
     ) -> None:
-        """Instantly move the lander to a new pose (used for takeoff bump)."""
-        if self._lander_body is None:
+        """Instantly move an actor body to a new pose (used for takeoff bump)."""
+        actor_uid = self._resolve_uid(uid)
+        if actor_uid is None:
             return
-        self._lander_body.position = (pos.x, pos.y)
+        body = self._bodies.get(actor_uid)
+        if body is None:
+            return
+        body.position = (pos.x, pos.y)
             
         if angle is not None:
-            self._lander_body.angle = float(angle)
+            body.angle = float(angle)
         if clear_velocity:
-            self._lander_body.velocity = (0.0, 0.0)
-            self._lander_body.angular_velocity = 0.0
+            body.velocity = (0.0, 0.0)
+            body.angular_velocity = 0.0
+
+    def set_primary_actor(self, uid: str | None) -> None:
+        if uid is None:
+            self._primary_uid = None
+            return
+        if uid in self._bodies:
+            self._primary_uid = uid
+
+    def get_actor_uids(self) -> list[str]:
+        return list(self._bodies.keys())
+
+    def _uid_from_arbiter(self, arbiter: pm.Arbiter) -> str | None:
+        for shape in arbiter.shapes:
+            uid = self._shape_to_uid.get(id(shape))
+            if uid is not None:
+                return uid
+        return None
+
+    def _resolve_uid(self, uid: str | None) -> str | None:
+        if uid is not None:
+            return uid if uid in self._bodies else None
+        if self._primary_uid is not None and self._primary_uid in self._bodies:
+            return self._primary_uid
+        if not self._bodies:
+            return None
+        return next(iter(self._bodies.keys()))
+
+    def _remove_actor(self, uid: str) -> None:
+        shapes = self._shapes.pop(uid, [])
+        body = self._bodies.pop(uid, None)
+        if body is not None:
+            removals: list[Any] = [body, *shapes]
+            try:
+                self.space.remove(*removals)
+            except Exception:
+                pass
+        for shape in shapes:
+            self._shape_to_uid.pop(id(shape), None)
+        self._controls.pop(uid, None)
+        self._contacts.pop(uid, None)
+        self._overrides.pop(uid, None)
+        self._pending_forces.pop(uid, None)
+        if self._primary_uid == uid:
+            self._primary_uid = next(iter(self._bodies.keys()), None)
+
+    @staticmethod
+    def _empty_contact(colliding: bool = False) -> dict:
+        return {
+            "colliding": colliding,
+            "normal": None,
+            "rel_speed": 0.0,
+            "point": None,
+        }

@@ -52,11 +52,19 @@ class Renderer:
         tf = RigidTransform2(trans.pos, trans.rotation)
         return [tf.apply(pt) for pt in local]
 
+    def _get_actor_entities(self) -> list:
+        actors = getattr(self.level.world, "actors", None)
+        if actors:
+            return list(actors)
+        return [self.level.lander] if self.level.lander is not None else []
+
     def _get_thrusts(self, entity) -> list[Thrust]:
-        trans = self._require_component(entity, Transform)
-        geo = self._require_component(entity, LanderGeometry)
-        eng = self._require_component(entity, Engine)
-        tank = self._require_component(entity, FuelTank)
+        trans = entity.get_component(Transform)
+        geo = entity.get_component(LanderGeometry)
+        eng = entity.get_component(Engine)
+        tank = entity.get_component(FuelTank)
+        if None in (trans, geo, eng, tank):
+            return []
         if eng.thrust_level <= 0.0 or tank.fuel <= 0.0:
             return []
         half_h = geo.height / 2.0
@@ -244,13 +252,13 @@ class Renderer:
                 4,
             )
 
-    def draw_lander(self, camera):
-        """Draw the lander spacecraft using the given camera."""
-        if not self.level.lander:
+    def draw_actor(self, entity, camera):
+        """Draw one actor if it has lander geometry and transform."""
+        if entity is None:
             return
-
-        # Fetch polygon in world space and map to screen space
-        poly_world = self._get_body_polygon(self.level.lander)
+        if entity.get_component(LanderGeometry) is None or entity.get_component(Transform) is None:
+            return
+        poly_world = self._get_body_polygon(entity)
         rotated_points = []
         for world_pt in poly_world:
             rotated_points.append(camera.world_to_screen(world_pt))
@@ -335,12 +343,10 @@ class Renderer:
             contacts,
         )
 
-        # Draw lander
-        self.draw_lander(self.main_camera)
-
-        # Draw thrust flames from lander-provided thrust descriptors
-        if self.level.lander:
-            self.draw_thrusts(self._get_thrusts(self.level.lander), self.main_camera)
+        # Draw actors and thrust flames
+        for actor in self._get_actor_entities():
+            self.draw_actor(actor, self.main_camera)
+            self.draw_thrusts(self._get_thrusts(actor), self.main_camera)
 
         # Draw minimap
         self.minimap.draw(
@@ -407,7 +413,7 @@ class Renderer:
         try:
             self.screen.set_clip(rect.inflate(-2, -2))
             # Reuse standard draw paths with the inset camera
-            self.draw_lander(inset_cam)
+            self.draw_actor(lander, inset_cam)
             self.draw_thrusts(self._get_thrusts(lander), inset_cam)
         finally:
             self.screen.set_clip(prev_clip)
