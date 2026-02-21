@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from core.maths import Vector2, Transform as MathTransform
+from core.maths import Vector2, RigidTransform2
 import math
 
 @dataclass
@@ -25,9 +25,9 @@ class Transform:
     def y(self, value: float):
         self.pos.y = value
 
-    def as_transform(self) -> MathTransform:
-        """Return a core.maths.Transform for calculation."""
-        return MathTransform(self.pos, self.rotation)
+    def as_transform(self) -> RigidTransform2:
+        """Return a core.maths.RigidTransform2 for calculation."""
+        return RigidTransform2(self.pos, self.rotation)
 
 @dataclass
 class PhysicsState:

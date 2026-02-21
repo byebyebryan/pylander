@@ -1,5 +1,6 @@
 from core.ecs import System, Entity
 from core.components import LanderState, PhysicsState, Transform, FuelTank, Wallet
+from core.maths import Range1D, Vector2
 
 
 class ContactSystem(System):
@@ -39,7 +40,7 @@ class ContactSystem(System):
             from core.components import LanderGeometry
             geo = entity.get_component(LanderGeometry)
             half_w = (geo.width / 2.0) if geo is not None else 4.0
-            nearby = self.targets.get_targets(trans.pos.x, half_w)
+            nearby = self.targets.get_targets(Range1D.from_center(trans.pos.x, half_w))
             target = nearby[0] if nearby else None
 
         if angle_ok and speed_ok and target is not None:
@@ -82,7 +83,7 @@ class ContactSystem(System):
 
         if self.engine_adapter.enabled:
             self.engine_adapter.teleport_lander(
-                (trans.pos.x, trans.pos.y),
+                Vector2(trans.pos.x, trans.pos.y),
                 angle=trans.rotation,
                 clear_velocity=True,
             )
@@ -104,7 +105,7 @@ class ContactSystem(System):
             trans = entity.get_component(Transform)
             if trans is not None:
                 self.engine_adapter.teleport_lander(
-                    (trans.pos.x, trans.pos.y),
+                    Vector2(trans.pos.x, trans.pos.y),
                     angle=trans.rotation,
                     clear_velocity=True,
                 )

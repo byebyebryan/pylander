@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from core.bot import Bot, BotAction
+from core.maths import Vector2
 from core.lander import Lander
 from core.level import Level, LevelWorld
 from game import LanderGame
@@ -15,7 +16,7 @@ class _FlatTerrain:
 
 
 class _EmptyTargets:
-    def get_targets(self, _x: float, _range: float | None = None) -> list:
+    def get_targets(self, _span) -> list:
         return []
 
 
@@ -34,7 +35,7 @@ class _ShortLevel(Level):
         self.world = LevelWorld(
             terrain=_FlatTerrain(),
             targets=_EmptyTargets(),
-            lander=Lander(start_x=0.0, start_y=100.0),
+            lander=Lander(start_pos=Vector2(0.0, 100.0)),
         )
 
     def update(self, game, dt: float) -> None:

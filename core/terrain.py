@@ -3,7 +3,9 @@
 import random
 from opensimplex import OpenSimplex
 from dataclasses import dataclass
+from typing import Protocol
 import numpy as np
+from core.maths import Range1D, Vector2
 
 
 class SimplexNoiseGenerator:
@@ -134,7 +136,8 @@ class AddHeightModifier:
         self.modifier_func = modifier_func
 
     def __call__(self, x: float, lod: int = 0) -> float:
-        return self.modifier_func(x, self.height_func(x, lod), lod)
+        base_y = self.height_func(x, lod)
+        return self.modifier_func(Vector2(x, base_y), base_y, lod)
 
     def __getattr__(self, name: str):
         return getattr(self.height_func, name)
@@ -251,28 +254,27 @@ class TargetManager:
         while self.targets[0].x > x:
             self.targets.insert(0, self.target_func(self.targets[0], -1))
 
-    def get_targets(self, x: float, range: float = 0.0):
-        self._ensure_target(x - range)
-        self._ensure_target(x + range)
+    def get_targets(self, span: Range1D):
+        self._ensure_target(span.min)
+        self._ensure_target(span.max)
         targets = []
+        center_x = (span.min + span.max) * 0.5
+        half_span = span.span * 0.5
         for target in self.targets:
             if (
-                target.x - target.size / 2 - range
-                <= x
-                <= target.x + target.size / 2 + range
+                target.x - target.size / 2 - half_span
+                <= center_x
+                <= target.x + target.size / 2 + half_span
             ):
                 targets.append(target)
         return targets
 
-    def height_modifier(self, x: float, y: float, lod: int = 0) -> float:
+    def height_modifier(self, pos: Vector2, y: float, lod: int = 0) -> float:
         margin = 20.0 * (2**lod)
-        targets = self.get_targets(x, margin)
+        targets = self.get_targets(Range1D.from_center(pos.x, margin))
         if targets:
             return targets[0].y
         return y
-
-
-from typing import Protocol
 
 class Terrain(Protocol):
     def __call__(self, x: float, lod: int = 0) -> float: ...

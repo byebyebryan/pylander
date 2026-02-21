@@ -29,7 +29,7 @@ class EngineAdapter:
             self._engine.override(angle)
 
     def apply_force(
-        self, force: Vector2 | tuple[float, float], point: Vector2 | tuple[float, float] | None = None
+        self, force: Vector2, point: Vector2 | None = None
     ) -> None:
         if self._engine is not None and hasattr(self._engine, "apply_force"):
             self._engine.apply_force(force, point)
@@ -60,16 +60,14 @@ class EngineAdapter:
 
     def teleport_lander(
         self,
-        pos: Vector2 | tuple[float, float],
+        pos: Vector2,
         angle: float | None = None,
         clear_velocity: bool = True,
     ) -> None:
         if self._engine is not None:
             self._engine.teleport_lander(pos, angle=angle, clear_velocity=clear_velocity)
 
-    def raycast(
-        self, origin: Vector2 | tuple[float, float], angle: float, max_distance: float
-    ) -> dict:
+    def raycast(self, origin: Vector2, angle: float, max_distance: float) -> dict:
         if self._engine is None:
             return {"hit": False, "hit_x": 0.0, "hit_y": 0.0, "distance": None}
         return self._engine.raycast(origin, angle, max_distance)

@@ -9,7 +9,8 @@ Controls:
 import sys
 import pygame
 
-from camera import Camera
+from core.maths import Range1D, Vector2
+from ui.camera import Camera
 from levels import create_level, list_available_levels
 
 
@@ -87,10 +88,10 @@ class LevelViewer:
                     self.last_mouse = event.pos
                 elif event.button == 4:  # wheel up
                     mx, my = event.pos
-                    self.camera.zoom_at(mx, my, self.camera.zoom_speed)
+                    self.camera.zoom_at(Vector2(mx, my), self.camera.zoom_speed)
                 elif event.button == 5:  # wheel down
                     mx, my = event.pos
-                    self.camera.zoom_at(mx, my, 1.0 / self.camera.zoom_speed)
+                    self.camera.zoom_at(Vector2(mx, my), 1.0 / self.camera.zoom_speed)
             if event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
                     self.dragging = False
@@ -100,12 +101,12 @@ class LevelViewer:
                 dy = my - self.last_mouse[1]
                 self.last_mouse = (mx, my)
                 # Convert pixel delta to world delta (invert Y for world up)
-                self.camera.pan(-dx / self.camera.zoom, dy / self.camera.zoom)
+                self.camera.pan(Vector2(-dx / self.camera.zoom, dy / self.camera.zoom))
         return True
 
     def draw_terrain(self):
-        min_x, max_x, _, _ = self.camera.get_visible_world_bounds()
-        world_span = max_x - min_x
+        visible = self.camera.get_visible_world_rect()
+        world_span = visible.width
 
         lod = self._lod_for_zoom()
         base_interval = self.terrain.get_resolution(lod)
@@ -114,14 +115,14 @@ class LevelViewer:
         # Anchor to a world grid so the polyline slides smoothly when panning
         import math as _math
 
-        start_world_x = _math.floor(min_x / world_step) * world_step
-        end_world_x = max_x + world_step
+        start_world_x = _math.floor(visible.min_x / world_step) * world_step
+        end_world_x = visible.max_x + world_step
 
         pts = []
         wx = start_world_x
         while wx <= end_world_x:
             world_y = self.terrain(wx, lod)
-            sx, sy = self.camera.world_to_screen(wx, world_y * self.height_scale)
+            sx, sy = self.camera.world_to_screen(Vector2(wx, world_y * self.height_scale))
             pts.append((sx, sy))
             wx += world_step
 
@@ -129,19 +130,27 @@ class LevelViewer:
             pygame.draw.lines(self.screen, self.terrain_color, False, pts)
 
     def draw_targets(self):
-        min_x, max_x, _, _ = self.camera.get_visible_world_bounds()
-        tgts = self.targets.get_targets((min_x + max_x) / 2, max_x - min_x)
+        visible = self.camera.get_visible_world_rect()
+        tgts = self.targets.get_targets(Range1D(visible.min_x, visible.max_x))
         for target in tgts:
             tx = target.x
             ty = target.y
             ts = target.size
-            sx0, sy0 = self.camera.world_to_screen(tx - ts / 2, ty * self.height_scale)
-            sx1, sy1 = self.camera.world_to_screen(tx + ts / 2, ty * self.height_scale)
+            sx0, sy0 = self.camera.world_to_screen(
+                Vector2(tx - ts / 2, ty * self.height_scale)
+            )
+            sx1, sy1 = self.camera.world_to_screen(
+                Vector2(tx + ts / 2, ty * self.height_scale)
+            )
             pygame.draw.line(self.screen, self.target_color, (sx0, sy0), (sx1, sy1), 3)
 
     def draw_hud(self):
-        visible_world_bounds = self.camera.get_visible_world_bounds()
-        info = f"cam=({self.camera.x:.1f}, {self.camera.y:.1f}) size=({visible_world_bounds[1] - visible_world_bounds[0]:.1f}, {visible_world_bounds[3] - visible_world_bounds[2]:.1f}) zoom={self.camera.zoom:.3f} lod={self._lod_for_zoom()}"
+        visible = self.camera.get_visible_world_rect()
+        info = (
+            f"cam=({self.camera.x:.1f}, {self.camera.y:.1f}) "
+            f"size=({visible.width:.1f}, {visible.height:.1f}) "
+            f"zoom={self.camera.zoom:.3f} lod={self._lod_for_zoom()}"
+        )
         txt = self.font.render(info, True, self.text_color)
         self.screen.blit(txt, (10, 10))
 
@@ -152,7 +161,7 @@ class LevelViewer:
     def draw_axes(self):
         w = self.screen.get_width()
         h = self.screen.get_height()
-        cx0, cy0 = self.camera.world_to_screen(0, 0)
+        cx0, cy0 = self.camera.world_to_screen(Vector2(0.0, 0.0))
         pygame.draw.line(self.screen, (80, 80, 100), (0, cy0), (w, cy0), 1)
         pygame.draw.line(self.screen, (100, 80, 80), (cx0, 0), (cx0, h), 1)
 

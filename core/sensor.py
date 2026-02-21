@@ -4,13 +4,13 @@ import math
 from dataclasses import dataclass, field
 from typing import Any
 from collections import OrderedDict
-from .maths import Vector2
+from .maths import Range1D, Vector2
 # Note: import avoided to prevent unused warnings; refer to terrain.Target in docs if needed
 
 
 def closest_point_on_terrain(
     height_at: Any,
-    pos: Vector2 | tuple[float, float],
+    pos: Vector2,
     lod: int = 0,
     search_radius: float = 200.0,
 ) -> tuple[float, float, float]:
@@ -36,10 +36,7 @@ def closest_point_on_terrain(
         except Exception:
             return float("nan")
 
-    if isinstance(pos, Vector2):
-        x, y = pos.x, pos.y
-    else:
-        x, y = pos[0], pos[1]
+    x, y = pos.x, pos.y
 
     step = _get_res(height_at, lod)
     min_x = x - search_radius
@@ -91,17 +88,13 @@ class RadarContact:
 
 
 def get_radar_contacts(
-    pos: Vector2 | tuple[float, float],
+    pos: Vector2,
     targets,
     inner_range: float = 1000.0,
     outer_range: float = 2000.0,
 ) -> list[RadarContact]:
-    if isinstance(pos, Vector2):
-        x, y = pos.x, pos.y
-    else:
-        x, y = pos[0], pos[1]
-        
-    tgts = targets.get_targets(x, outer_range)
+    x, y = pos.x, pos.y
+    tgts = targets.get_targets(Range1D.from_center(x, outer_range))
     contacts: list[RadarContact] = []
     for t in tgts:
         dx = t.x - x
@@ -146,14 +139,11 @@ class ProximityContact:
 
 
 def get_proximity_contact(
-    pos: Vector2 | tuple[float, float],
+    pos: Vector2,
     terrain,
     range: float = 500.0,
 ) -> ProximityContact | None:
-    if isinstance(pos, Vector2):
-        x, y = pos.x, pos.y
-    else:
-        x, y = pos[0], pos[1]
+    x, y = pos.x, pos.y
         
     # Cache check (LRU keyed by quantized x,y,range)
     cache = _PROX_CACHE

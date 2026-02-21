@@ -14,11 +14,12 @@ class FpsOverlay:
     def draw(self) -> None:
         if self.clock is None:
             return
+        screen_rect = self.screen.get_rect()
         fps = self.clock.get_fps()
         frame_time = self.clock.get_rawtime()
         label = f"FPS: {fps:.1f}, FT: {frame_time:.2f}ms"
         text_surface = self.font.render(label, True, (0, 0, 0))
-        x = self.screen.get_width() - text_surface.get_width() - 10
+        x = screen_rect.right - text_surface.get_width() - 10
         y = 10
         self.screen.blit(text_surface, (x + 1, y + 1))
         text_surface = self.font.render(label, True, (255, 255, 255))

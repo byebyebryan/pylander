@@ -28,14 +28,12 @@ class GentleStartLevel(Level):
             _terrain.LodGridGenerator(height_func), targets.height_modifier
         )
 
-        start_x = 0.0
-        start_y = terrain(start_x) + 100.0
+        start_pos = Vector2(0.0, terrain(0.0) + 100.0)
         # Create lander via dynamic loader; default to "classic" when unspecified
         lander_name = getattr(self, "lander_name", "classic")
         lander = create_lander(lander_name)
-        lander.start_x = start_x
-        lander.y = start_y
-        lander.start_pos = Vector2(start_x, start_y)
+        lander.pos = Vector2(start_pos)
+        lander.start_pos = Vector2(start_pos)
 
         # Create physics engine and attach lander body
         engine = PhysicsEngine(
@@ -52,8 +50,7 @@ class GentleStartLevel(Level):
                 mass=lander.get_mass(),
                 friction=0.9,
                 elasticity=0.0,
-                start_x=start_x,
-                start_y=start_y,
+                start_pos=start_pos,
                 start_angle=lander.rotation,
             )
         else:
@@ -63,8 +60,7 @@ class GentleStartLevel(Level):
                 mass=lander.get_mass(),
                 friction=0.9,
                 elasticity=0.0,
-                start_x=start_x,
-                start_y=start_y,
+                start_pos=start_pos,
                 start_angle=lander.rotation,
             )
 

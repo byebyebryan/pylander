@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from typing import Callable
+from core.maths import Vector2
 
 
 class AutoZoomController:
@@ -42,7 +43,7 @@ class AutoZoomController:
         # Search radius in world units based on screen height and current zoom
         search_radius = (screen_height / max(camera.zoom, 1e-6)) * 1.0
         _, _, dist_world = closest_point_on_terrain(
-            get_height_at, (camera.x, camera.y), search_radius=search_radius
+            get_height_at, Vector2(camera.x, camera.y), search_radius=search_radius
         )
 
         # Desired on-screen distance band (diameter ~80% of screen height)

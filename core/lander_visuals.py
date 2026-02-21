@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from core.maths import Transform, Vector2
+from core.maths import RigidTransform2, Vector2
 
 
 @dataclass
@@ -43,7 +43,7 @@ class LanderVisuals:
         # Use simple x,y property access for compatibility if pos not available
         # But since we know we are usually on Lander which has pos:
         pos = getattr(self, "pos", Vector2(self.x, self.y))
-        tf = Transform(pos, self.rotation)
+        tf = RigidTransform2(pos, self.rotation)
         
         world_pts = []
         for pt in local_pts:
@@ -62,7 +62,7 @@ class LanderVisuals:
         local_base = Vector2(0.0, -base_offset_local)
         
         pos = getattr(self, "pos", Vector2(self.x, self.y))
-        tf = Transform(pos, self.rotation)
+        tf = RigidTransform2(pos, self.rotation)
         
         world_base = tf.apply(local_base)
         

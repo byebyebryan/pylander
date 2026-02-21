@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from core.maths import Range1D, Vector2
 
 
 class SensorOverlay:
@@ -42,19 +43,23 @@ class SensorOverlay:
         proximity_radius_px = 50
         arrow_length_px = 14
         arrow_width_px = 12
+        screen_rect = self.screen.get_rect()
+        screen_center = Vector2(screen_rect.centerx, screen_rect.centery)
 
         proximity = lander.get_proximity_contact(terrain)
         if proximity is None:
             return
 
-        sx, sy = camera.world_to_screen(proximity.x, proximity.y)
-        dx = sx - self.screen.get_width() // 2
-        dy = sy - self.screen.get_height() // 2
+        proximity_screen = camera.world_to_screen(Vector2(proximity.x, proximity.y))
+        sx, sy = proximity_screen.x, proximity_screen.y
+        dx = sx - screen_center.x
+        dy = sy - screen_center.y
         length_px = math.hypot(dx, dy)
         if length_px <= 0.0:
             return
         ux, uy = dx / length_px, dy / length_px
-        if length_px > proximity_radius_px and (targets is None or not targets.get_targets(proximity.x)):
+        span = Range1D.from_center(proximity.x, 0.0)
+        if length_px > proximity_radius_px and (targets is None or not targets.get_targets(span)):
             bx, by = sx - ux * arrow_length_px, sy - uy * arrow_length_px
             px, py = -uy * arrow_width_px / 2.0, ux * arrow_width_px / 2.0
             lx, ly = bx + px, by + py
@@ -72,19 +77,20 @@ class SensorOverlay:
         else:
             dist_str = f"{int(proximity.distance):d}m"
             d_surface = self.font.render(dist_str, True, color)
-            tx = self.screen.get_width() // 2 - d_surface.get_width() // 2
-            ty = self.screen.get_height() // 2 - d_surface.get_height() // 2 - 20
+            tx = screen_rect.centerx - d_surface.get_width() // 2
+            ty = screen_rect.centery - d_surface.get_height() // 2 - 20
             self.screen.blit(d_surface, (tx, ty))
 
     def _draw_radar(self, contacts, camera) -> None:
         if not contacts:
             return
+        screen_rect = self.screen.get_rect()
         circle_radius_px = int(
-            self.screen.get_height() * self.indicator_circle_size * 0.5
+            screen_rect.height * self.indicator_circle_size * 0.5
         )
 
-        cx = self.screen.get_width() // 2
-        cy = self.screen.get_height() // 2
+        cx = screen_rect.centerx
+        cy = screen_rect.centery
 
         for c in contacts:
             color = (
@@ -96,7 +102,8 @@ class SensorOverlay:
             inside_drawn = False
             if c.x is not None and c.y is not None:
                 tx, ty = c.x, c.y * self.height_scale
-                sx, sy = camera.world_to_screen(tx, ty)
+                screen_pt = camera.world_to_screen(Vector2(tx, ty))
+                sx, sy = screen_pt.x, screen_pt.y
                 dx = sx - cx
                 dy = sy - cy
                 dist_px = math.hypot(dx, dy)

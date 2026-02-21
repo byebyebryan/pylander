@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from core.lander import Lander
-from core.maths import Vector2, Transform
+from core.maths import RigidTransform2, Vector2
 
 
 class SimpleLander(Lander):
@@ -161,7 +161,7 @@ class SimpleLander(Lander):
         ]
         
         pos = getattr(self, "pos", Vector2(self.x, self.y))
-        tf = Transform(pos, self.rotation)
+        tf = RigidTransform2(pos, self.rotation)
         
         world_pts = []
         for pt in local_pts:

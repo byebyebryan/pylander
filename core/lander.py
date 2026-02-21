@@ -17,13 +17,15 @@ class Lander(Entity, LanderVisuals):
     # Expose Thrust for subclasses and type hints
     Thrust = Thrust
 
-    def __init__(self, start_x: float = 100.0, start_y: float | None = None):
+    def __init__(self, start_pos: Vector2 | None = None):
         """Initialize lander components."""
         super().__init__() # Initialize Entity (uid, components)
+        if start_pos is None:
+            start_pos = Vector2(100.0, 0.0)
         
         # 1. Transform Component
         self.trans = TransformComponent()
-        self.trans.pos = Vector2(start_x, start_y if start_y is not None else 0.0)
+        self.trans.pos = Vector2(start_pos)
         self.add_component(self.trans)
         
         self.start_pos = Vector2(self.trans.pos) # Keep copy for reset
@@ -284,17 +286,12 @@ class Lander(Entity, LanderVisuals):
                 self.y += 1.0
 
 
-    def reset(self, start_x: float | None = None, start_y: float | None = None):
+    def reset(self, start_pos: Vector2 | None = None):
         """Reset lander to starting state. Caller provides explicit world coords."""
-        if start_x is None:
-            self.pos.x = self.start_pos.x
+        if start_pos is None:
+            self.pos = Vector2(self.start_pos)
         else:
-            self.pos.x = start_x
-            
-        if start_y is not None:
-            self.pos.y = start_y
-        elif start_x is None: # use start_pos.y only if resetting to default
-            self.pos.y = self.start_pos.y
+            self.pos = Vector2(start_pos)
             
         self.vel.update(0.0, 0.0)
         self.rotation = 0.0
@@ -381,7 +378,7 @@ class Lander(Entity, LanderVisuals):
         )
 
         active: ActiveSensors = _ActiveSensorImpl(
-            origin_fn=lambda: (self.x, self.y),
+            origin_fn=lambda: Vector2(self.x, self.y),
             radar_range_fn=lambda: self.radar_inner_range,
             engine_adapter=engine,
         )

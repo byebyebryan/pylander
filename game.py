@@ -6,6 +6,7 @@ from utils.input import InputHandler
 from ui.renderer import Renderer
 from core.bot import Bot, BotAction
 from core.level import Level
+from core.maths import Range1D, Vector2
 from utils.plot import Plotter
 from core.engine_adapter import EngineAdapter
 from utils.protocols import ControlTuple
@@ -206,7 +207,9 @@ class LanderGame:
             _tgt_thm, _tgt_ang, refuel_requested = controls
             if self.lander.state == "landed" and refuel_requested:
                 # Find target under lander
-                nearby = self.targets.get_targets(self.lander.x, self.lander.width)
+                nearby = self.targets.get_targets(
+                    Range1D.from_center(self.lander.x, self.lander.width)
+                )
                 if nearby:
                     target = nearby[0] # Assume the first one is the platform
                     price = target.info.get("fuel_price", 10.0) # Default if missing
@@ -223,7 +226,7 @@ class LanderGame:
                 and self.lander.state == "flying"
             ):
                 self.engine_adapter.teleport_lander(
-                    (self.lander.x, self.lander.y),
+                    Vector2(self.lander.x, self.lander.y),
                     angle=self.lander.rotation,
                     clear_velocity=True,
                 )
@@ -317,7 +320,7 @@ class LanderGame:
         self.lander.reset()
         if self.engine_adapter.enabled:
             self.engine_adapter.teleport_lander(
-                (self.lander.x, self.lander.y),
+                Vector2(self.lander.x, self.lander.y),
                 angle=self.lander.rotation,
                 clear_velocity=True,
             )

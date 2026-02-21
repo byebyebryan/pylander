@@ -125,8 +125,8 @@ class Renderer:
 
     def draw_terrain(self):
         """Draw terrain as a polyline sampled on a stable world grid to reduce shimmer."""
-        min_x, max_x, _, _ = self.main_camera.get_visible_world_bounds()
-        world_span = max_x - min_x
+        visible = self.main_camera.get_visible_world_rect()
+        world_span = visible.width
 
         # Choose a world-step based on target segments and anchor it to a world grid
         if self.target_segments <= 0:
@@ -138,15 +138,15 @@ class Renderer:
 
         # Anchor to grid so points slide smoothly as camera pans
 
-        start_world_x = math.floor(min_x / world_step) * world_step
-        end_world_x = max_x + world_step
+        start_world_x = math.floor(visible.min_x / world_step) * world_step
+        end_world_x = visible.max_x + world_step
 
         screen_points = []
         wx = start_world_x
         while wx <= end_world_x:
             world_y = self.level.terrain(wx, lod=lod) * self.height_scale
             # world_to_screen returns Vector2, which is compatible with aalines
-            screen_points.append(self.main_camera.world_to_screen(wx, world_y))
+            screen_points.append(self.main_camera.world_to_screen(Vector2(wx, world_y)))
             wx += world_step
 
         if len(screen_points) >= 2:
@@ -169,10 +169,8 @@ class Renderer:
             tx = c.x
             ty = c.y * self.height_scale
             half = c.size / 2.0
-            start_pos = self.main_camera.world_to_screen(
-                tx - half, ty
-            )
-            end_pos = self.main_camera.world_to_screen(tx + half, ty)
+            start_pos = self.main_camera.world_to_screen(Vector2(tx - half, ty))
+            end_pos = self.main_camera.world_to_screen(Vector2(tx + half, ty))
             color = (
                 self.visited_landing_target_color
                 if (getattr(c, "info", None) and c.info.get("award", 1) == 0)
@@ -196,8 +194,8 @@ class Renderer:
         # poly_world is list[tuple], we can convert to Vector2 for consistency or just unpack
         # get_body_polygon still returns tuples for now (Phase 4), so unpack
         rotated_points = []
-        for wx, wy in poly_world:
-            rotated_points.append(camera.world_to_screen(wx, wy))
+        for world_pt in poly_world:
+            rotated_points.append(camera.world_to_screen(world_pt))
             
         if rotated_points:
             pygame.draw.polygon(self.screen, (255, 255, 255), rotated_points, 2)
@@ -245,9 +243,9 @@ class Renderer:
             )
 
             # Transform to screen space and draw two lines
-            tip_pos = camera.world_to_screen(tip_x, tip_y)
-            left_pos = camera.world_to_screen(left_x, left_y)
-            right_pos = camera.world_to_screen(right_x, right_y)
+            tip_pos = camera.world_to_screen(Vector2(tip_x, tip_y))
+            left_pos = camera.world_to_screen(Vector2(left_x, left_y))
+            right_pos = camera.world_to_screen(Vector2(right_x, right_y))
             
             pygame.draw.aaline(self.screen, color, tip_pos, left_pos)
             pygame.draw.aaline(self.screen, color, tip_pos, right_pos)
@@ -325,10 +323,10 @@ class Renderer:
         mm = self.minimap
         margin = getattr(mm, "margin", 10)
         rect = pygame.Rect(
-            self.screen.get_width() - mm.width - margin,
-            self.screen.get_height() - mm.height - margin,
-            mm.width,
-            mm.height,
+            int(self.screen.get_width() - mm.rect.width - margin),
+            int(self.screen.get_height() - mm.rect.height - margin),
+            int(mm.rect.width),
+            int(mm.rect.height),
         )
 
         # Background and border similar to minimap styling

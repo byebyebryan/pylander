@@ -20,8 +20,8 @@ class EngineProtocol(Protocol):
 
     def apply_force(
         self,
-        force: Vector2 | tuple[float, float],
-        point: Vector2 | tuple[float, float] | None = None,
+        force: Vector2,
+        point: Vector2 | None = None,
     ) -> None: ...
 
     def step(self, dt: float) -> None: ...
@@ -34,14 +34,14 @@ class EngineProtocol(Protocol):
 
     def teleport_lander(
         self,
-        pos: Vector2 | tuple[float, float],
+        pos: Vector2,
         angle: float | None = None,
         clear_velocity: bool = True,
     ) -> None: ...
 
     def raycast(
         self,
-        origin: Vector2 | tuple[float, float],
+        origin: Vector2,
         angle: float,
         max_distance: float,
     ) -> dict: ...

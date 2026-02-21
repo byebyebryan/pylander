@@ -15,6 +15,7 @@ class HudOverlay:
         lander = level.lander
         if not lander:
             return
+        screen_rect = self.screen.get_rect()
 
         # Caller can pass a bot override; fall back to the stored reference
         effective_bot = bot if bot is not None else self.bot
@@ -23,7 +24,7 @@ class HudOverlay:
         self._draw_text_lines(info_lines, 10, (220, 220, 220))
 
         control_lines = self._build_control_lines(lander)
-        y_offset = self.screen.get_height() - 20 - (len(control_lines) * 18)
+        y_offset = screen_rect.bottom - 20 - (len(control_lines) * 18)
         self._draw_text_lines(control_lines, y_offset, (200, 200, 200))
 
     def _build_info_lines(self, level, bot=None) -> list[str]:

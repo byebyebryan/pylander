@@ -90,8 +90,7 @@ class PhysicsEngine:
         *,
         friction: float = 0.9,
         elasticity: float = 0.0,
-        start_x: float | None = None,
-        start_y: float | None = None,
+        start_pos: Vector2 | None = None,
         start_angle: float = 0.0,
     ) -> str:
         """Create the lander dynamic body as a triangle based on width/height.
@@ -105,8 +104,8 @@ class PhysicsEngine:
         ]
         moment = pm.moment_for_poly(mass, verts)
         body = pm.Body(mass, moment)
-        if start_x is not None and start_y is not None:
-            body.position = (start_x, start_y)
+        if start_pos is not None:
+            body.position = (start_pos.x, start_pos.y)
         body.angle = start_angle
         shape = pm.Poly(body, verts)
         shape.friction = friction
@@ -118,7 +117,7 @@ class PhysicsEngine:
         self._lander_shape = shape
 
         # Initialize terrain window around start
-        cx = body.position.x if start_x is None else start_x
+        cx = body.position.x
         self._ensure_window_centered(cx)
 
         return "lander"
@@ -130,8 +129,7 @@ class PhysicsEngine:
         *,
         friction: float = 0.9,
         elasticity: float = 0.0,
-        start_x: float | None = None,
-        start_y: float | None = None,
+        start_pos: Vector2 | None = None,
         start_angle: float = 0.0,
     ) -> str:
         """Create the lander dynamic body from one or more convex polygons.
@@ -140,7 +138,13 @@ class PhysicsEngine:
         proportionally to polygon area for inertia calculation.
         """
         if not polygons:
-            return self.attach_lander(4.0, 4.0, mass, start_x=start_x, start_y=start_y, start_angle=start_angle)
+            return self.attach_lander(
+                4.0,
+                4.0,
+                mass,
+                start_pos=start_pos,
+                start_angle=start_angle,
+            )
 
         # Compute total area and per-poly moments
         total_area = 0.0
@@ -158,8 +162,8 @@ class PhysicsEngine:
             moment += pm.moment_for_poly(max(1e-6, poly_mass), poly)
 
         body = pm.Body(mass, max(moment, 1e-6))
-        if start_x is not None and start_y is not None:
-            body.position = (start_x, start_y)
+        if start_pos is not None:
+            body.position = (start_pos.x, start_pos.y)
         body.angle = start_angle
 
         shapes: list[pm.Shape] = []
@@ -175,7 +179,7 @@ class PhysicsEngine:
         # keep a reference to the first shape for type/filters; list not needed elsewhere
         self._lander_shape = shapes[0] if shapes else None
 
-        cx = body.position.x if start_x is None else start_x
+        cx = body.position.x
         self._ensure_window_centered(cx)
 
         return "lander"
@@ -189,14 +193,10 @@ class PhysicsEngine:
         """Override body pose angle this step (radians)."""
         self._override_angle = float(angle)
 
-    def apply_force(self, force: Vector2 | tuple[float, float], point: Vector2 | tuple[float, float] | None = None) -> None:
+    def apply_force(self, force: Vector2, point: Vector2 | None = None) -> None:
         """Queue a world-space force to apply at the COM or specific point this step."""
-        if isinstance(force, Vector2):
-            fx, fy = force.x, force.y
-        else:
-            fx, fy = force[0], force[1]
-            
-        self._pending_force = (fx, fy)
+        _ = point
+        self._pending_force = (force.x, force.y)
 
     def step(self, dt: float) -> None:
         if self._lander_body is None:
@@ -254,20 +254,12 @@ class PhysicsEngine:
             }
         )
 
-    def raycast(
-        self, origin: Vector2 | tuple[float, float], angle: float, max_distance: float
-    ) -> dict:
+    def raycast(self, origin: Vector2, angle: float, max_distance: float) -> dict:
         dx = math.cos(angle)
         dy = math.sin(angle)
-        
-        if isinstance(origin, Vector2):
-            ox, oy = origin.x, origin.y
-        else:
-            ox, oy = origin[0], origin[1]
-            
-        p1 = pm.Vec2d(ox, oy)
+        p1 = pm.Vec2d(origin.x, origin.y)
         p2 = pm.Vec2d(
-            ox + dx * max_distance, oy + dy * max_distance
+            origin.x + dx * max_distance, origin.y + dy * max_distance
         )
         info = self.space.segment_query_first(p1, p2, 0.0, pm.ShapeFilter())
         if info is None:
@@ -279,15 +271,9 @@ class PhysicsEngine:
             "distance": float(info.alpha * max_distance),
         }
 
-    def closest_point(
-        self, origin: Vector2 | tuple[float, float], search_radius: float
-    ) -> dict:
-        if isinstance(origin, Vector2):
-            x0, y0 = origin.x, origin.y
-        else:
-            x0, y0 = float(origin[0]), float(origin[1])
+    def closest_point(self, origin: Vector2, search_radius: float) -> dict:
         cx, cy, dist = sensor_closest_point_on_terrain(
-            self.height_sampler, (x0, y0), lod=0, search_radius=search_radius
+            self.height_sampler, origin, lod=0, search_radius=search_radius
         )
         return {"x": cx, "y": cy, "distance": dist}
 
@@ -375,18 +361,14 @@ class PhysicsEngine:
 
     def teleport_lander(
         self,
-        pos: Vector2 | tuple[float, float],
+        pos: Vector2,
         angle: float | None = None,
         clear_velocity: bool = True,
     ) -> None:
         """Instantly move the lander to a new pose (used for takeoff bump)."""
         if self._lander_body is None:
             return
-            
-        if isinstance(pos, Vector2):
-            self._lander_body.position = (pos.x, pos.y)
-        else:
-            self._lander_body.position = (float(pos[0]), float(pos[1]))
+        self._lander_body.position = (pos.x, pos.y)
             
         if angle is not None:
             self._lander_body.angle = float(angle)

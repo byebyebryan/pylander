@@ -1,6 +1,6 @@
 """Camera system for moveable and zoomable viewport."""
 
-from core.maths import Vector2
+from core.maths import Rect, Vector2
 from core.components import Transform
 
 class Camera:
@@ -44,69 +44,51 @@ class Camera:
     def y(self, value: float):
         self.trans.y = value
 
-    def world_to_screen(self, pos: Vector2 | tuple[float, float], world_y: float | None = None) -> Vector2:
+    def world_to_screen(self, pos: Vector2) -> Vector2:
         """Convert world coordinates to screen pixel coordinates."""
-        if isinstance(pos, Vector2):
-            wx, wy = pos.x, pos.y
-        else:
-            wx, wy = pos if world_y is None else (pos, world_y)
-            
-        screen_x = (wx - self.x) * self.zoom + self.screen_width / 2
+        screen_x = (pos.x - self.x) * self.zoom + self.screen_width / 2
         # Invert Y: world y-up -> screen y-down
-        screen_y = (self.y - wy) * self.zoom + self.screen_height / 2
+        screen_y = (self.y - pos.y) * self.zoom + self.screen_height / 2
         return Vector2(screen_x, screen_y)
 
-    def screen_to_world(self, pos: Vector2 | tuple[float, float], screen_y: float | None = None) -> Vector2:
+    def screen_to_world(self, pos: Vector2) -> Vector2:
         """Convert screen pixel coordinates to world coordinates."""
-        if isinstance(pos, Vector2):
-            sx, sy = pos.x, pos.y
-        else:
-            sx, sy = pos if screen_y is None else (pos, screen_y)
-            
-        world_x = (sx - self.screen_width / 2) / self.zoom + self.x
+        world_x = (pos.x - self.screen_width / 2) / self.zoom + self.x
         # Invert Y back to world
-        world_y = self.y - (sy - self.screen_height / 2) / self.zoom
+        world_y = self.y - (pos.y - self.screen_height / 2) / self.zoom
         return Vector2(world_x, world_y)
 
-    def get_visible_world_bounds(self) -> tuple[float, float, float, float]:
-        """Get the world coordinate bounds currently visible on screen.
+    def get_visible_world_rect(self) -> Rect:
+        """Get world-space axis-aligned view bounds."""
+        top_left = self.screen_to_world(Vector2(0.0, 0.0))
+        bottom_right = self.screen_to_world(
+            Vector2(float(self.screen_width), float(self.screen_height))
+        )
+        return Rect.from_bounds(top_left.x, bottom_right.x, bottom_right.y, top_left.y)
 
-        Returns:
-            (min_x, max_x, min_y, max_y) in world coordinates
-        """
-        top_left = self.screen_to_world(0, 0)
-        bottom_right = self.screen_to_world(self.screen_width, self.screen_height)
-        return top_left[0], bottom_right[0], bottom_right[1], top_left[1]
-
-    def pan(self, delta: Vector2 | tuple[float, float], dy: float | None = None):
+    def pan(self, delta: Vector2):
         """Move camera by given amount in world coordinates."""
-        if isinstance(delta, Vector2):
-            dx, dy_val = delta.x, delta.y
-        else:
-            dx, dy_val = delta if dy is None else (delta, dy)
-            
-        self.x += dx
-        self.y += dy_val
+        self.x += delta.x
+        self.y += delta.y
 
-    def zoom_at(self, screen_x: float, screen_y: float, factor: float):
+    def zoom_at(self, screen_pos: Vector2, factor: float):
         """Zoom in/out at a specific screen position (keeps point under cursor fixed).
 
         Args:
-            screen_x: Screen x coordinate to zoom towards
-            screen_y: Screen y coordinate to zoom towards
+            screen_pos: Screen coordinate to zoom towards
             factor: Zoom multiplier (>1 = zoom in, <1 = zoom out)
         """
         # Get world position before zoom
-        world_x, world_y = self.screen_to_world(screen_x, screen_y)
+        world_pos = self.screen_to_world(screen_pos)
 
         # Apply zoom
         self.zoom *= factor
         self.zoom = max(self.min_zoom, min(self.max_zoom, self.zoom))  # Clamp zoom
 
         # Adjust camera position to keep world point under cursor
-        new_world_x, new_world_y = self.screen_to_world(screen_x, screen_y)
-        self.x += world_x - new_world_x
-        self.y += world_y - new_world_y
+        new_world_pos = self.screen_to_world(screen_pos)
+        self.x += world_pos.x - new_world_pos.x
+        self.y += world_pos.y - new_world_pos.y
 
     # Camera should not own input; movement is controlled by InputHandler
 
@@ -124,22 +106,22 @@ class Camera:
 
         move_amount = self.pan_speed * dt / max(0.01, self.zoom)
         if signals.get("pan_left"):
-            self.pan(-move_amount, 0)
+            self.pan(Vector2(-move_amount, 0.0))
         if signals.get("pan_right"):
-            self.pan(move_amount, 0)
+            self.pan(Vector2(move_amount, 0.0))
         if signals.get("pan_up"):
-            self.pan(0, move_amount)
+            self.pan(Vector2(0.0, move_amount))
         if signals.get("pan_down"):
-            self.pan(0, -move_amount)
+            self.pan(Vector2(0.0, -move_amount))
 
         # Zoom via keyboard at screen center
         if signals.get("zoom_in") or signals.get("zoom_out"):
             cx = self.screen_width // 2
             cy = self.screen_height // 2
             if signals.get("zoom_in"):
-                self.zoom_at(cx, cy, self.zoom_speed)
+                self.zoom_at(Vector2(cx, cy), self.zoom_speed)
             if signals.get("zoom_out"):
-                self.zoom_at(cx, cy, 1.0 / self.zoom_speed)
+                self.zoom_at(Vector2(cx, cy), 1.0 / self.zoom_speed)
 
 
 class OffsetCamera:
@@ -164,13 +146,8 @@ class OffsetCamera:
         self._px = pixel_center_x
         self._py = pixel_center_y
 
-    def world_to_screen(self, pos: Vector2 | tuple[float, float], world_y: float | None = None) -> Vector2:
-        if isinstance(pos, Vector2):
-            wx, wy = pos.x, pos.y
-        else:
-            wx, wy = pos if world_y is None else (pos, world_y)
-            
-        sx = int(self._px + (wx - self.x) * self.zoom)
+    def world_to_screen(self, pos: Vector2) -> Vector2:
+        sx = int(self._px + (pos.x - self.x) * self.zoom)
         # Invert Y for sub-viewports as well
-        sy = int(self._py + (self.y - wy) * self.zoom)
+        sy = int(self._py + (self.y - pos.y) * self.zoom)
         return Vector2(sx, sy)
