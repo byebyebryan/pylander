@@ -76,7 +76,7 @@ class Camera:
         """
         top_left = self.screen_to_world(0, 0)
         bottom_right = self.screen_to_world(self.screen_width, self.screen_height)
-        return top_left[0], bottom_right[0], top_left[1], bottom_right[1]
+        return top_left[0], bottom_right[0], bottom_right[1], top_left[1]
 
     def pan(self, delta: Vector2 | tuple[float, float], dy: float | None = None):
         """Move camera by given amount in world coordinates."""

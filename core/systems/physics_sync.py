@@ -1,5 +1,5 @@
 from core.ecs import System, Entity
-from core.components import PhysicsState, Transform
+from core.components import LanderState, PhysicsState, Transform
 
 
 class PhysicsSyncSystem(System):
@@ -18,8 +18,18 @@ class PhysicsSyncSystem(System):
         if not self.world:
             return
 
-        for entity in self.world.get_entities_with(PhysicsState, Transform):
-            self._sync_from_physics(entity)
+        _ = dt
+        # The engine adapter currently exposes a single body pose/velocity.
+        # Sync exactly one entity: the lander when available.
+        landers = self.world.get_entities_with(LanderState, PhysicsState, Transform)
+        if landers:
+            self._sync_from_physics(landers[0])
+            return
+
+        # Backward-compatible fallback for minimal single-entity worlds.
+        candidates = self.world.get_entities_with(PhysicsState, Transform)
+        if len(candidates) == 1:
+            self._sync_from_physics(candidates[0])
 
     def _sync_from_physics(self, entity: Entity) -> None:
         """Read pose/velocity from physics engine and update components."""

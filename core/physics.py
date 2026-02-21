@@ -19,6 +19,15 @@ from .config import GRAVITY
 # -----------------------------
 
 
+def _polygon_area(poly: list[tuple[float, float]]) -> float:
+    area = 0.0
+    for i in range(len(poly)):
+        x1, y1 = poly[i]
+        x2, y2 = poly[(i + 1) % len(poly)]
+        area += x1 * y2 - x2 * y1
+    return abs(area) * 0.5
+
+
 class PhysicsEngine:
     """Pymunk-backed physics with a rolling terrain window.
 
@@ -136,13 +145,7 @@ class PhysicsEngine:
         # Compute total area and per-poly moments
         total_area = 0.0
         for poly in polygons:
-            # polygon area via shoelace (absolute)
-            area = 0.0
-            for i in range(len(poly)):
-                x1, y1 = poly[i]
-                x2, y2 = poly[(i + 1) % len(poly)]
-                area += x1 * y2 - x2 * y1
-            total_area += abs(area) * 0.5
+            total_area += _polygon_area(poly)
 
         if total_area <= 0.0:
             total_area = 1.0
@@ -150,12 +153,7 @@ class PhysicsEngine:
         # Sum moments using mass distributed by area
         moment = 0.0
         for poly in polygons:
-            area = 0.0
-            for i in range(len(poly)):
-                x1, y1 = poly[i]
-                x2, y2 = poly[(i + 1) % len(poly)]
-                area += x1 * y2 - x2 * y1
-            area = abs(area) * 0.5
+            area = _polygon_area(poly)
             poly_mass = mass * (area / total_area)
             moment += pm.moment_for_poly(max(1e-6, poly_mass), poly)
 
