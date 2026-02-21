@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import core.terrain as _terrain
+from core.maths import Vector2
 from landers import create_lander
 from core.level import Level, LevelWorld
 from levels.common import should_end_default, compute_score_default
@@ -34,6 +35,7 @@ class GentleStartLevel(Level):
         lander = create_lander(lander_name)
         lander.start_x = start_x
         lander.y = start_y
+        lander.start_pos = Vector2(start_x, start_y)
 
         # Create physics engine and attach lander body
         engine = PhysicsEngine(

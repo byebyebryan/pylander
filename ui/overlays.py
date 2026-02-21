@@ -54,7 +54,7 @@ class SensorOverlay:
         if length_px <= 0.0:
             return
         ux, uy = dx / length_px, dy / length_px
-        if length_px > proximity_radius_px and not targets.get_targets(proximity.x):
+        if length_px > proximity_radius_px and (targets is None or not targets.get_targets(proximity.x)):
             bx, by = sx - ux * arrow_length_px, sy - uy * arrow_length_px
             px, py = -uy * arrow_width_px / 2.0, ux * arrow_width_px / 2.0
             lx, ly = bx + px, by + py

@@ -36,7 +36,10 @@ class ContactSystem(System):
 
         target = None
         if self.targets is not None:
-            nearby = self.targets.get_targets(trans.pos.x, 0)
+            from core.components import LanderGeometry
+            geo = entity.get_component(LanderGeometry)
+            half_w = (geo.width / 2.0) if geo is not None else 4.0
+            nearby = self.targets.get_targets(trans.pos.x, half_w)
             target = nearby[0] if nearby else None
 
         if angle_ok and speed_ok and target is not None:
@@ -71,9 +74,18 @@ class ContactSystem(System):
             eng.target_angle = 0.0
 
         # Award credits
-        if wallet is not None:
-            wallet.credits += target.info["award"]
-        target.info["award"] = 0
+        award = target.info.get("award", 0) if getattr(target, "info", None) else 0
+        if wallet is not None and award != 0:
+            wallet.credits += award
+        if getattr(target, "info", None) is not None:
+            target.info["award"] = 0
+
+        if self.engine_adapter.enabled:
+            self.engine_adapter.teleport_lander(
+                (trans.pos.x, trans.pos.y),
+                angle=trans.rotation,
+                clear_velocity=True,
+            )
 
     def _apply_crash(self, entity: Entity) -> None:
         ls = entity.get_component(LanderState)
@@ -87,3 +99,12 @@ class ContactSystem(System):
         if eng is not None:
             eng.thrust_level = 0.0
             eng.target_thrust = 0.0
+
+        if self.engine_adapter.enabled:
+            trans = entity.get_component(Transform)
+            if trans is not None:
+                self.engine_adapter.teleport_lander(
+                    (trans.pos.x, trans.pos.y),
+                    angle=trans.rotation,
+                    clear_velocity=True,
+                )

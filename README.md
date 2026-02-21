@@ -19,39 +19,42 @@ uv sync
 
 ## Running
 
+You must choose a level first (e.g. `level_1`). List levels with `--help`.
+
 ### Human Mode
 ```bash
-uv run python main.py
+uv run python main.py level_1
 ```
 
 ### Bot Mode
 Watch an AI bot play using the sensor/action API:
 ```bash
-# Simple bot (cautious, flies to nearest targets)
-# Note: Currently has landing difficulty, use for testing/iteration
-uv run python main.py turtle
+# Cautious bot (flies to nearest targets)
+uv run python main.py level_1 turtle
 
-# Aggressive bot (prioritizes high-value distant targets)
-uv run python main.py hare
+# Hare / Magpie (same behavior as turtle for now)
+uv run python main.py level_1 hare
+uv run python main.py level_1 magpie
 ```
 
 ### Headless Mode (Testing/Training)
 Run simulations without graphics for bot development:
 ```bash
 # Run bot in headless mode (prints stats every second by default)
-uv run python main.py hare --headless
+uv run python main.py level_1 hare --headless
 
 # Print every frame for detailed debugging
-uv run python main.py hare --headless --freq 1 --steps 300
+uv run python main.py level_1 hare --headless --freq 1 --steps 300
 
-# Print every 0.5 seconds with bot messages
-uv run python main.py hare --headless --freq 30 --show-bot-msg
+# Print every 0.5 seconds
+uv run python main.py level_1 hare --headless --freq 30
 
 # Disable output for fastest execution
-uv run python main.py hare --headless --freq 0 --steps 10000
+uv run python main.py level_1 hare --headless --freq 0 --steps 10000
 
-# Use different seed
-uv run python main.py hare --headless --seed 123
+# Use different seed or lander
+uv run python main.py level_1 hare --headless --seed 123
+uv run python main.py level_1 --lander differential
 ```
 
 Stats output format:
@@ -78,35 +81,38 @@ t=  1.00s | x:  105.4 alt: 106.1 | vx:  5.74 vy: -2.88 | ang:   6.0° thr: 30% |
 
 ## Bot Interface
 
-Bots operate on limited sensors and emit explicit actions. Extend `Bot` and implement `get_action(dt, sensors)`:
+Bots operate on limited sensors and emit explicit actions. Extend `Bot` and implement `update(dt, passive, active)`:
 
 ```python
-from bot import Bot, SensorData, BotAction
+from core.bot import Bot, PassiveSensors, ActiveSensors, BotAction
 
 class MyBot(Bot):
-    def get_action(self, dt: float, sensors: SensorData) -> BotAction:
-        # Simple idle bot example
-        self.status_message = "idle"
-        return BotAction(False, False, False, False, False)
+    def update(self, dt: float, passive: PassiveSensors, active: ActiveSensors) -> BotAction:
+        self.status = "idle"
+        return BotAction(0.0, passive.angle, False, status="idle")
 ```
 
-Sensors include altitude, velocities, angle, thrust_level, fuel, credits, state, and radar contacts.
+`PassiveSensors` includes altitude, velocities, angle, thrust_level, fuel, state, and radar/proximity contacts. `ActiveSensors` provides e.g. `raycast(angle, max_range)`.
 
 ## Command Line Options
 
 ```bash
-python main.py [bot_type] [options]
+python main.py <level_name> [bot_name] [options]
 ```
 
-**Bot types:**
-- `turtle` - Cautious bot (TurtleBot)
-- `hare` - Faster/aggressive bot
+**Levels:** Run `python main.py --help` to list (e.g. `level_1`).
+
+**Bot names:** `turtle`, `hare`, `magpie` (see `--help`).
 
 **Options:**
 - `--headless` - Run without graphics (requires bot)
-- `--verbose`, `-v` - Print statistics during headless run
-- `--steps N` - Limit simulation to N steps
-- `--seed N` - Use specific random seed
+- `--freq N` - Print stats every N frames (60 ≈ 1/s; 0 = off)
+- `--steps N` - Limit simulation to N steps (headless)
+- `--time S` - Limit simulation to S seconds (headless, default 300)
+- `--plot none|speed|thrust|all` - Save trajectory plot (headless)
+- `--stop-on-crash`, `--stop-on-out-of-fuel`, `--stop-on-first-land` - End conditions
+- `--seed N` - Random seed
+- `--lander NAME` - Lander variant (classic, differential, simple)
 - `--help`, `-h` - Show help message
 
 ## Game Mechanics

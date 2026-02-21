@@ -289,7 +289,7 @@ class PhysicsEngine:
         else:
             x0, y0 = float(origin[0]), float(origin[1])
         cx, cy, dist = sensor_closest_point_on_terrain(
-            self.height_sampler, x0, y0, lod=0, search_radius=search_radius
+            self.height_sampler, (x0, y0), lod=0, search_radius=search_radius
         )
         return {"x": cx, "y": cy, "distance": dist}
 

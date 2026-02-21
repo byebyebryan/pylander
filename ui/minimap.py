@@ -154,7 +154,8 @@ class Minimap:
                 px, py = oc.world_to_screen(t.x, world_y)
                 px = max(self.x, min(self.x + self.width, px))
                 py = max(self.y, min(self.y + self.height, py))
-                color = (255, 255, 0) if t.info.get("award", 1) == 0 else (50, 255, 50)
+                info = getattr(t, "info", None) or {}
+                color = (255, 255, 0) if info.get("award", 1) == 0 else (50, 255, 50)
                 pygame.draw.rect(screen, color, pygame.Rect(px - 2, py - 2, 4, 4))
             return
 

@@ -160,6 +160,8 @@ class LanderGame:
         self.plotter.set_sampling_from_print_freq(print_freq, TARGET_RENDERING_FPS)
         self.plotter.seed_initial_sample()
 
+        self._elapsed_time = 0.0
+
         while self.running:
             # Prefer time limit in headless mode
             if self.headless:
@@ -175,6 +177,7 @@ class LanderGame:
 
             # frame dt from last frame
             timers.advance_frame(frame_dt)
+            self._elapsed_time = timers.elapsed_time
 
             # update physics at fixed rate
             self._update_physics_steps(timers)
@@ -277,19 +280,27 @@ class LanderGame:
             self.running = False
             return None, input_events
 
+        if input_events.get("reset"):
+            self._do_reset()
+            input_events = {**input_events, "reset": False}
+
         user_controls = None
-        if self.player_controller and self.lander and self.lander.state in ("flying", "landed"):
-            current_thrust = self.lander.target_thrust
-            current_angle = self.lander.target_angle
-            max_rot = self.lander.max_rotation_rate
-            
-            uc = self.player_controller.update(
-                input_events, 
-                frame_dt, 
-                current_thrust, 
-                current_angle, 
-                max_rot
-            )
+        if self.lander and self.lander.state in ("flying", "landed"):
+            if hasattr(self.lander, "handle_input") and callable(getattr(self.lander, "handle_input")):
+                uc = self.lander.handle_input(input_events, frame_dt)
+            elif self.player_controller:
+                current_thrust = self.lander.target_thrust
+                current_angle = self.lander.target_angle
+                max_rot = self.lander.max_rotation_rate
+                uc = self.player_controller.update(
+                    input_events,
+                    frame_dt,
+                    current_thrust,
+                    current_angle,
+                    max_rot,
+                )
+            else:
+                uc = None
             if uc is not None:
                 user_controls = uc
 
@@ -297,9 +308,25 @@ class LanderGame:
         if self.renderer is not None:
             cam = self.renderer.main_camera
             if hasattr(cam, "handle_input"):
-                 cam.handle_input(input_events, frame_dt)
+                cam.handle_input(input_events, frame_dt)
 
         return user_controls, input_events
+
+    def _do_reset(self) -> None:
+        """Reset game: lander to start position, physics body, camera, and bot override timer."""
+        self.lander.reset()
+        if self.engine_adapter.enabled:
+            self.engine_adapter.teleport_lander(
+                (self.lander.x, self.lander.y),
+                angle=self.lander.rotation,
+                clear_velocity=True,
+            )
+        if self.renderer is not None:
+            cam = self.renderer.main_camera
+            cam.x = self.lander.x
+            cam.y = self.lander.y
+            cam.zoom = 2.0
+        self._bot_override_timer = self.bot_override_delay
 
     def _update_physics_steps(self, timers: LoopTimers) -> None:
         """Run physics steps until timer accumulator is drained.

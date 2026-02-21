@@ -62,65 +62,7 @@ class PlayerController:
 
         if any_pressed:
             return (target_thrust, target_angle, refuel)
-        
-        # Even if not pressed, we might return None to indicate "no control overrides"
-        # but the original logic returned (targets..., refuel) if any_pressed, else None.
-        # However, the auto-rounding/snapping logic happens when keys are NOT pressed.
-        # If we return None, those changes are lost if the caller ignores None.
-        # In the original code:
-        # if any_pressed: return (...)
-        # return None
-        # AND it updated self.target_thrust/angle in place.
-        
-        # Since this controller is pure logic (doesn't hold state), it returns the new values.
-        # The caller acts on them. current_target_thrust came in, we return potentially modified version.
-        # But if we return None, the caller might assumes "no change".
-        # But logic like "if not signals... target_thrust = round..." modifies state even if no key pressed.
-        
-        # Correction: The original code modified `self.target_thrust` regardless of `any_pressed`.
-        # `any_pressed` only determined the return value.
-        # But `handle_input` was called every frame.
-        # If we return None, the game loop might not apply the controls?
-        # In `game.py`:
-        # uc = self.lander.handle_input(input_events, frame_dt)
-        # if uc is not None: user_controls = uc
-        
-        # If `uc` is None (no keys pressed), `user_controls` remains None.
-        # Then `_bot_override_timer` counts down.
-        # If `_bot_override_timer` is > 0 and user_controls is None, `controls` is None?
-        # Wait, if `user_controls` is None, we check bot timer.
-        
-        # If we want to preserve "snapping" behavior when keys are released,
-        # we must return the snapped values at least once?
-        # Or `handle_input` updated the internal state of Lander *permanently*, 
-        # and the return value was just to say "User is ACTING, disable bot".
-        
-        # So we should split this:
-        # 1. Update the target state (always happens).
-        # 2. Return "User Active" boolean or control tuple if user is acting.
-        
-        # But here we are just returning values.
-        # I'll return the tuple (target_thrust, target_angle, refuel).
-        # AND a boolean "is_active" or similar?
-        # Or just return the tuple, and let the game decide if it counts as "active input".
-        
-        # To match original `handle_input` return behavior (only return if keys pressed):
-        # We need to return the modified state ALWAYS, because of the snapping/rounding which happens when keys are NOT pressed.
-        # But `game.py` only uses the return value to override the bot.
-        
-        # So:
-        # The snapping logic modifies `target_angle`. `Lander` uses `target_angle` in `apply_controls`.
-        # `game.py` calls `handle_input`. If it returns None, `user_controls` is None.
-        # But `Lander.target_angle` WAS UPDATED side-effectually in `handle_input`.
-        # `Lander.apply_controls` uses `self.target_thrust/angle`.
-        
-        # So `Lander` state was updated even if `handle_input` returned None.
-        # `apply_controls` applies that state.
-        
-        # If we remove `handle_input` from `Lander`, `Game` needs to update `Lander.target_thrust/angle`.
-        # So `PlayerController.update` should return `(new_thrust, new_angle, refuel, user_active)`.
-        
-        return (target_thrust, target_angle, refuel)
+        return None
 
     def is_user_active(self, signals: dict) -> bool:
         """Check if user is actively providing input."""
