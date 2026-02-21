@@ -28,6 +28,8 @@ from core.maths import Vector2
 from core.systems.contact import ContactSystem
 from core.systems.control_routing import ControlRoutingSystem
 from core.systems.force_application import ForceApplicationSystem
+from core.systems.landing_site_motion import LandingSiteMotionSystem
+from core.systems.landing_site_projection import LandingSiteProjectionSystem
 from core.systems.physics_sync import PhysicsSyncSystem
 from core.systems.propulsion import PropulsionSystem
 from core.systems.refuel import RefuelSystem
@@ -206,24 +208,31 @@ class LanderGame:
         self.running = True
         self.level.setup(self, seed)
         self.lander = self.level.world.lander
+        self.sites = self.level.world.sites
         self.engine = getattr(self.level, "engine", None)
         self.engine_adapter = EngineAdapter(self.engine)
 
         self.ecs_world = World()
         self.ecs_world.add_entity(self.lander)
+        for site_entity in getattr(self.level.world, "site_entities", []):
+            self.ecs_world.add_entity(site_entity)
 
         self.control_routing_system = ControlRoutingSystem()
         self.state_transition_system = StateTransitionSystem()
-        self.refuel_system = RefuelSystem(self.targets)
+        self.landing_site_motion_system = LandingSiteMotionSystem()
+        self.landing_site_projection_system = LandingSiteProjectionSystem(self.sites)
+        self.refuel_system = RefuelSystem(self.sites)
         self.propulsion_system = PropulsionSystem()
         self.force_application_system = ForceApplicationSystem(self.engine_adapter)
         self.physics_sync_system = PhysicsSyncSystem(self.engine_adapter)
-        self.contact_system = ContactSystem(self.engine_adapter, self.targets)
-        self.sensor_update_system = SensorUpdateSystem(self.terrain, self.targets)
+        self.contact_system = ContactSystem(self.engine_adapter, self.sites)
+        self.sensor_update_system = SensorUpdateSystem(self.terrain, self.sites)
 
         for system in (
             self.control_routing_system,
             self.state_transition_system,
+            self.landing_site_motion_system,
+            self.landing_site_projection_system,
             self.refuel_system,
             self.propulsion_system,
             self.force_application_system,
@@ -407,13 +416,14 @@ class LanderGame:
         physics_dt = timers.physics_dt
         while timers.should_step_physics():
             timers.consume_physics()
+            self.landing_site_motion_system.update(physics_dt)
+            self.landing_site_projection_system.update(physics_dt)
             self.propulsion_system.update(physics_dt)
             self.force_application_system.update(physics_dt)
             if self.engine_adapter.enabled:
                 self.engine_adapter.step(physics_dt)
                 self.physics_sync_system.update(physics_dt)
                 self.contact_system.update(physics_dt)
-                self.state_transition_system.update(physics_dt)
 
     def _update_bot_steps(self, timers: LoopTimers) -> ControlTuple | None:
         bot_controls = None
@@ -447,7 +457,3 @@ class LanderGame:
     @property
     def terrain(self):
         return self.level.world.terrain
-
-    @property
-    def targets(self):
-        return self.level.world.targets

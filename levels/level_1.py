@@ -1,7 +1,25 @@
 from __future__ import annotations
 
 import core.terrain as _terrain
-from core.components import FuelTank, LanderGeometry, LanderState, PhysicsState, Transform, Wallet
+from core.components import (
+    FuelTank,
+    KinematicMotion,
+    LandingSite as LandingSiteComponent,
+    LandingSiteEconomy,
+    LanderGeometry,
+    LanderState,
+    PhysicsState,
+    SiteAttachment,
+    Transform,
+    Wallet,
+)
+from core.ecs import Entity
+from core.landing_sites import (
+    LandingSiteSurfaceModel,
+    LandingSiteTerrainModifier,
+    build_seeded_sites,
+    to_view,
+)
 from core.maths import Vector2
 from landers import create_lander
 from core.level import Level, LevelWorld
@@ -23,23 +41,66 @@ def _get_mass(entity) -> float:
 
 
 class GentleStartLevel(Level):
-    """Baseline level: simplex terrain, scattered targets, start near origin."""
+    """Baseline level: simplex terrain with decoupled landing sites."""
 
     def setup(self, _game, seed: int) -> None:
         height_func = _terrain.SimplexNoiseGenerator(seed=seed)
+        base_terrain = _terrain.LodGridGenerator(height_func)
+        site_seeds = build_seeded_sites(lambda x: base_terrain(x, lod=0), seed=seed)
+        site_entities: list[Entity] = []
+        initial_views = []
+        for seed_site in site_seeds:
+            site_entity = Entity(uid=seed_site.uid)
+            site_entity.add_component(Transform(pos=Vector2(seed_site.x, seed_site.y)))
+            site_entity.add_component(
+                LandingSiteComponent(
+                    size=seed_site.size,
+                    terrain_mode=seed_site.terrain_mode,
+                    terrain_bound=seed_site.terrain_bound,
+                    blend_margin=seed_site.blend_margin,
+                    cut_depth=seed_site.cut_depth,
+                    support_height=seed_site.support_height,
+                )
+            )
+            site_entity.add_component(
+                LandingSiteEconomy(
+                    award=seed_site.award,
+                    fuel_price=seed_site.fuel_price,
+                    visited=False,
+                )
+            )
+            if seed_site.velocity.length_squared() > 0.0:
+                site_entity.add_component(KinematicMotion(Vector2(seed_site.velocity)))
+            if seed_site.parent_uid is not None:
+                site_entity.add_component(
+                    SiteAttachment(
+                        parent_uid=seed_site.parent_uid,
+                        local_offset=Vector2(seed_site.local_offset),
+                    )
+                )
+            site_entities.append(site_entity)
+            initial_views.append(
+                to_view(
+                    uid=seed_site.uid,
+                    x=seed_site.x,
+                    y=seed_site.y,
+                    size=seed_site.size,
+                    vel=seed_site.velocity,
+                    award=seed_site.award,
+                    fuel_price=seed_site.fuel_price,
+                    terrain_mode=seed_site.terrain_mode,
+                    terrain_bound=seed_site.terrain_bound,
+                    blend_margin=seed_site.blend_margin,
+                    cut_depth=seed_site.cut_depth,
+                    support_height=seed_site.support_height,
+                    visited=False,
+                )
+            )
 
-        tgt_gen = _terrain.CompositeTargetGenerator(
-            [
-                _terrain.RandomDistanceTargetGenerator(seed=seed),
-                _terrain.TargetHeightModifier(height_func, seed=seed),
-                _terrain.TargetSizeModifier(seed=seed),
-                _terrain.TargetAwardsModifier(seed=seed),
-                _terrain.TargetFuelPriceModifier(seed=seed),
-            ]
-        )
-        targets = _terrain.TargetManager(tgt_gen)
+        site_model = LandingSiteSurfaceModel(initial_views)
         terrain = _terrain.AddHeightModifier(
-            _terrain.LodGridGenerator(height_func), targets.height_modifier
+            base_terrain,
+            LandingSiteTerrainModifier(site_model),
         )
 
         start_pos = Vector2(0.0, terrain(0.0) + 100.0)
@@ -68,7 +129,12 @@ class GentleStartLevel(Level):
             start_angle=trans.rotation,
         )
 
-        self.world = LevelWorld(terrain=terrain, targets=targets, lander=lander)
+        self.world = LevelWorld(
+            terrain=terrain,
+            sites=site_model,
+            site_entities=site_entities,
+            lander=lander,
+        )
         # Expose engine on the level for the game loop
         setattr(self, "engine", engine)
 

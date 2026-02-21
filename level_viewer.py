@@ -1,4 +1,4 @@
-"""Interactive Pygame viewer for testing levels (terrain + targets).
+"""Interactive Pygame viewer for testing levels (terrain + landing sites).
 
 Controls:
   - Mouse: Left-drag to pan, wheel to zoom at cursor
@@ -47,7 +47,7 @@ class LevelViewer:
         self.game = _StubGame()
         self.level.setup(self.game, seed=0)
         self.terrain = self.level.world.terrain
-        self.targets = self.level.world.targets
+        self.sites = self.level.world.sites
         # Center camera near start
         trans = _require_component(self.level.world.lander, Transform)
         self.camera.x = trans.pos.x
@@ -138,13 +138,13 @@ class LevelViewer:
         if len(pts) >= 2:
             pygame.draw.lines(self.screen, self.terrain_color, False, pts)
 
-    def draw_targets(self):
+    def draw_sites(self):
         visible = self.camera.get_visible_world_rect()
-        tgts = self.targets.get_targets(Range1D(visible.min_x, visible.max_x))
-        for target in tgts:
-            tx = target.x
-            ty = target.y
-            ts = target.size
+        site_views = self.sites.get_sites(Range1D(visible.min_x, visible.max_x))
+        for site in site_views:
+            tx = site.x
+            ty = site.y
+            ts = site.size
             sx0, sy0 = self.camera.world_to_screen(
                 Vector2(tx - ts / 2, ty * self.height_scale)
             )
@@ -178,7 +178,7 @@ class LevelViewer:
         self.screen.fill(self.bg)
         self.draw_axes()
         self.draw_terrain()
-        self.draw_targets()
+        self.draw_sites()
         self.draw_hud()
         pygame.display.flip()
 

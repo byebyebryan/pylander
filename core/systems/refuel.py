@@ -16,12 +16,12 @@ from core.maths import Range1D
 class RefuelSystem(System):
     """Handle landed refuel transactions against nearby target platforms."""
 
-    def __init__(self, targets):
+    def __init__(self, sites):
         super().__init__()
-        self.targets = targets
+        self.sites = sites
 
     def update(self, dt: float) -> None:
-        if not self.world or self.targets is None:
+        if not self.world or self.sites is None:
             return
 
         for entity in self.world.get_entities_with(
@@ -48,11 +48,11 @@ class RefuelSystem(System):
         if ls.state != "landed" or not intent.refuel_requested or tank.fuel >= tank.max_fuel:
             return
 
-        nearby = self.targets.get_targets(Range1D.from_center(trans.pos.x, geo.width))
-        if not nearby:
+        nearby_sites = self.sites.get_sites(Range1D.from_center(trans.pos.x, geo.width))
+        if not nearby_sites:
             return
-        target = nearby[0]
-        price = target.info.get("fuel_price", 10.0) if getattr(target, "info", None) else 10.0
+        site = nearby_sites[0]
+        price = site.fuel_price
 
         fuel_needed = tank.max_fuel - tank.fuel
         max_by_time = cfg.refuel_rate * dt

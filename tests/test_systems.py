@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from core.components import (
     ControlIntent,
     Engine,
     FuelTank,
+    KinematicMotion,
+    LandingSite,
+    LandingSiteEconomy,
     LanderGeometry,
     LanderState,
     PhysicsState,
@@ -17,10 +20,14 @@ from core.components import (
     Wallet,
 )
 from core.ecs import Entity, World
+from core.landing_sites import LandingSiteSurfaceModel
 from core.lander import Lander
-from core.maths import Vector2
+from core.maths import Range1D, Vector2
+from core.systems.contact import ContactSystem
 from core.systems.control_routing import ControlRoutingSystem
 from core.systems.force_application import ForceApplicationSystem
+from core.systems.landing_site_motion import LandingSiteMotionSystem
+from core.systems.landing_site_projection import LandingSiteProjectionSystem
 from core.systems.physics_sync import PhysicsSyncSystem
 from core.systems.propulsion import PropulsionSystem
 from core.systems.refuel import RefuelSystem
@@ -173,14 +180,20 @@ class _Target:
     x: float
     y: float
     size: float
-    info: dict
+    fuel_price: float = 10.0
+    award: float = 0.0
+    vel: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
+
+    @property
+    def info(self) -> dict:
+        return {"fuel_price": self.fuel_price, "award": self.award}
 
 
 class _Targets:
     def __init__(self, target):
         self.target = target
 
-    def get_targets(self, _span):
+    def get_sites(self, _span):
         return [self.target]
 
 
@@ -193,6 +206,16 @@ class _FlatTerrain:
         return 1.0
 
 
+class _FakeContactAdapter:
+    enabled = False
+
+    def get_contact_report(self) -> dict:
+        return {"colliding": False, "normal": None, "rel_speed": 0.0, "point": None}
+
+    def teleport_lander(self, _pos, angle=None, clear_velocity=True) -> None:
+        _ = angle, clear_velocity
+
+
 def test_refuel_system_transfers_fuel_and_spends_credits() -> None:
     entity = Entity()
     entity.add_component(LanderState(state="landed"))
@@ -202,11 +225,11 @@ def test_refuel_system_transfers_fuel_and_spends_credits() -> None:
     entity.add_component(LanderGeometry(width=8.0, height=8.0))
     entity.add_component(RefuelConfig(refuel_rate=5.0))
     entity.add_component(ControlIntent(refuel_requested=True))
-    targets = _Targets(_Target(x=0.0, y=0.0, size=20.0, info={"fuel_price": 2.0}))
+    sites = _Targets(_Target(x=0.0, y=0.0, size=20.0, fuel_price=2.0))
 
     world = World()
     world.add_entity(entity)
-    system = RefuelSystem(targets)
+    system = RefuelSystem(sites)
     system.world = world
 
     system.update(1.0)
@@ -226,11 +249,11 @@ def test_sensor_update_system_populates_cached_readings() -> None:
     entity.add_component(RefuelConfig(proximity_sensor_range=500.0))
     readings = SensorReadings()
     entity.add_component(readings)
-    targets = _Targets(_Target(x=50.0, y=0.0, size=20.0, info={}))
+    sites = _Targets(_Target(x=50.0, y=0.0, size=20.0))
 
     world = World()
     world.add_entity(entity)
-    system = SensorUpdateSystem(_FlatTerrain(), targets)
+    system = SensorUpdateSystem(_FlatTerrain(), sites)
     system.world = world
 
     system.update(1.0 / 10.0)
@@ -238,6 +261,67 @@ def test_sensor_update_system_populates_cached_readings() -> None:
     assert len(readings.radar_contacts) >= 1
     assert readings.proximity is not None
     assert readings.proximity.distance >= 0.0
+
+
+def test_landing_site_motion_and_projection_update_model() -> None:
+    world = World()
+    site = Entity(uid="site_a")
+    site.add_component(Transform(pos=Vector2(0.0, 0.0)))
+    site.add_component(LandingSite(size=30.0, terrain_mode="elevated_supports", terrain_bound=False))
+    site.add_component(LandingSiteEconomy(award=200.0, fuel_price=9.0))
+    site.add_component(KinematicMotion(velocity=Vector2(3.0, 0.0)))
+    world.add_entity(site)
+
+    model = LandingSiteSurfaceModel()
+    motion = LandingSiteMotionSystem()
+    projection = LandingSiteProjectionSystem(model)
+    motion.world = world
+    projection.world = world
+
+    motion.update(2.0)
+    projection.update(2.0)
+
+    out = model.get_sites(Range1D(-10.0, 10.0))
+    assert out
+    assert math.isclose(out[0].x, 6.0, abs_tol=1e-6)
+    assert math.isclose(out[0].fuel_price, 9.0, abs_tol=1e-6)
+
+
+def test_contact_system_lands_using_relative_site_velocity() -> None:
+    world = World()
+
+    lander = Entity(uid="lander")
+    lander.add_component(LanderState(state="flying"))
+    lander.add_component(PhysicsState(vel=Vector2(8.0, -1.0)))
+    lander.add_component(Transform(pos=Vector2(0.0, 4.0), rotation=0.0))
+    lander.add_component(FuelTank())
+    lander.add_component(LanderGeometry(width=8.0, height=8.0))
+    lander.add_component(Wallet(credits=0.0))
+    lander.add_component(Engine())
+    world.add_entity(lander)
+
+    site = Entity(uid="site_landing")
+    site.add_component(Transform(pos=Vector2(0.0, 0.0)))
+    site.add_component(LandingSite(size=30.0, terrain_mode="elevated_supports", terrain_bound=False))
+    site.add_component(LandingSiteEconomy(award=150.0, fuel_price=10.0))
+    site.add_component(KinematicMotion(velocity=Vector2(7.0, 0.0)))
+    world.add_entity(site)
+
+    model = LandingSiteSurfaceModel()
+    projection = LandingSiteProjectionSystem(model)
+    projection.world = world
+    projection.update(1.0 / 60.0)
+
+    system = ContactSystem(_FakeContactAdapter(), model)
+    system.world = world
+    system.update(1.0 / 60.0)
+
+    ls = lander.get_component(LanderState)
+    wallet = lander.get_component(Wallet)
+    assert ls is not None
+    assert wallet is not None
+    assert ls.state == "landed"
+    assert math.isclose(wallet.credits, 150.0, abs_tol=1e-6)
 
 
 def test_lander_behavior_api_is_removed() -> None:

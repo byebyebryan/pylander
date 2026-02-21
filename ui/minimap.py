@@ -52,7 +52,7 @@ class Minimap:
         main_camera: Camera,
         height_scale: float,
         contacts=None,
-        targets=None,
+        sites=None,
     ):
         """Draw minimap showing terrain overview and viewport indicator.
 
@@ -152,15 +152,14 @@ class Minimap:
                 screen, self.viewport_color, True, minimap_viewport_corners, 2
             )
 
-        # Draw landing pad markers.
-        # Prefer target-manager data so minimap visibility is independent of radar range.
-        if targets is not None and hasattr(targets, "get_targets"):
+        # Draw landing-site markers.
+        if sites is not None and hasattr(sites, "get_sites"):
             span = Range1D.from_center(self.camera.x, self.world_span_x / 2.0)
-            for t in targets.get_targets(span):
-                world_y = t.y * height_scale
-                pt = oc.world_to_screen(Vector2(t.x, world_y))
+            for s in sites.get_sites(span):
+                world_y = s.y * height_scale
+                pt = oc.world_to_screen(Vector2(s.x, world_y))
                 pt = self.rect.clamp_point(pt)
-                info = getattr(t, "info", None) or {}
+                info = getattr(s, "info", None) or {}
                 color = (255, 255, 0) if info.get("award", 1) == 0 else (50, 255, 50)
                 pygame.draw.rect(
                     screen,

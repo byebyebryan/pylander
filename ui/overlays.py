@@ -28,16 +28,16 @@ class SensorOverlay:
     def draw(
         self,
         proximity,
-        targets,
+        sites,
         camera,
         contacts,
     ) -> None:
         if proximity is None and not contacts:
             return
-        self._draw_proximity(proximity, targets, camera)
+        self._draw_proximity(proximity, sites, camera)
         self._draw_radar(contacts, camera)
 
-    def _draw_proximity(self, proximity, targets, camera) -> None:
+    def _draw_proximity(self, proximity, sites, camera) -> None:
         color = (128, 128, 128)
         proximity_radius_px = 50
         arrow_length_px = 14
@@ -56,7 +56,7 @@ class SensorOverlay:
             return
         ux, uy = dx / length_px, dy / length_px
         span = Range1D.from_center(proximity.x, 0.0)
-        if length_px > proximity_radius_px and (targets is None or not targets.get_targets(span)):
+        if length_px > proximity_radius_px and (sites is None or not sites.get_sites(span)):
             bx, by = sx - ux * arrow_length_px, sy - uy * arrow_length_px
             px, py = -uy * arrow_width_px / 2.0, ux * arrow_width_px / 2.0
             lx, ly = bx + px, by + py

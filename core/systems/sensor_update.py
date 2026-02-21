@@ -8,10 +8,10 @@ from core.sensor import get_proximity_contact, get_radar_contacts
 class SensorUpdateSystem(System):
     """Compute and cache radar/proximity readings on entities."""
 
-    def __init__(self, terrain, targets):
+    def __init__(self, terrain, sites):
         super().__init__()
         self.terrain = terrain
-        self.targets = targets
+        self.sites = sites
 
     def update(self, dt: float) -> None:
         _ = dt
@@ -27,7 +27,7 @@ class SensorUpdateSystem(System):
                 continue
             readings.radar_contacts = get_radar_contacts(
                 trans.pos,
-                self.targets,
+                self.sites,
                 inner_range=radar.inner_range,
                 outer_range=radar.outer_range,
             )

@@ -330,7 +330,7 @@ class Renderer:
             proximity = self._require_component(self.level.lander, SensorReadings).proximity
         self.sensor_overlay.draw(
             proximity,
-            self.level.targets,
+            self.level.sites,
             self.main_camera,
             contacts,
         )
@@ -348,7 +348,7 @@ class Renderer:
             self.main_camera,
             self.height_scale,
             contacts=contacts,
-            targets=self.level.targets,
+            sites=self.level.sites,
         )
 
         # Draw center orientation inset when zoomed far out

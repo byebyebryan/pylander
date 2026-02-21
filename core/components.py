@@ -107,3 +107,35 @@ class SensorReadings:
     """Cached sensor outputs produced by SensorUpdateSystem."""
     radar_contacts: list[Any] = field(default_factory=list)
     proximity: Any | None = None
+
+
+@dataclass
+class LandingSite:
+    """Landing-site shape and terrain interaction config."""
+    size: float = 80.0
+    terrain_mode: str = "flush_flatten"  # flush_flatten, cut_in, elevated_supports
+    terrain_bound: bool = True
+    blend_margin: float = 20.0
+    cut_depth: float = 30.0
+    support_height: float = 40.0
+
+
+@dataclass
+class LandingSiteEconomy:
+    """Economy state associated with a landing site."""
+    award: float = 0.0
+    fuel_price: float = 10.0
+    visited: bool = False
+
+
+@dataclass
+class KinematicMotion:
+    """Kinematic velocity used by non-physics entities."""
+    velocity: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
+
+
+@dataclass
+class SiteAttachment:
+    """Attach a site to another entity using a local offset."""
+    parent_uid: str | None = None
+    local_offset: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))

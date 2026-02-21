@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from typing import Any
 from collections import OrderedDict
 from .maths import Range1D, Vector2
-# Note: import avoided to prevent unused warnings; refer to terrain.Target in docs if needed
 
 
 def closest_point_on_terrain(
@@ -89,12 +88,12 @@ class RadarContact:
 
 def get_radar_contacts(
     pos: Vector2,
-    targets,
+    sites,
     inner_range: float = 1000.0,
     outer_range: float = 2000.0,
 ) -> list[RadarContact]:
     x, y = pos.x, pos.y
-    tgts = targets.get_targets(Range1D.from_center(x, outer_range))
+    tgts = sites.get_sites(Range1D.from_center(x, outer_range))
     contacts: list[RadarContact] = []
     for t in tgts:
         dx = t.x - x
