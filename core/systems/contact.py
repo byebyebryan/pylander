@@ -112,7 +112,7 @@ class ContactSystem(System):
             site_entity = self.world.get_entity_by_id(site.uid)
             if site_entity is not None:
                 econ = site_entity.get_component(LandingSiteEconomy)
-                if econ is not None and not econ.visited and econ.award != 0.0:
+                if econ is not None and not econ.visited:
                     award = econ.award
                     econ.visited = True
         if wallet is not None and award != 0.0:

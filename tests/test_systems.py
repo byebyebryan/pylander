@@ -324,6 +324,47 @@ def test_contact_system_lands_using_relative_site_velocity() -> None:
     assert math.isclose(wallet.credits, 150.0, abs_tol=1e-6)
 
 
+def test_contact_system_marks_zero_award_site_visited() -> None:
+    world = World()
+
+    lander = Entity(uid="lander")
+    lander.add_component(LanderState(state="flying"))
+    lander.add_component(PhysicsState(vel=Vector2(0.0, -1.0)))
+    lander.add_component(Transform(pos=Vector2(0.0, 4.0), rotation=0.0))
+    lander.add_component(FuelTank())
+    lander.add_component(LanderGeometry(width=8.0, height=8.0))
+    lander.add_component(Wallet(credits=42.0))
+    lander.add_component(Engine())
+    world.add_entity(lander)
+
+    site = Entity(uid="site_zero_award")
+    site.add_component(Transform(pos=Vector2(0.0, 0.0)))
+    site.add_component(
+        LandingSite(size=30.0, terrain_mode="elevated_supports", terrain_bound=False)
+    )
+    site.add_component(LandingSiteEconomy(award=0.0, fuel_price=10.0))
+    world.add_entity(site)
+
+    model = LandingSiteSurfaceModel()
+    projection = LandingSiteProjectionSystem(model)
+    projection.world = world
+    projection.update(1.0 / 60.0)
+
+    system = ContactSystem(_FakeContactAdapter(), model)
+    system.world = world
+    system.update(1.0 / 60.0)
+
+    ls = lander.get_component(LanderState)
+    wallet = lander.get_component(Wallet)
+    econ = site.get_component(LandingSiteEconomy)
+    assert ls is not None
+    assert wallet is not None
+    assert econ is not None
+    assert ls.state == "landed"
+    assert math.isclose(wallet.credits, 42.0, abs_tol=1e-6)
+    assert econ.visited is True
+
+
 def test_lander_behavior_api_is_removed() -> None:
     lander = Lander(start_pos=Vector2(0.0, 0.0))
     assert not hasattr(lander, "apply_controls")
