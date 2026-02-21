@@ -141,17 +141,7 @@ class GentleStartLevel(Level):
         player_lander.start_pos = Vector2(start_pos)
         player_trans.pos = Vector2(start_pos)
 
-        bot_spawn_x = start_pos.x + 120.0
-        bot_lander = create_lander(lander_name)
-        bot_lander.add_component(ActorProfile(kind="lander", name="bot"))
-        bot_lander.add_component(ActorControlRole(role="bot"))
-        bot_lander.add_component(PlayerSelectable(order=1))
-        bot_trans = _require_component(bot_lander, Transform)
-        bot_geo = _require_component(bot_lander, LanderGeometry)
-        bot_start = _compute_lander_spawn_pos(terrain, bot_spawn_x, bot_geo)
-        bot_lander.start_pos = Vector2(bot_start)
-        bot_trans.pos = Vector2(bot_start)
-        actors = [player_lander, bot_lander]
+        actors = [player_lander]
 
         # Create physics engine and attach lander body
         engine = PhysicsEngine(
@@ -170,17 +160,6 @@ class GentleStartLevel(Level):
             start_pos=start_pos,
             start_angle=player_trans.rotation,
         )
-        engine.attach_lander(
-            width=bot_geo.width,
-            height=bot_geo.height,
-            mass=_get_mass(bot_lander),
-            uid=bot_lander.uid,
-            friction=0.9,
-            elasticity=0.0,
-            start_pos=bot_start,
-            start_angle=bot_trans.rotation,
-        )
-
         carrier_x = 350.0
         carrier_y = terrain(carrier_x) + 80.0
         carrier = Entity(uid="carrier_scripted")

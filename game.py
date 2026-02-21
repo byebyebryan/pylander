@@ -68,6 +68,30 @@ def _get_mass(entity) -> float:
     return phys.mass + tank.fuel * tank.density
 
 
+def _sample_terrain_height(terrain, world_x: float, lod: int = 0) -> float:
+    try:
+        return float(terrain(world_x, lod))
+    except TypeError:
+        return float(terrain(world_x))
+
+
+def _terrain_resolution(terrain, lod: int = 0) -> float:
+    get_resolution = getattr(terrain, "get_resolution", None)
+    if callable(get_resolution):
+        try:
+            return max(0.5, float(get_resolution(lod)))
+        except Exception:
+            return 2.0
+    return 2.0
+
+
+def _estimate_terrain_slope(terrain, world_x: float, lod: int = 0) -> float:
+    step = _terrain_resolution(terrain, lod=lod)
+    y0 = _sample_terrain_height(terrain, world_x - step, lod=lod)
+    y1 = _sample_terrain_height(terrain, world_x + step, lod=lod)
+    return (y1 - y0) / (2.0 * step)
+
+
 def _build_vehicle_info(entity) -> VehicleInfo:
     geo = _require_component(entity, LanderGeometry)
     phys = _require_component(entity, PhysicsState)
@@ -90,7 +114,7 @@ def _build_vehicle_info(entity) -> VehicleInfo:
     )
 
 
-def _build_active_sensors(entity, engine_adapter):
+def _build_active_sensors(entity, engine_adapter, terrain):
     trans = _require_component(entity, Transform)
     radar = _require_component(entity, Radar)
     return _ActiveSensorImpl(
@@ -98,18 +122,27 @@ def _build_active_sensors(entity, engine_adapter):
         radar_range_fn=lambda: radar.inner_range,
         engine_adapter=engine_adapter,
         actor_uid=entity.uid,
+        terrain_fn=terrain,
     )
 
 
-def _build_passive_sensors(entity) -> PassiveSensors:
+def _build_passive_sensors(entity, terrain) -> PassiveSensors:
     trans = _require_component(entity, Transform)
     phys = _require_component(entity, PhysicsState)
     tank = _require_component(entity, FuelTank)
     eng = _require_component(entity, Engine)
     ls = _require_component(entity, LanderState)
+    geo = _require_component(entity, LanderGeometry)
     readings = _require_component(entity, SensorReadings)
+    terrain_y = _sample_terrain_height(terrain, trans.pos.x, lod=0)
+    terrain_slope = _estimate_terrain_slope(terrain, trans.pos.x, lod=0)
+    half_height = max(1.0, geo.height * 0.5)
     return PassiveSensors(
-        altitude=trans.pos.y,
+        x=trans.pos.x,
+        y=trans.pos.y,
+        altitude=trans.pos.y - terrain_y - half_height,
+        terrain_y=terrain_y,
+        terrain_slope=terrain_slope,
         vx=phys.vel.x,
         vy_up=phys.vel.y,
         angle=trans.rotation,
@@ -574,8 +607,10 @@ class LanderGame:
                     ls = actor.get_component(LanderState)
                     if ls is None or ls.state not in ("flying", "landed"):
                         continue
-                    passive_sensors = _build_passive_sensors(actor)
-                    active_sensors = _build_active_sensors(actor, self.engine_adapter)
+                    passive_sensors = _build_passive_sensors(actor, self.terrain)
+                    active_sensors = _build_active_sensors(
+                        actor, self.engine_adapter, self.terrain
+                    )
                     action: BotAction = bot.update(bot_dt, passive_sensors, active_sensors)
                     bot_controls_by_uid[uid] = (
                         action.target_thrust,

@@ -29,31 +29,27 @@ uv run python main.py level_1
 ### Bot Mode
 Watch an AI bot play using the sensor/action API:
 ```bash
-# Cautious bot (flies to nearest targets)
+# Safe landing bot (terrain-aware climb + approach)
 uv run python main.py level_1 turtle
-
-# Hare / Magpie (same behavior as turtle for now)
-uv run python main.py level_1 hare
-uv run python main.py level_1 magpie
 ```
 
 ### Headless Mode (Testing/Training)
 Run simulations without graphics for bot development:
 ```bash
 # Run bot in headless mode (prints stats every second by default)
-uv run python main.py level_1 hare --headless
+uv run python main.py level_1 turtle --headless
 
 # Print every frame for detailed debugging
-uv run python main.py level_1 hare --headless --freq 1 --steps 300
+uv run python main.py level_1 turtle --headless --freq 1 --steps 300
 
 # Print every 0.5 seconds
-uv run python main.py level_1 hare --headless --freq 30
+uv run python main.py level_1 turtle --headless --freq 30
 
 # Disable output for fastest execution
-uv run python main.py level_1 hare --headless --freq 0 --steps 10000
+uv run python main.py level_1 turtle --headless --freq 0 --steps 10000
 
 # Use different seed or lander
-uv run python main.py level_1 hare --headless --seed 123
+uv run python main.py level_1 turtle --headless --seed 123
 uv run python main.py level_1 --lander differential
 ```
 
@@ -93,6 +89,8 @@ class MyBot(Bot):
 ```
 
 `PassiveSensors` includes altitude, velocities, angle, thrust_level, fuel, state, and radar/proximity contacts. `ActiveSensors` provides e.g. `raycast(angle, max_range)`.
+`PassiveSensors` includes world position (`x`, `y`), terrain-relative clearance (`altitude`), local terrain context (`terrain_y`, `terrain_slope`), kinematics, fuel/state, and radar/proximity contacts.  
+`ActiveSensors` provides `raycast(angle, max_range)` plus terrain helpers like `terrain_height(x)` and `terrain_profile(x_start, x_end, samples)`.
 
 ## Command Line Options
 
@@ -102,7 +100,7 @@ python main.py <level_name> [bot_name] [options]
 
 **Levels:** Run `python main.py --help` to list (e.g. `level_1`).
 
-**Bot names:** `turtle`, `hare`, `magpie` (see `--help`).
+**Bot names:** `turtle` (see `--help`).
 
 **Options:**
 - `--headless` - Run without graphics (requires bot)

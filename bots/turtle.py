@@ -21,7 +21,6 @@ class TurtleBot(Bot):
     ) -> BotAction:
         state = passive.state
 
-        # Handle terminal states via game; just emit neutral action
         if state in ("landed", "crashed", "out_of_fuel"):
             action = BotAction(0.0, passive.angle, False)
             action.status = state.upper()
@@ -32,32 +31,24 @@ class TurtleBot(Bot):
         contacts = passive.radar_contacts or []
         angle_to_target = 0.0
         est_distance = None
+        target_world_x = None
         target_world_y = None
         if contacts:
-            # Prefer a lower target (downhill) to avoid climbing; fallback to first
-            chosen = None
-            for c in contacts:
-                if c.y is None:
-                    break
-                cy = c.y
-                # y-up: pick targets below current altitude (smaller y)
-                if cy <= passive.altitude - 2.0:
-                    chosen = c
-                    break
-            if chosen is None:
-                chosen = contacts[0]
+            chosen = contacts[0]
             angle_to_target = chosen.angle
             est_distance = chosen.distance
+            target_world_x = chosen.x
             target_world_y = chosen.y
 
         # Passive proximity (ground clearance as radar altimeter)
         prox = passive.proximity
         alt_ground = prox.distance if prox is not None else None
-        # Adjust for lander height: contact occurs when clearance ~= height/2
         half_height = 0.5 * (
             self.vehicle_info.height if self.vehicle_info is not None else 8.0
         )
-        alt = (alt_ground - half_height) if alt_ground is not None else 1e9
+        alt = passive.altitude if math.isfinite(passive.altitude) else (
+            (alt_ground - half_height) if alt_ground is not None else 1e9
+        )
 
         # Velocity-direction active raycast for hazard prediction (ballistic proxy)
         vx = passive.vx
@@ -66,10 +57,9 @@ class TurtleBot(Bot):
         hazard = False
         hazard_dist = float("inf")
         if callable(getattr(active, "raycast", None)) and (abs(vx) + abs(vy_up) > 1e-3):
-            # y-up world: cast along velocity with slight downward bias (negative y)
             dy_world = vy_up
             dir_angle = math.atan2(dy_world - 0.35 * speed, vx)
-            horizon = 3.0  # seconds lookahead
+            horizon = 3.0
             max_rng = max(50.0, min(2000.0, speed * horizon))
             rc = active.raycast(dir_angle, max_rng)
             if rc and rc.get("hit", False):
@@ -86,7 +76,6 @@ class TurtleBot(Bot):
         top_speed = 25.0
         hazard_cap = 18.0 if hazard else top_speed
         allowed = hazard_cap
-        # If we have distance, cap speed by stopping distance s = v^2/2a => v <= sqrt(2 a s)
         if est_distance is not None:
             m_cap = max(0.5, passive.mass if hasattr(passive, "mass") else 2.0)
             max_thrust_power = (
@@ -98,16 +87,19 @@ class TurtleBot(Bot):
                 max(0.0, 2.0 * a_lat_cap * max(0.0, abs(est_distance) - 10.0))
             )
             allowed = min(allowed, max(14.0, v_cap))
-        # Range-based fallback caps
         if near:
             allowed = min(allowed, 40.0)
         elif mid:
             allowed = min(allowed, 45.0)
         vx_sp = dir_sign * allowed
+
         # Horizontal distance to target if known
         dx_to_target = None
         if est_distance is not None:
             dx_to_target = math.cos(angle_to_target) * est_distance
+        if target_world_x is not None:
+            dx_to_target = target_world_x - passive.x
+
         # Track sign for overshoot detection
         dx_sign = 0
         if dx_to_target is not None and abs(dx_to_target) > 1e-6:
@@ -115,11 +107,12 @@ class TurtleBot(Bot):
 
         # Determine if target is above/below (y-up)
         target_below = False
+        target_above = False
         if target_world_y is not None:
-            target_below = target_world_y <= passive.altitude - 2.0
+            target_below = target_world_y <= passive.y - 2.0
+            target_above = target_world_y >= passive.y + 8.0
 
         # Vertical velocity target (up +). Negative values descend.
-        # If no proximity, descend faster based on estimated dy to target.
         if alt_ground is None and est_distance is not None:
             dy_to_target = math.sin(angle_to_target) * est_distance
             if dy_to_target > 0:
@@ -140,13 +133,44 @@ class TurtleBot(Bot):
             else:
                 vy_sp = -5.20
 
-        # Clearance requirements scale with speed; include half-height margin (stronger)
+        # Strategic climb: clear rising terrain and elevated targets before fast transit.
+        need_strategic_climb = False
+        cruise_y = None
+        if (
+            dx_to_target is not None
+            and abs(dx_to_target) > 80.0
+            and callable(getattr(active, "terrain_profile", None))
+        ):
+            profile = active.terrain_profile(passive.x, passive.x + dx_to_target, samples=24, lod=0)
+            max_terrain = passive.terrain_y
+            for _, yy in profile:
+                if yy > max_terrain:
+                    max_terrain = yy
+            clearance = half_height + 16.0 + 0.40 * speed
+            target_floor = (target_world_y if target_world_y is not None else passive.y) + half_height + 10.0
+            cruise_y = max(max_terrain + clearance, target_floor)
+            if passive.y < cruise_y - 4.0:
+                need_strategic_climb = True
+            if max_terrain >= (passive.y - half_height - 6.0):
+                need_strategic_climb = True
+
+        if target_above and (dx_to_target is None or abs(dx_to_target) > 40.0):
+            need_strategic_climb = True
+
+        if need_strategic_climb:
+            allowed = min(allowed, 12.0)
+            vx_sp = max(-allowed, min(allowed, vx_sp))
+            if cruise_y is not None:
+                climb_cmd = min(5.0, 1.2 + 0.08 * max(0.0, cruise_y - passive.y))
+            else:
+                climb_cmd = 2.5
+            vy_sp = max(vy_sp, climb_cmd)
+
+        # Clearance requirements scale with speed; include half-height margin.
         min_clearance = half_height + 12.0 + 0.50 * speed
         need_climb_for_clearance = (alt_ground is not None) and (
             alt_ground < min_clearance
         )
-
-        # No strategic climbing: only emergency small lift if critically low clearance
         if alt_ground is not None and alt_ground < (half_height + 2.0):
             vy_sp = max(vy_sp, 1.2)
 
@@ -167,7 +191,6 @@ class TurtleBot(Bot):
             a_lat_cap = (max_thrust_power / m_for_brake) * math.sin(0.65)
             a_lat_cap = max(1e-3, a_lat_cap)
             s_stop = (vx * vx) / (2.0 * a_lat_cap)
-            # Release latch if we crossed to the other side of target
             if self._brake_latch and (
                 self._prev_dx_sign != 0
                 and dx_sign != 0
@@ -186,7 +209,7 @@ class TurtleBot(Bot):
 
         # Position-based horizontal speed command for better alignment and recovery
         if dx_to_target is not None:
-            t_align = 2.0 if far else 1.0 if mid else 0.6
+            t_align = 2.2 if far else 1.1 if mid else 0.7
             vx_pos = max(-allowed, min(allowed, dx_to_target / max(t_align, 1e-3)))
             if braking:
                 vx_sp = vx_pos
@@ -212,17 +235,18 @@ class TurtleBot(Bot):
         )
         req = (a_x_sp * mass) / effective_thrust
         req = max(-0.99, min(0.99, req))
-        # With CW-from-up angles and thrust along (sin r, cos r), +angle tilts right.
-        # To produce +a_x (rightward), use positive angle.
         angle_cmd = math.asin(req)
 
         # Tilt limits; tighter when low/hazard/braking
         max_tilt = 1.00
         if (alt < 20.0) or hazard or need_climb_for_clearance or braking:
             max_tilt = 0.55
+        if need_strategic_climb:
+            max_tilt = min(max_tilt, 0.45)
         angle_cmd = max(-max_tilt, min(max_tilt, angle_cmd))
+
         # Slew limit angle command to reduce oscillations (slower near ground)
-        max_rate = 1.6 if alt < 30.0 else 2.2  # rad/s
+        max_rate = 1.6 if alt < 30.0 else 2.2
         max_delta = max_rate * max(dt, 1e-3)
         angle_cmd = max(
             self._prev_angle_cmd - max_delta,
@@ -248,9 +272,7 @@ class TurtleBot(Bot):
         if landing_window:
             landing_mode = True
             angle_cmd = 0.0
-            # zero lateral accel so we don't tilt during flare
             a_x_sp = 0.0
-            # commit to descend within tolerances (avoid hover)
             vy_sp = -min(1.5, safe_v * 0.8)
 
         # Mass-aware hover baseline with tilt loss
@@ -265,7 +287,10 @@ class TurtleBot(Bot):
         if landing_mode:
             e_alt = 0.0
         elif alt_ground is not None:
-            alt_sp = 34.0 if far else 18.0 if mid else 3.2
+            if need_strategic_climb and cruise_y is not None:
+                alt_sp = max(6.0, cruise_y - passive.terrain_y - half_height)
+            else:
+                alt_sp = 34.0 if far else 18.0 if mid else 3.2
             e_alt = alt_sp - alt
         e_vy = vy_sp - vy_up
         target_thrust = hover + (k_alt_p * e_alt) + (k_vy_p * e_vy)
@@ -274,7 +299,6 @@ class TurtleBot(Bot):
         if (alt_ground is not None) and (alt < 18.0) and (vy_up < -2.0):
             target_thrust += 0.12
 
-        # Clamp
         target_thrust = max(0.0, min(1.0, target_thrust))
 
         status = (
@@ -282,6 +306,7 @@ class TurtleBot(Bot):
             f"vx:{vx:.1f} vy:{vy_up:.1f}"
             + (" HZD" if hazard else "")
             + (" BRK" if braking else "")
+            + (" CLB" if need_strategic_climb else "")
         )
 
         action = BotAction(

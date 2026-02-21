@@ -78,11 +78,15 @@ def closest_point_on_terrain(
 
 @dataclass
 class RadarContact:
-    x: float | None
-    y: float | None
-    size: float | None
+    uid: str | None
+    x: float
+    y: float
+    size: float
     angle: float
-    distance: float | None
+    distance: float
+    rel_x: float
+    rel_y: float
+    is_inner_lock: bool
     info: dict | None
 
 
@@ -101,16 +105,24 @@ def get_radar_contacts(
         dist = math.hypot(dx, dy)
         if dist <= outer_range:
             angle = math.atan2(dy, dx)
-            tx = t.x if dist <= inner_range else None
-            ty = t.y if dist <= inner_range else None
-            ts = t.size if dist <= inner_range else None
-            td = dist if dist <= inner_range else None
-            ti = t.info if dist <= inner_range else None
-            contacts.append(RadarContact(tx, ty, ts, angle, td, ti))
+            contacts.append(
+                RadarContact(
+                    uid=getattr(t, "uid", None),
+                    x=float(t.x),
+                    y=float(t.y),
+                    size=float(t.size),
+                    angle=angle,
+                    distance=dist,
+                    rel_x=dx,
+                    rel_y=dy,
+                    is_inner_lock=dist <= inner_range,
+                    info=getattr(t, "info", None),
+                )
+            )
 
     # Sort by distance (unknown last)
     def _sort_key(c: RadarContact):
-        return c.distance if c.distance is not None else float("inf")
+        return c.distance
 
     contacts.sort(key=_sort_key)
     return contacts
@@ -135,6 +147,9 @@ class ProximityContact:
     y: float
     angle: float
     distance: float
+    normal_x: float
+    normal_y: float
+    terrain_slope: float
 
 
 def get_proximity_contact(
@@ -142,6 +157,32 @@ def get_proximity_contact(
     terrain,
     range: float = 500.0,
 ) -> ProximityContact | None:
+    def _sample_terrain(obj, xx: float, lod: int = 0) -> float:
+        try:
+            return float(obj(xx, lod))
+        except TypeError:
+            return float(obj(xx))
+
+    def _terrain_resolution(obj, lod: int = 0) -> float:
+        get_resolution = getattr(obj, "get_resolution", None)
+        if callable(get_resolution):
+            try:
+                return max(0.5, float(get_resolution(lod)))
+            except Exception:
+                return 2.0
+        return 2.0
+
+    def _surface_metrics(obj, xx: float) -> tuple[float, float, float]:
+        step = _terrain_resolution(obj, lod=0)
+        y0 = _sample_terrain(obj, xx - step, lod=0)
+        y1 = _sample_terrain(obj, xx + step, lod=0)
+        slope = (y1 - y0) / (2.0 * step)
+        nx, ny = -slope, 1.0
+        nlen = math.hypot(nx, ny)
+        if nlen <= 1e-9:
+            return 0.0, 1.0, slope
+        return nx / nlen, ny / nlen, slope
+
     x, y = pos.x, pos.y
         
     # Cache check (LRU keyed by quantized x,y,range)
@@ -156,7 +197,8 @@ def get_proximity_contact(
         if not math.isfinite(dist) or dist > range:
             return None
         angle = math.atan2(cy - y, cx - x)
-        return ProximityContact(cx, cy, angle, dist)
+        nx, ny, slope = _surface_metrics(terrain, cx)
+        return ProximityContact(cx, cy, angle, dist, nx, ny, slope)
 
     cx, cy, dist = closest_point_on_terrain(terrain, pos, search_radius=range)
 
@@ -173,4 +215,5 @@ def get_proximity_contact(
         cache.store.popitem(last=False)
 
     angle = math.atan2(cy - y, cx - x)
-    return ProximityContact(cx, cy, angle, dist)
+    nx, ny, slope = _surface_metrics(terrain, cx)
+    return ProximityContact(cx, cy, angle, dist, nx, ny, slope)

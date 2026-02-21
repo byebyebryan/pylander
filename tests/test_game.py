@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bots import create_bot, list_available_bots
 from core.bot import Bot, BotAction
 from core.components import (
     ActorControlRole,
@@ -15,6 +16,13 @@ from core.lander import Lander
 from core.level import Level, LevelWorld
 from game import LanderGame
 from levels.level_1 import create_level as create_level_1
+
+
+def test_bot_registry_only_exposes_turtle() -> None:
+    bots = list_available_bots()
+    assert bots == ["turtle"]
+    turtle_bot = create_bot("turtle")
+    assert turtle_bot.__class__.__name__ == "TurtleBot"
 
 
 class _FlatTerrain:
@@ -209,7 +217,7 @@ def test_level_1_actor_spawns_are_above_local_terrain() -> None:
     terrain = game.terrain
 
     actors = getattr(game.level.world, "actors", [])
-    assert len(actors) >= 2
+    assert len(actors) == 1
 
     for actor in actors:
         trans = actor.get_component(Transform)
@@ -226,3 +234,13 @@ def test_level_1_actor_spawns_are_above_local_terrain() -> None:
         )
         for sx in sample_xs:
             assert bottom - terrain(sx) >= 10.0
+
+
+def test_level_1_assigns_selected_bot_to_only_lander() -> None:
+    level = create_level_1()
+    bot = _PassiveBot()
+    game = LanderGame(level=level, bot=bot, headless=True, seed=123)
+
+    assert len(game.actors) == 1
+    only_actor_uid = game.actors[0].uid
+    assert game.actor_bots == {only_actor_uid: bot}

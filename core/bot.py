@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Protocol, Any
+from typing import Protocol, Any, Callable
 from core.sensor import RadarContact, ProximityContact
 
 
@@ -28,8 +28,16 @@ class PassiveSensors:
     Omits any callable active sensors and economy details.
     """
 
+    # Lander world position (world units)
+    x: float
+    y: float
+
+    # Local terrain context
+    altitude: float  # vertical clearance above terrain under centerline
+    terrain_y: float
+    terrain_slope: float  # dy/dx under centerline
+
     # Lander kinematics (world units)
-    altitude: float  # absolute world-space y
     vx: float  # right +
     vy_up: float  # up +
     angle: float  # radians, 0 = upright
@@ -58,6 +66,16 @@ class ActiveSensors(Protocol):
 
         Returns a dict: {"hit": bool, "distance": float, "hit_x": float, "hit_y": float}
         """
+        ...
+
+    def terrain_height(self, world_x: float, lod: int = 0) -> float:
+        """Return terrain height y at world x."""
+        ...
+
+    def terrain_profile(
+        self, x_start: float, x_end: float, samples: int = 16, lod: int = 0
+    ) -> list[tuple[float, float]]:
+        """Sample terrain between two x-coordinates."""
         ...
 
 
@@ -125,14 +143,42 @@ class Bot(ABC):
 class _ActiveSensorImpl:
     """Concrete ActiveSensors implementation backed by an engine adapter."""
 
-    def __init__(self, origin_fn, radar_range_fn, engine_adapter, actor_uid: str | None = None):
+    def __init__(
+        self,
+        origin_fn: Callable[[], Any],
+        radar_range_fn: Callable[[], float],
+        engine_adapter,
+        actor_uid: str | None = None,
+        terrain_fn: Callable[[float, int], float] | Callable[[float], float] | None = None,
+    ):
         self._origin = origin_fn
         self._range = radar_range_fn
         self._engine = engine_adapter
         self._actor_uid = actor_uid
+        self._terrain = terrain_fn
 
     def raycast(self, dir_angle: float, max_range: float | None = None) -> dict:
         rng = self._range() if max_range is None else max_range
         if self._engine is None:
             return {"hit": False, "hit_x": 0.0, "hit_y": 0.0, "distance": None}
         return self._engine.raycast(self._origin(), dir_angle, rng, uid=self._actor_uid)
+
+    def terrain_height(self, world_x: float, lod: int = 0) -> float:
+        if self._terrain is None:
+            return 0.0
+        try:
+            return float(self._terrain(world_x, lod))
+        except TypeError:
+            return float(self._terrain(world_x))
+
+    def terrain_profile(
+        self, x_start: float, x_end: float, samples: int = 16, lod: int = 0
+    ) -> list[tuple[float, float]]:
+        n = max(2, int(samples))
+        out: list[tuple[float, float]] = []
+        span = x_end - x_start
+        for i in range(n):
+            t = i / (n - 1)
+            xx = x_start + span * t
+            out.append((xx, self.terrain_height(xx, lod=lod)))
+        return out

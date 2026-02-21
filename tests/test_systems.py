@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from bots.turtle import TurtleBot
+from core.bot import PassiveSensors, VehicleInfo
 from core.components import (
     ControlIntent,
     Engine,
@@ -23,6 +25,7 @@ from core.ecs import Entity, World
 from core.landing_sites import LandingSiteSurfaceModel
 from core.lander import Lander
 from core.maths import Range1D, Vector2
+from core.sensor import ProximityContact, RadarContact
 from core.systems.contact import ContactSystem
 from core.systems.control_routing import ControlRoutingSystem
 from core.systems.force_application import ForceApplicationSystem
@@ -269,6 +272,7 @@ class _Target:
     x: float
     y: float
     size: float
+    uid: str = "site_test"
     fuel_price: float = 10.0
     award: float = 0.0
     vel: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
@@ -348,8 +352,114 @@ def test_sensor_update_system_populates_cached_readings() -> None:
     system.update(1.0 / 10.0)
 
     assert len(readings.radar_contacts) >= 1
+    c0 = readings.radar_contacts[0]
+    assert c0.distance >= 0.0
+    assert isinstance(c0.is_inner_lock, bool)
+    assert c0.x == 50.0
+    assert c0.y == 0.0
     assert readings.proximity is not None
     assert readings.proximity.distance >= 0.0
+    assert math.isfinite(readings.proximity.normal_x)
+    assert math.isfinite(readings.proximity.normal_y)
+
+
+class _BotActiveSensors:
+    def __init__(self, hill_x: float, hill_width: float, hill_height: float):
+        self.hill_x = hill_x
+        self.hill_width = hill_width
+        self.hill_height = hill_height
+
+    def _terrain(self, x: float) -> float:
+        dx = abs(x - self.hill_x)
+        if dx >= self.hill_width:
+            return 0.0
+        t = 1.0 - (dx / self.hill_width)
+        return self.hill_height * t
+
+    def raycast(self, _dir_angle: float, max_range: float | None = None) -> dict:
+        _ = max_range
+        return {"hit": False, "hit_x": 0.0, "hit_y": 0.0, "distance": None}
+
+    def terrain_height(self, world_x: float, lod: int = 0) -> float:
+        _ = lod
+        return self._terrain(world_x)
+
+    def terrain_profile(
+        self, x_start: float, x_end: float, samples: int = 16, lod: int = 0
+    ) -> list[tuple[float, float]]:
+        _ = lod
+        n = max(2, int(samples))
+        span = x_end - x_start
+        out = []
+        for i in range(n):
+            t = i / (n - 1)
+            xx = x_start + span * t
+            out.append((xx, self._terrain(xx)))
+        return out
+
+
+def test_turtle_bot_enters_climb_mode_for_above_blocked_target() -> None:
+    bot = TurtleBot()
+    bot.set_vehicle_info(
+        VehicleInfo(
+            width=8.0,
+            height=8.0,
+            dry_mass=1.0,
+            fuel_density=0.01,
+            max_thrust_power=50.0,
+            safe_landing_velocity=10.0,
+            safe_landing_angle=math.radians(15.0),
+            radar_outer_range=5000.0,
+            radar_inner_range=2000.0,
+            proximity_sensor_range=500.0,
+        )
+    )
+
+    passive = PassiveSensors(
+        x=0.0,
+        y=40.0,
+        altitude=36.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=0.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=2.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        state="flying",
+        radar_contacts=[
+            RadarContact(
+                uid="site_above",
+                x=220.0,
+                y=120.0,
+                size=70.0,
+                angle=math.atan2(80.0, 220.0),
+                distance=math.hypot(220.0, 80.0),
+                rel_x=220.0,
+                rel_y=80.0,
+                is_inner_lock=True,
+                info={"award": 250.0},
+            )
+        ],
+        proximity=ProximityContact(
+            x=0.0,
+            y=0.0,
+            angle=-math.pi / 2.0,
+            distance=40.0,
+            normal_x=0.0,
+            normal_y=1.0,
+            terrain_slope=0.0,
+        ),
+    )
+
+    sensors = _BotActiveSensors(hill_x=100.0, hill_width=60.0, hill_height=90.0)
+    action = bot.update(1.0 / 60.0, passive, sensors)
+
+    assert "CLB" in action.status
+    assert action.target_thrust > 0.0
 
 
 def test_landing_site_motion_and_projection_update_model() -> None:
