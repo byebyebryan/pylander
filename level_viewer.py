@@ -9,9 +9,17 @@ Controls:
 import sys
 import pygame
 
+from core.components import Transform
 from core.maths import Range1D, Vector2
 from ui.camera import Camera
 from levels import create_level, list_available_levels
+
+
+def _require_component(entity, component_type):
+    comp = entity.get_component(component_type)
+    if comp is None:
+        raise RuntimeError(f"Entity {entity.uid} missing component {component_type.__name__}")
+    return comp
 
 
 class LevelViewer:
@@ -41,8 +49,9 @@ class LevelViewer:
         self.terrain = self.level.world.terrain
         self.targets = self.level.world.targets
         # Center camera near start
-        self.camera.x = self.level.world.lander.x
-        self.camera.y = self.level.world.lander.y
+        trans = _require_component(self.level.world.lander, Transform)
+        self.camera.x = trans.pos.x
+        self.camera.y = trans.pos.y
 
         # Colors
         self.bg = (20, 20, 25)

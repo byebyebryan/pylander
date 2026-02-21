@@ -8,6 +8,15 @@ from __future__ import annotations
 
 from typing import Literal
 
+from core.components import Engine, PhysicsState, Transform
+
+
+def _require_component(entity, component_type):
+    comp = entity.get_component(component_type)
+    if comp is None:
+        raise RuntimeError(f"Entity {entity.uid} missing component {component_type.__name__}")
+    return comp
+
 
 def save_trajectory_plot(
     terrain,
@@ -189,13 +198,11 @@ class Plotter:
             self._record_sample()
 
     def _record_sample(self) -> None:
-        vx = getattr(self.lander, "vx", 0.0)
-        vy = getattr(self.lander, "vy", 0.0)
-        speed = (vx * vx + vy * vy) ** 0.5
-        x = getattr(self.lander, "x", 0.0)
-        y = getattr(self.lander, "y", 0.0)
-        thrust = getattr(self.lander, "thrust_level", 0.0)
-        self._samples.append((x, y, speed, thrust))
+        trans = _require_component(self.lander, Transform)
+        phys = _require_component(self.lander, PhysicsState)
+        eng = _require_component(self.lander, Engine)
+        speed = (phys.vel.x * phys.vel.x + phys.vel.y * phys.vel.y) ** 0.5
+        self._samples.append((trans.pos.x, trans.pos.y, speed, eng.thrust_level))
 
     def get_samples(self) -> list[tuple[float, float, float, float]]:
         return list(self._samples)

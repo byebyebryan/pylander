@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from core.bot import Bot, BotAction
+from core.components import LanderState
 from core.maths import Vector2
 from core.lander import Lander
 from core.level import Level, LevelWorld
@@ -47,10 +48,13 @@ class _ShortLevel(Level):
         return self.update_calls >= self.stop_after_updates
 
     def end(self, game):
+        ls = game.lander.get_component(LanderState)
+        if ls is None:
+            raise RuntimeError("Lander missing LanderState component")
         return {
             "updates": self.update_calls,
             "elapsed_time": getattr(game, "_elapsed_time", 0.0),
-            "state": game.lander.state,
+            "state": ls.state,
         }
 
 

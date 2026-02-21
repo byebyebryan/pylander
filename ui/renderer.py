@@ -11,7 +11,16 @@ from .auto_zoom import AutoZoomController
 from .hud import HudOverlay
 from .overlays import SensorOverlay
 from .fps_overlay import FpsOverlay
-from core.maths import Vector2
+from core.components import (
+    Engine,
+    FuelTank,
+    LanderGeometry,
+    LanderState,
+    SensorReadings,
+    Transform,
+)
+from core.lander_visuals import Thrust
+from core.maths import RigidTransform2, Vector2
 
 if TYPE_CHECKING:
     from core.level import Level
@@ -20,6 +29,53 @@ if TYPE_CHECKING:
 
 class Renderer:
     """Handles all rendering operations for the terrain app."""
+
+    @staticmethod
+    def _require_component(entity, component_type):
+        comp = entity.get_component(component_type)
+        if comp is None:
+            raise RuntimeError(f"Entity {entity.uid} missing component {component_type.__name__}")
+        return comp
+
+    def _get_body_polygon(self, entity) -> list[Vector2]:
+        trans = self._require_component(entity, Transform)
+        geo = self._require_component(entity, LanderGeometry)
+        local = geo.polygon_points
+        if not local:
+            half_w = geo.width / 2.0
+            half_h = geo.height / 2.0
+            local = [
+                Vector2(0.0, half_h),
+                Vector2(-half_w, -half_h),
+                Vector2(half_w, -half_h),
+            ]
+        tf = RigidTransform2(trans.pos, trans.rotation)
+        return [tf.apply(pt) for pt in local]
+
+    def _get_thrusts(self, entity) -> list[Thrust]:
+        trans = self._require_component(entity, Transform)
+        geo = self._require_component(entity, LanderGeometry)
+        eng = self._require_component(entity, Engine)
+        tank = self._require_component(entity, FuelTank)
+        if eng.thrust_level <= 0.0 or tank.fuel <= 0.0:
+            return []
+        half_h = geo.height / 2.0
+        local_base = Vector2(0.0, -half_h * 1.5)
+        tf = RigidTransform2(trans.pos, trans.rotation)
+        world_base = tf.apply(local_base)
+        cos_r = math.cos(trans.rotation)
+        sin_r = math.sin(trans.rotation)
+        world_angle = math.atan2(-cos_r, -sin_r)
+        return [
+            Thrust(
+                x=world_base.x,
+                y=world_base.y,
+                angle=world_angle,
+                width=geo.width / 2.0,
+                length=20.0,
+                power=eng.thrust_level,
+            )
+        ]
 
     def __init__(self, level: "Level", width: int, height: int, bot: "Bot | None" = None):
         """Initialize renderer with level reference and manage display/clock."""
@@ -91,9 +147,12 @@ class Renderer:
     def update(self, dt: float):
         """Update camera follow and auto-zoom based on level state."""
         lander = self.level.lander
-        if lander and getattr(lander, "state", None) == "flying":
-            self.main_camera.x = lander.x
-            self.main_camera.y = lander.y
+        if lander:
+            trans = self._require_component(lander, Transform)
+            state = self._require_component(lander, LanderState)
+            if state.state == "flying":
+                self.main_camera.x = trans.pos.x
+                self.main_camera.y = trans.pos.y
 
         def _height_at(xx: float) -> float:
             return self.level.terrain(xx)
@@ -157,7 +216,8 @@ class Renderer:
         lander = self.level.lander
         if lander is None:
             return []
-        return lander.get_radar_contacts(self.level.targets)
+        readings = self._require_component(lander, SensorReadings)
+        return readings.radar_contacts
 
     def draw_targets(self, contacts=None):
         # Query targets near screen center across full visible span
@@ -190,9 +250,7 @@ class Renderer:
             return
 
         # Fetch polygon in world space and map to screen space
-        poly_world = self.level.lander.get_body_polygon()
-        # poly_world is list[tuple], we can convert to Vector2 for consistency or just unpack
-        # get_body_polygon still returns tuples for now (Phase 4), so unpack
+        poly_world = self._get_body_polygon(self.level.lander)
         rotated_points = []
         for world_pt in poly_world:
             rotated_points.append(camera.world_to_screen(world_pt))
@@ -267,9 +325,11 @@ class Renderer:
         self.draw_targets(contacts)
 
         # Draw sensor overlays
+        proximity = None
+        if self.level.lander is not None:
+            proximity = self._require_component(self.level.lander, SensorReadings).proximity
         self.sensor_overlay.draw(
-            self.level.lander,
-            self.level.terrain,
+            proximity,
             self.level.targets,
             self.main_camera,
             contacts,
@@ -280,7 +340,7 @@ class Renderer:
 
         # Draw thrust flames from lander-provided thrust descriptors
         if self.level.lander:
-            self.draw_thrusts(self.level.lander.get_thrusts(), self.main_camera)
+            self.draw_thrusts(self._get_thrusts(self.level.lander), self.main_camera)
 
         # Draw minimap
         self.minimap.draw(
@@ -318,6 +378,7 @@ class Renderer:
         lander = self.level.lander
         if not lander:
             return
+        trans = self._require_component(lander, Transform)
 
         # Rectangle same size as minimap, positioned at bottom-right of screen
         mm = self.minimap
@@ -339,7 +400,7 @@ class Renderer:
 
         # Use an OffsetCamera centered on the lander with fixed inset scale
         scale = self.orientation_inset_scale_px_per_world
-        inset_cam = OffsetCamera(lander.x, lander.y, scale, cx, cy)
+        inset_cam = OffsetCamera(trans.pos.x, trans.pos.y, scale, cx, cy)
 
         # Clip drawing to the interior of the rectangle (minus border)
         prev_clip = self.screen.get_clip()
@@ -347,6 +408,6 @@ class Renderer:
             self.screen.set_clip(rect.inflate(-2, -2))
             # Reuse standard draw paths with the inset camera
             self.draw_lander(inset_cam)
-            self.draw_thrusts(lander.get_thrusts(), inset_cam)
+            self.draw_thrusts(self._get_thrusts(lander), inset_cam)
         finally:
             self.screen.set_clip(prev_clip)

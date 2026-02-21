@@ -1,5 +1,14 @@
 from __future__ import annotations
 
+from core.components import FuelTank, LanderState, Wallet
+
+
+def _require_component(entity, component_type):
+    comp = entity.get_component(component_type)
+    if comp is None:
+        raise RuntimeError(f"Entity {entity.uid} missing component {component_type.__name__}")
+    return comp
+
 
 def should_end_default(
     game,
@@ -9,12 +18,13 @@ def should_end_default(
     stop_on_out_of_fuel=False,
     max_time=None,
 ) -> bool:
-    state = game.lander.state
+    state = _require_component(game.lander, LanderState).state
+    tank = _require_component(game.lander, FuelTank)
     if stop_on_crash and state == "crashed":
         return True
     if stop_on_first_land and state == "landed":
         return True
-    if stop_on_out_of_fuel and getattr(game.lander, "fuel", 0.0) <= 0.0:
+    if stop_on_out_of_fuel and tank.fuel <= 0.0:
         return True
     if (
         game.headless
@@ -35,9 +45,11 @@ def compute_score_default(
     landing_score=100.0,
     crash_penalty=-200.0,
 ) -> float:
+    wallet = _require_component(game.lander, Wallet)
+    tank = _require_component(game.lander, FuelTank)
     return (
-        game.lander.credits * credits_score
-        + game.lander.fuel * fuel_score
+        wallet.credits * credits_score
+        + tank.fuel * fuel_score
         + landing_count * landing_score
         + crash_count * crash_penalty
     )

@@ -27,26 +27,23 @@ class SensorOverlay:
 
     def draw(
         self,
-        lander,
-        terrain,
+        proximity,
         targets,
         camera,
         contacts,
     ) -> None:
-        if not lander:
+        if proximity is None and not contacts:
             return
-        self._draw_proximity(lander, terrain, targets, camera)
+        self._draw_proximity(proximity, targets, camera)
         self._draw_radar(contacts, camera)
 
-    def _draw_proximity(self, lander, terrain, targets, camera) -> None:
+    def _draw_proximity(self, proximity, targets, camera) -> None:
         color = (128, 128, 128)
         proximity_radius_px = 50
         arrow_length_px = 14
         arrow_width_px = 12
         screen_rect = self.screen.get_rect()
         screen_center = Vector2(screen_rect.centerx, screen_rect.centery)
-
-        proximity = lander.get_proximity_contact(terrain)
         if proximity is None:
             return
 

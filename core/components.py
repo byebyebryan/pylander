@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Any
 from core.maths import Vector2, RigidTransform2
 import math
 
@@ -84,3 +85,25 @@ class LanderState:
 class Wallet:
     """Component representing the lander's credits balance."""
     credits: float = 0.0
+
+
+@dataclass
+class ControlIntent:
+    """Per-frame control input selected by the game loop."""
+    target_thrust: float | None = None
+    target_angle: float | None = None
+    refuel_requested: bool = False
+
+
+@dataclass
+class RefuelConfig:
+    """Economic and short-range interaction configuration."""
+    refuel_rate: float = 1.0
+    proximity_sensor_range: float = 500.0
+
+
+@dataclass
+class SensorReadings:
+    """Cached sensor outputs produced by SensorUpdateSystem."""
+    radar_contacts: list[Any] = field(default_factory=list)
+    proximity: Any | None = None

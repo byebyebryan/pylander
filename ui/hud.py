@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import math
+
+from core.components import Engine, FuelTank, LanderState, PhysicsState, SensorReadings, Transform, Wallet
+
 
 class HudOverlay:
     """Draw heads-up display text for lander status and controls."""
@@ -28,15 +32,60 @@ class HudOverlay:
         self._draw_text_lines(control_lines, y_offset, (200, 200, 200))
 
     def _build_info_lines(self, level, bot=None) -> list[str]:
-        lines: list[str] = [f"CREDITS: {level.lander.credits:.0f}"]
-        lines.extend(level.lander.get_stats_text(level.terrain))
+        wallet = level.lander.get_component(Wallet)
+        if wallet is None:
+            raise RuntimeError("Lander missing Wallet component")
+        trans = level.lander.get_component(Transform)
+        phys = level.lander.get_component(PhysicsState)
+        tank = level.lander.get_component(FuelTank)
+        eng = level.lander.get_component(Engine)
+        ls = level.lander.get_component(LanderState)
+        readings = level.lander.get_component(SensorReadings)
+        if None in (trans, phys, tank, eng, ls, readings):
+            raise RuntimeError("Lander missing expected HUD components")
+
+        speed = math.hypot(phys.vel.x, phys.vel.y)
+        altitude = trans.pos.y - level.terrain(trans.pos.x)
+        prox = readings.proximity
+        prox_dist = prox.distance if prox is not None else None
+        prox_angle = prox.angle if prox is not None else None
+        prox_angle_deg = math.degrees(prox_angle) if prox_angle is not None else None
+
+        rotation_deg = math.degrees(trans.rotation)
+        target_rot_deg = math.degrees(eng.target_angle)
+        thrust_pct = eng.thrust_level * 100.0
+        target_thrust_pct = eng.target_thrust * 100.0
+
+        lines: list[str] = [f"CREDITS: {wallet.credits:.0f}"]
+        lines.append("")
+        lines.append(f"FUEL: {tank.fuel:.1f}%")
+        if abs(target_thrust_pct - thrust_pct) < 1e-3:
+            lines.append(f"THRUST: {thrust_pct:.0f}%")
+        else:
+            lines.append(f"THRUST: {thrust_pct:.0f}% -> {target_thrust_pct:.0f}%")
+        if abs(target_rot_deg - rotation_deg) < 0.5:
+            lines.append(f"ANGLE: {rotation_deg:.1f}deg")
+        else:
+            lines.append(f"ANGLE: {rotation_deg:.1f}deg -> {target_rot_deg:.1f}deg")
+
+        lines.append("")
+        lines.append(f"SPEED: {speed:.1f} m/s")
+        lines.append(f"ALT: {altitude:.1f} m")
+        lines.append(f"H-SPEED: {phys.vel.x:.1f} m/s")
+        lines.append(f"V-SPEED: {phys.vel.y:.1f} m/s")
+        if prox_dist is not None and prox_angle_deg is not None:
+            lines.append(f"PROX: {prox_dist:.1f} m @ {prox_angle_deg:.0f}deg")
+        else:
+            lines.append("PROX: --")
+
+        lines.append("")
+        lines.append(f"STATE: {ls.state.upper()}")
         if bot is not None and hasattr(bot, "get_stats_text"):
             lines.extend(bot.get_stats_text())
         return lines
 
     def _build_control_lines(self, lander) -> list[str]:
-        if lander and hasattr(lander, "get_controls_text"):
-            return lander.get_controls_text()
+        _ = lander
         return [
             "Controls:",
             "W/UP: Increase thrust",

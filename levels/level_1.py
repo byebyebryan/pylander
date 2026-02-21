@@ -1,11 +1,25 @@
 from __future__ import annotations
 
 import core.terrain as _terrain
+from core.components import FuelTank, LanderGeometry, LanderState, PhysicsState, Transform, Wallet
 from core.maths import Vector2
 from landers import create_lander
 from core.level import Level, LevelWorld
 from levels.common import should_end_default, compute_score_default
 from core.physics import PhysicsEngine
+
+
+def _require_component(entity, component_type):
+    comp = entity.get_component(component_type)
+    if comp is None:
+        raise RuntimeError(f"Entity {entity.uid} missing component {component_type.__name__}")
+    return comp
+
+
+def _get_mass(entity) -> float:
+    phys = _require_component(entity, PhysicsState)
+    tank = _require_component(entity, FuelTank)
+    return phys.mass + tank.fuel * tank.density
 
 
 class GentleStartLevel(Level):
@@ -32,8 +46,10 @@ class GentleStartLevel(Level):
         # Create lander via dynamic loader; default to "classic" when unspecified
         lander_name = getattr(self, "lander_name", "classic")
         lander = create_lander(lander_name)
-        lander.pos = Vector2(start_pos)
         lander.start_pos = Vector2(start_pos)
+        trans = _require_component(lander, Transform)
+        geo = _require_component(lander, LanderGeometry)
+        trans.pos = Vector2(start_pos)
 
         # Create physics engine and attach lander body
         engine = PhysicsEngine(
@@ -42,27 +58,15 @@ class GentleStartLevel(Level):
             segment_step=10.0,
             half_width=12000.0,
         )
-        # Attach using provided physics polygons when available; fallback to triangle
-        polys = lander.get_physics_polygons()
-        if polys and hasattr(engine, "attach_lander_from_polygons"):
-            engine.attach_lander_from_polygons(
-                polygons=polys,
-                mass=lander.get_mass(),
-                friction=0.9,
-                elasticity=0.0,
-                start_pos=start_pos,
-                start_angle=lander.rotation,
-            )
-        else:
-            engine.attach_lander(
-                width=lander.width,
-                height=lander.height,
-                mass=lander.get_mass(),
-                friction=0.9,
-                elasticity=0.0,
-                start_pos=start_pos,
-                start_angle=lander.rotation,
-            )
+        engine.attach_lander(
+            width=geo.width,
+            height=geo.height,
+            mass=_get_mass(lander),
+            friction=0.9,
+            elasticity=0.0,
+            start_pos=start_pos,
+            start_angle=trans.rotation,
+        )
 
         self.world = LevelWorld(terrain=terrain, targets=targets, lander=lander)
         # Expose engine on the level for the game loop
@@ -94,11 +98,11 @@ class GentleStartLevel(Level):
 
         result = {
             "time": getattr(game, "_elapsed_time", 0.0),
-            "state": game.lander.state,
+            "state": _require_component(game.lander, LanderState).state,
             "landing_count": landing_count,
             "crash_count": crash_count,
-            "credits": game.lander.credits,
-            "fuel": game.lander.fuel,
+            "credits": _require_component(game.lander, Wallet).credits,
+            "fuel": _require_component(game.lander, FuelTank).fuel,
             "score": score,
         }
 
