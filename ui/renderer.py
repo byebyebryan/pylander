@@ -11,6 +11,7 @@ from .auto_zoom import AutoZoomController
 from .hud import HudOverlay
 from .overlays import SensorOverlay
 from .fps_overlay import FpsOverlay
+from core.maths import Range1D
 from core.components import (
     Engine,
     FuelTank,
@@ -228,7 +229,38 @@ class Renderer:
         return readings.radar_contacts
 
     def draw_targets(self, contacts=None):
-        # Query targets near screen center across full visible span
+        # Prefer canonical site projections for world-accurate visuals.
+        sites = getattr(self.level, "sites", None)
+        if sites is not None and hasattr(sites, "get_sites"):
+            visible = self.main_camera.get_visible_world_rect()
+            center_x = (visible.min_x + visible.max_x) * 0.5
+            span = Range1D.from_center(center_x, visible.width * 0.5)
+            for s in sites.get_sites(span):
+                tx = s.x
+                ty = s.y * self.height_scale
+                half = s.size * 0.5
+                start_pos = self.main_camera.world_to_screen(Vector2(tx - half, ty))
+                end_pos = self.main_camera.world_to_screen(Vector2(tx + half, ty))
+                color = (
+                    self.visited_landing_target_color
+                    if (getattr(s, "visited", False) or getattr(s, "award", 1.0) == 0.0)
+                    else self.landing_target_color
+                )
+                pygame.draw.line(self.screen, color, start_pos, end_pos, 4)
+
+                # Elevated/decoupled pads need explicit support visuals.
+                if (not getattr(s, "terrain_bound", True)) or getattr(
+                    s, "terrain_mode", ""
+                ) == "elevated_supports":
+                    support_xs = (tx - half * 0.7, tx + half * 0.7)
+                    for sx in support_xs:
+                        ground_y = self.level.terrain(sx) * self.height_scale
+                        top = self.main_camera.world_to_screen(Vector2(sx, ty))
+                        base = self.main_camera.world_to_screen(Vector2(sx, ground_y))
+                        pygame.draw.line(self.screen, color, top, base, 2)
+            return
+
+        # Fallback to radar contacts when site model is unavailable.
         if contacts is None:
             contacts = self._get_radar_contacts()
         for c in contacts:
@@ -244,13 +276,7 @@ class Renderer:
                 if (getattr(c, "info", None) and c.info.get("award", 1) == 0)
                 else self.landing_target_color
             )
-            pygame.draw.line(
-                self.screen,
-                color,
-                start_pos,
-                end_pos,
-                4,
-            )
+            pygame.draw.line(self.screen, color, start_pos, end_pos, 4)
 
     def draw_actor(self, entity, camera):
         """Draw one actor if it has lander geometry and transform."""

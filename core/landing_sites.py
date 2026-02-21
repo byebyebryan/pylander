@@ -148,13 +148,10 @@ def build_seeded_sites(height_at, seed: int, count_each_side: int = 8) -> list[L
         fuel_price = round(rng.uniform(5.0, 15.0) * 2.0) / 2.0
         award = rng.uniform(100.0, 500.0)
         roll = rng.random()
-        if roll < 0.55:
+        # Keep current generation simple: only flush terrain pads or elevated pads.
+        if roll < 0.75:
             mode = "flush_flatten"
             y = height_at(x) + rng.uniform(-40.0, 40.0)
-            terrain_bound = True
-        elif roll < 0.8:
-            mode = "cut_in"
-            y = height_at(x) - rng.uniform(20.0, 80.0)
             terrain_bound = True
         else:
             mode = "elevated_supports"

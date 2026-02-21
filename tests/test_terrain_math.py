@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from core.landing_sites import LandingSiteSurfaceModel, LandingSiteTerrainModifier, to_view
+from core.landing_sites import (
+    LandingSiteSurfaceModel,
+    LandingSiteTerrainModifier,
+    build_seeded_sites,
+    to_view,
+)
 from core.maths import Range1D, Vector2
 
 
@@ -69,3 +74,9 @@ def test_elevated_supports_does_not_modify_terrain() -> None:
     modifier = LandingSiteTerrainModifier(model)
     y0 = modifier(Vector2(0.0, 35.0), 35.0, lod=0)
     assert y0 == 35.0
+
+
+def test_seeded_sites_generate_only_flush_or_elevated_modes() -> None:
+    sites = build_seeded_sites(lambda _x: 0.0, seed=123, count_each_side=4)
+    modes = {s.terrain_mode for s in sites}
+    assert modes <= {"flush_flatten", "elevated_supports"}

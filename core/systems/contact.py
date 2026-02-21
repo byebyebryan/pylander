@@ -56,7 +56,12 @@ class ContactSystem(System):
         angle_ok = abs(trans.rotation) < ls.safe_landing_angle
         speed_ok = speed < ls.safe_landing_velocity
 
-        if angle_ok and speed_ok and site is not None:
+        if (
+            angle_ok
+            and speed_ok
+            and site is not None
+            and self._can_land_on_site(entity, site, half_w, half_h, dt)
+        ):
             self._apply_landing(entity, site, half_h)
         else:
             self._apply_crash(entity)

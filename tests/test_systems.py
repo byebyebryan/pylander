@@ -309,6 +309,16 @@ class _FakeContactAdapter:
         _ = angle, clear_velocity
 
 
+class _FakeCollidingContactAdapter:
+    enabled = False
+
+    def get_contact_report(self) -> dict:
+        return {"colliding": True, "normal": (0.0, 1.0), "rel_speed": 1.0, "point": (0.0, 0.0)}
+
+    def teleport_lander(self, _pos, angle=None, clear_velocity=True) -> None:
+        _ = angle, clear_velocity
+
+
 def test_refuel_system_transfers_fuel_and_spends_credits() -> None:
     entity = Entity()
     entity.add_component(LanderState(state="landed"))
@@ -462,6 +472,70 @@ def test_turtle_bot_enters_climb_mode_for_above_blocked_target() -> None:
     assert action.target_thrust > 0.0
 
 
+def test_turtle_bot_keeps_climbing_when_under_elevated_target() -> None:
+    bot = TurtleBot()
+    bot.set_vehicle_info(
+        VehicleInfo(
+            width=8.0,
+            height=8.0,
+            dry_mass=1.0,
+            fuel_density=0.01,
+            max_thrust_power=50.0,
+            safe_landing_velocity=10.0,
+            safe_landing_angle=math.radians(15.0),
+            radar_outer_range=5000.0,
+            radar_inner_range=2000.0,
+            proximity_sensor_range=500.0,
+        )
+    )
+
+    passive = PassiveSensors(
+        x=190.0,
+        y=40.0,
+        altitude=36.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=0.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=2.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        state="flying",
+        radar_contacts=[
+            RadarContact(
+                uid="site_above_close_x",
+                x=220.0,
+                y=120.0,
+                size=70.0,
+                angle=math.atan2(80.0, 30.0),
+                distance=math.hypot(30.0, 80.0),
+                rel_x=30.0,
+                rel_y=80.0,
+                is_inner_lock=True,
+                info={"award": 250.0},
+            )
+        ],
+        proximity=ProximityContact(
+            x=190.0,
+            y=0.0,
+            angle=-math.pi / 2.0,
+            distance=40.0,
+            normal_x=0.0,
+            normal_y=1.0,
+            terrain_slope=0.0,
+        ),
+    )
+
+    sensors = _BotActiveSensors(hill_x=1000.0, hill_width=10.0, hill_height=1.0)
+    action = bot.update(1.0 / 60.0, passive, sensors)
+
+    assert "CLB" in action.status
+    assert action.target_thrust > 0.0
+
+
 def test_landing_site_motion_and_projection_update_model() -> None:
     world = World()
     site = Entity(uid="site_a")
@@ -562,6 +636,40 @@ def test_contact_system_marks_zero_award_site_visited() -> None:
     assert ls.state == "landed"
     assert math.isclose(wallet.credits, 42.0, abs_tol=1e-6)
     assert econ.visited is True
+
+
+def test_contact_system_does_not_snap_land_when_far_below_site() -> None:
+    world = World()
+
+    lander = Entity(uid="lander")
+    lander.add_component(LanderState(state="flying"))
+    lander.add_component(PhysicsState(vel=Vector2(0.0, -1.0)))
+    # Lander is near in x, but far below pad y.
+    lander.add_component(Transform(pos=Vector2(0.0, 20.0), rotation=0.0))
+    lander.add_component(FuelTank())
+    lander.add_component(LanderGeometry(width=8.0, height=8.0))
+    lander.add_component(Wallet(credits=0.0))
+    lander.add_component(Engine())
+    world.add_entity(lander)
+
+    site = Entity(uid="site_high")
+    site.add_component(Transform(pos=Vector2(0.0, 120.0)))
+    site.add_component(LandingSite(size=30.0, terrain_mode="elevated_supports", terrain_bound=False))
+    site.add_component(LandingSiteEconomy(award=100.0, fuel_price=10.0))
+    world.add_entity(site)
+
+    model = LandingSiteSurfaceModel()
+    projection = LandingSiteProjectionSystem(model)
+    projection.world = world
+    projection.update(1.0 / 60.0)
+
+    system = ContactSystem(_FakeCollidingContactAdapter(), model)
+    system.world = world
+    system.update(1.0 / 60.0)
+
+    ls = lander.get_component(LanderState)
+    assert ls is not None
+    assert ls.state == "crashed"
 
 
 def test_lander_behavior_api_is_removed() -> None:

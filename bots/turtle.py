@@ -108,9 +108,13 @@ class TurtleBot(Bot):
         # Determine if target is above/below (y-up)
         target_below = False
         target_above = False
+        dy_to_target_world = None
+        pad_clearance = None
         if target_world_y is not None:
-            target_below = target_world_y <= passive.y - 2.0
-            target_above = target_world_y >= passive.y + 8.0
+            dy_to_target_world = target_world_y - passive.y
+            target_below = dy_to_target_world <= -2.0
+            target_above = dy_to_target_world >= 8.0
+            pad_clearance = passive.y - half_height - target_world_y
 
         # Vertical velocity target (up +). Negative values descend.
         if alt_ground is None and est_distance is not None:
@@ -154,7 +158,8 @@ class TurtleBot(Bot):
             if max_terrain >= (passive.y - half_height - 6.0):
                 need_strategic_climb = True
 
-        if target_above and (dx_to_target is None or abs(dx_to_target) > 40.0):
+        # Keep climbing toward elevated pads even when already horizontally aligned.
+        if target_above and (dx_to_target is None or abs(dx_to_target) > 10.0):
             need_strategic_climb = True
 
         if need_strategic_climb:
@@ -165,6 +170,15 @@ class TurtleBot(Bot):
             else:
                 climb_cmd = 2.5
             vy_sp = max(vy_sp, climb_cmd)
+        elif (
+            dy_to_target_world is not None
+            and dx_to_target is not None
+            and abs(dx_to_target) <= 80.0
+            and dy_to_target_world > 0.0
+        ):
+            # Near an elevated target in x: keep tracking target y (avoid diving to terrain).
+            desired_y = target_world_y + half_height + (10.0 if abs(dx_to_target) > 25.0 else 4.0)
+            vy_sp = max(vy_sp, min(4.5, 0.10 * (desired_y - passive.y) + 0.8))
 
         # Clearance requirements scale with speed; include half-height margin.
         min_clearance = half_height + 12.0 + 0.50 * speed
@@ -259,15 +273,16 @@ class TurtleBot(Bot):
             self.vehicle_info.safe_landing_velocity if self.vehicle_info is not None else 10.0
         )
         landing_window = False
-        if (dx_to_target is not None) and (
-            abs(dx_to_target)
-            <= max(
+        if dx_to_target is not None:
+            x_ok = abs(dx_to_target) <= max(
                 3.0,
                 (self.vehicle_info.width if self.vehicle_info is not None else 5.0) * 0.6,
             )
-        ):
-            if alt <= 2.5:
-                landing_window = True
+            if x_ok:
+                if pad_clearance is not None:
+                    landing_window = abs(pad_clearance) <= 2.5
+                else:
+                    landing_window = alt <= 2.5
         landing_mode = False
         if landing_window:
             landing_mode = True
@@ -286,8 +301,17 @@ class TurtleBot(Bot):
         e_alt = 0.0
         if landing_mode:
             e_alt = 0.0
-        elif alt_ground is not None:
-            if need_strategic_climb and cruise_y is not None:
+        elif alt_ground is not None or target_world_y is not None:
+            if (
+                dy_to_target_world is not None
+                and dx_to_target is not None
+                and abs(dx_to_target) <= 120.0
+                and dy_to_target_world > 0.0
+            ):
+                # For elevated pads, vertical loop should reference pad altitude near approach.
+                target_hold_y = target_world_y + half_height + 8.0
+                alt_sp = max(6.0, target_hold_y - passive.terrain_y - half_height)
+            elif need_strategic_climb and cruise_y is not None:
                 alt_sp = max(6.0, cruise_y - passive.terrain_y - half_height)
             else:
                 alt_sp = 34.0 if far else 18.0 if mid else 3.2
