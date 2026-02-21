@@ -45,6 +45,7 @@ class Minimap:
         main_camera: Camera,
         height_scale: float,
         contacts=None,
+        targets=None,
     ):
         """Draw minimap showing terrain overview and viewport indicator.
 
@@ -145,14 +146,27 @@ class Minimap:
                 screen, self.viewport_color, True, minimap_viewport_corners, 2
             )
 
-        # Draw landing pad markers using provided radar contacts as fixed 2x2 squares
+        # Draw landing pad markers.
+        # Prefer target-manager data so minimap visibility is independent of radar range.
+        if targets is not None and hasattr(targets, "get_targets"):
+            for t in targets.get_targets(self.camera.x, self.world_span_x / 2.0):
+                world_y = t.y * height_scale
+                px, py = oc.world_to_screen(t.x, world_y)
+                px = max(self.x, min(self.x + self.width, px))
+                py = max(self.y, min(self.y + self.height, py))
+                color = (255, 255, 0) if t.info.get("award", 1) == 0 else (50, 255, 50)
+                pygame.draw.rect(screen, color, pygame.Rect(px - 2, py - 2, 4, 4))
+            return
+
+        # Fallback: radar contacts (older call sites)
         if contacts:
             for c in contacts:
-                if c.distance is None:
-                    break
+                if c.x is None or c.y is None:
+                    continue
                 world_y = c.y * height_scale
                 px, py = oc.world_to_screen(c.x, world_y)
                 px = max(self.x, min(self.x + self.width, px))
                 py = max(self.y, min(self.y + self.height, py))
-                color = (255, 255, 0) if c.info["award"] == 0 else (50, 255, 50)
+                award = 1 if not c.info else c.info.get("award", 1)
+                color = (255, 255, 0) if award == 0 else (50, 255, 50)
                 pygame.draw.rect(screen, color, pygame.Rect(px - 2, py - 2, 4, 4))

@@ -15,14 +15,16 @@ from core.maths import Vector2
 
 if TYPE_CHECKING:
     from core.level import Level
+    from core.bot import Bot
 
 
 class Renderer:
     """Handles all rendering operations for the terrain app."""
 
-    def __init__(self, level: "Level", width: int, height: int):
+    def __init__(self, level: "Level", width: int, height: int, bot: "Bot | None" = None):
         """Initialize renderer with level reference and manage display/clock."""
         self.level = level
+        self.bot = bot
         # Avoid forcing an OpenGL context; some environments set this and lack GLX.
         os.environ.pop("PYGAME_FORCE_OPENGL", None)
         # Prefer EGL or software paths over GLX when available to avoid X_GLXCreateContext failures.
@@ -65,7 +67,7 @@ class Renderer:
         # UI fonts
         self.font = pygame.font.SysFont("monospace", 14)
         self.large_font = pygame.font.SysFont("monospace", 32, bold=True)
-        self.hud = HudOverlay(self.font, self.screen)
+        self.hud = HudOverlay(self.font, self.screen, bot=self.bot)
 
         self.indicator_circle_size = 0.8
 
@@ -162,8 +164,8 @@ class Renderer:
         if contacts is None:
             contacts = self._get_radar_contacts()
         for c in contacts:
-            if c.distance is None:
-                break
+            if c.x is None or c.y is None or c.size is None:
+                continue
             tx = c.x
             ty = c.y * self.height_scale
             half = c.size / 2.0
@@ -173,7 +175,7 @@ class Renderer:
             end_pos = self.main_camera.world_to_screen(tx + half, ty)
             color = (
                 self.visited_landing_target_color
-                if c.info["award"] == 0
+                if (getattr(c, "info", None) and c.info.get("award", 1) == 0)
                 else self.landing_target_color
             )
             pygame.draw.line(
@@ -252,7 +254,7 @@ class Renderer:
 
     def draw_ui(self):
         """Draw UI text: credits + lander stats + bot stats (static color)."""
-        self.hud.draw(self.level)
+        self.hud.draw(self.level, self.bot)
 
     def draw(self):
         """Render the complete scene."""
@@ -283,7 +285,13 @@ class Renderer:
             self.draw_thrusts(self.level.lander.get_thrusts(), self.main_camera)
 
         # Draw minimap
-        self.minimap.draw(self.screen, self.main_camera, self.height_scale, contacts)
+        self.minimap.draw(
+            self.screen,
+            self.main_camera,
+            self.height_scale,
+            contacts=contacts,
+            targets=self.level.targets,
+        )
 
         # Draw center orientation inset when zoomed far out
         if (

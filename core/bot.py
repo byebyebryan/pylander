@@ -6,7 +6,22 @@ from typing import Protocol, Any
 from core.sensor import RadarContact, ProximityContact
 
 
-@dataclass
+@dataclass(frozen=True)
+class VehicleInfo:
+    """Static vehicle parameters provided to the bot once at setup."""
+    width: float
+    height: float
+    dry_mass: float
+    fuel_density: float
+    max_thrust_power: float
+    safe_landing_velocity: float
+    safe_landing_angle: float
+    radar_outer_range: float
+    radar_inner_range: float
+    proximity_sensor_range: float
+
+
+@dataclass(frozen=True)
 class PassiveSensors:
     """Passive sensors snapshot available to the bot each frame.
 
@@ -62,7 +77,7 @@ class Bot(ABC):
 
     def __init__(self):
         self.status = ""
-        self.vehicle_info: dict | None = None
+        self.vehicle_info: VehicleInfo | None = None
 
     @abstractmethod
     def update(
@@ -84,9 +99,9 @@ class Bot(ABC):
         """Get current bot status message for UI/logs."""
         return self.status
 
-    def set_vehicle_info(self, info: dict):
+    def set_vehicle_info(self, info: "VehicleInfo"):
         """Provide static vehicle parameters (dimensions, masses, performance)."""
-        self.vehicle_info = dict(info) if info is not None else {}
+        self.vehicle_info = info
 
     def get_stats_text(self) -> list[str]:
         """Return a list of UI text lines for this bot.
@@ -107,9 +122,16 @@ class Bot(ABC):
         return f"bot:{s}" if s else ""
 
 
-"""
-Concrete bot classes moved into the `bots/` package.
-- `bots.turtle.TurtleBot`
-- `bots.hare.HareBot`
-- `bots.magpie.MagpieBot`
-"""
+class _ActiveSensorImpl:
+    """Concrete ActiveSensors implementation backed by an engine adapter."""
+
+    def __init__(self, origin_fn, radar_range_fn, engine_adapter):
+        self._origin = origin_fn
+        self._range = radar_range_fn
+        self._engine = engine_adapter
+
+    def raycast(self, dir_angle: float, max_range: float | None = None) -> dict:
+        rng = self._range() if max_range is None else max_range
+        if self._engine is None:
+            return {"hit": False, "hit_x": 0.0, "hit_y": 0.0, "distance": None}
+        return self._engine.raycast(self._origin(), dir_angle, rng)

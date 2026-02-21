@@ -35,27 +35,6 @@ class PhysicsState:
     vel: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
     acc: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
     mass: float = 1.0
-    
-    # Legacy compatibility properties
-    @property
-    def vx(self) -> float: return self.vel.x
-    @vx.setter
-    def vx(self, v: float): self.vel.x = v
-    
-    @property
-    def vy(self) -> float: return self.vel.y
-    @vy.setter
-    def vy(self, v: float): self.vel.y = v
-
-    @property
-    def ax(self) -> float: return self.acc.x
-    @ax.setter
-    def ax(self, v: float): self.acc.x = v
-
-    @property
-    def ay(self) -> float: return self.acc.y
-    @ay.setter
-    def ay(self, v: float): self.acc.y = v
 
 @dataclass
 class FuelTank:
@@ -93,3 +72,15 @@ class Radar:
     inner_range: float = 2000.0
     outer_range: float = 5000.0
     active: bool = True
+
+@dataclass
+class LanderState:
+    """Component representing the lander's flight/contact state."""
+    state: str = "flying"               # "flying", "landed", "crashed", "out_of_fuel"
+    safe_landing_velocity: float = 10.0
+    safe_landing_angle: float = 0.2618  # math.radians(15)
+
+@dataclass
+class Wallet:
+    """Component representing the lander's credits balance."""
+    credits: float = 0.0

@@ -55,9 +55,7 @@ class TurtleBot(Bot):
         alt_ground = prox.distance if prox is not None else None
         # Adjust for lander height: contact occurs when clearance ~= height/2
         half_height = 0.5 * (
-            self.vehicle_info.get("height", 8.0)
-            if isinstance(getattr(self, "vehicle_info", None), dict)
-            else 8.0
+            self.vehicle_info.height if self.vehicle_info is not None else 8.0
         )
         alt = (alt_ground - half_height) if alt_ground is not None else 1e9
 
@@ -92,9 +90,7 @@ class TurtleBot(Bot):
         if est_distance is not None:
             m_cap = max(0.5, passive.mass if hasattr(passive, "mass") else 2.0)
             max_thrust_power = (
-                self.vehicle_info.get("max_thrust_power", 50.0)
-                if isinstance(getattr(self, "vehicle_info", None), dict)
-                else 50.0
+                self.vehicle_info.max_thrust_power if self.vehicle_info is not None else 50.0
             )
             a_lat_cap = (max_thrust_power / m_cap) * math.sin(0.65)
             a_lat_cap = max(1e-3, a_lat_cap)
@@ -164,9 +160,7 @@ class TurtleBot(Bot):
         braking = False
         m_for_brake = max(0.5, passive.mass if hasattr(passive, "mass") else 2.0)
         max_thrust_power = (
-            self.vehicle_info.get("max_thrust_power", 50.0)
-            if isinstance(getattr(self, "vehicle_info", None), dict)
-            else 50.0
+            self.vehicle_info.max_thrust_power if self.vehicle_info is not None else 50.0
         )
         vx_deadband = 0.8
         if dx_to_target is not None:
@@ -238,21 +232,14 @@ class TurtleBot(Bot):
 
         # Decisive touchdown window using known safe tolerances
         safe_v = (
-            self.vehicle_info.get("safe_landing_velocity", 10.0)
-            if isinstance(getattr(self, "vehicle_info", None), dict)
-            else 10.0
+            self.vehicle_info.safe_landing_velocity if self.vehicle_info is not None else 10.0
         )
         landing_window = False
         if (dx_to_target is not None) and (
             abs(dx_to_target)
             <= max(
                 3.0,
-                (
-                    self.vehicle_info.get("width", 5.0)
-                    if isinstance(getattr(self, "vehicle_info", None), dict)
-                    else 5.0
-                )
-                * 0.6,
+                (self.vehicle_info.width if self.vehicle_info is not None else 5.0) * 0.6,
             )
         ):
             if alt <= 2.5:

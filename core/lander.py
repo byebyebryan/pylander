@@ -1,15 +1,14 @@
 """Lander physics and game state management."""
 
 import math
-from dataclasses import dataclass
 
 # No direct engine usage here; game loop owns engine
-from .bot import PassiveSensors, ActiveSensors
+from .bot import PassiveSensors, ActiveSensors, VehicleInfo, _ActiveSensorImpl
 from utils.protocols import ControlTuple, EngineProtocol
 from .lander_visuals import LanderVisuals, Thrust
 from core.maths import Vector2
 from core.ecs import Entity
-from core.components import Transform as TransformComponent, PhysicsState, FuelTank, Engine, LanderGeometry, Radar
+from core.components import Transform as TransformComponent, PhysicsState, FuelTank, Engine, LanderGeometry, Radar, LanderState, Wallet
 
 
 class Lander(Entity, LanderVisuals):
@@ -49,19 +48,20 @@ class Lander(Entity, LanderVisuals):
         self.radar = Radar()
         self.add_component(self.radar)
 
-        # Economy/Status (Not strictly componentized yet, could be Wallet component)
-        self.credits = 0.0
-        self.state = "flying"
-        
+        # 7. LanderState Component
+        self.lander_state = LanderState()
+        self.add_component(self.lander_state)
+
+        # 8. Wallet Component
+        self.wallet = Wallet()
+        self.add_component(self.wallet)
+
         # Physics constants (Legacy overrides or config)
-        self.safe_landing_velocity = 10.0
-        self.safe_landing_angle = math.radians(15)
-        self.refuel_rate = 1.0 
+        self.refuel_rate = 1.0
         self.proximity_sensor_range = 500.0
-        
+
         # Misc
         self.enclosing_radius = math.hypot(self.geo.width / 2.0, self.geo.height / 2.0)
-        self._physics_frame_id = 0
 
     # -------------------------------------------------------------------------
     # Property Facades (Forwarding to Components)
@@ -100,24 +100,24 @@ class Lander(Entity, LanderVisuals):
     def acc(self, v: Vector2): self.physics.acc = v
     
     @property
-    def vx(self) -> float: return self.physics.vx
+    def vx(self) -> float: return self.physics.vel.x
     @vx.setter
-    def vx(self, v: float): self.physics.vx = v
-    
+    def vx(self, v: float): self.physics.vel.x = v
+
     @property
-    def vy(self) -> float: return self.physics.vy
+    def vy(self) -> float: return self.physics.vel.y
     @vy.setter
-    def vy(self, v: float): self.physics.vy = v
-    
+    def vy(self, v: float): self.physics.vel.y = v
+
     @property
-    def ax(self) -> float: return self.physics.ax
+    def ax(self) -> float: return self.physics.acc.x
     @ax.setter
-    def ax(self, v: float): self.physics.ax = v
-    
+    def ax(self, v: float): self.physics.acc.x = v
+
     @property
-    def ay(self) -> float: return self.physics.ay
+    def ay(self) -> float: return self.physics.acc.y
     @ay.setter
-    def ay(self, v: float): self.physics.ay = v
+    def ay(self, v: float): self.physics.acc.y = v
 
     # Fuel/Engine
     @property
@@ -187,6 +187,24 @@ class Lander(Entity, LanderVisuals):
     @dry_mass.setter
     def dry_mass(self, v: float): self.physics.mass = v
 
+    # LanderState
+    @property
+    def state(self) -> str: return self.lander_state.state
+    @state.setter
+    def state(self, v: str): self.lander_state.state = v
+
+    @property
+    def safe_landing_velocity(self) -> float: return self.lander_state.safe_landing_velocity
+
+    @property
+    def safe_landing_angle(self) -> float: return self.lander_state.safe_landing_angle
+
+    # Wallet
+    @property
+    def credits(self) -> float: return self.wallet.credits
+    @credits.setter
+    def credits(self, v: float): self.wallet.credits = v
+
     def get_mass(self) -> float:
         """Return the mass of the lander."""
         return self.physics.mass + self.tank.fuel * self.tank.density
@@ -214,10 +232,6 @@ class Lander(Entity, LanderVisuals):
         # Visual angle is direction of flame (opposite the force direction)
         visual_angle = math.atan2(-fy, -fx)
         return (fx, fy, visual_angle, self.thrust_level)
-
-    def get_fuel_burn(self, dt: float) -> float:
-        """Compute fuel units to burn this frame (variants may override)."""
-        return max(0.0, self.fuel_burn_rate * max(0.0, min(1.0, self.thrust_level)) * dt)
 
     def get_controls_text(self) -> list[str]:
         """Return control help lines for UI rendering."""
@@ -270,56 +284,6 @@ class Lander(Entity, LanderVisuals):
                 self.y += 1.0
 
 
-    def resolve_contact(self, report: dict, targets) -> str | None:
-        """Resolve landing or crash based on a contact report.
-
-        Returns the new state ("landed"/"crashed") if a transition occurs.
-        """
-        if (
-            self.state != "flying"
-            or not report.get("colliding")
-            or self.vel.y > 0.0
-        ):
-            return None
-
-        speed = self.vel.length()
-        angle_ok = abs(self.rotation) < self.safe_landing_angle
-        speed_ok = speed < self.safe_landing_velocity
-
-        target = None
-        if targets is not None:
-            nearby = targets.get_targets(self.x, 0)
-            target = nearby[0] if nearby else None
-
-        if angle_ok and speed_ok and target is not None:
-            self._apply_landing(target)
-            return "landed"
-
-        self._apply_crash()
-        return "crashed"
-
-    def _apply_landing(self, target) -> None:
-        self.state = "landed"
-        self.vel.update(0.0, 0.0)
-        self.thrust_level = 0.0
-        self.rotation = 0.0
-        self.target_thrust = 0.0
-        self.target_angle = 0.0
-        platform_height = target.y
-        self.pos.y = platform_height + self.height / 2.0
-        self.credits += target.info["award"]
-        target.info["award"] = 0
-
-    def _apply_crash(self) -> None:
-        self.state = "crashed"
-        self.vel.update(0.0, 0.0)
-        self.thrust_level = 0.0
-        self.target_thrust = 0.0
-
-    def update_physics(self, terrain, targets, dt: float):
-        """Legacy no-op; physics is managed by the engine via game loop."""
-        return
-
     def reset(self, start_x: float | None = None, start_y: float | None = None):
         """Reset lander to starting state. Caller provides explicit world coords."""
         if start_x is None:
@@ -341,20 +305,20 @@ class Lander(Entity, LanderVisuals):
         self.target_angle = 0.0
         self.state = "flying"
 
-    def get_vehicle_info(self) -> dict:
-        """Return a dict of vehicle information for the bot."""
-        return {
-            "width": self.width,
-            "height": self.height,
-            "dry_mass": self.dry_mass,
-            "fuel_density": self.fuel_density,
-            "max_thrust_power": self.max_thrust_power,
-            "safe_landing_velocity": self.safe_landing_velocity,
-            "safe_landing_angle": self.safe_landing_angle,
-            "radar_outer_range": self.radar_outer_range,
-            "radar_inner_range": self.radar_inner_range,
-            "proximity_sensor_range": self.proximity_sensor_range,
-        }
+    def get_vehicle_info(self) -> VehicleInfo:
+        """Return typed vehicle parameters for the bot."""
+        return VehicleInfo(
+            width=self.width,
+            height=self.height,
+            dry_mass=self.dry_mass,
+            fuel_density=self.fuel_density,
+            max_thrust_power=self.max_thrust_power,
+            safe_landing_velocity=self.safe_landing_velocity,
+            safe_landing_angle=self.safe_landing_angle,
+            radar_outer_range=self.radar_outer_range,
+            radar_inner_range=self.radar_inner_range,
+            proximity_sensor_range=self.proximity_sensor_range,
+        )
 
     def get_radar_contacts(
         self,
@@ -416,20 +380,11 @@ class Lander(Entity, LanderVisuals):
             proximity=prox,
         )
 
-        # Active sensor interfaces
-        pass
-
-        # Provide a simple object implementing the ActiveSensors protocol
-        class _Active:
-            def raycast(self, dir_angle: float, max_range: float | None = None):
-                rng = self_outer.radar_inner_range if max_range is None else max_range
-                if engine is None:
-                    return {"hit": False, "hit_x": 0.0, "hit_y": 0.0, "distance": None}
-                res = engine.raycast((self_outer.x, self_outer.y), dir_angle, rng)
-                return res
-
-        self_outer = self
-        active: ActiveSensors = _Active()
+        active: ActiveSensors = _ActiveSensorImpl(
+            origin_fn=lambda: (self.x, self.y),
+            radar_range_fn=lambda: self.radar_inner_range,
+            engine_adapter=engine,
+        )
 
         return passive, active
 

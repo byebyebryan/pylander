@@ -52,7 +52,9 @@ class LoopTimers:
 
 from core.ecs import World
 from core.systems.propulsion import PropulsionSystem
+from core.systems.force_application import ForceApplicationSystem
 from core.systems.physics_sync import PhysicsSyncSystem
+from core.systems.contact import ContactSystem
 
 class LanderGame:
     """Main application for lunar lander game."""
@@ -87,12 +89,23 @@ class LanderGame:
         # Optional physics engine provided by the level
         self.engine = getattr(self.level, "engine", None)
         self.engine_adapter = EngineAdapter(self.engine)
-        
-        # ECS Setup
+
+        # ECS World — pure entity/component registry; systems are called explicitly
         self.ecs_world = World()
         self.ecs_world.add_entity(self.lander)
-        self.ecs_world.add_system(PropulsionSystem())
-        self.ecs_world.add_system(PhysicsSyncSystem(self.engine_adapter))
+
+        # Systems stored as named attributes and called in explicit order each physics step
+        self.propulsion_system = PropulsionSystem()
+        self.propulsion_system.world = self.ecs_world
+        self.force_application_system = ForceApplicationSystem(self.engine_adapter)
+        self.force_application_system.world = self.ecs_world
+        self.physics_sync_system = PhysicsSyncSystem(self.engine_adapter)
+        self.physics_sync_system.world = self.ecs_world
+        self.contact_system = ContactSystem(self.engine_adapter, None)  # targets set after level.setup
+        self.contact_system.world = self.ecs_world
+
+        # Wire targets into ContactSystem now that level.setup() has run
+        self.contact_system.targets = self.targets
 
         self.bot_override_delay = 1.0
         self._bot_override_timer = 0.0
@@ -100,7 +113,7 @@ class LanderGame:
         # Input/Renderer
         if not headless and InputHandler is not None and Renderer is not None:
             self.input_handler = InputHandler()
-            self.renderer = Renderer(self.level, width, height)
+            self.renderer = Renderer(self.level, width, height, bot=self.bot)
             self.player_controller = PlayerController()
         else:
             self.input_handler = None
@@ -110,9 +123,6 @@ class LanderGame:
         # Pass static vehicle info to bot if available
         if self.bot is not None and hasattr(self.bot, "set_vehicle_info"):
             self.bot.set_vehicle_info(self.lander.get_vehicle_info())
-        # Expose bot on level for renderer/UI access
-        if self.bot is not None:
-            setattr(self.level, "bot", self.bot)
 
         # Level start hook
         self.level.start(self)
@@ -210,8 +220,7 @@ class LanderGame:
                 and self.lander.state == "flying"
             ):
                 self.engine_adapter.teleport_lander(
-                    self.lander.x,
-                    self.lander.y,
+                    (self.lander.x, self.lander.y),
                     angle=self.lander.rotation,
                     clear_velocity=True,
                 )
@@ -293,25 +302,26 @@ class LanderGame:
         return user_controls, input_events
 
     def _update_physics_steps(self, timers: LoopTimers) -> None:
-        """Run physics steps until timer accumulator is drained."""
+        """Run physics steps until timer accumulator is drained.
+
+        Execution order per step:
+          1. PropulsionSystem   — thrust/rotation slew + fuel burn
+          2. ForceApplicationSystem — push forces + rotation override to physics body
+          3. engine_adapter.step()  — physics integration (NEW state computed)
+          4. PhysicsSyncSystem  — sync pos/vel FROM physics engine into components
+          5. ContactSystem      — landing/crash state transitions
+        """
         physics_dt = timers.physics_dt
         while timers.should_step_physics():
             timers.consume_physics()
-            
-            # 1. ECS Update (Propulsion -> Forces, PhysicsSync -> Syncs old state)
-            self.ecs_world.update(physics_dt)
-            
-            # 2. Physics Step (Forces applied above, now integrate)
+
+            self.propulsion_system.update(physics_dt)
+            self.force_application_system.update(physics_dt)
+
             if self.engine_adapter.enabled:
                 self.engine_adapter.step(physics_dt)
-                
-                # Advance physics frame id for caching (legacy)
-                self.lander._physics_frame_id += 1
-
-                # Landing/crash resolution using contact report
-                # (Ideally this should be a System too, but keeping legacy hook for now)
-                report = self.engine_adapter.get_contact_report()
-                self.lander.resolve_contact(report, self.targets)
+                self.physics_sync_system.update(physics_dt)
+                self.contact_system.update(physics_dt)
 
 
     def _update_bot_steps(self, timers: LoopTimers) -> ControlTuple | None:

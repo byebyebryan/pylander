@@ -6,29 +6,31 @@ from __future__ import annotations
 class HudOverlay:
     """Draw heads-up display text for lander status and controls."""
 
-    def __init__(self, font, screen):
+    def __init__(self, font, screen, bot=None):
         self.font = font
         self.screen = screen
+        self.bot = bot
 
-    def draw(self, level) -> None:
+    def draw(self, level, bot=None) -> None:
         lander = level.lander
         if not lander:
             return
 
-        info_lines = self._build_info_lines(level)
+        # Caller can pass a bot override; fall back to the stored reference
+        effective_bot = bot if bot is not None else self.bot
+
+        info_lines = self._build_info_lines(level, effective_bot)
         self._draw_text_lines(info_lines, 10, (220, 220, 220))
 
         control_lines = self._build_control_lines(lander)
         y_offset = self.screen.get_height() - 20 - (len(control_lines) * 18)
         self._draw_text_lines(control_lines, y_offset, (200, 200, 200))
 
-    def _build_info_lines(self, level) -> list[str]:
+    def _build_info_lines(self, level, bot=None) -> list[str]:
         lines: list[str] = [f"CREDITS: {level.lander.credits:.0f}"]
         lines.extend(level.lander.get_stats_text(level.terrain))
-        if getattr(level, "bot", None) is not None and hasattr(
-            level.bot, "get_stats_text"
-        ):
-            lines.extend(level.bot.get_stats_text())
+        if bot is not None and hasattr(bot, "get_stats_text"):
+            lines.extend(bot.get_stats_text())
         return lines
 
     def _build_control_lines(self, lander) -> list[str]:
