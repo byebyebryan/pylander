@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 from core.bot import Bot, BotAction
-from core.components import ActorControlRole, LanderState, PlayerControlled, PlayerSelectable
+from core.components import (
+    ActorControlRole,
+    LanderGeometry,
+    LanderState,
+    PlayerControlled,
+    PlayerSelectable,
+    Transform,
+)
 from core.landing_sites import LandingSiteSurfaceModel
 from core.maths import Vector2
 from core.lander import Lander
 from core.level import Level, LevelWorld
 from game import LanderGame
+from levels.level_1 import create_level as create_level_1
 
 
 class _FlatTerrain:
@@ -193,3 +201,28 @@ def test_game_assigns_passed_bot_to_bot_role_actor() -> None:
     game = LanderGame(level=level, bot=bot, headless=True)
 
     assert game.actor_bots == {"actor_bot": bot}
+
+
+def test_level_1_actor_spawns_are_above_local_terrain() -> None:
+    level = create_level_1()
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=123)
+    terrain = game.terrain
+
+    actors = getattr(game.level.world, "actors", [])
+    assert len(actors) >= 2
+
+    for actor in actors:
+        trans = actor.get_component(Transform)
+        geo = actor.get_component(LanderGeometry)
+        assert trans is not None
+        assert geo is not None
+
+        half_w = geo.width * 0.5
+        bottom = trans.pos.y - geo.height * 0.5
+        sample_xs = (
+            trans.pos.x - half_w,
+            trans.pos.x,
+            trans.pos.x + half_w,
+        )
+        for sx in sample_xs:
+            assert bottom - terrain(sx) >= 10.0

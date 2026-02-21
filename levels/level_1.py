@@ -46,6 +46,25 @@ def _get_mass(entity) -> float:
     return phys.mass + tank.fuel * tank.density
 
 
+def _compute_lander_spawn_pos(
+    terrain,
+    x: float,
+    geo: LanderGeometry,
+    *,
+    clearance: float = 80.0,
+) -> Vector2:
+    """Pick a spawn point safely above local terrain under the hull footprint."""
+    half_w = max(geo.width * 0.5, 1.0)
+    half_h = max(geo.height * 0.5, 1.0)
+    samples = 9
+    max_ground = terrain(x)
+    for i in range(samples):
+        t = i / (samples - 1)
+        sx = x - half_w + (2.0 * half_w * t)
+        max_ground = max(max_ground, terrain(sx))
+    return Vector2(x, max_ground + half_h + clearance)
+
+
 class GentleStartLevel(Level):
     """Baseline level: simplex terrain with decoupled landing sites."""
 
@@ -109,27 +128,28 @@ class GentleStartLevel(Level):
             LandingSiteTerrainModifier(site_model),
         )
 
-        start_pos = Vector2(0.0, terrain(0.0) + 100.0)
         # Create lander via dynamic loader; default to "classic" when unspecified
         lander_name = getattr(self, "lander_name", "classic")
         player_lander = create_lander(lander_name)
-        player_lander.start_pos = Vector2(start_pos)
         player_lander.add_component(ActorProfile(kind="lander", name="player"))
         player_lander.add_component(ActorControlRole(role="human"))
         player_lander.add_component(PlayerSelectable(order=0))
         player_lander.add_component(PlayerControlled(active=True))
         player_trans = _require_component(player_lander, Transform)
         player_geo = _require_component(player_lander, LanderGeometry)
+        start_pos = _compute_lander_spawn_pos(terrain, 0.0, player_geo)
+        player_lander.start_pos = Vector2(start_pos)
         player_trans.pos = Vector2(start_pos)
 
-        bot_start = Vector2(start_pos.x + 120.0, start_pos.y + 20.0)
+        bot_spawn_x = start_pos.x + 120.0
         bot_lander = create_lander(lander_name)
-        bot_lander.start_pos = Vector2(bot_start)
         bot_lander.add_component(ActorProfile(kind="lander", name="bot"))
         bot_lander.add_component(ActorControlRole(role="bot"))
         bot_lander.add_component(PlayerSelectable(order=1))
         bot_trans = _require_component(bot_lander, Transform)
         bot_geo = _require_component(bot_lander, LanderGeometry)
+        bot_start = _compute_lander_spawn_pos(terrain, bot_spawn_x, bot_geo)
+        bot_lander.start_pos = Vector2(bot_start)
         bot_trans.pos = Vector2(bot_start)
         actors = [player_lander, bot_lander]
 
