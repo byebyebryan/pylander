@@ -33,6 +33,9 @@ Watch an AI bot play using the sensor/action API:
 # Canonical descent benchmark level + bot
 uv run python main.py level_descent
 
+# Pick a specific descent scenario
+uv run python main.py level_descent --scenario vertical_high
+
 # Use descent bot on other levels if desired
 uv run python main.py level_flat descent
 ```
@@ -54,12 +57,13 @@ uv run python main.py level_descent --headless --freq 0 --steps 10000
 
 # Use different seed or lander
 uv run python main.py level_descent --headless --seed 123
+uv run python main.py level_descent --headless --scenario vertical_speed --seed 123
 uv run python main.py level_flat --lander differential
 ```
 
 Batch evaluation (headless, sequential single-bot runs):
 ```bash
-# Fast preset benchmark (3 seeds x level_descent attitudes)
+# Fast preset benchmark (3 seeds x level_descent scenarios)
 uv run python main.py level_descent --headless --quick-benchmark
 
 # Scenario-specific batch using level default bot
@@ -72,6 +76,7 @@ uv run python main.py level_descent --headless --batch \
 uv run python main.py level_descent --headless --batch \
   --batch-seeds 0-19 \
   --batch-levels level_descent \
+  --batch-scenarios vertical_high,vertical_speed \
   --batch-json auto \
   --batch-csv auto
 ```
@@ -119,7 +124,7 @@ class MyBot(Bot):
 ## Scenario Levels
 
 Dedicated scenario levels (default bot in parentheses):
-- `level_descent` (`descent`) - unified descent benchmark with attitudes:
+- `level_descent` (`descent`) - unified descent benchmark with scenarios:
   - `vertical_low`
   - `vertical_mid_a`
   - `vertical_mid_b`
@@ -144,10 +149,12 @@ python main.py [level_name] [bot_name] [options]
 - `--plot none|speed|thrust|all` - Save trajectory plot (headless)
 - `--stop-on-crash`, `--stop-on-out-of-fuel`, `--stop-on-first-land` - End conditions
 - `--seed N` - Random seed
+- `--scenario NAME` - Select a level scenario (if supported)
 - `--lander NAME` - Lander variant (classic, differential, simple)
 - `--batch` - Enable batch runs (requires `--headless` + bot)
 - `--batch-seeds SPEC` - Seeds like `0-19` or `0,1,2,5`
 - `--batch-levels CSV` - Level names for batch suites
+- `--batch-scenarios CSV` - Scenario names for batch suites
 - `--batch-json PATH|auto` - Write JSON report
 - `--batch-csv PATH|auto` - Write CSV rows
 - `--batch-workers N` - Parallel worker processes for batch runs (`1` = sequential; effective workers are capped by CPU count and run count)

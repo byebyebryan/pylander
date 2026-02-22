@@ -42,6 +42,8 @@ class RunConfig:
     batch_csv: str | None
     quick_benchmark: bool
     batch_workers: int
+    scenario_name: str | None = None
+    batch_scenarios: str | None = None
 
 
 def _format_list(title: str, items: list[str]) -> str:
@@ -123,6 +125,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Terminate after first landing",
     )
     parser.add_argument("--seed", type=int, default=None, help="Random seed")
+    parser.add_argument(
+        "--scenario",
+        type=str,
+        default=None,
+        help="Run a specific scenario for levels that support scenario selection",
+    )
     parser.add_argument("--lander", choices=landers, help="Choose lander variant")
     parser.add_argument(
         "--batch",
@@ -140,6 +148,12 @@ def _build_parser() -> argparse.ArgumentParser:
         type=str,
         default=None,
         help="Comma-separated level list for batch runs",
+    )
+    parser.add_argument(
+        "--batch-scenarios",
+        type=str,
+        default=None,
+        help="Comma-separated scenario list for batch runs",
     )
     parser.add_argument(
         "--batch-json",
@@ -173,6 +187,7 @@ def _parse_args(args: argparse.Namespace) -> RunConfig:
         or args.quick_benchmark
         or args.batch_seeds is not None
         or args.batch_levels is not None
+        or args.batch_scenarios is not None
         or args.batch_json is not None
         or args.batch_csv is not None
     )
@@ -193,9 +208,11 @@ def _parse_args(args: argparse.Namespace) -> RunConfig:
         stop_on_out_of_fuel=args.stop_on_out_of_fuel,
         stop_on_first_land=args.stop_on_first_land,
         seed=args.seed,
+        scenario_name=(args.scenario.strip() if args.scenario else None),
         lander_name=args.lander,
         batch_seeds=args.batch_seeds,
         batch_levels=args.batch_levels,
+        batch_scenarios=args.batch_scenarios,
         batch_json=args.batch_json,
         batch_csv=args.batch_csv,
         quick_benchmark=args.quick_benchmark,
@@ -234,6 +251,8 @@ def _announce_config(config: RunConfig, args: argparse.Namespace) -> None:
 
     if config.seed is not None:
         print(f"Using seed: {config.seed}")
+    if config.scenario_name:
+        print(f"Using scenario: {config.scenario_name}")
 
     if config.lander_name:
         print(f"Using lander: {config.lander_name}")
@@ -244,6 +263,8 @@ def _announce_config(config: RunConfig, args: argparse.Namespace) -> None:
             print(f"Batch seeds: {config.batch_seeds}")
         if config.batch_levels:
             print(f"Batch levels: {config.batch_levels}")
+        if config.batch_scenarios:
+            print(f"Batch scenarios: {config.batch_scenarios}")
         if config.quick_benchmark:
             print("Quick benchmark preset: enabled")
 
@@ -290,6 +311,7 @@ def _is_batch_mode(config: RunConfig) -> bool:
         or config.quick_benchmark
         or config.batch_seeds is not None
         or config.batch_levels is not None
+        or config.batch_scenarios is not None
         or config.batch_json is not None
         or config.batch_csv is not None
     )
@@ -355,16 +377,35 @@ def _resolve_run_bot_name(config: RunConfig, level) -> str | None:
     return default_bot if default_bot else None
 
 
-def _resolve_level_batch_attitudes(level_name: str) -> list[str]:
+def _resolve_level_batch_scenarios(level_name: str) -> list[str]:
     try:
         level = create_level(level_name)
     except Exception:
         return []
-    list_attitudes = getattr(level, "list_batch_attitudes", None)
-    if not callable(list_attitudes):
+    list_scenarios = getattr(level, "list_batch_scenarios", None)
+    if not callable(list_scenarios):
         return []
-    out = [str(name).strip() for name in list_attitudes()]
+    out = [str(name).strip() for name in list_scenarios()]
     return [name for name in out if name]
+
+
+def _set_level_eval_scenario(level, name: str | None) -> None:
+    if name is None:
+        return
+    set_scenario = getattr(level, "set_eval_scenario", None)
+    if not callable(set_scenario):
+        level_name = type(level).__name__
+        raise ValueError(f"Level '{level_name}' does not support scenario selection")
+    set_scenario(name)
+    return
+
+
+def _resolve_config_batch_scenarios(config: RunConfig, level_name: str) -> list[str]:
+    if config.batch_scenarios:
+        return _parse_name_csv(config.batch_scenarios)
+    if config.scenario_name:
+        return [config.scenario_name]
+    return _resolve_level_batch_scenarios(level_name)
 
 
 def _resolve_batch_plan(config: RunConfig) -> tuple[list[int], list[str]]:
@@ -411,15 +452,15 @@ def _run_once(
     *,
     seed: int | None = None,
     level_name: str | None = None,
-    attitude_name: str | None = None,
+    eval_scenario_name: str | None = None,
     print_results: bool = True,
 ) -> dict[str, Any]:
     run_level_name = level_name or config.level_name
     level = create_level(run_level_name)
-    if attitude_name is not None:
-        set_attitude = getattr(level, "set_eval_attitude", None)
-        if callable(set_attitude):
-            set_attitude(attitude_name)
+    chosen_scenario = eval_scenario_name
+    if chosen_scenario is None and not _is_batch_mode(config):
+        chosen_scenario = config.scenario_name
+    _set_level_eval_scenario(level, chosen_scenario)
     _configure_level(level, config)
     run_bot_name = _resolve_run_bot_name(config, level)
     bot = create_bot(run_bot_name) if run_bot_name is not None else None
@@ -443,13 +484,13 @@ def _run_once_record(
     *,
     seed: int | None,
     level_name: str,
-    attitude_name: str | None = None,
+    eval_scenario_name: str | None = None,
 ) -> dict[str, Any]:
     result = _run_once(
         config,
         seed=seed,
         level_name=level_name,
-        attitude_name=attitude_name,
+        eval_scenario_name=eval_scenario_name,
         print_results=False,
     )
     record_bot_name = str(result.get("_bot_name") or config.bot_name or "none")
@@ -470,10 +511,10 @@ def _run_batch_sequential(
 ) -> list[dict[str, Any]]:
     total = len(run_plan)
     records: list[dict[str, Any]] = []
-    for run_idx, (seed, level_name, attitude_name) in enumerate(run_plan, start=1):
-        if attitude_name is not None:
+    for run_idx, (seed, level_name, scenario_name) in enumerate(run_plan, start=1):
+        if scenario_name is not None:
             print(
-                f"[{run_idx}/{total}] seed={seed} level={level_name} attitude={attitude_name}"
+                f"[{run_idx}/{total}] seed={seed} level={level_name} scenario={scenario_name}"
             )
         else:
             print(f"[{run_idx}/{total}] seed={seed} level={level_name}")
@@ -482,7 +523,7 @@ def _run_batch_sequential(
                 config,
                 seed=seed,
                 level_name=level_name,
-                attitude_name=attitude_name,
+                eval_scenario_name=scenario_name,
             )
         )
     return records
@@ -581,12 +622,12 @@ def _run_batch(config: RunConfig) -> int:
 
     run_plan: list[tuple[int, str, str | None]] = []
     for level_name in levels:
-        attitudes = _resolve_level_batch_attitudes(level_name)
-        if not attitudes:
+        scenarios = _resolve_config_batch_scenarios(config, level_name)
+        if not scenarios:
             run_plan.extend((seed, level_name, None) for seed in seeds)
             continue
-        for attitude_name in attitudes:
-            run_plan.extend((seed, level_name, attitude_name) for seed in seeds)
+        for scenario_name in scenarios:
+            run_plan.extend((seed, level_name, scenario_name) for seed in seeds)
     total = len(run_plan)
     if total <= 0:
         raise ValueError("Batch mode resolved no runs")
@@ -611,7 +652,7 @@ def _run_batch(config: RunConfig) -> int:
         try:
             with ProcessPoolExecutor(max_workers=worker_count) as pool:
                 future_map = {}
-                for run_idx, (seed, level_name, attitude_name) in enumerate(
+                for run_idx, (seed, level_name, scenario_name) in enumerate(
                     run_plan, start=1
                 ):
                     fut = pool.submit(
@@ -619,27 +660,27 @@ def _run_batch(config: RunConfig) -> int:
                         config,
                         seed=seed,
                         level_name=level_name,
-                        attitude_name=attitude_name,
+                        eval_scenario_name=scenario_name,
                     )
-                    future_map[fut] = (run_idx, seed, level_name, attitude_name)
+                    future_map[fut] = (run_idx, seed, level_name, scenario_name)
                 done = 0
                 for fut in as_completed(future_map):
-                    run_idx, seed, level_name, attitude_name = future_map[fut]
+                    run_idx, seed, level_name, scenario_name = future_map[fut]
                     try:
                         record = fut.result()
                     except Exception as exc:
-                        attitude_label = (
-                            f" attitude={attitude_name}" if attitude_name is not None else ""
+                        scenario_label = (
+                            f" scenario={scenario_name}" if scenario_name is not None else ""
                         )
                         raise RuntimeError(
                             f"run {run_idx}/{total} seed={seed} level={level_name} "
-                            f"{attitude_label} failed ({type(exc).__name__}: {exc})"
+                            f"{scenario_label} failed ({type(exc).__name__}: {exc})"
                         ) from exc
                     done += 1
-                    if attitude_name is not None:
+                    if scenario_name is not None:
                         print(
                             f"[{done}/{total}] done seed={seed} level={level_name} "
-                            f"attitude={attitude_name}"
+                            f"scenario={scenario_name}"
                         )
                     else:
                         print(f"[{done}/{total}] done seed={seed} level={level_name}")
@@ -718,11 +759,14 @@ def main() -> None:
     elif default_bot_name is not None:
         print(f"Running with bot {default_bot_name} (level default)")
 
-    result = _run_once(
-        config,
-        seed=config.seed,
-        print_results=config.headless,
-    )
+    try:
+        result = _run_once(
+            config,
+            seed=config.seed,
+            print_results=config.headless,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     _ = result
 
 

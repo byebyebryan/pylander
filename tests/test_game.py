@@ -415,8 +415,7 @@ def test_cli_defaults_to_level_flat_when_omitted() -> None:
 
 def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
     level_a = create_level_by_name("level_descent")
-    if hasattr(level_a, "set_eval_attitude"):
-        level_a.set_eval_attitude("vertical_mid_b")
+    level_a.set_eval_scenario("vertical_mid_b")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=77)
     actor_a = game_a.actors[0]
     trans_a = actor_a.get_component(Transform)
@@ -425,8 +424,7 @@ def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
     assert site_a is not None
 
     level_b = create_level_by_name("level_descent")
-    if hasattr(level_b, "set_eval_attitude"):
-        level_b.set_eval_attitude("vertical_mid_b")
+    level_b.set_eval_scenario("vertical_mid_b")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=77)
     actor_b = game_b.actors[0]
     trans_b = actor_b.get_component(Transform)
@@ -440,12 +438,12 @@ def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
     assert site_a.pos.y == site_b.pos.y
 
 
-def test_descent_level_lists_expected_attitudes() -> None:
+def test_descent_level_lists_expected_scenarios() -> None:
     level = create_level_by_name("level_descent")
-    list_attitudes = getattr(level, "list_batch_attitudes", None)
-    assert callable(list_attitudes)
-    attitudes = list_attitudes()
-    assert attitudes == [
+    list_scenarios = getattr(level, "list_batch_scenarios", None)
+    assert callable(list_scenarios)
+    scenarios = list_scenarios()
+    assert scenarios == [
         "vertical_low",
         "vertical_mid_a",
         "vertical_mid_b",
@@ -454,10 +452,9 @@ def test_descent_level_lists_expected_attitudes() -> None:
     ]
 
 
-def test_descent_vertical_speed_attitude_sets_recoverable_initial_velocity() -> None:
+def test_descent_vertical_speed_scenario_sets_recoverable_initial_velocity() -> None:
     level = create_level_by_name("level_descent")
-    if hasattr(level, "set_eval_attitude"):
-        level.set_eval_attitude("vertical_speed")
+    level.set_eval_scenario("vertical_speed")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
     phys = actor.get_component(PhysicsState)
@@ -603,9 +600,11 @@ def test_parse_args_defaults_to_quiet_batch_output() -> None:
         stop_on_out_of_fuel=False,
         stop_on_first_land=False,
         seed=None,
+        scenario=None,
         lander=None,
         batch_seeds="0-1",
         batch_levels=None,
+        batch_scenarios=None,
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
@@ -613,6 +612,35 @@ def test_parse_args_defaults_to_quiet_batch_output() -> None:
     )
     config = _parse_args(args)
     assert config.print_freq == 0
+
+
+def test_parse_args_accepts_scenario_options() -> None:
+    args = argparse.Namespace(
+        level_name="level_descent",
+        bot_name="descent",
+        headless=True,
+        batch=False,
+        freq=None,
+        steps=None,
+        time=None,
+        plot=None,
+        stop_on_crash=False,
+        stop_on_out_of_fuel=False,
+        stop_on_first_land=False,
+        seed=None,
+        scenario="vertical_high",
+        lander=None,
+        batch_seeds=None,
+        batch_levels=None,
+        batch_scenarios="vertical_high,vertical_speed",
+        batch_json=None,
+        batch_csv=None,
+        quick_benchmark=False,
+        batch_workers=1,
+    )
+    config = _parse_args(args)
+    assert config.scenario_name == "vertical_high"
+    assert config.batch_scenarios == "vertical_high,vertical_speed"
 
 
 def test_hud_altitude_matches_passive_sensor_clearance_convention() -> None:
@@ -646,9 +674,9 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
     def _fake_plan(_config):
         return [0, 1], ["level_descent"]
 
-    def _fake_run_once_record(config, *, seed, level_name, attitude_name=None):
+    def _fake_run_once_record(config, *, seed, level_name, eval_scenario_name=None):
         _ = config, level_name
-        _ = attitude_name
+        _ = eval_scenario_name
         return {
             "seed": seed,
             "state": "landed",
@@ -685,6 +713,52 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
     assert exit_code == 0
     out = capsys.readouterr().out
     assert "Batch workers unavailable (RuntimeError" in out
+
+
+def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
+    seen_scenarios: list[str | None] = []
+
+    def _fake_plan(_config):
+        return [0], ["level_descent"]
+
+    def _fake_run_once_record(config, *, seed, level_name, eval_scenario_name=None):
+        _ = config, seed, level_name
+        seen_scenarios.append(eval_scenario_name)
+        return {
+            "seed": seed,
+            "state": "landed",
+            "success": True,
+        }
+
+    monkeypatch.setattr(main_module, "_resolve_batch_plan", _fake_plan)
+    monkeypatch.setattr(main_module, "_run_once_record", _fake_run_once_record)
+    monkeypatch.setattr(main_module.os, "cpu_count", lambda: 1)
+
+    config = RunConfig(
+        level_name="level_descent",
+        bot_name="descent",
+        headless=True,
+        batch=True,
+        print_freq=0,
+        max_time=300.0,
+        max_steps=100,
+        plot_mode="none",
+        stop_on_crash=True,
+        stop_on_out_of_fuel=True,
+        stop_on_first_land=True,
+        seed=None,
+        lander_name=None,
+        batch_seeds="0",
+        batch_levels="level_descent",
+        batch_scenarios="vertical_high,vertical_speed",
+        batch_json=None,
+        batch_csv=None,
+        quick_benchmark=False,
+        batch_workers=1,
+    )
+    exit_code = _run_batch(config)
+    assert exit_code == 0
+    assert seen_scenarios == ["vertical_high", "vertical_speed"]
 
 
 def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:
