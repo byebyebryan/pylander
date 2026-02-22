@@ -343,7 +343,7 @@ class Renderer:
             pygame.draw.aaline(self.screen, color, tip_pos, right_pos)
 
     def draw_ui(self):
-        """Draw UI text: credits + lander stats + bot stats (static color)."""
+        """Draw UI text: credits and focused-actor flight stats."""
         self.hud.draw(self.level, self.bot)
 
     def draw(self):

@@ -32,6 +32,7 @@ class HudOverlay:
         self._draw_text_lines(control_lines, y_offset, (200, 200, 200))
 
     def _build_info_lines(self, level, actor, bot=None) -> list[str]:
+        _ = bot
         wallet = actor.get_component(Wallet)
         if wallet is None:
             raise RuntimeError("Lander missing Wallet component")
@@ -80,8 +81,6 @@ class HudOverlay:
 
         lines.append("")
         lines.append(f"STATE: {ls.state.upper()}")
-        if bot is not None and hasattr(bot, "get_stats_text"):
-            lines.extend(bot.get_stats_text())
         return lines
 
     def _build_control_lines(self, lander) -> list[str]:

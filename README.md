@@ -31,6 +31,9 @@ Watch an AI bot play using the sensor/action API:
 ```bash
 # Safe landing bot (terrain-aware climb + approach)
 uv run python main.py level_1 turtle
+
+# Visual check on a focused eval scenario
+uv run python main.py level_eval turtle --eval-scenario climb_to_target --seed 0
 ```
 
 ### Headless Mode (Testing/Training)
@@ -52,6 +55,21 @@ uv run python main.py level_1 turtle --headless --freq 0 --steps 10000
 uv run python main.py level_1 turtle --headless --seed 123
 uv run python main.py level_1 --lander differential
 ```
+
+Batch evaluation (headless, sequential single-bot runs):
+```bash
+# Fast preset benchmark (3 seeds x selected eval scenarios)
+uv run python main.py level_eval turtle --headless --quick-benchmark
+
+# Custom batch with report artifacts
+uv run python main.py level_eval turtle --headless --batch \
+  --batch-seeds 0-19 \
+  --batch-scenarios spawn_above_target,greater_vertical_distance,climb_to_target \
+  --batch-json auto \
+  --batch-csv auto
+```
+
+By default, generated artifacts (batch JSON/CSV and trajectory plots) are written under `outputs/`.
 
 Stats output format:
 ```
@@ -88,9 +106,17 @@ class MyBot(Bot):
         return BotAction(0.0, passive.angle, False, status="idle")
 ```
 
-`PassiveSensors` includes altitude, velocities, angle, thrust_level, fuel, state, and radar/proximity contacts. `ActiveSensors` provides e.g. `raycast(angle, max_range)`.
-`PassiveSensors` includes world position (`x`, `y`), terrain-relative clearance (`altitude`), local terrain context (`terrain_y`, `terrain_slope`), kinematics, fuel/state, and radar/proximity contacts.  
+`PassiveSensors` includes world position (`x`, `y`), terrain-relative clearance (`altitude`), local terrain context (`terrain_y`, `terrain_slope`), kinematics, fuel/state, and radar/proximity contacts.
 `ActiveSensors` provides `raycast(angle, max_range)` plus terrain helpers like `terrain_height(x)` and `terrain_profile(x_start, x_end, samples)`.
+
+## Eval Scenarios (`level_eval`)
+
+- `spawn_above_target`
+- `greater_vertical_distance`
+- `horizontal_travel_flat_descend`
+- `increase_horizontal_distance`
+- `climb_to_target`
+- `complex_terrain_vertical_features`
 
 ## Command Line Options
 
@@ -111,6 +137,13 @@ python main.py <level_name> [bot_name] [options]
 - `--stop-on-crash`, `--stop-on-out-of-fuel`, `--stop-on-first-land` - End conditions
 - `--seed N` - Random seed
 - `--lander NAME` - Lander variant (classic, differential, simple)
+- `--eval-scenario NAME` - Scenario for `level_eval`
+- `--batch` - Enable batch runs (requires `--headless` + bot)
+- `--batch-seeds SPEC` - Seeds like `0-19` or `0,1,2,5`
+- `--batch-scenarios CSV` - Scenario names for `level_eval`
+- `--batch-json PATH|auto` - Write JSON report
+- `--batch-csv PATH|auto` - Write CSV rows
+- `--quick-benchmark` - Built-in small benchmark preset
 - `--help`, `-h` - Show help message
 
 ## Game Mechanics

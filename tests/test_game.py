@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from bots import create_bot, list_available_bots
+from core.eval import aggregate_eval_records, normalize_run_result
 from core.bot import Bot, BotAction
 from core.components import (
     ActorControlRole,
@@ -15,6 +16,8 @@ from core.maths import Vector2
 from core.lander import Lander
 from core.level import Level, LevelWorld
 from game import LanderGame
+from main import RunConfig, _parse_seed_spec, _resolve_batch_plan
+from levels import create_level as create_level_by_name
 from levels.level_1 import create_level as create_level_1
 
 
@@ -244,3 +247,92 @@ def test_level_1_assigns_selected_bot_to_only_lander() -> None:
     assert len(game.actors) == 1
     only_actor_uid = game.actors[0].uid
     assert game.actor_bots == {only_actor_uid: bot}
+
+
+def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
+    level_a = create_level_by_name("level_eval")
+    setattr(level_a, "eval_scenario", "climb_to_target")
+    game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=77)
+    actor_a = game_a.actors[0]
+    trans_a = actor_a.get_component(Transform)
+    assert trans_a is not None
+    site_a = level_a.world.site_entities[0].get_component(Transform)
+    assert site_a is not None
+
+    level_b = create_level_by_name("level_eval")
+    setattr(level_b, "eval_scenario", "climb_to_target")
+    game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=77)
+    actor_b = game_b.actors[0]
+    trans_b = actor_b.get_component(Transform)
+    assert trans_b is not None
+    site_b = level_b.world.site_entities[0].get_component(Transform)
+    assert site_b is not None
+
+    assert trans_a.pos.x == trans_b.pos.x
+    assert trans_a.pos.y == trans_b.pos.y
+    assert site_a.pos.x == site_b.pos.x
+    assert site_a.pos.y == site_b.pos.y
+
+
+def test_parse_seed_spec_supports_ranges_and_lists() -> None:
+    assert _parse_seed_spec("0-3") == [0, 1, 2, 3]
+    assert _parse_seed_spec("3-1") == [3, 2, 1]
+    assert _parse_seed_spec("1,3,5") == [1, 3, 5]
+    assert _parse_seed_spec("0-2,2,4") == [0, 1, 2, 4]
+
+
+def test_resolve_batch_plan_uses_quick_benchmark_for_eval_level() -> None:
+    config = RunConfig(
+        level_name="level_eval",
+        bot_name="turtle",
+        headless=True,
+        batch=False,
+        print_freq=0,
+        max_time=300.0,
+        max_steps=12000,
+        plot_mode="none",
+        stop_on_crash=True,
+        stop_on_out_of_fuel=True,
+        stop_on_first_land=True,
+        seed=None,
+        lander_name=None,
+        eval_scenario=None,
+        batch_seeds=None,
+        batch_scenarios=None,
+        batch_json=None,
+        batch_csv=None,
+        quick_benchmark=True,
+    )
+    seeds, scenarios = _resolve_batch_plan(config)
+    assert seeds == [0, 1, 2]
+    assert scenarios == [
+        "spawn_above_target",
+        "increase_horizontal_distance",
+        "climb_to_target",
+        "complex_terrain_vertical_features",
+    ]
+
+
+def test_eval_aggregate_summary_shape() -> None:
+    records = [
+        normalize_run_result(
+            bot_name="turtle",
+            level_name="level_eval",
+            scenario="spawn_above_target",
+            seed=0,
+            result={"state": "landed", "time": 12.0, "landing_count": 1},
+        ),
+        normalize_run_result(
+            bot_name="turtle",
+            level_name="level_eval",
+            scenario="spawn_above_target",
+            seed=1,
+            result={"state": "crashed", "time": 9.0, "crash_count": 1},
+        ),
+    ]
+    summary = aggregate_eval_records(records)
+    assert summary["runs"] == 2
+    assert summary["landed"] == 1
+    assert summary["crashed"] == 1
+    assert "by_scenario" in summary
+    assert "spawn_above_target" in summary["by_scenario"]

@@ -6,6 +6,7 @@ speed or thrust level, saving to a PNG file via the Agg backend.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
 from core.components import Engine, PhysicsState, Transform
@@ -36,7 +37,7 @@ def save_trajectory_plot(
         Output file path.
     """
     if out_path is None:
-        out_path = "trajectory.png"
+        out_path = str(Path("outputs") / "trajectory.png")
 
     if len(samples) < 2:
         # duplicate last point to create a segment for plotting
@@ -133,9 +134,11 @@ def save_trajectory_plot(
     ax.grid(True, linestyle=":", alpha=0.3)
 
     fig.tight_layout()
-    fig.savefig(out_path)
+    out_file = Path(out_path)
+    out_file.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_file)
     plt.close(fig)
-    return out_path
+    return str(out_file)
 
 
 class Plotter:
@@ -225,7 +228,7 @@ class Plotter:
             if mode == "all":
                 paths: list[str] = []
                 for m in ("speed", "thrust"):
-                    out_path = f"trajectory_{ts}_{m}.png"
+                    out_path = str(Path("outputs") / f"trajectory_{ts}_{m}.png")
                     save_trajectory_plot(
                         self.terrain, self._samples, mode=m, out_path=out_path
                     )
@@ -233,7 +236,7 @@ class Plotter:
                 return {"plot_paths": paths}
             else:
                 m = "speed" if mode not in ("speed", "thrust") else mode
-                out_path = f"trajectory_{ts}_{m}.png"
+                out_path = str(Path("outputs") / f"trajectory_{ts}_{m}.png")
                 save_trajectory_plot(
                     self.terrain, self._samples, mode=m, out_path=out_path
                 )
