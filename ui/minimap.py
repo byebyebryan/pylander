@@ -125,7 +125,6 @@ class Minimap:
         end_world_x = minimap_visible.max_x + world_step
 
         minimap_points = []
-        wx = start_world_x
 
         # Build an offset camera that maps directly to absolute screen pixels
         oc = OffsetCamera(
@@ -146,6 +145,7 @@ class Minimap:
             )
         else:
             samples = []
+            wx = start_world_x
             while wx <= end_world_x:
                 samples.append((wx, self.terrain(wx, lod=lod)))
                 wx += world_step
