@@ -15,6 +15,9 @@ class TurtleBot(Bot):
         self._prev_angle_cmd = 0.0
         self._brake_latch = False
         self._prev_dx_sign = 0
+        self._contact_prev: dict[str, tuple[float, float]] = {}
+        self._target_uid_blacklist: set[str] = set()
+        self._target_hover_stuck_s = 0.0
 
     def update(
         self, dt: float, passive: PassiveSensors, active: ActiveSensors
@@ -33,12 +36,84 @@ class TurtleBot(Bot):
         est_distance = None
         target_world_x = None
         target_world_y = None
+        target_uid = None
+        target_size = None
         if contacts:
-            chosen = contacts[0]
+            chosen = None
+            candidate_rows: list[tuple[float, object, bool, bool, float]] = []
+            best_score = float("inf")
+            for c in contacts:
+                if c.uid and c.uid in self._target_uid_blacklist:
+                    continue
+                score = float(c.distance)
+                moving_like = False
+                elevated_like = False
+
+                # Prefer downhill or level pads over high-above options.
+                dy = c.y - passive.y
+                if dy > 20.0:
+                    score += dy * 1.8
+                elif dy < -2.0:
+                    score -= 60.0
+
+                # Elevated pads are valid, but less preferred than terrain-bound pads.
+                if callable(getattr(active, "terrain_height", None)):
+                    ground_y = active.terrain_height(c.x)
+                    elevated_by = c.y - ground_y
+                    if elevated_by > 35.0:
+                        elevated_like = True
+                        score += min(260.0, (elevated_by - 35.0) * 3.0)
+
+                # Tiny pads are usually harder / moving targets.
+                if c.size < 50.0:
+                    score += (50.0 - c.size) * 2.5
+
+                if c.uid:
+                    prev = self._contact_prev.get(c.uid)
+                    if prev is not None and dt > 1e-4:
+                        observed_speed = math.hypot(c.x - prev[0], c.y - prev[1]) / dt
+                        if observed_speed > 4.0:
+                            moving_like = True
+                            score += 500.0
+                    uid_l = c.uid.lower()
+                    if ("moving" in uid_l) or ("scripted" in uid_l):
+                        moving_like = True
+                        score += 500.0
+
+                candidate_rows.append((score, c, moving_like, elevated_like, dy))
+
+            # Prefer targets that are not far above current position when possible.
+            scored_rows = [row for row in candidate_rows if row[4] <= 120.0]
+            if not scored_rows:
+                scored_rows = candidate_rows
+            # Then prefer stationary + non-elevated.
+            preferred_rows = [row for row in scored_rows if (not row[2]) and (not row[3])]
+            if preferred_rows:
+                scored_rows = preferred_rows
+            else:
+                preferred_rows = [row for row in scored_rows if not row[2]]
+                if preferred_rows:
+                    scored_rows = preferred_rows
+
+            for score, c, _moving_like, _elevated_like, _dy in scored_rows:
+                if score < best_score:
+                    best_score = score
+                    chosen = c
+
+            if chosen is None:
+                chosen = contacts[0]
+
             angle_to_target = chosen.angle
             est_distance = chosen.distance
             target_world_x = chosen.x
             target_world_y = chosen.y
+            target_uid = chosen.uid
+            target_size = chosen.size
+
+            # Refresh contact history for motion detection.
+            for c in contacts:
+                if c.uid:
+                    self._contact_prev[c.uid] = (c.x, c.y)
 
         # Passive proximity (ground clearance as radar altimeter)
         prox = passive.proximity
@@ -137,6 +212,18 @@ class TurtleBot(Bot):
             else:
                 vy_sp = -5.20
 
+        # Global descent safety envelope to avoid unrecoverable dives.
+        if alt > 120.0:
+            vy_sp = max(vy_sp, -18.0)
+        elif alt > 80.0:
+            vy_sp = max(vy_sp, -14.0)
+        elif alt > 40.0:
+            vy_sp = max(vy_sp, -10.0)
+        elif alt > 20.0:
+            vy_sp = max(vy_sp, -7.0)
+        elif alt > 10.0:
+            vy_sp = max(vy_sp, -4.0)
+
         # Strategic climb: clear rising terrain and elevated targets before fast transit.
         need_strategic_climb = False
         cruise_y = None
@@ -162,6 +249,16 @@ class TurtleBot(Bot):
         if target_above and (dx_to_target is None or abs(dx_to_target) > 10.0):
             need_strategic_climb = True
 
+        # Don't keep climbing indefinitely when terrain context is unavailable
+        # and target is still far away.
+        if (
+            need_strategic_climb
+            and alt_ground is None
+            and est_distance is not None
+            and est_distance > 600.0
+        ):
+            need_strategic_climb = False
+
         if need_strategic_climb:
             allowed = min(allowed, 12.0)
             vx_sp = max(-allowed, min(allowed, vx_sp))
@@ -180,6 +277,30 @@ class TurtleBot(Bot):
             desired_y = target_world_y + half_height + (10.0 if abs(dx_to_target) > 25.0 else 4.0)
             vy_sp = max(vy_sp, min(4.5, 0.10 * (desired_y - passive.y) + 0.8))
 
+        # Altitude sanity guard: if we climbed way above target, descend decisively.
+        if target_world_y is not None and passive.y > target_world_y + 140.0:
+            need_strategic_climb = False
+            vy_sp = min(vy_sp, -6.0)
+        if alt > 260.0 and est_distance is not None and est_distance > 500.0:
+            vy_sp = min(vy_sp, -8.0)
+
+        # If we loiter under/near a target for too long without touchdown progress,
+        # blacklist it and move on (helps avoid getting trapped by moving platforms).
+        if target_uid is not None and dx_to_target is not None:
+            hover_like = (
+                abs(dx_to_target) <= 22.0
+                and abs(vx) <= 2.0
+                and alt > 12.0
+                and abs(vy_up) <= 5.0
+            )
+            if hover_like:
+                self._target_hover_stuck_s += dt
+                if self._target_hover_stuck_s >= 8.0:
+                    self._target_uid_blacklist.add(target_uid)
+                    self._target_hover_stuck_s = 0.0
+            else:
+                self._target_hover_stuck_s = 0.0
+
         # Clearance requirements scale with speed; include half-height margin.
         min_clearance = half_height + 12.0 + 0.50 * speed
         need_climb_for_clearance = (alt_ground is not None) and (
@@ -193,6 +314,18 @@ class TurtleBot(Bot):
             band_above = half_height + 12.0
             if alt_ground is not None and alt_ground < band_above:
                 vy_sp = max(vy_sp, 1.6)
+        # Near terrain, don't descend until mostly aligned with target x.
+        if dx_to_target is not None:
+            if abs(dx_to_target) > 25.0 and alt < 40.0:
+                vy_sp = max(vy_sp, 1.2)
+            if abs(dx_to_target) > 12.0 and alt < 25.0:
+                vy_sp = max(vy_sp, 2.0)
+            # Once laterally aligned near target, commit to a controlled descent.
+            align_band = 8.0
+            if target_size is not None:
+                align_band = max(8.0, min(18.0, target_size * 0.35))
+            if abs(dx_to_target) <= align_band and alt < 35.0:
+                vy_sp = min(vy_sp, -1.8 if alt > 15.0 else -1.0)
 
         # Predictive braking: when within stopping distance, brake (latched)
         braking = False
@@ -230,6 +363,12 @@ class TurtleBot(Bot):
             else:
                 vx_sp = 0.3 * vx_sp + 0.7 * vx_pos
 
+        # Near ground, aggressively bleed lateral motion.
+        if alt < 18.0:
+            vx_sp = max(-2.0, min(2.0, vx_sp))
+        if alt < 10.0:
+            vx_sp = max(-1.0, min(1.0, vx_sp))
+
         # Desired lateral acceleration (PD on vx with damping by measured ax)
         a_x_meas = getattr(passive, "ax", 0.0)
         k_vx_p = 0.9 if braking else 0.5
@@ -257,6 +396,10 @@ class TurtleBot(Bot):
             max_tilt = 0.55
         if need_strategic_climb:
             max_tilt = min(max_tilt, 0.45)
+        if alt < 18.0:
+            max_tilt = min(max_tilt, 0.22)
+        if alt < 10.0:
+            max_tilt = min(max_tilt, 0.12)
         angle_cmd = max(-max_tilt, min(max_tilt, angle_cmd))
 
         # Slew limit angle command to reduce oscillations (slower near ground)
@@ -274,15 +417,18 @@ class TurtleBot(Bot):
         )
         landing_window = False
         if dx_to_target is not None:
-            x_ok = abs(dx_to_target) <= max(
+            x_tolerance = max(
                 3.0,
                 (self.vehicle_info.width if self.vehicle_info is not None else 5.0) * 0.6,
             )
+            if target_size is not None:
+                x_tolerance = max(x_tolerance, min(18.0, target_size * 0.35))
+            x_ok = abs(dx_to_target) <= x_tolerance
             if x_ok:
                 if pad_clearance is not None:
-                    landing_window = abs(pad_clearance) <= 2.5
+                    landing_window = abs(pad_clearance) <= 4.0
                 else:
-                    landing_window = alt <= 2.5
+                    landing_window = alt <= 4.0
         landing_mode = False
         if landing_window:
             landing_mode = True
@@ -324,6 +470,12 @@ class TurtleBot(Bot):
             target_thrust += 0.12
 
         target_thrust = max(0.0, min(1.0, target_thrust))
+
+        # Last-chance safety flare to reduce hard impacts.
+        if alt_ground is not None:
+            if (alt < 25.0 and vy_up < -8.0) or (alt < 12.0 and vy_up < -5.0):
+                target_thrust = 1.0
+                angle_cmd = max(-0.18, min(0.18, angle_cmd))
 
         status = (
             f"prox:{(alt_ground if alt_ground is not None else float('inf')):.0f} "
