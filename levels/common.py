@@ -123,16 +123,16 @@ class PresetLevel(Level):
     dynamic_site_lead_distance: float = 2000.0
     dynamic_cluster_size_min: int = 3
     dynamic_cluster_size_max: int = 5
-    dynamic_cluster_spacing_min: float = 420.0
-    dynamic_cluster_spacing_max: float = 950.0
-    dynamic_corridor_length_min: float = 4200.0
-    dynamic_corridor_length_max: float = 9000.0
-    dynamic_corridor_refuel_stops_min: int = 2
-    dynamic_corridor_refuel_stops_max: int = 3
+    dynamic_cluster_spacing_min: float = 360.0
+    dynamic_cluster_spacing_max: float = 760.0
+    dynamic_corridor_length_min: float = 10000.0
+    dynamic_corridor_length_max: float = 22000.0
+    dynamic_corridor_refuel_stops_min: int = 0
+    dynamic_corridor_refuel_stops_max: int = 1
     dynamic_site_elevated_chance: float = 0.25
     dynamic_refuel_price_min: float = 5.5
     dynamic_refuel_price_max: float = 8.5
-    dynamic_radar_spacing_ratio: float = 0.85
+    dynamic_radar_spacing_ratio: float = 0.9
     dynamic_min_radar_outer_range: float = 5000.0
 
     def _build_base_terrain(self, seed: int) -> Any:

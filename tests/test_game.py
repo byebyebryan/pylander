@@ -343,6 +343,9 @@ def test_dynamic_sites_keep_radar_guidance_and_refuel_bridges() -> None:
         auto_right_sites[i + 1][0] - auto_right_sites[i][0]
         for i in range(len(auto_right_sites) - 1)
     ]
+    cluster_spacing_max = float(getattr(level, "dynamic_cluster_spacing_max", 760.0))
+    assert max(gaps) >= cluster_spacing_max * 2.0
+
     guidance_limit = radar.outer_range * float(
         getattr(level, "dynamic_radar_spacing_ratio", 0.85)
     )
