@@ -136,6 +136,7 @@ class ContactSystem(System):
         if eng is not None:
             eng.thrust_level = 0.0
             eng.target_thrust = 0.0
+            eng.target_angle = trans.rotation
             eng.target_angle = 0.0
 
         # Award credits and mark site visited.

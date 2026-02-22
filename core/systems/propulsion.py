@@ -1,6 +1,6 @@
 import math
 from core.ecs import System, Entity
-from core.components import Engine, FuelTank, Transform
+from core.components import Engine, FuelTank, LanderState, Transform
 
 class PropulsionSystem(System):
     """Handles thrust and rotation mechanics based on Engine state."""
@@ -18,12 +18,20 @@ class PropulsionSystem(System):
         engine = entity.get_component(Engine)
         tank = entity.get_component(FuelTank)
         trans = entity.get_component(Transform)
+        ls = entity.get_component(LanderState)
 
         if not engine or not tank or not trans:
             return
 
+        # Hard safety gate: crashed/out_of_fuel actors cannot generate thrust.
+        if ls is not None and ls.state in ("crashed", "out_of_fuel"):
+            engine.thrust_level = 0.0
+            engine.target_thrust = 0.0
+            return
+
         if tank.fuel <= 0.0:
             engine.thrust_level = 0.0
+            engine.target_thrust = 0.0
             return
 
         # 1. Thrust Slew (Smoothly approach target thrust)

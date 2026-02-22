@@ -106,6 +106,30 @@ def test_propulsion_system_slews_controls_and_burns_fuel() -> None:
     assert math.isclose(trans.rotation, math.pi / 2.0, abs_tol=1e-6)
 
 
+def test_propulsion_system_forces_thrust_off_when_crashed() -> None:
+    entity = Entity()
+    engine = Engine(thrust_level=0.8, target_thrust=1.0, target_angle=0.5)
+    tank = FuelTank(fuel=10.0, burn_rate=1.0)
+    trans = Transform(rotation=0.0)
+    state = LanderState(state="crashed")
+    entity.add_component(engine)
+    entity.add_component(tank)
+    entity.add_component(trans)
+    entity.add_component(state)
+
+    world = World()
+    world.add_entity(entity)
+
+    system = PropulsionSystem()
+    system.world = world
+    system.update(0.5)
+
+    assert math.isclose(engine.thrust_level, 0.0, abs_tol=1e-6)
+    assert math.isclose(engine.target_thrust, 0.0, abs_tol=1e-6)
+    # Fuel should not burn while crashed.
+    assert math.isclose(tank.fuel, 10.0, abs_tol=1e-6)
+
+
 def test_force_application_system_applies_thrust_and_override() -> None:
     entity = Entity()
     entity.add_component(Engine(thrust_level=0.5, max_power=100.0))
