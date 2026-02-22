@@ -101,14 +101,22 @@ class TurtleBot(Bot):
                     chosen = c
 
             if chosen is None:
-                chosen = contacts[0]
+                chosen = next(
+                    (
+                        c
+                        for c in contacts
+                        if not (c.uid and c.uid in self._target_uid_blacklist)
+                    ),
+                    None,
+                )
 
-            angle_to_target = chosen.angle
-            est_distance = chosen.distance
-            target_world_x = chosen.x
-            target_world_y = chosen.y
-            target_uid = chosen.uid
-            target_size = chosen.size
+            if chosen is not None:
+                angle_to_target = chosen.angle
+                est_distance = chosen.distance
+                target_world_x = chosen.x
+                target_world_y = chosen.y
+                target_uid = chosen.uid
+                target_size = chosen.size
 
             # Refresh contact history for motion detection.
             for c in contacts:

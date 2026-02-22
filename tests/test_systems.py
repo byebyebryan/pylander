@@ -536,6 +536,71 @@ def test_turtle_bot_keeps_climbing_when_under_elevated_target() -> None:
     assert action.target_thrust > 0.0
 
 
+def test_turtle_bot_does_not_reselect_blacklisted_contact_on_fallback() -> None:
+    bot = TurtleBot()
+    bot.set_vehicle_info(
+        VehicleInfo(
+            width=8.0,
+            height=8.0,
+            dry_mass=1.0,
+            fuel_density=0.01,
+            max_thrust_power=50.0,
+            safe_landing_velocity=10.0,
+            safe_landing_angle=math.radians(15.0),
+            radar_outer_range=5000.0,
+            radar_inner_range=2000.0,
+            proximity_sensor_range=500.0,
+        )
+    )
+    bot._target_uid_blacklist.add("blocked_site")
+
+    passive = PassiveSensors(
+        x=100.0,
+        y=40.0,
+        altitude=20.0,
+        terrain_y=16.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=0.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=2.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        state="flying",
+        radar_contacts=[
+            RadarContact(
+                uid="blocked_site",
+                x=104.0,
+                y=36.0,
+                size=80.0,
+                angle=math.atan2(-4.0, 4.0),
+                distance=math.hypot(4.0, -4.0),
+                rel_x=4.0,
+                rel_y=-4.0,
+                is_inner_lock=True,
+                info={"award": 250.0},
+            )
+        ],
+        proximity=ProximityContact(
+            x=100.0,
+            y=16.0,
+            angle=-math.pi / 2.0,
+            distance=24.0,
+            normal_x=0.0,
+            normal_y=1.0,
+            terrain_slope=0.0,
+        ),
+    )
+
+    sensors = _BotActiveSensors(hill_x=1000.0, hill_width=10.0, hill_height=1.0)
+    _ = bot.update(1.0, passive, sensors)
+
+    # If fallback reselected the blacklisted target, hover-stuck timer would increase.
+    assert bot._target_hover_stuck_s == 0.0
+
+
 def test_landing_site_motion_and_projection_update_model() -> None:
     world = World()
     site = Entity(uid="site_a")
