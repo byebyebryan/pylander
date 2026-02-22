@@ -493,6 +493,7 @@ def test_turtle_bot_enters_climb_mode_for_above_blocked_target() -> None:
     action = bot.update(1.0 / 60.0, passive, sensors)
 
     assert "CLB" in action.status
+    assert "STG:climb_clearance" in action.status
     assert action.target_thrust > 0.0
 
 
@@ -557,6 +558,7 @@ def test_turtle_bot_keeps_climbing_when_under_elevated_target() -> None:
     action = bot.update(1.0 / 60.0, passive, sensors)
 
     assert "CLB" in action.status
+    assert "STG:climb_clearance" in action.status
     assert action.target_thrust > 0.0
 
 
@@ -932,6 +934,236 @@ def test_turtle_bot_prefers_inner_lock_contacts_for_scoring() -> None:
     # Inner lock is on the left; if outer-range contact were scored equally,
     # this setup tends to pull the command to the right.
     assert action.target_angle < 0.0
+
+
+def test_turtle_bot_enters_approach_stage_when_near_target() -> None:
+    bot = TurtleBot()
+    bot.set_vehicle_info(
+        VehicleInfo(
+            width=8.0,
+            height=8.0,
+            dry_mass=1.0,
+            fuel_density=0.01,
+            max_thrust_power=50.0,
+            safe_landing_velocity=10.0,
+            safe_landing_angle=math.radians(15.0),
+            radar_outer_range=5000.0,
+            radar_inner_range=2000.0,
+            proximity_sensor_range=500.0,
+        )
+    )
+
+    passive = PassiveSensors(
+        x=180.0,
+        y=45.0,
+        altitude=41.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=3.0,
+        vy_up=-0.5,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=2.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        state="flying",
+        radar_contacts=[
+            RadarContact(
+                uid="approach_site",
+                x=220.0,
+                y=30.0,
+                size=70.0,
+                angle=math.atan2(-15.0, 40.0),
+                distance=math.hypot(40.0, -15.0),
+                rel_x=40.0,
+                rel_y=-15.0,
+                is_inner_lock=True,
+                info={"award": 250.0},
+            )
+        ],
+        proximity=ProximityContact(
+            x=180.0,
+            y=0.0,
+            angle=-math.pi / 2.0,
+            distance=45.0,
+            normal_x=0.0,
+            normal_y=1.0,
+            terrain_slope=0.0,
+        ),
+    )
+
+    sensors = _BotActiveSensors(hill_x=1000.0, hill_width=10.0, hill_height=1.0)
+    action = bot.update(1.0 / 60.0, passive, sensors)
+
+    assert "STG:approach_align" in action.status
+
+
+def test_turtle_bot_enters_final_descent_stage_when_aligned_and_low() -> None:
+    bot = TurtleBot()
+    bot.set_vehicle_info(
+        VehicleInfo(
+            width=8.0,
+            height=8.0,
+            dry_mass=1.0,
+            fuel_density=0.01,
+            max_thrust_power=50.0,
+            safe_landing_velocity=10.0,
+            safe_landing_angle=math.radians(15.0),
+            radar_outer_range=5000.0,
+            radar_inner_range=2000.0,
+            proximity_sensor_range=500.0,
+        )
+    )
+
+    passive = PassiveSensors(
+        x=219.0,
+        y=35.0,
+        altitude=31.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.5,
+        vy_up=-0.2,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=2.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        state="flying",
+        radar_contacts=[
+            RadarContact(
+                uid="touchdown_site",
+                x=220.0,
+                y=30.0,
+                size=70.0,
+                angle=math.atan2(-5.0, 1.0),
+                distance=math.hypot(1.0, -5.0),
+                rel_x=1.0,
+                rel_y=-5.0,
+                is_inner_lock=True,
+                info={"award": 250.0},
+            )
+        ],
+        proximity=ProximityContact(
+            x=219.0,
+            y=0.0,
+            angle=-math.pi / 2.0,
+            distance=35.0,
+            normal_x=0.0,
+            normal_y=1.0,
+            terrain_slope=0.0,
+        ),
+    )
+
+    sensors = _BotActiveSensors(hill_x=1000.0, hill_width=10.0, hill_height=1.0)
+    action = bot.update(1.0 / 60.0, passive, sensors)
+
+    assert "STG:final_descent" in action.status
+    assert math.isclose(action.target_angle, 0.0, abs_tol=1e-6)
+
+
+def test_turtle_bot_enters_recovery_stage_after_overshoot_flip() -> None:
+    bot = TurtleBot()
+    bot.set_vehicle_info(
+        VehicleInfo(
+            width=8.0,
+            height=8.0,
+            dry_mass=1.0,
+            fuel_density=0.01,
+            max_thrust_power=50.0,
+            safe_landing_velocity=10.0,
+            safe_landing_angle=math.radians(15.0),
+            radar_outer_range=5000.0,
+            radar_inner_range=2000.0,
+            proximity_sensor_range=500.0,
+        )
+    )
+    sensors = _BotActiveSensors(hill_x=1000.0, hill_width=10.0, hill_height=1.0)
+
+    first_passive = PassiveSensors(
+        x=0.0,
+        y=40.0,
+        altitude=36.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=8.0,
+        vy_up=0.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=2.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        state="flying",
+        radar_contacts=[
+            RadarContact(
+                uid="recover_site",
+                x=50.0,
+                y=30.0,
+                size=80.0,
+                angle=math.atan2(-10.0, 50.0),
+                distance=math.hypot(50.0, -10.0),
+                rel_x=50.0,
+                rel_y=-10.0,
+                is_inner_lock=True,
+                info={"award": 250.0},
+            )
+        ],
+        proximity=ProximityContact(
+            x=0.0,
+            y=0.0,
+            angle=-math.pi / 2.0,
+            distance=40.0,
+            normal_x=0.0,
+            normal_y=1.0,
+            terrain_slope=0.0,
+        ),
+    )
+    _ = bot.update(1.0 / 60.0, first_passive, sensors)
+
+    second_passive = PassiveSensors(
+        x=60.0,
+        y=50.0,
+        altitude=46.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=8.0,
+        vy_up=0.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=2.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        state="flying",
+        radar_contacts=[
+            RadarContact(
+                uid="recover_site",
+                x=50.0,
+                y=30.0,
+                size=80.0,
+                angle=math.atan2(-10.0, -10.0),
+                distance=math.hypot(-10.0, -10.0),
+                rel_x=-10.0,
+                rel_y=-10.0,
+                is_inner_lock=True,
+                info={"award": 250.0},
+            )
+        ],
+        proximity=ProximityContact(
+            x=60.0,
+            y=0.0,
+            angle=-math.pi / 2.0,
+            distance=50.0,
+            normal_x=0.0,
+            normal_y=1.0,
+            terrain_slope=0.0,
+        ),
+    )
+    action = bot.update(1.0 / 60.0, second_passive, sensors)
+
+    assert "STG:recovery" in action.status
 
 
 def test_landing_site_motion_and_projection_update_model() -> None:

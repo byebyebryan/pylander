@@ -10,6 +10,13 @@ from core.bot import Bot, PassiveSensors, ActiveSensors, BotAction
 class TurtleBot(Bot):
     """Turtle bot - cautious controller that prioritizes safety over speed."""
 
+    _STAGE_ACQUIRE_TARGET = "acquire_target"
+    _STAGE_CLIMB_CLEARANCE = "climb_clearance"
+    _STAGE_HORIZONTAL_TRANSIT = "horizontal_transit"
+    _STAGE_APPROACH_ALIGN = "approach_align"
+    _STAGE_FINAL_DESCENT = "final_descent"
+    _STAGE_RECOVERY = "recovery"
+
     def __init__(self):
         super().__init__()
         self._prev_angle_cmd = 0.0
@@ -18,6 +25,8 @@ class TurtleBot(Bot):
         self._contact_prev: dict[str, tuple[float, float]] = {}
         self._target_uid_blacklist: set[str] = set()
         self._target_hover_stuck_s = 0.0
+        self._target_lock_uid: str | None = None
+        self._stage = self._STAGE_ACQUIRE_TARGET
 
     def update(
         self, dt: float, passive: PassiveSensors, active: ActiveSensors
@@ -25,6 +34,7 @@ class TurtleBot(Bot):
         state = passive.state
 
         if state in ("landed", "crashed", "out_of_fuel"):
+            self._target_lock_uid = None
             action = BotAction(0.0, passive.angle, False)
             action.status = state.upper()
             self.status = action.status
@@ -45,6 +55,17 @@ class TurtleBot(Bot):
                 for c in contacts
                 if not (c.uid and c.uid in self._target_uid_blacklist)
             ]
+            if self._target_lock_uid is not None:
+                lock_contact = next(
+                    (
+                        c
+                        for c in eligible_contacts
+                        if c.uid and c.uid == self._target_lock_uid
+                    ),
+                    None,
+                )
+                if lock_contact is not None:
+                    chosen = lock_contact
             scored_contacts = [c for c in eligible_contacts if c.is_inner_lock]
             if not scored_contacts:
                 scored_contacts = eligible_contacts
@@ -105,13 +126,14 @@ class TurtleBot(Bot):
                 if preferred_rows:
                     scored_rows = preferred_rows
 
-            for score, c, _moving_like, _elevated_like, _dy in scored_rows:
-                if score < best_score:
-                    best_score = score
-                    chosen = c
-
             if chosen is None:
-                chosen = next(iter(scored_contacts), None)
+                for score, c, _moving_like, _elevated_like, _dy in scored_rows:
+                    if score < best_score:
+                        best_score = score
+                        chosen = c
+
+                if chosen is None:
+                    chosen = next(iter(scored_contacts), None)
 
             if chosen is not None:
                 angle_to_target = chosen.angle
@@ -120,6 +142,9 @@ class TurtleBot(Bot):
                 target_world_y = chosen.y
                 target_uid = chosen.uid
                 target_size = chosen.size
+                self._target_lock_uid = chosen.uid
+            else:
+                self._target_lock_uid = None
 
             # Refresh contact history for motion detection.
             for c in contacts:
@@ -202,6 +227,22 @@ class TurtleBot(Bot):
             target_above = dy_to_target_world >= 8.0
             pad_clearance = passive.y - half_height - target_world_y
 
+        align_band = 8.0
+        if target_size is not None:
+            align_band = max(8.0, min(18.0, target_size * 0.35))
+        x_tolerance = max(
+            3.0,
+            (self.vehicle_info.width if self.vehicle_info is not None else 5.0) * 0.6,
+        )
+        if target_size is not None:
+            x_tolerance = max(x_tolerance, min(18.0, target_size * 0.35))
+        landing_window_pre = False
+        if dx_to_target is not None and abs(dx_to_target) <= x_tolerance:
+            if pad_clearance is not None:
+                landing_window_pre = abs(pad_clearance) <= 8.0
+            else:
+                landing_window_pre = alt <= 6.0
+
         # Vertical velocity target (up +). Negative values descend.
         if alt_ground is None and est_distance is not None:
             dy_to_target = math.sin(angle_to_target) * est_distance
@@ -260,16 +301,6 @@ class TurtleBot(Bot):
         if target_above and (dx_to_target is None or abs(dx_to_target) > 10.0):
             need_strategic_climb = True
 
-        # Don't keep climbing indefinitely when terrain context is unavailable
-        # and target is still far away.
-        if (
-            need_strategic_climb
-            and alt_ground is None
-            and est_distance is not None
-            and est_distance > 600.0
-        ):
-            need_strategic_climb = False
-
         if need_strategic_climb:
             allowed = min(allowed, 12.0)
             vx_sp = max(-allowed, min(allowed, vx_sp))
@@ -278,6 +309,8 @@ class TurtleBot(Bot):
             else:
                 climb_cmd = 2.5
             vy_sp = max(vy_sp, climb_cmd)
+            if cruise_y is not None and passive.y >= (cruise_y - 2.0):
+                need_strategic_climb = False
         elif (
             dy_to_target_world is not None
             and dx_to_target is not None
@@ -299,15 +332,19 @@ class TurtleBot(Bot):
         # blacklist it and move on (helps avoid getting trapped by moving platforms).
         if target_uid is not None and dx_to_target is not None:
             hover_like = (
-                abs(dx_to_target) <= 22.0
-                and abs(vx) <= 2.0
-                and alt > 12.0
-                and abs(vy_up) <= 5.0
+                abs(dx_to_target) <= 14.0
+                and abs(vx) <= 1.2
+                and alt > 16.0
+                and abs(vy_up) <= 3.0
             )
             if hover_like:
                 self._target_hover_stuck_s += dt
-                if self._target_hover_stuck_s >= 8.0:
-                    self._target_uid_blacklist.add(target_uid)
+                if self._target_hover_stuck_s >= 5.0:
+                    # Only abandon a target if alternatives exist.
+                    if len(contacts) > 1:
+                        self._target_uid_blacklist.add(target_uid)
+                        if target_uid == self._target_lock_uid:
+                            self._target_lock_uid = None
                     self._target_hover_stuck_s = 0.0
             else:
                 self._target_hover_stuck_s = 0.0
@@ -332,11 +369,46 @@ class TurtleBot(Bot):
             if abs(dx_to_target) > 12.0 and alt < 25.0:
                 vy_sp = max(vy_sp, 2.0)
             # Once laterally aligned near target, commit to a controlled descent.
-            align_band = 8.0
-            if target_size is not None:
-                align_band = max(8.0, min(18.0, target_size * 0.35))
             if abs(dx_to_target) <= align_band and alt < 35.0:
                 vy_sp = min(vy_sp, -1.8 if alt > 15.0 else -1.0)
+            # Avoid fast dives while still laterally offset from the pad.
+            if abs(dx_to_target) > align_band * 2.0 and alt < 120.0:
+                vy_sp = max(vy_sp, -4.0 if alt > 40.0 else -2.5)
+
+        if hazard and alt < 80.0:
+            vy_sp = max(vy_sp, -4.0 if alt > 25.0 else -2.0)
+
+        # Stage transition logic: separate flight intent from low-level control.
+        stage = self._STAGE_ACQUIRE_TARGET
+        overshoot_flip = (
+            self._prev_dx_sign != 0
+            and dx_sign != 0
+            and dx_sign != self._prev_dx_sign
+            and abs(vx) > 2.5
+        )
+        if target_world_x is None:
+            stage = self._STAGE_ACQUIRE_TARGET
+        elif landing_window_pre:
+            stage = self._STAGE_FINAL_DESCENT
+        elif overshoot_flip or self._target_hover_stuck_s > 2.5:
+            stage = self._STAGE_RECOVERY
+        elif need_strategic_climb or (
+            need_climb_for_clearance
+            and alt > 18.0
+            and (
+                dx_to_target is None
+                or abs(dx_to_target) > max(40.0, align_band * 3.0)
+            )
+        ):
+            stage = self._STAGE_CLIMB_CLEARANCE
+        elif dx_to_target is not None and abs(dx_to_target) <= 220.0:
+            stage = self._STAGE_APPROACH_ALIGN
+        else:
+            stage = self._STAGE_HORIZONTAL_TRANSIT
+        self._stage = stage
+
+        if stage == self._STAGE_RECOVERY:
+            self._brake_latch = False
 
         # Predictive braking: when within stopping distance, brake (latched)
         braking = False
@@ -344,7 +416,7 @@ class TurtleBot(Bot):
         max_thrust_power = (
             self.vehicle_info.max_thrust_power if self.vehicle_info is not None else 50.0
         )
-        vx_deadband = 0.8
+        vx_deadband = 0.5
         if dx_to_target is not None:
             a_lat_cap = (max_thrust_power / m_for_brake) * math.sin(0.65)
             a_lat_cap = max(1e-3, a_lat_cap)
@@ -357,11 +429,11 @@ class TurtleBot(Bot):
                 self._brake_latch = False
             if self._brake_latch:
                 braking = True
-                if (abs(vx) <= vx_deadband) and (abs(dx_to_target) <= 5.0):
+                if (abs(vx) <= vx_deadband) and (abs(dx_to_target) <= 8.0):
                     self._brake_latch = False
                     braking = False
             else:
-                if abs(dx_to_target) <= (s_stop * 1.15 + 6.0):
+                if abs(dx_to_target) <= (s_stop * 1.05 + 4.0):
                     self._brake_latch = True
                     braking = True
 
@@ -426,20 +498,7 @@ class TurtleBot(Bot):
         safe_v = (
             self.vehicle_info.safe_landing_velocity if self.vehicle_info is not None else 10.0
         )
-        landing_window = False
-        if dx_to_target is not None:
-            x_tolerance = max(
-                3.0,
-                (self.vehicle_info.width if self.vehicle_info is not None else 5.0) * 0.6,
-            )
-            if target_size is not None:
-                x_tolerance = max(x_tolerance, min(18.0, target_size * 0.35))
-            x_ok = abs(dx_to_target) <= x_tolerance
-            if x_ok:
-                if pad_clearance is not None:
-                    landing_window = abs(pad_clearance) <= 4.0
-                else:
-                    landing_window = alt <= 4.0
+        landing_window = landing_window_pre
         landing_mode = False
         if landing_window:
             landing_mode = True
@@ -491,6 +550,7 @@ class TurtleBot(Bot):
         status = (
             f"prox:{(alt_ground if alt_ground is not None else float('inf')):.0f} "
             f"vx:{vx:.1f} vy:{vy_up:.1f}"
+            + f" STG:{stage}"
             + (" HZD" if hazard else "")
             + (" BRK" if braking else "")
             + (" CLB" if need_strategic_climb else "")
