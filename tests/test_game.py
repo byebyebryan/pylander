@@ -32,7 +32,8 @@ from ui.hud import HudOverlay
 
 def test_bot_registry_only_exposes_turtle() -> None:
     bots = list_available_bots()
-    assert bots == ["turtle"]
+    assert "turtle" in bots
+    assert {"drop", "plunge", "drift", "ferry"}.issubset(set(bots))
     turtle_bot = create_bot("turtle")
     assert turtle_bot.__class__.__name__ == "TurtleBot"
 
@@ -372,8 +373,7 @@ def test_cli_defaults_to_level_flat_when_omitted() -> None:
 
 
 def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
-    level_a = create_level_by_name("level_eval")
-    setattr(level_a, "eval_scenario", "climb_to_target")
+    level_a = create_level_by_name("level_climb")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=77)
     actor_a = game_a.actors[0]
     trans_a = actor_a.get_component(Transform)
@@ -381,8 +381,7 @@ def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
     site_a = level_a.world.site_entities[0].get_component(Transform)
     assert site_a is not None
 
-    level_b = create_level_by_name("level_eval")
-    setattr(level_b, "eval_scenario", "climb_to_target")
+    level_b = create_level_by_name("level_climb")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=77)
     actor_b = game_b.actors[0]
     trans_b = actor_b.get_component(Transform)
@@ -403,9 +402,9 @@ def test_parse_seed_spec_supports_ranges_and_lists() -> None:
     assert _parse_seed_spec("0-2,2,4") == [0, 1, 2, 4]
 
 
-def test_resolve_batch_plan_uses_quick_benchmark_for_eval_level() -> None:
+def test_resolve_batch_plan_uses_quick_benchmark_wave1_levels() -> None:
     config = RunConfig(
-        level_name="level_eval",
+        level_name="level_drop",
         bot_name="turtle",
         headless=True,
         batch=False,
@@ -418,21 +417,20 @@ def test_resolve_batch_plan_uses_quick_benchmark_for_eval_level() -> None:
         stop_on_first_land=True,
         seed=None,
         lander_name=None,
-        eval_scenario=None,
         batch_seeds=None,
-        batch_scenarios=None,
+        batch_levels=None,
         batch_json=None,
         batch_csv=None,
         quick_benchmark=True,
         batch_workers=1,
     )
-    seeds, scenarios = _resolve_batch_plan(config)
+    seeds, levels = _resolve_batch_plan(config)
     assert seeds == [0, 1, 2]
-    assert scenarios == [
-        "spawn_above_target",
-        "increase_horizontal_distance",
-        "climb_to_target",
-        "complex_terrain_vertical_features",
+    assert levels == [
+        "level_drop",
+        "level_plunge",
+        "level_drift",
+        "level_ferry",
     ]
 
 
@@ -440,14 +438,14 @@ def test_eval_aggregate_summary_shape() -> None:
     records = [
         normalize_run_result(
             bot_name="turtle",
-            level_name="level_eval",
+            level_name="level_drop",
             scenario="spawn_above_target",
             seed=0,
             result={"state": "landed", "time": 12.0, "landing_count": 1},
         ),
         normalize_run_result(
             bot_name="turtle",
-            level_name="level_eval",
+            level_name="level_drop",
             scenario="spawn_above_target",
             seed=1,
             result={"state": "crashed", "time": 9.0, "crash_count": 1},
@@ -463,7 +461,7 @@ def test_eval_aggregate_summary_shape() -> None:
 
 def test_parse_args_defaults_to_quiet_batch_output() -> None:
     args = argparse.Namespace(
-        level_name="level_eval",
+        level_name="level_drop",
         bot_name="turtle",
         headless=True,
         batch=False,
@@ -476,9 +474,8 @@ def test_parse_args_defaults_to_quiet_batch_output() -> None:
         stop_on_first_land=False,
         seed=None,
         lander=None,
-        eval_scenario=None,
         batch_seeds="0-1",
-        batch_scenarios=None,
+        batch_levels=None,
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
@@ -517,10 +514,10 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
             raise RuntimeError("boom")
 
     def _fake_plan(_config):
-        return [0, 1], ["spawn_above_target"]
+        return [0, 1], ["level_drop"]
 
-    def _fake_run_once_record(config, *, seed, scenario):
-        _ = config, scenario
+    def _fake_run_once_record(config, *, seed, level_name):
+        _ = config, level_name
         return {
             "seed": seed,
             "state": "landed",
@@ -533,7 +530,7 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
     monkeypatch.setattr(main_module.os, "cpu_count", lambda: 8)
 
     config = RunConfig(
-        level_name="level_eval",
+        level_name="level_drop",
         bot_name="turtle",
         headless=True,
         batch=True,
@@ -546,9 +543,8 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
         stop_on_first_land=True,
         seed=None,
         lander_name=None,
-        eval_scenario=None,
         batch_seeds="0-1",
-        batch_scenarios="spawn_above_target",
+        batch_levels="level_drop",
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
@@ -562,12 +558,12 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
 
 def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:
     def _fake_plan(_config):
-        return [], ["spawn_above_target"]
+        return [], ["level_drop"]
 
     monkeypatch.setattr(main_module, "_resolve_batch_plan", _fake_plan)
 
     config = RunConfig(
-        level_name="level_eval",
+        level_name="level_drop",
         bot_name="turtle",
         headless=True,
         batch=True,
@@ -580,9 +576,8 @@ def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:
         stop_on_first_land=True,
         seed=None,
         lander_name=None,
-        eval_scenario=None,
         batch_seeds="",
-        batch_scenarios="spawn_above_target",
+        batch_levels="level_drop",
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
@@ -593,14 +588,14 @@ def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:
         _run_batch(config)
 
 
-def test_run_batch_rejects_empty_scenario_plan(monkeypatch) -> None:
+def test_run_batch_rejects_empty_level_plan(monkeypatch) -> None:
     def _fake_plan(_config):
         return [0, 1], []
 
     monkeypatch.setattr(main_module, "_resolve_batch_plan", _fake_plan)
 
     config = RunConfig(
-        level_name="level_eval",
+        level_name="level_drop",
         bot_name="turtle",
         headless=True,
         batch=True,
@@ -613,14 +608,13 @@ def test_run_batch_rejects_empty_scenario_plan(monkeypatch) -> None:
         stop_on_first_land=True,
         seed=None,
         lander_name=None,
-        eval_scenario=None,
         batch_seeds="0-1",
-        batch_scenarios="",
+        batch_levels="",
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
         batch_workers=2,
     )
 
-    with pytest.raises(ValueError, match="resolved no scenarios"):
+    with pytest.raises(ValueError, match="resolved no levels"):
         _run_batch(config)

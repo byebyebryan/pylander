@@ -31,10 +31,10 @@ uv run python main.py
 Watch an AI bot play using the sensor/action API:
 ```bash
 # Vertical descent specialist
-uv run python main.py level_eval drop --eval-scenario spawn_above_target
+uv run python main.py level_drop
 
 # Horizontal transfer specialist
-uv run python main.py level_eval drift --eval-scenario horizontal_travel_flat_descend
+uv run python main.py level_drift
 
 # Legacy baseline bot (kept for comparison during migration)
 uv run python main.py level_flat turtle
@@ -44,35 +44,37 @@ uv run python main.py level_flat turtle
 Run simulations without graphics for bot development:
 ```bash
 # Run bot in headless mode (prints stats every second by default)
-uv run python main.py level_eval drop --headless --eval-scenario spawn_above_target
+uv run python main.py level_drop --headless
 
 # Print every frame for detailed debugging
-uv run python main.py level_eval drift --headless --freq 1 --steps 300 \
-  --eval-scenario horizontal_travel_flat_descend
+uv run python main.py level_drift --headless --freq 1 --steps 300
 
 # Print every 0.5 seconds
-uv run python main.py level_eval plunge --headless --freq 30 \
-  --eval-scenario greater_vertical_distance
+uv run python main.py level_plunge --headless --freq 30
 
 # Disable output for fastest execution
-uv run python main.py level_eval ferry --headless --freq 0 --steps 10000 \
-  --eval-scenario increase_horizontal_distance
+uv run python main.py level_ferry --headless --freq 0 --steps 10000
 
 # Use different seed or lander
-uv run python main.py level_eval drop --headless --seed 123 \
-  --eval-scenario spawn_above_target
+uv run python main.py level_drop --headless --seed 123
 uv run python main.py level_flat --lander differential
 ```
 
 Batch evaluation (headless, sequential single-bot runs):
 ```bash
-# Fast preset benchmark (3 seeds x wave-1 scenarios)
-uv run python main.py level_eval drift --headless --quick-benchmark
+# Fast preset benchmark (3 seeds x wave-1 levels)
+uv run python main.py level_drop --headless --quick-benchmark
 
-# Custom batch with report artifacts
-uv run python main.py level_eval ferry --headless --batch \
+# Scenario-specific batch using level default bot
+uv run python main.py level_ferry --headless --batch \
   --batch-seeds 0-19 \
-  --batch-scenarios spawn_above_target,greater_vertical_distance,horizontal_travel_flat_descend,increase_horizontal_distance \
+  --batch-json auto \
+  --batch-csv auto
+
+# Full wave-1 matrix using explicit level suite
+uv run python main.py level_drop --headless --batch \
+  --batch-seeds 0-19 \
+  --batch-levels level_drop,level_plunge,level_drift,level_ferry \
   --batch-json auto \
   --batch-csv auto
 ```
@@ -117,20 +119,15 @@ class MyBot(Bot):
 `PassiveSensors` includes world position (`x`, `y`), terrain-relative clearance (`altitude`), local terrain context (`terrain_y`, `terrain_slope`), kinematics, fuel/state, and radar/proximity contacts.
 `ActiveSensors` provides `raycast(angle, max_range)` plus terrain helpers like `terrain_height(x)` and `terrain_profile(x_start, x_end, samples)`.
 
-## Eval Scenarios (`level_eval`)
+## Scenario Levels
 
-- `spawn_above_target` (wave-1)
-- `greater_vertical_distance` (wave-1)
-- `horizontal_travel_flat_descend` (wave-1)
-- `increase_horizontal_distance` (wave-1)
-- `climb_to_target`
-- `complex_terrain_vertical_features`
-
-Specialist bot mapping:
-- `drop` -> `spawn_above_target`
-- `plunge` -> `greater_vertical_distance`
-- `drift` -> `horizontal_travel_flat_descend`
-- `ferry` -> `increase_horizontal_distance`
+Dedicated scenario levels (default bot in parentheses):
+- `level_drop` (`drop`) - vertical descent
+- `level_plunge` (`plunge`) - greater vertical distance
+- `level_drift` (`drift`) - horizontal travel then descent
+- `level_ferry` (`ferry`) - long horizontal transfer then descent
+- `level_climb` (`drift`) - climb to elevated target
+- `level_obstacles` (`ferry`) - complex terrain with vertical features
 
 ## Command Line Options
 
@@ -138,7 +135,7 @@ Specialist bot mapping:
 python main.py [level_name] [bot_name] [options]
 ```
 
-**Levels:** Run `python main.py --help` to list (e.g. `level_flat`, `level_mountains`).
+**Levels:** Run `python main.py --help` to list (e.g. `level_flat`, `level_mountains`, `level_drop`).
 
 **Bot names:** `drop`, `plunge`, `drift`, `ferry`, `turtle` (see `--help`).
 
@@ -151,10 +148,9 @@ python main.py [level_name] [bot_name] [options]
 - `--stop-on-crash`, `--stop-on-out-of-fuel`, `--stop-on-first-land` - End conditions
 - `--seed N` - Random seed
 - `--lander NAME` - Lander variant (classic, differential, simple)
-- `--eval-scenario NAME` - Scenario for `level_eval`
 - `--batch` - Enable batch runs (requires `--headless` + bot)
 - `--batch-seeds SPEC` - Seeds like `0-19` or `0,1,2,5`
-- `--batch-scenarios CSV` - Scenario names for `level_eval`
+- `--batch-levels CSV` - Level names for batch suites
 - `--batch-json PATH|auto` - Write JSON report
 - `--batch-csv PATH|auto` - Write CSV rows
 - `--batch-workers N` - Parallel worker processes for batch runs (`1` = sequential; effective workers are capped by CPU count and run count)

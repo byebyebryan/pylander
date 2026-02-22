@@ -32,7 +32,7 @@ from levels.common import compute_score_default, should_end_default
 
 
 @dataclass(frozen=True)
-class EvalScenario:
+class ScenarioLevelSpec:
     name: str
     start_x: float
     target_x: float
@@ -48,92 +48,6 @@ class EvalScenario:
     target_mode: str = "flush_flatten"
     target_offset_y: float = 0.0
     target_size: float = 100.0
-
-
-SCENARIOS: dict[str, EvalScenario] = {
-    "spawn_above_target": EvalScenario(
-        name="spawn_above_target",
-        start_x=0.0,
-        target_x=0.0,
-        spawn_clearance=70.0,
-        terrain_kind="flat",
-        target_mode="flush_flatten",
-        target_offset_y=0.0,
-        target_size=110.0,
-    ),
-    "greater_vertical_distance": EvalScenario(
-        name="greater_vertical_distance",
-        start_x=0.0,
-        target_x=0.0,
-        spawn_clearance=220.0,
-        terrain_kind="flat",
-        target_mode="flush_flatten",
-        target_offset_y=0.0,
-        target_size=110.0,
-    ),
-    "horizontal_travel_flat_descend": EvalScenario(
-        name="horizontal_travel_flat_descend",
-        start_x=0.0,
-        target_x=900.0,
-        spawn_clearance=100.0,
-        terrain_kind="flat",
-        terrain_base=0.0,
-        target_mode="flush_flatten",
-        target_offset_y=0.0,
-        target_size=100.0,
-    ),
-    "increase_horizontal_distance": EvalScenario(
-        name="increase_horizontal_distance",
-        start_x=0.0,
-        target_x=1800.0,
-        spawn_clearance=120.0,
-        terrain_kind="flat",
-        target_mode="flush_flatten",
-        target_offset_y=0.0,
-        target_size=105.0,
-    ),
-    "climb_to_target": EvalScenario(
-        name="climb_to_target",
-        start_x=0.0,
-        target_x=900.0,
-        spawn_clearance=70.0,
-        terrain_kind="slope",
-        slope=0.04,
-        terrain_base=-80.0,
-        target_mode="elevated_supports",
-        target_offset_y=90.0,
-        target_size=90.0,
-    ),
-    "complex_terrain_vertical_features": EvalScenario(
-        name="complex_terrain_vertical_features",
-        start_x=-150.0,
-        target_x=1300.0,
-        spawn_clearance=120.0,
-        terrain_kind="complex",
-        terrain_amplitude=5400.0,
-        terrain_frequency=0.00016,
-        terrain_octaves=6,
-        target_mode="elevated_supports",
-        target_offset_y=100.0,
-        target_size=85.0,
-    ),
-}
-
-DEFAULT_SCENARIO = "spawn_above_target"
-WAVE1_SCENARIOS: tuple[str, ...] = (
-    "spawn_above_target",
-    "greater_vertical_distance",
-    "horizontal_travel_flat_descend",
-    "increase_horizontal_distance",
-)
-
-
-def list_eval_scenarios() -> list[str]:
-    return sorted(SCENARIOS.keys())
-
-
-def list_wave1_scenarios() -> list[str]:
-    return [name for name in WAVE1_SCENARIOS if name in SCENARIOS]
 
 
 def _require_component(entity, component_type):
@@ -166,54 +80,57 @@ def _compute_spawn_pos(
     return Vector2(x, max_ground + half_h + clearance)
 
 
-def _build_base_terrain(seed: int, scenario: EvalScenario):
-    if scenario.terrain_kind == "flat":
-        return _terrain.LodGridGenerator(lambda _x: scenario.terrain_base)
-    if scenario.terrain_kind == "slope":
+def _build_base_terrain(seed: int, spec: ScenarioLevelSpec):
+    if spec.terrain_kind == "flat":
+        return _terrain.LodGridGenerator(lambda _x: spec.terrain_base)
+    if spec.terrain_kind == "slope":
         return _terrain.LodGridGenerator(
-            lambda x: scenario.terrain_base + scenario.slope * x
+            lambda x: spec.terrain_base + spec.slope * x
         )
-    if scenario.terrain_kind == "complex":
+    if spec.terrain_kind == "complex":
         simplex = _terrain.SimplexNoiseGenerator(
             seed=seed,
-            octaves=scenario.terrain_octaves,
-            amplitude=scenario.terrain_amplitude,
-            frequency=scenario.terrain_frequency,
+            octaves=spec.terrain_octaves,
+            amplitude=spec.terrain_amplitude,
+            frequency=spec.terrain_frequency,
             persistence=0.30,
             lacunarity=3.0,
         )
         return _terrain.LodGridGenerator(simplex, base_resolution=8.0)
-    raise ValueError(f"Unsupported terrain kind: {scenario.terrain_kind}")
+    raise ValueError(f"Unsupported terrain kind: {spec.terrain_kind}")
 
 
-class BotEvalLevel(Level):
+class ScenarioLevel(Level):
+    """Single-scenario level with deterministic setup and optional default bot."""
+
+    scenario: ScenarioLevelSpec | None = None
+    default_bot_name: str | None = None
+
     def setup(self, _game, seed: int) -> None:
-        scenario_name = getattr(self, "eval_scenario", DEFAULT_SCENARIO)
-        scenario = SCENARIOS.get(scenario_name)
-        if scenario is None:
-            valid = ", ".join(list_eval_scenarios())
-            raise ValueError(f"Unknown eval scenario '{scenario_name}'. Valid: {valid}")
+        spec = self.scenario
+        if spec is None:
+            raise ValueError(f"{type(self).__name__} must define `scenario`")
 
         rng = random.Random(seed)
-        base_terrain = _build_base_terrain(seed, scenario)
+        base_terrain = _build_base_terrain(seed, spec)
 
-        target_x = scenario.target_x
-        if scenario.target_x_jitter > 0.0:
-            target_x += rng.uniform(-scenario.target_x_jitter, scenario.target_x_jitter)
+        target_x = spec.target_x
+        if spec.target_x_jitter > 0.0:
+            target_x += rng.uniform(-spec.target_x_jitter, spec.target_x_jitter)
         target_ground_y = base_terrain(target_x, lod=0)
-        target_y = target_ground_y + scenario.target_offset_y
-        target_terrain_bound = scenario.target_mode != "elevated_supports"
+        target_y = target_ground_y + spec.target_offset_y
+        target_terrain_bound = spec.target_mode != "elevated_supports"
 
         site_uid = "eval_site_primary"
         site_view = to_view(
             uid=site_uid,
             x=target_x,
             y=target_y,
-            size=scenario.target_size,
+            size=spec.target_size,
             vel=Vector2(0.0, 0.0),
             award=200.0,
             fuel_price=10.0,
-            terrain_mode=scenario.target_mode,
+            terrain_mode=spec.target_mode,
             terrain_bound=target_terrain_bound,
             blend_margin=20.0,
             cut_depth=20.0,
@@ -230,8 +147,8 @@ class BotEvalLevel(Level):
         site_entity.add_component(Transform(pos=Vector2(target_x, target_y)))
         site_entity.add_component(
             LandingSiteComponent(
-                size=scenario.target_size,
-                terrain_mode=scenario.target_mode,
+                size=spec.target_size,
+                terrain_mode=spec.target_mode,
                 terrain_bound=target_terrain_bound,
                 blend_margin=20.0,
                 cut_depth=20.0,
@@ -251,14 +168,14 @@ class BotEvalLevel(Level):
 
         trans = _require_component(lander, Transform)
         geo = _require_component(lander, LanderGeometry)
-        start_x = scenario.start_x
-        if scenario.start_x_jitter > 0.0:
-            start_x += rng.uniform(-scenario.start_x_jitter, scenario.start_x_jitter)
+        start_x = spec.start_x
+        if spec.start_x_jitter > 0.0:
+            start_x += rng.uniform(-spec.start_x_jitter, spec.start_x_jitter)
         start_pos = _compute_spawn_pos(
             terrain,
             start_x,
             geo,
-            clearance=scenario.spawn_clearance,
+            clearance=spec.spawn_clearance,
         )
         lander.start_pos = Vector2(start_pos)
         trans.pos = Vector2(start_pos)
@@ -269,10 +186,8 @@ class BotEvalLevel(Level):
             segment_step=10.0,
             half_width=12000.0,
         )
-        if not target_terrain_bound or scenario.target_mode == "elevated_supports":
-            engine.set_landing_site_colliders(
-                [(target_x, target_y, scenario.target_size)]
-            )
+        if not target_terrain_bound or spec.target_mode == "elevated_supports":
+            engine.set_landing_site_colliders([(target_x, target_y, spec.target_size)])
         engine.attach_lander(
             width=geo.width,
             height=geo.height,
@@ -294,7 +209,7 @@ class BotEvalLevel(Level):
             extra_entities=[],
         )
         setattr(self, "engine", engine)
-        setattr(self, "eval_scenario", scenario.name)
+        setattr(self, "scenario_name", spec.name)
 
     def should_end(self, game) -> bool:
         return should_end_default(
@@ -325,10 +240,6 @@ class BotEvalLevel(Level):
             "credits": _require_component(game.lander, Wallet).credits,
             "fuel": _require_component(game.lander, FuelTank).fuel,
             "score": score,
-            "scenario": getattr(self, "eval_scenario", DEFAULT_SCENARIO),
+            "scenario": getattr(self, "scenario_name", type(self).__name__),
         }
-
-
-def create_level() -> Level:
-    return BotEvalLevel()
 
