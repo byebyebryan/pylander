@@ -4,7 +4,16 @@ from __future__ import annotations
 
 import math
 
-from core.components import Engine, FuelTank, LanderState, PhysicsState, SensorReadings, Transform, Wallet
+from core.components import (
+    Engine,
+    FuelTank,
+    LanderGeometry,
+    LanderState,
+    PhysicsState,
+    SensorReadings,
+    Transform,
+    Wallet,
+)
 
 
 class HudOverlay:
@@ -40,13 +49,15 @@ class HudOverlay:
         phys = actor.get_component(PhysicsState)
         tank = actor.get_component(FuelTank)
         eng = actor.get_component(Engine)
+        geo = actor.get_component(LanderGeometry)
         ls = actor.get_component(LanderState)
         readings = actor.get_component(SensorReadings)
-        if None in (trans, phys, tank, eng, ls, readings):
+        if None in (trans, phys, tank, eng, geo, ls, readings):
             raise RuntimeError("Lander missing expected HUD components")
 
         speed = math.hypot(phys.vel.x, phys.vel.y)
-        altitude = trans.pos.y - level.terrain(trans.pos.x)
+        half_height = max(1.0, geo.height * 0.5)
+        altitude = trans.pos.y - level.terrain(trans.pos.x) - half_height
         prox = readings.proximity
         prox_dist = prox.distance if prox is not None else None
         prox_angle = prox.angle if prox is not None else None

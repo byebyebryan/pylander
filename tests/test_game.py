@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 
+import main as main_module
 from bots import create_bot, list_available_bots
 from core.eval import aggregate_eval_records, normalize_run_result
 from core.bot import Bot, BotAction
@@ -18,9 +19,10 @@ from core.maths import Vector2
 from core.lander import Lander
 from core.level import Level, LevelWorld
 from game import LanderGame
-from main import RunConfig, _parse_args, _parse_seed_spec, _resolve_batch_plan
+from main import RunConfig, _parse_args, _parse_seed_spec, _resolve_batch_plan, _run_batch
 from levels import create_level as create_level_by_name
 from levels.level_1 import create_level as create_level_1
+from ui.hud import HudOverlay
 
 
 def test_bot_registry_only_exposes_turtle() -> None:
@@ -36,6 +38,11 @@ class _FlatTerrain:
 
     def get_resolution(self, _lod: int) -> float:
         return 1.0
+
+
+class _FixedTerrainLevel:
+    def terrain(self, _x: float) -> float:
+        return 20.0
 
 
 class _PassiveBot(Bot):
@@ -366,3 +373,65 @@ def test_parse_args_defaults_to_quiet_batch_output() -> None:
     )
     config = _parse_args(args)
     assert config.print_freq == 0
+
+
+def test_hud_altitude_matches_passive_sensor_clearance_convention() -> None:
+    actor = Lander(start_pos=Vector2(0.0, 100.0))
+    level = _FixedTerrainLevel()
+    hud = HudOverlay(font=None, screen=None)
+
+    lines = hud._build_info_lines(level, actor)
+    alt_line = next(line for line in lines if line.startswith("ALT: "))
+
+    # Transform y=100, terrain y=20, half-height=4 => clearance is 76.
+    assert alt_line == "ALT: 76.0 m"
+
+
+def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
+    monkeypatch,
+) -> None:
+    class _FailingExecutor:
+        def __init__(self, *args, **kwargs):
+            _ = args, kwargs
+            raise RuntimeError("boom")
+
+    def _fake_plan(_config):
+        return [0, 1], ["spawn_above_target"]
+
+    def _fake_run_once_record(config, *, seed, scenario):
+        _ = config, scenario
+        return {
+            "seed": seed,
+            "state": "landed",
+            "success": True,
+        }
+
+    monkeypatch.setattr(main_module, "ProcessPoolExecutor", _FailingExecutor)
+    monkeypatch.setattr(main_module, "_resolve_batch_plan", _fake_plan)
+    monkeypatch.setattr(main_module, "_run_once_record", _fake_run_once_record)
+    monkeypatch.setattr(main_module.os, "cpu_count", lambda: 8)
+
+    config = RunConfig(
+        level_name="level_eval",
+        bot_name="turtle",
+        headless=True,
+        batch=True,
+        print_freq=0,
+        max_time=300.0,
+        max_steps=100,
+        plot_mode="none",
+        stop_on_crash=True,
+        stop_on_out_of_fuel=True,
+        stop_on_first_land=True,
+        seed=None,
+        lander_name=None,
+        eval_scenario=None,
+        batch_seeds="0-1",
+        batch_scenarios="spawn_above_target",
+        batch_json=None,
+        batch_csv=None,
+        quick_benchmark=False,
+        batch_workers=2,
+    )
+    exit_code = _run_batch(config)
+    assert exit_code == 0

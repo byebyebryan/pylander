@@ -40,45 +40,52 @@ class TurtleBot(Bot):
         target_size = None
         if contacts:
             chosen = None
+            scored_contacts = [c for c in contacts if c.is_inner_lock]
+            if not scored_contacts:
+                scored_contacts = contacts
             candidate_rows: list[tuple[float, object, bool, bool, float]] = []
             best_score = float("inf")
-            for c in contacts:
+            for c in scored_contacts:
                 if c.uid and c.uid in self._target_uid_blacklist:
                     continue
                 score = float(c.distance)
                 moving_like = False
                 elevated_like = False
 
-                # Prefer downhill or level pads over high-above options.
-                dy = c.y - passive.y
-                if dy > 20.0:
-                    score += dy * 1.8
-                elif dy < -2.0:
-                    score -= 60.0
+                # Only use full geometry-sensitive heuristics with inner-lock contacts.
+                if c.is_inner_lock:
+                    # Prefer downhill or level pads over high-above options.
+                    dy = c.y - passive.y
+                    if dy > 20.0:
+                        score += dy * 1.8
+                    elif dy < -2.0:
+                        score -= 60.0
 
-                # Elevated pads are valid, but less preferred than terrain-bound pads.
-                if callable(getattr(active, "terrain_height", None)):
-                    ground_y = active.terrain_height(c.x)
-                    elevated_by = c.y - ground_y
-                    if elevated_by > 35.0:
-                        elevated_like = True
-                        score += min(260.0, (elevated_by - 35.0) * 3.0)
+                    # Elevated pads are valid, but less preferred than terrain-bound pads.
+                    if callable(getattr(active, "terrain_height", None)):
+                        ground_y = active.terrain_height(c.x)
+                        elevated_by = c.y - ground_y
+                        if elevated_by > 35.0:
+                            elevated_like = True
+                            score += min(260.0, (elevated_by - 35.0) * 3.0)
 
-                # Tiny pads are usually harder / moving targets.
-                if c.size < 50.0:
-                    score += (50.0 - c.size) * 2.5
+                    # Tiny pads are usually harder / moving targets.
+                    if c.size < 50.0:
+                        score += (50.0 - c.size) * 2.5
 
-                if c.uid:
-                    prev = self._contact_prev.get(c.uid)
-                    if prev is not None and dt > 1e-4:
-                        observed_speed = math.hypot(c.x - prev[0], c.y - prev[1]) / dt
-                        if observed_speed > 4.0:
+                    if c.uid:
+                        prev = self._contact_prev.get(c.uid)
+                        if prev is not None and dt > 1e-4:
+                            observed_speed = math.hypot(c.x - prev[0], c.y - prev[1]) / dt
+                            if observed_speed > 4.0:
+                                moving_like = True
+                                score += 500.0
+                        uid_l = c.uid.lower()
+                        if ("moving" in uid_l) or ("scripted" in uid_l):
                             moving_like = True
                             score += 500.0
-                    uid_l = c.uid.lower()
-                    if ("moving" in uid_l) or ("scripted" in uid_l):
-                        moving_like = True
-                        score += 500.0
+                else:
+                    dy = 0.0
 
                 candidate_rows.append((score, c, moving_like, elevated_like, dy))
 
@@ -103,8 +110,7 @@ class TurtleBot(Bot):
             if chosen is None:
                 chosen = next(
                     (
-                        c
-                        for c in contacts
+                        c for c in scored_contacts
                         if not (c.uid and c.uid in self._target_uid_blacklist)
                     ),
                     None,

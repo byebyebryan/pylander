@@ -503,7 +503,7 @@ def _run_batch(config: RunConfig) -> int:
                     print(f"[{done}/{total}] done seed={seed} scenario={scenario_name}")
                     indexed_records[run_idx] = fut.result()
             records = [indexed_records[i] for i in range(1, total + 1)]
-        except (PermissionError, OSError) as exc:
+        except Exception as exc:
             print(
                 f"Batch workers unavailable ({exc}); falling back to sequential execution."
             )
