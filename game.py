@@ -462,6 +462,7 @@ class LanderGame:
         step_count = 0
         landing_count = 0
         crash_count = 0
+        time_to_first_land = None
         prev_state = None
         frame_dt = 1.0 / TARGET_RENDERING_FPS
         timers = LoopTimers(physics_dt=physics_dt, bot_dt=bot_dt, frame_dt=frame_dt)
@@ -567,6 +568,8 @@ class LanderGame:
             if state != prev_state:
                 if state == "landed":
                     landing_count += 1
+                    if time_to_first_land is None:
+                        time_to_first_land = timers.elapsed_time
                 elif state == "crashed":
                     crash_count += 1
                 prev_state = state
@@ -583,6 +586,8 @@ class LanderGame:
         self._distance_flown = distance_flown
         self._fuel_consumed = fuel_consumed
         result = self.level.end(self)
+        final_actor = self.get_active_actor()
+        final_tank = _require_component(final_actor, FuelTank)
         elapsed_time = max(0.0, float(timers.elapsed_time))
         avg_speed = (distance_flown / elapsed_time) if elapsed_time > 1e-9 else 0.0
         fuel_per_distance = (fuel_consumed / distance_flown) if distance_flown > 1e-9 else 0.0
@@ -598,9 +603,11 @@ class LanderGame:
         result.setdefault("distance_flown", distance_flown)
         result.setdefault("avg_speed", avg_speed)
         result.setdefault("fuel_consumed", fuel_consumed)
+        result.setdefault("fuel_remaining", float(final_tank.fuel))
         result.setdefault("fuel_per_distance", fuel_per_distance)
         result.setdefault("spawn_to_target_distance", spawn_to_target_distance)
         result.setdefault("path_efficiency", path_efficiency)
+        result.setdefault("time_to_first_land", time_to_first_land)
         plot_extras = self.plotter.finalize()
         if plot_extras:
             result.update(plot_extras)

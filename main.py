@@ -505,6 +505,7 @@ def _print_batch_summary(
             "fuel_per_distance",
             "path_efficiency",
             "time",
+            "time_to_first_land",
         )
         printed = 0
         for metric in metric_order:
@@ -545,6 +546,14 @@ def _print_batch_summary(
                 f"  - {name}: runs={row['runs']} landed={row['landed']} "
                 f"crashed={row['crashed']} success={row['success_rate']:.2%}"
             )
+            success_eff = row.get("efficiency_success") or {}
+            fuel_stats = success_eff.get("fuel_consumed", {})
+            time_stats = success_eff.get("time", {})
+            fuel_mean = float(fuel_stats.get("mean", 0.0) or 0.0)
+            time_mean = float(time_stats.get("mean", 0.0) or 0.0)
+            fuel_count = int(fuel_stats.get("count", 0) or 0)
+            if fuel_count > 0:
+                print(f"      efficiency_success: fuel_mean={fuel_mean:.2f} time_mean={time_mean:.2f}")
     if failures:
         print("\nFail samples:")
         for row in failures[:8]:

@@ -63,9 +63,11 @@ def _efficiency_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "distance_flown",
         "avg_speed",
         "fuel_consumed",
+        "fuel_remaining",
         "fuel_per_distance",
         "path_efficiency",
         "time",
+        "time_to_first_land",
     )
     return {field: _metric_summary(records, field) for field in fields}
 
@@ -92,12 +94,17 @@ def normalize_run_result(
         "crash_count": crash_count,
         "credits": _to_float(result.get("credits", 0.0), 0.0),
         "fuel": _to_float(result.get("fuel", 0.0), 0.0),
+        "fuel_remaining": _to_float(
+            result.get("fuel_remaining", result.get("fuel", 0.0)),
+            0.0,
+        ),
         "score": _to_float(result.get("score", 0.0), 0.0),
         "distance_flown": _to_float(result.get("distance_flown", 0.0), 0.0),
         "avg_speed": _to_float(result.get("avg_speed", 0.0), 0.0),
         "fuel_consumed": _to_float(result.get("fuel_consumed", 0.0), 0.0),
         "fuel_per_distance": _to_float(result.get("fuel_per_distance", 0.0), 0.0),
         "path_efficiency": _to_optional_float(result.get("path_efficiency")),
+        "time_to_first_land": _to_optional_float(result.get("time_to_first_land")),
         "spawn_to_target_distance": _to_optional_float(
             result.get("spawn_to_target_distance")
         ),

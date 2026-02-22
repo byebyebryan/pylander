@@ -217,9 +217,11 @@ def test_game_run_emits_efficiency_metrics() -> None:
         "distance_flown",
         "avg_speed",
         "fuel_consumed",
+        "fuel_remaining",
         "fuel_per_distance",
         "spawn_to_target_distance",
         "path_efficiency",
+        "time_to_first_land",
     ):
         assert key in result
     assert result["distance_flown"] >= 0.0
@@ -549,8 +551,42 @@ def test_eval_aggregate_summary_shape() -> None:
     assert summary["efficiency_success"]["distance_flown"]["count"] == 1
     assert "efficiency_all" in summary
     assert summary["efficiency_all"]["distance_flown"]["count"] == 2
+    assert summary["efficiency_all"]["fuel_remaining"]["count"] == 2
     assert "by_scenario" in summary
     assert "vertical_low" in summary["by_scenario"]
+
+
+def test_print_batch_summary_includes_per_scenario_efficiency_means(capsys) -> None:
+    summary = {
+        "runs": 1,
+        "landed": 1,
+        "crashed": 0,
+        "out_of_fuel": 0,
+        "flying": 0,
+        "other": 0,
+        "success_rate": 1.0,
+        "efficiency_success": {},
+        "efficiency_all": {},
+        "by_scenario": {
+            "vertical_low": {
+                "runs": 1,
+                "landed": 1,
+                "crashed": 0,
+                "out_of_fuel": 0,
+                "flying": 0,
+                "other": 0,
+                "success_rate": 1.0,
+                "efficiency_success": {
+                    "fuel_consumed": {"count": 1, "mean": 8.5, "median": 8.5, "p90": 8.5},
+                    "time": {"count": 1, "mean": 22.0, "median": 22.0, "p90": 22.0},
+                },
+                "efficiency_all": {},
+            }
+        },
+    }
+    main_module._print_batch_summary(summary, failures=[], json_path=None, csv_path=None)
+    out = capsys.readouterr().out
+    assert "efficiency_success: fuel_mean=8.50 time_mean=22.00" in out
 
 
 def test_parse_args_defaults_to_quiet_batch_output() -> None:
