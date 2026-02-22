@@ -46,6 +46,29 @@ class Minimap:
         # Horizontal span in world units
         self.world_span_x = 20000.0
 
+    def _terrain_resolution(self, lod: int) -> float:
+        get_resolution = getattr(self.terrain, "get_resolution", None)
+        if callable(get_resolution):
+            try:
+                return max(1e-6, float(get_resolution(lod)))
+            except Exception:
+                return 2.0
+        return 2.0
+
+    def _pick_lod_for_world_step(self, world_step: float, max_lod: int = 8) -> int:
+        target = max(1e-6, float(world_step))
+        import math as _math
+
+        best_lod = 0
+        best_score = float("inf")
+        for lod in range(max(0, int(max_lod)) + 1):
+            res = self._terrain_resolution(lod)
+            score = abs(_math.log2(res / target))
+            if score < best_score:
+                best_lod = lod
+                best_score = score
+        return best_lod
+
     def draw(
         self,
         screen: pygame.Surface,
@@ -93,7 +116,9 @@ class Minimap:
         # Get terrain points for minimap (stable world-grid sampling)
         minimap_visible = self.camera.get_visible_world_rect()
         world_span = minimap_visible.width
-        world_step = max(world_span / 80.0, 1.0)
+        desired_step = world_span / 80.0
+        lod = self._pick_lod_for_world_step(desired_step)
+        world_step = max(desired_step, self._terrain_resolution(lod))
         import math as _math
 
         start_world_x = _math.floor(minimap_visible.min_x / world_step) * world_step
@@ -101,15 +126,6 @@ class Minimap:
 
         minimap_points = []
         wx = start_world_x
-        # Choose a conservative LOD for minimap to keep it light
-        # Based on minimap camera zoom
-        z = self.camera.zoom
-        if z >= 1.0:
-            lod = 1
-        elif z >= 0.5:
-            lod = 2
-        else:
-            lod = 3
 
         # Build an offset camera that maps directly to absolute screen pixels
         oc = OffsetCamera(
@@ -120,12 +136,24 @@ class Minimap:
             self.rect.y + self.rect.height / 2.0,
         )
 
-        while wx <= end_world_x:
-            world_y = self.terrain(wx, lod=lod) * height_scale
-            minimap_pt = oc.world_to_screen(Vector2(wx, world_y))
+        profile_fn = getattr(self.terrain, "profile", None)
+        if callable(profile_fn):
+            samples = profile_fn(
+                minimap_visible.min_x,
+                minimap_visible.max_x + world_step,
+                lod=lod,
+                step=world_step,
+            )
+        else:
+            samples = []
+            while wx <= end_world_x:
+                samples.append((wx, self.terrain(wx, lod=lod)))
+                wx += world_step
+
+        for wx, wy in samples:
+            minimap_pt = oc.world_to_screen(Vector2(wx, wy * height_scale))
             minimap_pt = self.rect.clamp_point(minimap_pt)
             minimap_points.append((minimap_pt.x, minimap_pt.y))
-            wx += world_step
 
         # Draw terrain
         if len(minimap_points) >= 2:

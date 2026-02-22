@@ -47,6 +47,9 @@ class ContactSystem(System):
         if site is not None and self._can_land_on_site(entity, site, half_w, half_h, dt):
             self._apply_landing(entity, site, half_h)
             return
+        if site is not None and self._crossed_site_plane(entity, site, half_w, half_h, dt):
+            self._apply_crash(entity)
+            return
 
         # Terrain contact path: colliding while descending resolves as terrain landing/crash.
         if not report.get("colliding") or phys.vel.y > 0.0:
@@ -89,6 +92,28 @@ class ContactSystem(System):
         lander_bottom_y = trans.pos.y - half_h
         landing_band = max(2.0, abs(rel_vel.y) * max(dt, 1e-3) * 1.5 + 1.0)
         return abs(lander_bottom_y - site.y) <= landing_band
+
+    def _crossed_site_plane(
+        self, entity: Entity, site, half_w: float, half_h: float, dt: float
+    ) -> bool:
+        """Detect downward crossing through a site plane between fixed updates."""
+        phys = entity.get_component(PhysicsState)
+        trans = entity.get_component(Transform)
+        if phys is None or trans is None:
+            return False
+        if abs(trans.pos.x - site.x) > (site.size * 0.5 + half_w):
+            return False
+
+        rel_vel = phys.vel - site.vel
+        if rel_vel.y >= 0.0:
+            return False
+
+        dt_safe = max(1e-3, float(dt))
+        current_bottom = trans.pos.y - half_h
+        prev_bottom = current_bottom - rel_vel.y * dt_safe
+        # A small tolerance avoids edge jitter around the exact plane.
+        tol = 0.5
+        return prev_bottom >= site.y - tol and current_bottom <= site.y + tol
 
     def _apply_landing(self, entity: Entity, site, half_h: float) -> None:
         ls = entity.get_component(LanderState)

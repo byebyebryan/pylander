@@ -179,17 +179,26 @@ class Renderer:
         except Exception:
             pass
 
-    def _lod_for_zoom(self) -> int:
-        """Pick LOD based on current zoom (pixels per world unit)."""
-        z = self.main_camera.zoom
-        # Higher zoom = more detail (lower LOD)
-        if z >= 1.0:
-            return 0
-        if z >= 0.25:
-            return 1
-        if z >= 0.0625:
-            return 2
-        return 3
+    def _terrain_resolution(self, lod: int) -> float:
+        get_resolution = getattr(self.level.terrain, "get_resolution", None)
+        if callable(get_resolution):
+            try:
+                return max(1e-6, float(get_resolution(lod)))
+            except Exception:
+                return 2.0
+        return 2.0
+
+    def _pick_lod_for_world_step(self, world_step: float, max_lod: int = 8) -> int:
+        target = max(1e-6, float(world_step))
+        best_lod = 0
+        best_score = float("inf")
+        for lod in range(max(0, int(max_lod)) + 1):
+            res = self._terrain_resolution(lod)
+            score = abs(math.log2(res / target))
+            if score < best_score:
+                best_lod = lod
+                best_score = score
+        return best_lod
 
     def draw_terrain(self):
         """Draw terrain as a polyline sampled on a stable world grid to reduce shimmer."""
@@ -199,23 +208,32 @@ class Renderer:
         # Choose a world-step based on target segments and anchor it to a world grid
         if self.target_segments <= 0:
             self.target_segments = 80
-        lod = self._lod_for_zoom()
-        # Use a step roughly aligned with LOD interval to avoid oversampling
-        base_interval = self.level.terrain.get_resolution(lod)
-        world_step = max(world_span / self.target_segments, base_interval)
+        desired_step = world_span / max(1, self.target_segments)
+        lod = self._pick_lod_for_world_step(desired_step)
+        base_interval = self._terrain_resolution(lod)
+        world_step = max(desired_step, base_interval)
 
-        # Anchor to grid so points slide smoothly as camera pans
+        profile_fn = getattr(self.level.terrain, "profile", None)
+        if callable(profile_fn):
+            samples = profile_fn(
+                visible.min_x,
+                visible.max_x + world_step,
+                lod=lod,
+                step=world_step,
+            )
+        else:
+            start_world_x = math.floor(visible.min_x / world_step) * world_step
+            end_world_x = visible.max_x + world_step
+            samples = []
+            wx = start_world_x
+            while wx <= end_world_x:
+                samples.append((wx, self.level.terrain(wx, lod=lod)))
+                wx += world_step
 
-        start_world_x = math.floor(visible.min_x / world_step) * world_step
-        end_world_x = visible.max_x + world_step
-
-        screen_points = []
-        wx = start_world_x
-        while wx <= end_world_x:
-            world_y = self.level.terrain(wx, lod=lod) * self.height_scale
-            # world_to_screen returns Vector2, which is compatible with aalines
-            screen_points.append(self.main_camera.world_to_screen(Vector2(wx, world_y)))
-            wx += world_step
+        screen_points = [
+            self.main_camera.world_to_screen(Vector2(wx, wy * self.height_scale))
+            for wx, wy in samples
+        ]
 
         if len(screen_points) >= 2:
             # Anti-aliased lines to reduce visual shimmer

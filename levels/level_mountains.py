@@ -8,19 +8,27 @@ from levels.common import PresetLevel, SiteSpec
 
 
 def _build_mountain_terrain(seed: int):
-    simplex = _terrain.SimplexNoiseGenerator(
+    layered = _terrain.LayeredTerrainGenerator(
         seed=seed,
-        octaves=6,
-        amplitude=3200.0,
-        frequency=0.00019,
-        persistence=0.34,
-        lacunarity=2.7,
+        base_height=0.0,
+        macro_amplitude=850.0,
+        macro_frequency=0.00007,
+        structure_amplitude=2600.0,
+        structure_frequency=0.00022,
+        structure_octaves=5,
+        structure_persistence=0.44,
+        structure_lacunarity=2.15,
+        ridge_mix=0.62,
+        warp_amplitude=520.0,
+        warp_frequency=0.00014,
+        feature_cell_size=1050.0,
+        feature_density=0.42,
     )
 
     def height_fn(x: float) -> float:
         center_valley = -500.0 * math.exp(-((x / 2200.0) ** 2))
         long_wave = 380.0 * math.sin(x * 0.00035)
-        return simplex(x) + center_valley + long_wave
+        return layered(x) + center_valley + long_wave
 
     return _terrain.LodGridGenerator(height_fn, base_resolution=8.0)
 

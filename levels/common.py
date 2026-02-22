@@ -198,6 +198,17 @@ class PresetLevel(Level):
             segment_step=10.0,
             half_width=12000.0,
         )
+        elevated_sites: list[tuple[float, float, float]] = []
+        for site_entity in site_entities:
+            site_trans = site_entity.get_component(Transform)
+            site_shape = site_entity.get_component(LandingSiteComponent)
+            if site_trans is None or site_shape is None:
+                continue
+            if site_shape.terrain_bound and site_shape.terrain_mode != "elevated_supports":
+                continue
+            elevated_sites.append((site_trans.pos.x, site_trans.pos.y, site_shape.size))
+        if elevated_sites:
+            engine.set_landing_site_colliders(elevated_sites)
         engine.attach_lander(
             width=player_geo.width,
             height=player_geo.height,

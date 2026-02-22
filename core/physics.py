@@ -57,6 +57,7 @@ class PhysicsEngine:
 
         # Terrain window state
         self._terrain_shapes: list[pm.Shape] = []
+        self._landing_site_shapes: list[pm.Shape] = []
         self._window_center_x: float | None = None
 
         # Dynamic actor state, keyed by actor uid
@@ -318,6 +319,37 @@ class PhysicsEngine:
         )
         return {"x": cx, "y": cy, "distance": dist}
 
+    def set_landing_site_colliders(
+        self,
+        sites: list[tuple[float, float, float]],
+        *,
+        radius: float = 1.5,
+        friction: float = 0.9,
+        elasticity: float = 0.0,
+    ) -> None:
+        """Replace landing-site colliders with static platform segments.
+
+        Each site tuple is (center_x, y, size). Colliders use terrain collision
+        type so existing lander/terrain contact handling applies unchanged.
+        """
+        if self._landing_site_shapes:
+            self.space.remove(*self._landing_site_shapes)
+            self._landing_site_shapes.clear()
+
+        for cx, y, size in sites:
+            half = max(0.5, float(size) * 0.5)
+            seg = pm.Segment(
+                self.space.static_body,
+                (float(cx) - half, float(y)),
+                (float(cx) + half, float(y)),
+                max(0.1, float(radius)),
+            )
+            seg.friction = float(friction)
+            seg.elasticity = float(elasticity)
+            seg.collision_type = self._COLL_TERRAIN
+            self.space.add(seg)
+            self._landing_site_shapes.append(seg)
+
     # ----- Internal helpers -----
 
     def _ensure_window_centered(self, center_x: float) -> None:
@@ -334,9 +366,9 @@ class PhysicsEngine:
             self.space.remove(*self._terrain_shapes)
             self._terrain_shapes.clear()
 
-        start_x = center_x - self.half_width
-        end_x = center_x + self.half_width
         step = self.segment_step
+        start_x = math.floor((center_x - self.half_width) / step) * step
+        end_x = math.ceil((center_x + self.half_width) / step) * step
 
         prev_x = start_x
         prev_y = float(self.height_sampler(prev_x))

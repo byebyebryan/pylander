@@ -254,6 +254,10 @@ class BotEvalLevel(Level):
             segment_step=10.0,
             half_width=12000.0,
         )
+        if not target_terrain_bound or scenario.target_mode == "elevated_supports":
+            engine.set_landing_site_colliders(
+                [(target_x, target_y, scenario.target_size)]
+            )
         engine.attach_lander(
             width=geo.width,
             height=geo.height,
