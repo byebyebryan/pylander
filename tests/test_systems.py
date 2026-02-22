@@ -679,6 +679,160 @@ def test_turtle_bot_falls_back_to_outer_contacts_when_inner_are_blacklisted() ->
     assert action.target_angle > 0.0
 
 
+def test_turtle_bot_penalizes_moving_named_outer_contacts() -> None:
+    bot = TurtleBot()
+    bot.set_vehicle_info(
+        VehicleInfo(
+            width=8.0,
+            height=8.0,
+            dry_mass=1.0,
+            fuel_density=0.01,
+            max_thrust_power=50.0,
+            safe_landing_velocity=10.0,
+            safe_landing_angle=math.radians(15.0),
+            radar_outer_range=5000.0,
+            radar_inner_range=2000.0,
+            proximity_sensor_range=500.0,
+        )
+    )
+
+    passive = PassiveSensors(
+        x=0.0,
+        y=30.0,
+        altitude=26.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=0.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=2.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        state="flying",
+        radar_contacts=[
+            RadarContact(
+                uid="moving_outer_right",
+                x=120.0,
+                y=30.0,
+                size=80.0,
+                angle=math.atan2(0.0, 120.0),
+                distance=120.0,
+                rel_x=120.0,
+                rel_y=0.0,
+                is_inner_lock=False,
+                info={"award": 250.0},
+            ),
+            RadarContact(
+                uid="stable_outer_left",
+                x=-160.0,
+                y=30.0,
+                size=80.0,
+                angle=math.atan2(0.0, -160.0),
+                distance=160.0,
+                rel_x=-160.0,
+                rel_y=0.0,
+                is_inner_lock=False,
+                info={"award": 250.0},
+            ),
+        ],
+        proximity=ProximityContact(
+            x=0.0,
+            y=0.0,
+            angle=-math.pi / 2.0,
+            distance=30.0,
+            normal_x=0.0,
+            normal_y=1.0,
+            terrain_slope=0.0,
+        ),
+    )
+
+    sensors = _BotActiveSensors(hill_x=1000.0, hill_width=10.0, hill_height=1.0)
+    action = bot.update(1.0 / 60.0, passive, sensors)
+
+    # The closer right-side target is marked moving by uid and should be
+    # penalized, so the stable left-side target is preferred.
+    assert action.target_angle < 0.0
+
+
+def test_turtle_bot_filters_high_outer_contacts_by_vertical_offset() -> None:
+    bot = TurtleBot()
+    bot.set_vehicle_info(
+        VehicleInfo(
+            width=8.0,
+            height=8.0,
+            dry_mass=1.0,
+            fuel_density=0.01,
+            max_thrust_power=50.0,
+            safe_landing_velocity=10.0,
+            safe_landing_angle=math.radians(15.0),
+            radar_outer_range=5000.0,
+            radar_inner_range=2000.0,
+            proximity_sensor_range=500.0,
+        )
+    )
+
+    passive = PassiveSensors(
+        x=0.0,
+        y=30.0,
+        altitude=26.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=0.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=2.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        state="flying",
+        radar_contacts=[
+            RadarContact(
+                uid="outer_high_right",
+                x=140.0,
+                y=250.0,
+                size=80.0,
+                angle=math.atan2(220.0, 140.0),
+                distance=math.hypot(140.0, 220.0),
+                rel_x=140.0,
+                rel_y=220.0,
+                is_inner_lock=False,
+                info={"award": 250.0},
+            ),
+            RadarContact(
+                uid="outer_level_left",
+                x=-190.0,
+                y=30.0,
+                size=80.0,
+                angle=math.atan2(0.0, -190.0),
+                distance=190.0,
+                rel_x=-190.0,
+                rel_y=0.0,
+                is_inner_lock=False,
+                info={"award": 250.0},
+            ),
+        ],
+        proximity=ProximityContact(
+            x=0.0,
+            y=0.0,
+            angle=-math.pi / 2.0,
+            distance=30.0,
+            normal_x=0.0,
+            normal_y=1.0,
+            terrain_slope=0.0,
+        ),
+    )
+
+    sensors = _BotActiveSensors(hill_x=1000.0, hill_width=10.0, hill_height=1.0)
+    action = bot.update(1.0 / 60.0, passive, sensors)
+
+    # The high-above outer contact should be filtered by dy > 120, leaving the
+    # level left-side outer contact as the preferred candidate.
+    assert action.target_angle < 0.0
+
+
 def test_turtle_bot_prefers_inner_lock_contacts_for_scoring() -> None:
     bot = TurtleBot()
     bot.set_vehicle_info(

@@ -54,11 +54,11 @@ class TurtleBot(Bot):
                 score = float(c.distance)
                 moving_like = False
                 elevated_like = False
+                dy = c.y - passive.y
 
                 # Only use full geometry-sensitive heuristics with inner-lock contacts.
                 if c.is_inner_lock:
                     # Prefer downhill or level pads over high-above options.
-                    dy = c.y - passive.y
                     if dy > 20.0:
                         score += dy * 1.8
                     elif dy < -2.0:
@@ -76,19 +76,19 @@ class TurtleBot(Bot):
                     if c.size < 50.0:
                         score += (50.0 - c.size) * 2.5
 
-                    if c.uid:
-                        prev = self._contact_prev.get(c.uid)
-                        if prev is not None and dt > 1e-4:
-                            observed_speed = math.hypot(c.x - prev[0], c.y - prev[1]) / dt
-                            if observed_speed > 4.0:
-                                moving_like = True
-                                score += 500.0
-                        uid_l = c.uid.lower()
-                        if ("moving" in uid_l) or ("scripted" in uid_l):
+                # Penalize moving/scripted targets for both inner- and outer-lock
+                # contacts so fallback-only outer selections stay conservative.
+                if c.uid:
+                    prev = self._contact_prev.get(c.uid)
+                    if prev is not None and dt > 1e-4:
+                        observed_speed = math.hypot(c.x - prev[0], c.y - prev[1]) / dt
+                        if observed_speed > 4.0:
                             moving_like = True
                             score += 500.0
-                else:
-                    dy = 0.0
+                    uid_l = c.uid.lower()
+                    if ("moving" in uid_l) or ("scripted" in uid_l):
+                        moving_like = True
+                        score += 500.0
 
                 candidate_rows.append((score, c, moving_like, elevated_like, dy))
 
