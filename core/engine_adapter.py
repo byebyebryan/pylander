@@ -47,6 +47,30 @@ class EngineAdapter:
             except TypeError:
                 self._engine.set_lander_controls(thrust_force, angle)
 
+    def set_lander_velocity(
+        self,
+        velocity: Vector2,
+        angular_velocity: float = 0.0,
+        uid: str | None = None,
+    ) -> None:
+        if self._engine is not None and hasattr(self._engine, "set_lander_velocity"):
+            try:
+                self._engine.set_lander_velocity(
+                    velocity,
+                    angular_velocity=angular_velocity,
+                    uid=uid if uid is not None else self._primary_actor_uid,
+                )
+            except TypeError:
+                self._engine.set_lander_velocity(velocity)
+
+    def set_actor_velocity(
+        self,
+        uid: str,
+        velocity: Vector2,
+        angular_velocity: float = 0.0,
+    ) -> None:
+        self.set_lander_velocity(velocity, angular_velocity=angular_velocity, uid=uid)
+
     def override(self, angle: float, uid: str | None = None) -> None:
         if self._engine is not None and hasattr(self._engine, "override"):
             try:

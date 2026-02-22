@@ -9,10 +9,13 @@ from core.eval import aggregate_eval_records, normalize_run_result
 from core.bot import Bot, BotAction
 from core.components import (
     ActorControlRole,
+    Engine,
+    FuelTank,
     LandingSite,
     LandingSiteEconomy,
     LanderGeometry,
     LanderState,
+    PhysicsState,
     PlayerControlled,
     PlayerSelectable,
     Radar,
@@ -30,12 +33,13 @@ from levels.level_mountains import create_level as create_level_mountains
 from ui.hud import HudOverlay
 
 
-def test_bot_registry_only_exposes_turtle() -> None:
+def test_bot_registry_exposes_descent_only() -> None:
     bots = list_available_bots()
-    assert "turtle" in bots
-    assert {"drop", "plunge", "drift", "ferry"}.issubset(set(bots))
-    turtle_bot = create_bot("turtle")
-    assert turtle_bot.__class__.__name__ == "TurtleBot"
+    assert "descent" in bots
+    assert "turtle" not in bots
+    assert {"drop", "plunge", "drift", "ferry"}.isdisjoint(set(bots))
+    descent_bot = create_bot("descent")
+    assert descent_bot.__class__.__name__ == "DescentBot"
 
 
 class _FlatTerrain:
@@ -408,7 +412,9 @@ def test_cli_defaults_to_level_flat_when_omitted() -> None:
 
 
 def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
-    level_a = create_level_by_name("level_climb")
+    level_a = create_level_by_name("level_descent")
+    if hasattr(level_a, "set_eval_attitude"):
+        level_a.set_eval_attitude("vertical_mid_b")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=77)
     actor_a = game_a.actors[0]
     trans_a = actor_a.get_component(Transform)
@@ -416,7 +422,9 @@ def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
     site_a = level_a.world.site_entities[0].get_component(Transform)
     assert site_a is not None
 
-    level_b = create_level_by_name("level_climb")
+    level_b = create_level_by_name("level_descent")
+    if hasattr(level_b, "set_eval_attitude"):
+        level_b.set_eval_attitude("vertical_mid_b")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=77)
     actor_b = game_b.actors[0]
     trans_b = actor_b.get_component(Transform)
@@ -430,6 +438,41 @@ def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
     assert site_a.pos.y == site_b.pos.y
 
 
+def test_descent_level_lists_expected_attitudes() -> None:
+    level = create_level_by_name("level_descent")
+    list_attitudes = getattr(level, "list_batch_attitudes", None)
+    assert callable(list_attitudes)
+    attitudes = list_attitudes()
+    assert attitudes == [
+        "vertical_low",
+        "vertical_mid_a",
+        "vertical_mid_b",
+        "vertical_high",
+        "vertical_speed",
+    ]
+
+
+def test_descent_vertical_speed_attitude_sets_recoverable_initial_velocity() -> None:
+    level = create_level_by_name("level_descent")
+    if hasattr(level, "set_eval_attitude"):
+        level.set_eval_attitude("vertical_speed")
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
+    actor = game.actors[0]
+    phys = actor.get_component(PhysicsState)
+    tank = actor.get_component(FuelTank)
+    engine = actor.get_component(Engine)
+    assert phys is not None
+    assert tank is not None
+    assert engine is not None
+    assert phys.vel.y < 0.0
+
+    total_mass = max(0.5, phys.mass + tank.fuel * tank.density)
+    max_up_acc = (engine.max_power / total_mass) - 9.8
+    assert max_up_acc > 0.0
+    stop_distance = (abs(phys.vel.y) ** 2) / (2.0 * max_up_acc)
+    assert stop_distance < 105.0 * 0.82
+
+
 def test_parse_seed_spec_supports_ranges_and_lists() -> None:
     assert _parse_seed_spec("0-3") == [0, 1, 2, 3]
     assert _parse_seed_spec("3-1") == [3, 2, 1]
@@ -439,8 +482,8 @@ def test_parse_seed_spec_supports_ranges_and_lists() -> None:
 
 def test_resolve_batch_plan_uses_quick_benchmark_wave1_levels() -> None:
     config = RunConfig(
-        level_name="level_drop",
-        bot_name="turtle",
+        level_name="level_descent",
+        bot_name="descent",
         headless=True,
         batch=False,
         print_freq=0,
@@ -461,20 +504,15 @@ def test_resolve_batch_plan_uses_quick_benchmark_wave1_levels() -> None:
     )
     seeds, levels = _resolve_batch_plan(config)
     assert seeds == [0, 1, 2]
-    assert levels == [
-        "level_drop",
-        "level_plunge",
-        "level_drift",
-        "level_ferry",
-    ]
+    assert levels == ["level_descent"]
 
 
 def test_eval_aggregate_summary_shape() -> None:
     records = [
         normalize_run_result(
-            bot_name="turtle",
-            level_name="level_drop",
-            scenario="spawn_above_target",
+            bot_name="descent",
+            level_name="level_descent",
+            scenario="vertical_low",
             seed=0,
             result={
                 "state": "landed",
@@ -488,9 +526,9 @@ def test_eval_aggregate_summary_shape() -> None:
             },
         ),
         normalize_run_result(
-            bot_name="turtle",
-            level_name="level_drop",
-            scenario="spawn_above_target",
+            bot_name="descent",
+            level_name="level_descent",
+            scenario="vertical_low",
             seed=1,
             result={
                 "state": "crashed",
@@ -512,13 +550,13 @@ def test_eval_aggregate_summary_shape() -> None:
     assert "efficiency_all" in summary
     assert summary["efficiency_all"]["distance_flown"]["count"] == 2
     assert "by_scenario" in summary
-    assert "spawn_above_target" in summary["by_scenario"]
+    assert "vertical_low" in summary["by_scenario"]
 
 
 def test_parse_args_defaults_to_quiet_batch_output() -> None:
     args = argparse.Namespace(
-        level_name="level_drop",
-        bot_name="turtle",
+        level_name="level_descent",
+        bot_name="descent",
         headless=True,
         batch=False,
         freq=None,
@@ -570,10 +608,11 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
             raise RuntimeError("boom")
 
     def _fake_plan(_config):
-        return [0, 1], ["level_drop"]
+        return [0, 1], ["level_descent"]
 
-    def _fake_run_once_record(config, *, seed, level_name):
+    def _fake_run_once_record(config, *, seed, level_name, attitude_name=None):
         _ = config, level_name
+        _ = attitude_name
         return {
             "seed": seed,
             "state": "landed",
@@ -586,8 +625,8 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
     monkeypatch.setattr(main_module.os, "cpu_count", lambda: 8)
 
     config = RunConfig(
-        level_name="level_drop",
-        bot_name="turtle",
+        level_name="level_descent",
+        bot_name="descent",
         headless=True,
         batch=True,
         print_freq=0,
@@ -600,7 +639,7 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
         seed=None,
         lander_name=None,
         batch_seeds="0-1",
-        batch_levels="level_drop",
+        batch_levels="level_descent",
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
@@ -614,13 +653,13 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
 
 def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:
     def _fake_plan(_config):
-        return [], ["level_drop"]
+        return [], ["level_descent"]
 
     monkeypatch.setattr(main_module, "_resolve_batch_plan", _fake_plan)
 
     config = RunConfig(
-        level_name="level_drop",
-        bot_name="turtle",
+        level_name="level_descent",
+        bot_name="descent",
         headless=True,
         batch=True,
         print_freq=0,
@@ -633,7 +672,7 @@ def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:
         seed=None,
         lander_name=None,
         batch_seeds="",
-        batch_levels="level_drop",
+        batch_levels="level_descent",
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
@@ -651,8 +690,8 @@ def test_run_batch_rejects_empty_level_plan(monkeypatch) -> None:
     monkeypatch.setattr(main_module, "_resolve_batch_plan", _fake_plan)
 
     config = RunConfig(
-        level_name="level_drop",
-        bot_name="turtle",
+        level_name="level_descent",
+        bot_name="descent",
         headless=True,
         batch=True,
         print_freq=0,

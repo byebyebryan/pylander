@@ -436,6 +436,21 @@ class PhysicsEngine:
         if body is not None:
             body.mass = max(0.001, float(mass))
 
+    def set_lander_velocity(
+        self,
+        velocity: Vector2,
+        angular_velocity: float = 0.0,
+        uid: str | None = None,
+    ) -> None:
+        actor_uid = self._resolve_uid(uid)
+        if actor_uid is None:
+            return
+        body = self._bodies.get(actor_uid)
+        if body is None:
+            return
+        body.velocity = (float(velocity.x), float(velocity.y))
+        body.angular_velocity = float(angular_velocity)
+
     def teleport_lander(
         self,
         pos: Vector2,

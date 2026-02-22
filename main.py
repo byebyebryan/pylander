@@ -328,7 +328,7 @@ def _parse_name_csv(spec: str) -> list[str]:
 
 
 def _list_wave1_levels() -> list[str]:
-    preferred = ["level_drop", "level_plunge", "level_drift", "level_ferry"]
+    preferred = ["level_descent"]
     available = set(list_available_levels())
     return [name for name in preferred if name in available]
 
@@ -353,6 +353,18 @@ def _resolve_run_bot_name(config: RunConfig, level) -> str | None:
         return None
     default_bot = default_bot.strip()
     return default_bot if default_bot else None
+
+
+def _resolve_level_batch_attitudes(level_name: str) -> list[str]:
+    try:
+        level = create_level(level_name)
+    except Exception:
+        return []
+    list_attitudes = getattr(level, "list_batch_attitudes", None)
+    if not callable(list_attitudes):
+        return []
+    out = [str(name).strip() for name in list_attitudes()]
+    return [name for name in out if name]
 
 
 def _resolve_batch_plan(config: RunConfig) -> tuple[list[int], list[str]]:
@@ -399,10 +411,15 @@ def _run_once(
     *,
     seed: int | None = None,
     level_name: str | None = None,
+    attitude_name: str | None = None,
     print_results: bool = True,
 ) -> dict[str, Any]:
     run_level_name = level_name or config.level_name
     level = create_level(run_level_name)
+    if attitude_name is not None:
+        set_attitude = getattr(level, "set_eval_attitude", None)
+        if callable(set_attitude):
+            set_attitude(attitude_name)
     _configure_level(level, config)
     run_bot_name = _resolve_run_bot_name(config, level)
     bot = create_bot(run_bot_name) if run_bot_name is not None else None
@@ -426,11 +443,13 @@ def _run_once_record(
     *,
     seed: int | None,
     level_name: str,
+    attitude_name: str | None = None,
 ) -> dict[str, Any]:
     result = _run_once(
         config,
         seed=seed,
         level_name=level_name,
+        attitude_name=attitude_name,
         print_results=False,
     )
     record_bot_name = str(result.get("_bot_name") or config.bot_name or "none")
@@ -447,13 +466,25 @@ def _run_once_record(
 
 def _run_batch_sequential(
     config: RunConfig,
-    run_plan: list[tuple[int, str]],
+    run_plan: list[tuple[int, str, str | None]],
 ) -> list[dict[str, Any]]:
     total = len(run_plan)
     records: list[dict[str, Any]] = []
-    for run_idx, (seed, level_name) in enumerate(run_plan, start=1):
-        print(f"[{run_idx}/{total}] seed={seed} level={level_name}")
-        records.append(_run_once_record(config, seed=seed, level_name=level_name))
+    for run_idx, (seed, level_name, attitude_name) in enumerate(run_plan, start=1):
+        if attitude_name is not None:
+            print(
+                f"[{run_idx}/{total}] seed={seed} level={level_name} attitude={attitude_name}"
+            )
+        else:
+            print(f"[{run_idx}/{total}] seed={seed} level={level_name}")
+        records.append(
+            _run_once_record(
+                config,
+                seed=seed,
+                level_name=level_name,
+                attitude_name=attitude_name,
+            )
+        )
     return records
 
 
@@ -539,7 +570,14 @@ def _run_batch(config: RunConfig) -> int:
     if not levels:
         raise ValueError("Batch mode resolved no levels")
 
-    run_plan = [(seed, level_name) for level_name in levels for seed in seeds]
+    run_plan: list[tuple[int, str, str | None]] = []
+    for level_name in levels:
+        attitudes = _resolve_level_batch_attitudes(level_name)
+        if not attitudes:
+            run_plan.extend((seed, level_name, None) for seed in seeds)
+            continue
+        for attitude_name in attitudes:
+            run_plan.extend((seed, level_name, attitude_name) for seed in seeds)
     total = len(run_plan)
     if total <= 0:
         raise ValueError("Batch mode resolved no runs")
@@ -564,26 +602,38 @@ def _run_batch(config: RunConfig) -> int:
         try:
             with ProcessPoolExecutor(max_workers=worker_count) as pool:
                 future_map = {}
-                for run_idx, (seed, level_name) in enumerate(run_plan, start=1):
+                for run_idx, (seed, level_name, attitude_name) in enumerate(
+                    run_plan, start=1
+                ):
                     fut = pool.submit(
                         _run_once_record,
                         config,
                         seed=seed,
                         level_name=level_name,
+                        attitude_name=attitude_name,
                     )
-                    future_map[fut] = (run_idx, seed, level_name)
+                    future_map[fut] = (run_idx, seed, level_name, attitude_name)
                 done = 0
                 for fut in as_completed(future_map):
-                    run_idx, seed, level_name = future_map[fut]
+                    run_idx, seed, level_name, attitude_name = future_map[fut]
                     try:
                         record = fut.result()
                     except Exception as exc:
+                        attitude_label = (
+                            f" attitude={attitude_name}" if attitude_name is not None else ""
+                        )
                         raise RuntimeError(
                             f"run {run_idx}/{total} seed={seed} level={level_name} "
-                            f"failed ({type(exc).__name__}: {exc})"
+                            f"{attitude_label} failed ({type(exc).__name__}: {exc})"
                         ) from exc
                     done += 1
-                    print(f"[{done}/{total}] done seed={seed} level={level_name}")
+                    if attitude_name is not None:
+                        print(
+                            f"[{done}/{total}] done seed={seed} level={level_name} "
+                            f"attitude={attitude_name}"
+                        )
+                    else:
+                        print(f"[{done}/{total}] done seed={seed} level={level_name}")
                     indexed_records[run_idx] = record
             records = [indexed_records[i] for i in range(1, total + 1)]
         except Exception as exc:

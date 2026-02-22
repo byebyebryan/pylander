@@ -18,6 +18,13 @@ class EngineProtocol(Protocol):
         self, thrust_force: float, angle: float, uid: str | None = None
     ) -> None: ...
 
+    def set_lander_velocity(
+        self,
+        velocity: Vector2,
+        angular_velocity: float = 0.0,
+        uid: str | None = None,
+    ) -> None: ...
+
     def override(self, angle: float, uid: str | None = None) -> None: ...
 
     def apply_force(
