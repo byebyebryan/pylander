@@ -242,7 +242,7 @@ def _announce_config(config: RunConfig, args: argparse.Namespace) -> None:
         print(f"Eval scenario: {config.eval_scenario}")
     if _is_batch_mode(config):
         print("Batch mode: enabled")
-        print(f"Batch workers: {config.batch_workers}")
+        print(f"Batch workers requested: {config.batch_workers}")
         if config.batch_seeds:
             print(f"Batch seeds: {config.batch_seeds}")
         if config.batch_scenarios:
@@ -432,6 +432,19 @@ def _run_once_record(
     )
 
 
+def _run_batch_sequential(
+    config: RunConfig,
+    run_plan: list[tuple[int, str | None]],
+) -> list[dict[str, Any]]:
+    total = len(run_plan)
+    records: list[dict[str, Any]] = []
+    for run_idx, (seed, scenario) in enumerate(run_plan, start=1):
+        scenario_name = scenario or "default"
+        print(f"[{run_idx}/{total}] seed={seed} scenario={scenario_name}")
+        records.append(_run_once_record(config, seed=seed, scenario=scenario))
+    return records
+
+
 def _print_batch_summary(
     summary: dict[str, Any],
     failures: list[dict[str, Any]],
@@ -477,16 +490,21 @@ def _run_batch(config: RunConfig) -> int:
         raise ValueError("Batch mode requires --headless")
 
     seeds, scenarios = _resolve_batch_plan(config)
+    if not seeds:
+        raise ValueError("Batch mode resolved no seeds")
+    if not scenarios:
+        raise ValueError("Batch mode resolved no scenarios")
+
     run_plan = [(seed, scenario) for scenario in scenarios for seed in seeds]
     total = len(run_plan)
-    records: list[dict[str, Any]] = []
+    if total <= 0:
+        raise ValueError("Batch mode resolved no runs")
+
     worker_count = max(1, min(config.batch_workers, total, os.cpu_count() or 1))
+    print(f"Batch workers: requested={config.batch_workers} effective={worker_count}")
 
     if worker_count <= 1:
-        for run_idx, (seed, scenario) in enumerate(run_plan, start=1):
-            scenario_name = scenario or "default"
-            print(f"[{run_idx}/{total}] seed={seed} scenario={scenario_name}")
-            records.append(_run_once_record(config, seed=seed, scenario=scenario))
+        records = _run_batch_sequential(config, run_plan)
     else:
         indexed_records: dict[int, dict[str, Any]] = {}
         try:
@@ -499,18 +517,23 @@ def _run_batch(config: RunConfig) -> int:
                 for fut in as_completed(future_map):
                     run_idx, seed, scenario = future_map[fut]
                     scenario_name = scenario or "default"
+                    try:
+                        record = fut.result()
+                    except Exception as exc:
+                        raise RuntimeError(
+                            f"run {run_idx}/{total} seed={seed} scenario={scenario_name} "
+                            f"failed ({type(exc).__name__}: {exc})"
+                        ) from exc
                     done += 1
                     print(f"[{done}/{total}] done seed={seed} scenario={scenario_name}")
-                    indexed_records[run_idx] = fut.result()
+                    indexed_records[run_idx] = record
             records = [indexed_records[i] for i in range(1, total + 1)]
         except Exception as exc:
             print(
-                f"Batch workers unavailable ({exc}); falling back to sequential execution."
+                f"Batch workers unavailable ({type(exc).__name__}: {exc}); "
+                "falling back to sequential execution."
             )
-            for run_idx, (seed, scenario) in enumerate(run_plan, start=1):
-                scenario_name = scenario or "default"
-                print(f"[{run_idx}/{total}] seed={seed} scenario={scenario_name}")
-                records.append(_run_once_record(config, seed=seed, scenario=scenario))
+            records = _run_batch_sequential(config, run_plan)
 
     summary = aggregate_eval_records(records)
     failed = [r for r in records if not r.get("success", False)]

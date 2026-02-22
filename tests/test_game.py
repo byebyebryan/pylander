@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 
 import main as main_module
+import pytest
 from bots import create_bot, list_available_bots
 from core.eval import aggregate_eval_records, normalize_run_result
 from core.bot import Bot, BotAction
@@ -18,7 +19,7 @@ from core.landing_sites import LandingSiteSurfaceModel
 from core.maths import Vector2
 from core.lander import Lander
 from core.level import Level, LevelWorld
-from game import LanderGame
+from game import LanderGame, _build_headless_stats
 from main import RunConfig, _parse_args, _parse_seed_spec, _resolve_batch_plan, _run_batch
 from levels import create_level as create_level_by_name
 from levels.level_1 import create_level as create_level_1
@@ -387,8 +388,16 @@ def test_hud_altitude_matches_passive_sensor_clearance_convention() -> None:
     assert alt_line == "ALT: 76.0 m"
 
 
+def test_headless_stats_altitude_matches_passive_sensor_clearance_convention() -> None:
+    actor = Lander(start_pos=Vector2(0.0, 100.0))
+    stats = _build_headless_stats(actor, lambda _x: 20.0)
+
+    # Transform y=100, terrain y=20, half-height=4 => clearance is 76.
+    assert "alt:  76.0" in stats
+
+
 def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
-    monkeypatch,
+    monkeypatch, capsys
 ) -> None:
     class _FailingExecutor:
         def __init__(self, *args, **kwargs):
@@ -435,3 +444,71 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
     )
     exit_code = _run_batch(config)
     assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "Batch workers unavailable (RuntimeError" in out
+
+
+def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:
+    def _fake_plan(_config):
+        return [], ["spawn_above_target"]
+
+    monkeypatch.setattr(main_module, "_resolve_batch_plan", _fake_plan)
+
+    config = RunConfig(
+        level_name="level_eval",
+        bot_name="turtle",
+        headless=True,
+        batch=True,
+        print_freq=0,
+        max_time=300.0,
+        max_steps=100,
+        plot_mode="none",
+        stop_on_crash=True,
+        stop_on_out_of_fuel=True,
+        stop_on_first_land=True,
+        seed=None,
+        lander_name=None,
+        eval_scenario=None,
+        batch_seeds="",
+        batch_scenarios="spawn_above_target",
+        batch_json=None,
+        batch_csv=None,
+        quick_benchmark=False,
+        batch_workers=2,
+    )
+
+    with pytest.raises(ValueError, match="resolved no seeds"):
+        _run_batch(config)
+
+
+def test_run_batch_rejects_empty_scenario_plan(monkeypatch) -> None:
+    def _fake_plan(_config):
+        return [0, 1], []
+
+    monkeypatch.setattr(main_module, "_resolve_batch_plan", _fake_plan)
+
+    config = RunConfig(
+        level_name="level_eval",
+        bot_name="turtle",
+        headless=True,
+        batch=True,
+        print_freq=0,
+        max_time=300.0,
+        max_steps=100,
+        plot_mode="none",
+        stop_on_crash=True,
+        stop_on_out_of_fuel=True,
+        stop_on_first_land=True,
+        seed=None,
+        lander_name=None,
+        eval_scenario=None,
+        batch_seeds="0-1",
+        batch_scenarios="",
+        batch_json=None,
+        batch_csv=None,
+        quick_benchmark=False,
+        batch_workers=2,
+    )
+
+    with pytest.raises(ValueError, match="resolved no scenarios"):
+        _run_batch(config)

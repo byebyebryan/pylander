@@ -143,11 +143,12 @@ python main.py <level_name> [bot_name] [options]
 - `--batch-scenarios CSV` - Scenario names for `level_eval`
 - `--batch-json PATH|auto` - Write JSON report
 - `--batch-csv PATH|auto` - Write CSV rows
-- `--batch-workers N` - Parallel worker processes for batch runs
+- `--batch-workers N` - Parallel worker processes for batch runs (`1` = sequential; effective workers are capped by CPU count and run count)
 - `--quick-benchmark` - Built-in small benchmark preset
 - `--help`, `-h` - Show help message
 
 Batch mode defaults to `--freq 0` (quiet) for speed; pass `--freq` to enable per-run stats.
+Quiet mode disables per-step stats output, but batch progress lines still print.
 
 ## Game Mechanics
 

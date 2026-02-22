@@ -14,6 +14,7 @@ from core.components import (
     Transform,
     Wallet,
 )
+from core.maths import clearance_above_terrain
 
 
 class HudOverlay:
@@ -56,8 +57,12 @@ class HudOverlay:
             raise RuntimeError("Lander missing expected HUD components")
 
         speed = math.hypot(phys.vel.x, phys.vel.y)
-        half_height = max(1.0, geo.height * 0.5)
-        altitude = trans.pos.y - level.terrain(trans.pos.x) - half_height
+        terrain_y = level.terrain(trans.pos.x)
+        altitude = clearance_above_terrain(
+            trans.pos.y,
+            terrain_y,
+            body_height=geo.height,
+        )
         prox = readings.proximity
         prox_dist = prox.distance if prox is not None else None
         prox_angle = prox.angle if prox is not None else None

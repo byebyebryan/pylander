@@ -601,6 +601,84 @@ def test_turtle_bot_does_not_reselect_blacklisted_contact_on_fallback() -> None:
     assert bot._target_hover_stuck_s == 0.0
 
 
+def test_turtle_bot_falls_back_to_outer_contacts_when_inner_are_blacklisted() -> None:
+    bot = TurtleBot()
+    bot.set_vehicle_info(
+        VehicleInfo(
+            width=8.0,
+            height=8.0,
+            dry_mass=1.0,
+            fuel_density=0.01,
+            max_thrust_power=50.0,
+            safe_landing_velocity=10.0,
+            safe_landing_angle=math.radians(15.0),
+            radar_outer_range=5000.0,
+            radar_inner_range=2000.0,
+            proximity_sensor_range=500.0,
+        )
+    )
+    bot._target_uid_blacklist.add("inner_blocked")
+
+    passive = PassiveSensors(
+        x=0.0,
+        y=30.0,
+        altitude=26.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=0.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=2.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        state="flying",
+        radar_contacts=[
+            RadarContact(
+                uid="inner_blocked",
+                x=-120.0,
+                y=30.0,
+                size=80.0,
+                angle=math.atan2(0.0, -120.0),
+                distance=120.0,
+                rel_x=-120.0,
+                rel_y=0.0,
+                is_inner_lock=True,
+                info={"award": 250.0},
+            ),
+            RadarContact(
+                uid="outer_available",
+                x=180.0,
+                y=10.0,
+                size=80.0,
+                angle=math.atan2(-20.0, 180.0),
+                distance=math.hypot(180.0, -20.0),
+                rel_x=180.0,
+                rel_y=-20.0,
+                is_inner_lock=False,
+                info={"award": 250.0},
+            ),
+        ],
+        proximity=ProximityContact(
+            x=0.0,
+            y=0.0,
+            angle=-math.pi / 2.0,
+            distance=30.0,
+            normal_x=0.0,
+            normal_y=1.0,
+            terrain_slope=0.0,
+        ),
+    )
+
+    sensors = _BotActiveSensors(hill_x=1000.0, hill_width=10.0, hill_height=1.0)
+    action = bot.update(1.0 / 60.0, passive, sensors)
+
+    # With the inner contact blacklisted, the bot should still track the outer
+    # right-side contact instead of running targetless.
+    assert action.target_angle > 0.0
+
+
 def test_turtle_bot_prefers_inner_lock_contacts_for_scoring() -> None:
     bot = TurtleBot()
     bot.set_vehicle_info(

@@ -40,14 +40,17 @@ class TurtleBot(Bot):
         target_size = None
         if contacts:
             chosen = None
-            scored_contacts = [c for c in contacts if c.is_inner_lock]
+            eligible_contacts = [
+                c
+                for c in contacts
+                if not (c.uid and c.uid in self._target_uid_blacklist)
+            ]
+            scored_contacts = [c for c in eligible_contacts if c.is_inner_lock]
             if not scored_contacts:
-                scored_contacts = contacts
+                scored_contacts = eligible_contacts
             candidate_rows: list[tuple[float, object, bool, bool, float]] = []
             best_score = float("inf")
             for c in scored_contacts:
-                if c.uid and c.uid in self._target_uid_blacklist:
-                    continue
                 score = float(c.distance)
                 moving_like = False
                 elevated_like = False
@@ -108,13 +111,7 @@ class TurtleBot(Bot):
                     chosen = c
 
             if chosen is None:
-                chosen = next(
-                    (
-                        c for c in scored_contacts
-                        if not (c.uid and c.uid in self._target_uid_blacklist)
-                    ),
-                    None,
-                )
+                chosen = next(iter(scored_contacts), None)
 
             if chosen is not None:
                 angle_to_target = chosen.angle

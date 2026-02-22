@@ -27,7 +27,7 @@ from core.controllers import PlayerController
 from core.ecs import Entity, World
 from core.engine_adapter import EngineAdapter
 from core.level import Level
-from core.maths import Vector2
+from core.maths import Vector2, clearance_above_terrain
 from core.systems.contact import ContactSystem
 from core.systems.control_routing import ControlRoutingSystem
 from core.systems.force_application import ForceApplicationSystem
@@ -136,11 +136,15 @@ def _build_passive_sensors(entity, terrain) -> PassiveSensors:
     readings = _require_component(entity, SensorReadings)
     terrain_y = _sample_terrain_height(terrain, trans.pos.x, lod=0)
     terrain_slope = _estimate_terrain_slope(terrain, trans.pos.x, lod=0)
-    half_height = max(1.0, geo.height * 0.5)
+    altitude = clearance_above_terrain(
+        trans.pos.y,
+        terrain_y,
+        body_height=geo.height,
+    )
     return PassiveSensors(
         x=trans.pos.x,
         y=trans.pos.y,
-        altitude=trans.pos.y - terrain_y - half_height,
+        altitude=altitude,
         terrain_y=terrain_y,
         terrain_slope=terrain_slope,
         vx=phys.vel.x,
@@ -162,7 +166,13 @@ def _build_headless_stats(entity, terrain) -> str:
     phys = _require_component(entity, PhysicsState)
     eng = _require_component(entity, Engine)
     tank = _require_component(entity, FuelTank)
-    altitude = trans.pos.y - terrain(trans.pos.x)
+    geo = _require_component(entity, LanderGeometry)
+    terrain_y = _sample_terrain_height(terrain, trans.pos.x, lod=0)
+    altitude = clearance_above_terrain(
+        trans.pos.y,
+        terrain_y,
+        body_height=geo.height,
+    )
     angle_deg = math.degrees(trans.rotation)
     thrust_pct = eng.thrust_level * 100.0
     return (

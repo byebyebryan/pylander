@@ -10,6 +10,19 @@ from pygame.math import Vector2 as _Vector2
 Vector2 = _Vector2
 
 
+def lander_half_height(height: float) -> float:
+    return max(1.0, float(height) * 0.5)
+
+
+def clearance_above_terrain(
+    center_y: float,
+    terrain_y: float,
+    *,
+    body_height: float,
+) -> float:
+    return float(center_y) - float(terrain_y) - lander_half_height(body_height)
+
+
 @dataclass(frozen=True)
 class Size2:
     w: float
