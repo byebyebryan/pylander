@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+
 from bots import create_bot, list_available_bots
 from core.eval import aggregate_eval_records, normalize_run_result
 from core.bot import Bot, BotAction
@@ -16,7 +18,7 @@ from core.maths import Vector2
 from core.lander import Lander
 from core.level import Level, LevelWorld
 from game import LanderGame
-from main import RunConfig, _parse_seed_spec, _resolve_batch_plan
+from main import RunConfig, _parse_args, _parse_seed_spec, _resolve_batch_plan
 from levels import create_level as create_level_by_name
 from levels.level_1 import create_level as create_level_1
 
@@ -302,6 +304,7 @@ def test_resolve_batch_plan_uses_quick_benchmark_for_eval_level() -> None:
         batch_json=None,
         batch_csv=None,
         quick_benchmark=True,
+        batch_workers=1,
     )
     seeds, scenarios = _resolve_batch_plan(config)
     assert seeds == [0, 1, 2]
@@ -336,3 +339,30 @@ def test_eval_aggregate_summary_shape() -> None:
     assert summary["crashed"] == 1
     assert "by_scenario" in summary
     assert "spawn_above_target" in summary["by_scenario"]
+
+
+def test_parse_args_defaults_to_quiet_batch_output() -> None:
+    args = argparse.Namespace(
+        level_name="level_eval",
+        bot_name="turtle",
+        headless=True,
+        batch=False,
+        freq=None,
+        steps=None,
+        time=None,
+        plot=None,
+        stop_on_crash=False,
+        stop_on_out_of_fuel=False,
+        stop_on_first_land=False,
+        seed=None,
+        lander=None,
+        eval_scenario=None,
+        batch_seeds="0-1",
+        batch_scenarios=None,
+        batch_json=None,
+        batch_csv=None,
+        quick_benchmark=False,
+        batch_workers=1,
+    )
+    config = _parse_args(args)
+    assert config.print_freq == 0

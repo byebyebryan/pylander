@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any
 
@@ -40,6 +42,7 @@ class RunConfig:
     batch_json: str | None
     batch_csv: str | None
     quick_benchmark: bool
+    batch_workers: int
 
 
 def _format_list(title: str, items: list[str]) -> str:
@@ -124,7 +127,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch",
         action="store_true",
-        help="Run a sequential multi-seed/multi-scenario batch",
+        help="Run a multi-seed/multi-scenario batch",
     )
     parser.add_argument(
         "--batch-seeds",
@@ -155,11 +158,25 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Run a small fixed benchmark preset for fast iteration",
     )
+    parser.add_argument(
+        "--batch-workers",
+        type=int,
+        default=1,
+        help="Batch worker processes (1 = sequential)",
+    )
     return parser
 
 
 def _parse_args(args: argparse.Namespace) -> RunConfig:
-    print_freq = 60 if args.freq is None else args.freq
+    batch_mode = bool(
+        args.batch
+        or args.quick_benchmark
+        or args.batch_seeds is not None
+        or args.batch_scenarios is not None
+        or args.batch_json is not None
+        or args.batch_csv is not None
+    )
+    print_freq = (0 if batch_mode else 60) if args.freq is None else args.freq
     max_time = 300.0 if args.time is None else args.time
     plot_mode = "none" if args.plot is None else args.plot
 
@@ -183,6 +200,7 @@ def _parse_args(args: argparse.Namespace) -> RunConfig:
         batch_json=args.batch_json,
         batch_csv=args.batch_csv,
         quick_benchmark=args.quick_benchmark,
+        batch_workers=max(1, int(args.batch_workers)),
     )
 
 
@@ -199,6 +217,8 @@ def _announce_config(config: RunConfig, args: argparse.Namespace) -> None:
             print(
                 f"Printing stats every {config.print_freq} frames ({config.print_freq / 60:.2f}s)"
             )
+    elif _is_batch_mode(config):
+        print("Stats output disabled (batch default)")
 
     if args.time is not None:
         print(f"Max time: {config.max_time}s (headless mode)")
@@ -222,6 +242,7 @@ def _announce_config(config: RunConfig, args: argparse.Namespace) -> None:
         print(f"Eval scenario: {config.eval_scenario}")
     if _is_batch_mode(config):
         print("Batch mode: enabled")
+        print(f"Batch workers: {config.batch_workers}")
         if config.batch_seeds:
             print(f"Batch seeds: {config.batch_seeds}")
         if config.batch_scenarios:
@@ -390,6 +411,27 @@ def _run_once(
     return result
 
 
+def _run_once_record(
+    config: RunConfig,
+    *,
+    seed: int | None,
+    scenario: str | None,
+) -> dict[str, Any]:
+    result = _run_once(
+        config,
+        seed=seed,
+        scenario=scenario,
+        print_results=False,
+    )
+    return normalize_run_result(
+        bot_name=str(config.bot_name),
+        level_name=config.level_name,
+        scenario=scenario,
+        seed=seed,
+        result=result,
+    )
+
+
 def _print_batch_summary(
     summary: dict[str, Any],
     failures: list[dict[str, Any]],
@@ -435,29 +477,40 @@ def _run_batch(config: RunConfig) -> int:
         raise ValueError("Batch mode requires --headless")
 
     seeds, scenarios = _resolve_batch_plan(config)
+    run_plan = [(seed, scenario) for scenario in scenarios for seed in seeds]
+    total = len(run_plan)
     records: list[dict[str, Any]] = []
-    total = len(seeds) * len(scenarios)
-    run_idx = 0
-    for scenario in scenarios:
-        for seed in seeds:
-            run_idx += 1
+    worker_count = max(1, min(config.batch_workers, total, os.cpu_count() or 1))
+
+    if worker_count <= 1:
+        for run_idx, (seed, scenario) in enumerate(run_plan, start=1):
             scenario_name = scenario or "default"
             print(f"[{run_idx}/{total}] seed={seed} scenario={scenario_name}")
-            result = _run_once(
-                config,
-                seed=seed,
-                scenario=scenario,
-                print_results=False,
+            records.append(_run_once_record(config, seed=seed, scenario=scenario))
+    else:
+        indexed_records: dict[int, dict[str, Any]] = {}
+        try:
+            with ProcessPoolExecutor(max_workers=worker_count) as pool:
+                future_map = {}
+                for run_idx, (seed, scenario) in enumerate(run_plan, start=1):
+                    fut = pool.submit(_run_once_record, config, seed=seed, scenario=scenario)
+                    future_map[fut] = (run_idx, seed, scenario)
+                done = 0
+                for fut in as_completed(future_map):
+                    run_idx, seed, scenario = future_map[fut]
+                    scenario_name = scenario or "default"
+                    done += 1
+                    print(f"[{done}/{total}] done seed={seed} scenario={scenario_name}")
+                    indexed_records[run_idx] = fut.result()
+            records = [indexed_records[i] for i in range(1, total + 1)]
+        except (PermissionError, OSError) as exc:
+            print(
+                f"Batch workers unavailable ({exc}); falling back to sequential execution."
             )
-            records.append(
-                normalize_run_result(
-                    bot_name=config.bot_name,
-                    level_name=config.level_name,
-                    scenario=scenario,
-                    seed=seed,
-                    result=result,
-                )
-            )
+            for run_idx, (seed, scenario) in enumerate(run_plan, start=1):
+                scenario_name = scenario or "default"
+                print(f"[{run_idx}/{total}] seed={seed} scenario={scenario_name}")
+                records.append(_run_once_record(config, seed=seed, scenario=scenario))
 
     summary = aggregate_eval_records(records)
     failed = [r for r in records if not r.get("success", False)]
