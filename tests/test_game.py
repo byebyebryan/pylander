@@ -189,6 +189,20 @@ def test_game_run_returns_level_result_and_advances_time() -> None:
     assert game._elapsed_time == result["elapsed_time"]
 
 
+def test_headless_print_freq_respects_step_frequency() -> None:
+    level = _ShortLevel(stop_after_updates=5)
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True)
+    calls = {"count": 0}
+
+    def _count_stats(_timers) -> None:
+        calls["count"] += 1
+
+    game._print_headless_stats = _count_stats
+    game.run(print_freq=2, max_steps=100)
+
+    assert calls["count"] == 2
+
+
 def test_game_run_emits_efficiency_metrics() -> None:
     level = _ShortLevel(stop_after_updates=3)
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True)

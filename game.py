@@ -541,6 +541,7 @@ class LanderGame:
             self.level.update(self, frame_dt)
             self.plotter.update(frame_dt)
             frame_dt = self._render(frame_dt)
+            step_count += 1
 
             if self.headless and print_freq > 0 and step_count % print_freq == 0:
                 self._print_headless_stats(timers)
@@ -561,7 +562,6 @@ class LanderGame:
                 prev_pos = Vector2(trans.pos)
                 prev_fuel = float(tank.fuel)
 
-            step_count += 1
             active_ls = _require_component(active_actor, LanderState)
             state = active_ls.state
             if state != prev_state:
