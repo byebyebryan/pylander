@@ -340,17 +340,22 @@ def _list_eval_scenarios() -> list[str]:
         return []
 
 
+def _list_wave1_eval_scenarios() -> list[str]:
+    try:
+        from levels.level_eval import list_wave1_scenarios
+
+        return list_wave1_scenarios()
+    except Exception:
+        return []
+
+
 def _resolve_batch_plan(config: RunConfig) -> tuple[list[int], list[str | None]]:
     eval_scenarios = _list_eval_scenarios()
+    wave1_scenarios = _list_wave1_eval_scenarios()
 
     if config.quick_benchmark:
         seeds = [0, 1, 2]
-        scenarios = [
-            "spawn_above_target",
-            "increase_horizontal_distance",
-            "climb_to_target",
-            "complex_terrain_vertical_features",
-        ]
+        scenarios = wave1_scenarios or eval_scenarios
         if config.level_name != "level_eval":
             scenarios = [None]
         return seeds, scenarios

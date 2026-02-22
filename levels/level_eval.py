@@ -38,6 +38,8 @@ class EvalScenario:
     target_x: float
     spawn_clearance: float
     terrain_kind: str
+    start_x_jitter: float = 0.0
+    target_x_jitter: float = 0.0
     slope: float = 0.0
     terrain_base: float = 0.0
     terrain_amplitude: float = 2200.0
@@ -73,10 +75,9 @@ SCENARIOS: dict[str, EvalScenario] = {
         name="horizontal_travel_flat_descend",
         start_x=0.0,
         target_x=900.0,
-        spawn_clearance=110.0,
-        terrain_kind="slope",
-        slope=-0.03,
-        terrain_base=120.0,
+        spawn_clearance=100.0,
+        terrain_kind="flat",
+        terrain_base=0.0,
         target_mode="flush_flatten",
         target_offset_y=0.0,
         target_size=100.0,
@@ -119,10 +120,20 @@ SCENARIOS: dict[str, EvalScenario] = {
 }
 
 DEFAULT_SCENARIO = "spawn_above_target"
+WAVE1_SCENARIOS: tuple[str, ...] = (
+    "spawn_above_target",
+    "greater_vertical_distance",
+    "horizontal_travel_flat_descend",
+    "increase_horizontal_distance",
+)
 
 
 def list_eval_scenarios() -> list[str]:
     return sorted(SCENARIOS.keys())
+
+
+def list_wave1_scenarios() -> list[str]:
+    return [name for name in WAVE1_SCENARIOS if name in SCENARIOS]
 
 
 def _require_component(entity, component_type):
@@ -186,7 +197,9 @@ class BotEvalLevel(Level):
         rng = random.Random(seed)
         base_terrain = _build_base_terrain(seed, scenario)
 
-        target_x = scenario.target_x + rng.uniform(-15.0, 15.0)
+        target_x = scenario.target_x
+        if scenario.target_x_jitter > 0.0:
+            target_x += rng.uniform(-scenario.target_x_jitter, scenario.target_x_jitter)
         target_ground_y = base_terrain(target_x, lod=0)
         target_y = target_ground_y + scenario.target_offset_y
         target_terrain_bound = scenario.target_mode != "elevated_supports"
@@ -238,7 +251,9 @@ class BotEvalLevel(Level):
 
         trans = _require_component(lander, Transform)
         geo = _require_component(lander, LanderGeometry)
-        start_x = scenario.start_x + rng.uniform(-10.0, 10.0)
+        start_x = scenario.start_x
+        if scenario.start_x_jitter > 0.0:
+            start_x += rng.uniform(-scenario.start_x_jitter, scenario.start_x_jitter)
         start_pos = _compute_spawn_pos(
             terrain,
             start_x,

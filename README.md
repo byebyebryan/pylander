@@ -10,6 +10,7 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 - Refueling system (exchange credits for fuel)
 - Continuous gameplay (land, refuel, take off again)
 - AI bot interface for autonomous play
+- Scenario-first specialist bots (`drop`, `plunge`, `drift`, `ferry`)
 
 ## Setup
 
@@ -29,42 +30,49 @@ uv run python main.py
 ### Bot Mode
 Watch an AI bot play using the sensor/action API:
 ```bash
-# Safe landing bot (terrain-aware climb + approach)
-uv run python main.py level_flat turtle
+# Vertical descent specialist
+uv run python main.py level_eval drop --eval-scenario spawn_above_target
 
-# Visual check on a focused eval scenario
-uv run python main.py level_mountains turtle --seed 0
+# Horizontal transfer specialist
+uv run python main.py level_eval drift --eval-scenario horizontal_travel_flat_descend
+
+# Legacy baseline bot (kept for comparison during migration)
+uv run python main.py level_flat turtle
 ```
 
 ### Headless Mode (Testing/Training)
 Run simulations without graphics for bot development:
 ```bash
 # Run bot in headless mode (prints stats every second by default)
-uv run python main.py level_flat turtle --headless
+uv run python main.py level_eval drop --headless --eval-scenario spawn_above_target
 
 # Print every frame for detailed debugging
-uv run python main.py level_flat turtle --headless --freq 1 --steps 300
+uv run python main.py level_eval drift --headless --freq 1 --steps 300 \
+  --eval-scenario horizontal_travel_flat_descend
 
 # Print every 0.5 seconds
-uv run python main.py level_flat turtle --headless --freq 30
+uv run python main.py level_eval plunge --headless --freq 30 \
+  --eval-scenario greater_vertical_distance
 
 # Disable output for fastest execution
-uv run python main.py level_flat turtle --headless --freq 0 --steps 10000
+uv run python main.py level_eval ferry --headless --freq 0 --steps 10000 \
+  --eval-scenario increase_horizontal_distance
 
 # Use different seed or lander
-uv run python main.py level_flat turtle --headless --seed 123
+uv run python main.py level_eval drop --headless --seed 123 \
+  --eval-scenario spawn_above_target
 uv run python main.py level_flat --lander differential
 ```
 
 Batch evaluation (headless, sequential single-bot runs):
 ```bash
-# Fast preset benchmark (3 seeds x selected eval scenarios)
-uv run python main.py level_eval turtle --headless --quick-benchmark
+# Fast preset benchmark (3 seeds x wave-1 scenarios)
+uv run python main.py level_eval drift --headless --quick-benchmark
 
 # Custom batch with report artifacts
-uv run python main.py level_eval turtle --headless --batch \
+uv run python main.py level_eval ferry --headless --batch \
   --batch-seeds 0-19 \
-  --batch-scenarios spawn_above_target,greater_vertical_distance,climb_to_target \
+  --batch-scenarios spawn_above_target,greater_vertical_distance,horizontal_travel_flat_descend,increase_horizontal_distance \
   --batch-json auto \
   --batch-csv auto
 ```
@@ -111,12 +119,18 @@ class MyBot(Bot):
 
 ## Eval Scenarios (`level_eval`)
 
-- `spawn_above_target`
-- `greater_vertical_distance`
-- `horizontal_travel_flat_descend`
-- `increase_horizontal_distance`
+- `spawn_above_target` (wave-1)
+- `greater_vertical_distance` (wave-1)
+- `horizontal_travel_flat_descend` (wave-1)
+- `increase_horizontal_distance` (wave-1)
 - `climb_to_target`
 - `complex_terrain_vertical_features`
+
+Specialist bot mapping:
+- `drop` -> `spawn_above_target`
+- `plunge` -> `greater_vertical_distance`
+- `drift` -> `horizontal_travel_flat_descend`
+- `ferry` -> `increase_horizontal_distance`
 
 ## Command Line Options
 
@@ -126,7 +140,7 @@ python main.py [level_name] [bot_name] [options]
 
 **Levels:** Run `python main.py --help` to list (e.g. `level_flat`, `level_mountains`).
 
-**Bot names:** `turtle` (see `--help`).
+**Bot names:** `drop`, `plunge`, `drift`, `ferry`, `turtle` (see `--help`).
 
 **Options:**
 - `--headless` - Run without graphics (requires bot)
@@ -149,6 +163,13 @@ python main.py [level_name] [bot_name] [options]
 
 Batch mode defaults to `--freq 0` (quiet) for speed; pass `--freq` to enable per-run stats.
 Quiet mode disables per-step stats output, but batch progress lines still print.
+
+## Promotion Gates (Specialist Bots)
+
+Current wave-1 promotion checks:
+- Home scenario success rate >= 95% on seeds `0-9`
+- No `out_of_fuel` failures on seeds `0-9`
+- No regression vs `turtle` baseline on home scenario success rate
 
 ## Game Mechanics
 
