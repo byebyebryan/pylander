@@ -9,10 +9,13 @@ from core.eval import aggregate_eval_records, normalize_run_result
 from core.bot import Bot, BotAction
 from core.components import (
     ActorControlRole,
+    LandingSite,
+    LandingSiteEconomy,
     LanderGeometry,
     LanderState,
     PlayerControlled,
     PlayerSelectable,
+    Radar,
     Transform,
 )
 from core.landing_sites import LandingSiteSurfaceModel
@@ -266,6 +269,90 @@ def test_level_presets_assign_selected_bot_to_only_lander(level_factory) -> None
     assert len(game.actors) == 1
     only_actor_uid = game.actors[0].uid
     assert game.actor_bots == {only_actor_uid: bot}
+
+
+def test_level_presets_spawn_new_sites_as_player_reaches_frontier() -> None:
+    level = create_level_flat()
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=123)
+
+    initial_site_count = len(game.level.world.site_entities)
+    lead = float(getattr(level, "dynamic_site_lead_distance", 2000.0))
+    trans = game.lander.get_component(Transform)
+    assert trans is not None
+
+    trans.pos.x = 18000.0
+    level.update(game, 1.0 / 60.0)
+    after_right_count = len(game.level.world.site_entities)
+    assert after_right_count > initial_site_count
+
+    rightmost_x = max(
+        _trans.pos.x
+        for _trans in (
+            site.get_component(Transform) for site in game.level.world.site_entities
+        )
+        if _trans is not None
+    )
+    assert rightmost_x >= trans.pos.x + lead
+
+    trans.pos.x = -18000.0
+    level.update(game, 1.0 / 60.0)
+    after_left_count = len(game.level.world.site_entities)
+    assert after_left_count > after_right_count
+
+    leftmost_x = min(
+        _trans.pos.x
+        for _trans in (
+            site.get_component(Transform) for site in game.level.world.site_entities
+        )
+        if _trans is not None
+    )
+    assert leftmost_x <= trans.pos.x - lead
+
+    ecs_site_count = len(game.ecs_world.get_entities_with(LandingSite, Transform))
+    assert ecs_site_count == after_left_count
+
+
+def test_dynamic_sites_keep_radar_guidance_and_refuel_bridges() -> None:
+    level = create_level_flat()
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=123)
+
+    trans = game.lander.get_component(Transform)
+    radar = game.lander.get_component(Radar)
+    assert trans is not None
+    assert radar is not None
+
+    trans.pos.x = 70000.0
+    level.update(game, 1.0 / 60.0)
+
+    auto_right_sites: list[tuple[float, float]] = []
+    for site in game.level.world.site_entities:
+        if not site.uid.startswith("auto_site_"):
+            continue
+        site_trans = site.get_component(Transform)
+        econ = site.get_component(LandingSiteEconomy)
+        if site_trans is None or econ is None:
+            continue
+        if site_trans.pos.x <= 0.0:
+            continue
+        auto_right_sites.append((site_trans.pos.x, econ.fuel_price))
+
+    auto_right_sites.sort(key=lambda row: row[0])
+    assert len(auto_right_sites) >= 12
+
+    gaps = [
+        auto_right_sites[i + 1][0] - auto_right_sites[i][0]
+        for i in range(len(auto_right_sites) - 1)
+    ]
+    guidance_limit = radar.outer_range * float(
+        getattr(level, "dynamic_radar_spacing_ratio", 0.85)
+    )
+    assert max(gaps) <= guidance_limit + 1e-6
+
+    cheap_refuel_limit = float(getattr(level, "dynamic_refuel_price_max", 8.5))
+    cheap_refuel_count = sum(
+        1 for _, fuel_price in auto_right_sites if fuel_price <= cheap_refuel_limit + 1e-6
+    )
+    assert cheap_refuel_count >= 2
 
 
 def test_level_registry_includes_named_presets() -> None:
