@@ -243,7 +243,7 @@ def test_level_presets_actor_spawns_are_above_local_terrain(level_factory) -> No
         assert trans is not None
         assert geo is not None
 
-        half_w = geo.width * 0.5
+        half_w = max(geo.width * 0.5, 1.0)
         bottom = trans.pos.y - geo.height * 0.5
         sample_xs = (
             trans.pos.x - half_w,
