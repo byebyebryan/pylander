@@ -19,41 +19,41 @@ uv sync
 
 ## Running
 
-You must choose a level first (e.g. `level_1`). List levels with `--help`.
+Default level is `level_flat` when omitted. List all levels with `--help`.
 
 ### Human Mode
 ```bash
-uv run python main.py level_1
+uv run python main.py
 ```
 
 ### Bot Mode
 Watch an AI bot play using the sensor/action API:
 ```bash
 # Safe landing bot (terrain-aware climb + approach)
-uv run python main.py level_1 turtle
+uv run python main.py level_flat turtle
 
 # Visual check on a focused eval scenario
-uv run python main.py level_eval turtle --eval-scenario climb_to_target --seed 0
+uv run python main.py level_mountains turtle --seed 0
 ```
 
 ### Headless Mode (Testing/Training)
 Run simulations without graphics for bot development:
 ```bash
 # Run bot in headless mode (prints stats every second by default)
-uv run python main.py level_1 turtle --headless
+uv run python main.py level_flat turtle --headless
 
 # Print every frame for detailed debugging
-uv run python main.py level_1 turtle --headless --freq 1 --steps 300
+uv run python main.py level_flat turtle --headless --freq 1 --steps 300
 
 # Print every 0.5 seconds
-uv run python main.py level_1 turtle --headless --freq 30
+uv run python main.py level_flat turtle --headless --freq 30
 
 # Disable output for fastest execution
-uv run python main.py level_1 turtle --headless --freq 0 --steps 10000
+uv run python main.py level_flat turtle --headless --freq 0 --steps 10000
 
 # Use different seed or lander
-uv run python main.py level_1 turtle --headless --seed 123
-uv run python main.py level_1 --lander differential
+uv run python main.py level_flat turtle --headless --seed 123
+uv run python main.py level_flat --lander differential
 ```
 
 Batch evaluation (headless, sequential single-bot runs):
@@ -121,10 +121,10 @@ class MyBot(Bot):
 ## Command Line Options
 
 ```bash
-python main.py <level_name> [bot_name] [options]
+python main.py [level_name] [bot_name] [options]
 ```
 
-**Levels:** Run `python main.py --help` to list (e.g. `level_1`).
+**Levels:** Run `python main.py --help` to list (e.g. `level_flat`, `level_mountains`).
 
 **Bot names:** `turtle` (see `--help`).
 

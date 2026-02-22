@@ -67,7 +67,7 @@ def _find_level_class_in_module(module: ModuleType) -> Type[Level] | None:
 
 def load_level_class(name: str) -> Type[Level]:
     """
-    Load Level subclass by module name (e.g., "level_1").
+    Load Level subclass by module name (e.g., "level_flat").
     Raises ImportError/ValueError on failure.
     """
     module_name = name.strip().lower().replace("-", "_")

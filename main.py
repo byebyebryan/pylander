@@ -56,6 +56,7 @@ def _build_parser() -> argparse.ArgumentParser:
     levels = list_available_levels()
     bots = list_available_bots()
     landers = list_available_landers()
+    default_level = "level_flat" if "level_flat" in levels else (levels[0] if levels else None)
 
     epilog = "\n".join(
         [
@@ -70,7 +71,13 @@ def _build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawTextHelpFormatter,
         epilog=epilog,
     )
-    parser.add_argument("level_name", choices=levels, help="Level module name")
+    parser.add_argument(
+        "level_name",
+        nargs="?",
+        default=default_level,
+        choices=levels,
+        help=f"Level module name (default: {default_level})",
+    )
     parser.add_argument("bot_name", nargs="?", choices=bots, help="Bot name")
     parser.add_argument(
         "--headless",

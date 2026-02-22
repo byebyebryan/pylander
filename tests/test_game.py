@@ -22,7 +22,8 @@ from core.level import Level, LevelWorld
 from game import LanderGame, _build_headless_stats
 from main import RunConfig, _parse_args, _parse_seed_spec, _resolve_batch_plan, _run_batch
 from levels import create_level as create_level_by_name
-from levels.level_1 import create_level as create_level_1
+from levels.level_flat import create_level as create_level_flat
+from levels.level_mountains import create_level as create_level_mountains
 from ui.hud import HudOverlay
 
 
@@ -224,8 +225,12 @@ def test_game_assigns_passed_bot_to_bot_role_actor() -> None:
     assert game.actor_bots == {"actor_bot": bot}
 
 
-def test_level_1_actor_spawns_are_above_local_terrain() -> None:
-    level = create_level_1()
+@pytest.mark.parametrize(
+    "level_factory",
+    [create_level_flat, create_level_mountains],
+)
+def test_level_presets_actor_spawns_are_above_local_terrain(level_factory) -> None:
+    level = level_factory()
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=123)
     terrain = game.terrain
 
@@ -249,14 +254,31 @@ def test_level_1_actor_spawns_are_above_local_terrain() -> None:
             assert bottom - terrain(sx) >= 10.0
 
 
-def test_level_1_assigns_selected_bot_to_only_lander() -> None:
-    level = create_level_1()
+@pytest.mark.parametrize(
+    "level_factory",
+    [create_level_flat, create_level_mountains],
+)
+def test_level_presets_assign_selected_bot_to_only_lander(level_factory) -> None:
+    level = level_factory()
     bot = _PassiveBot()
     game = LanderGame(level=level, bot=bot, headless=True, seed=123)
 
     assert len(game.actors) == 1
     only_actor_uid = game.actors[0].uid
     assert game.actor_bots == {only_actor_uid: bot}
+
+
+def test_level_registry_includes_named_presets() -> None:
+    level_names = main_module.list_available_levels()
+    assert "level_flat" in level_names
+    assert "level_mountains" in level_names
+    assert "level_1" not in level_names
+
+
+def test_cli_defaults_to_level_flat_when_omitted() -> None:
+    parser = main_module._build_parser()
+    args = parser.parse_args([])
+    assert args.level_name == "level_flat"
 
 
 def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
