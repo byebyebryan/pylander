@@ -7,6 +7,69 @@ from pathlib import Path
 from typing import Any
 
 
+def _to_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _to_optional_float(value: Any) -> float | None:
+    try:
+        if value is None:
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _percentile(sorted_values: list[float], p: float) -> float:
+    if not sorted_values:
+        return 0.0
+    if len(sorted_values) == 1:
+        return sorted_values[0]
+    clamped = max(0.0, min(1.0, p))
+    idx = (len(sorted_values) - 1) * clamped
+    lo = int(idx)
+    hi = min(lo + 1, len(sorted_values) - 1)
+    if lo == hi:
+        return sorted_values[lo]
+    frac = idx - lo
+    return sorted_values[lo] * (1.0 - frac) + sorted_values[hi] * frac
+
+
+def _metric_summary(records: list[dict[str, Any]], field: str) -> dict[str, Any]:
+    values = [
+        float(record[field])
+        for record in records
+        if isinstance(record.get(field), (int, float))
+    ]
+    if not values:
+        return {"count": 0, "mean": 0.0, "median": 0.0, "p90": 0.0}
+    values.sort()
+    count = len(values)
+    return {
+        "count": count,
+        "mean": sum(values) / count,
+        "median": _percentile(values, 0.5),
+        "p90": _percentile(values, 0.9),
+    }
+
+
+def _efficiency_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
+    fields = (
+        "distance_flown",
+        "avg_speed",
+        "fuel_consumed",
+        "fuel_per_distance",
+        "path_efficiency",
+        "time",
+    )
+    return {field: _metric_summary(records, field) for field in fields}
+
+
 def normalize_run_result(
     *,
     bot_name: str,
@@ -24,12 +87,20 @@ def normalize_run_result(
         "scenario": scenario,
         "seed": seed,
         "state": state,
-        "time": float(result.get("time", 0.0) or 0.0),
+        "time": _to_float(result.get("time", 0.0), 0.0),
         "landing_count": landing_count,
         "crash_count": crash_count,
-        "credits": float(result.get("credits", 0.0) or 0.0),
-        "fuel": float(result.get("fuel", 0.0) or 0.0),
-        "score": float(result.get("score", 0.0) or 0.0),
+        "credits": _to_float(result.get("credits", 0.0), 0.0),
+        "fuel": _to_float(result.get("fuel", 0.0), 0.0),
+        "score": _to_float(result.get("score", 0.0), 0.0),
+        "distance_flown": _to_float(result.get("distance_flown", 0.0), 0.0),
+        "avg_speed": _to_float(result.get("avg_speed", 0.0), 0.0),
+        "fuel_consumed": _to_float(result.get("fuel_consumed", 0.0), 0.0),
+        "fuel_per_distance": _to_float(result.get("fuel_per_distance", 0.0), 0.0),
+        "path_efficiency": _to_optional_float(result.get("path_efficiency")),
+        "spawn_to_target_distance": _to_optional_float(
+            result.get("spawn_to_target_distance")
+        ),
         "success": state == "landed",
         "failure_mode": "none" if state == "landed" else state,
     }
@@ -62,18 +133,25 @@ def aggregate_eval_records(records: list[dict[str, Any]]) -> dict[str, Any]:
                 "flying": 0,
                 "other": 0,
                 "success_rate": 0.0,
+                "_records": [],
             },
         )
         item["runs"] += 1
+        item["_records"].append(record)
         state = record.get("state")
         if state in ("landed", "crashed", "out_of_fuel", "flying"):
             item[state] += 1
         else:
             item["other"] += 1
 
+    successful_records = [record for record in records if record.get("success", False)]
     for item in by_scenario.values():
         runs = int(item["runs"])
         item["success_rate"] = (item["landed"] / runs) if runs > 0 else 0.0
+        item_records = item.pop("_records")
+        item_success = [record for record in item_records if record.get("success", False)]
+        item["efficiency_success"] = _efficiency_summary(item_success)
+        item["efficiency_all"] = _efficiency_summary(item_records)
 
     return {
         "runs": total,
@@ -83,6 +161,8 @@ def aggregate_eval_records(records: list[dict[str, Any]]) -> dict[str, Any]:
         "flying": flying,
         "other": other,
         "success_rate": success_rate,
+        "efficiency_success": _efficiency_summary(successful_records),
+        "efficiency_all": _efficiency_summary(records),
         "by_scenario": by_scenario,
     }
 

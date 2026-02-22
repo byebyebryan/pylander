@@ -27,7 +27,7 @@ from core.controllers import PlayerController
 from core.ecs import Entity, World
 from core.engine_adapter import EngineAdapter
 from core.level import Level
-from core.maths import Vector2, clearance_above_terrain
+from core.maths import Range1D, Vector2, clearance_above_terrain
 from core.systems.contact import ContactSystem
 from core.systems.control_routing import ControlRoutingSystem
 from core.systems.force_application import ForceApplicationSystem
@@ -90,6 +90,32 @@ def _estimate_terrain_slope(terrain, world_x: float, lod: int = 0) -> float:
     y0 = _sample_terrain_height(terrain, world_x - step, lod=lod)
     y1 = _sample_terrain_height(terrain, world_x + step, lod=lod)
     return (y1 - y0) / (2.0 * step)
+
+
+def _resolve_eval_target_pos(level: Level, sites, start_pos: Vector2) -> Vector2 | None:
+    explicit = getattr(level, "eval_target_pos", None)
+    if isinstance(explicit, Vector2):
+        return Vector2(explicit)
+    if isinstance(explicit, (tuple, list)) and len(explicit) >= 2:
+        try:
+            return Vector2(float(explicit[0]), float(explicit[1]))
+        except (TypeError, ValueError):
+            return None
+
+    get_sites = getattr(sites, "get_sites", None)
+    if not callable(get_sites):
+        return None
+    try:
+        all_sites = list(get_sites(Range1D.from_center(start_pos.x, 1_000_000.0)))
+    except Exception:
+        return None
+    if not all_sites:
+        return None
+    nearest = min(
+        all_sites,
+        key=lambda site: (site.x - start_pos.x) ** 2 + (site.y - start_pos.y) ** 2,
+    )
+    return Vector2(nearest.x, nearest.y)
 
 
 def _build_vehicle_info(entity) -> VehicleInfo:
@@ -443,6 +469,16 @@ class LanderGame:
         self.plotter.set_sampling_from_print_freq(print_freq, TARGET_RENDERING_FPS)
         self.plotter.seed_initial_sample()
         self._elapsed_time = 0.0
+        initial_actor = self.get_active_actor()
+        initial_trans = _require_component(initial_actor, Transform)
+        initial_tank = _require_component(initial_actor, FuelTank)
+        start_pos = Vector2(getattr(initial_actor, "start_pos", initial_trans.pos))
+        eval_target_pos = _resolve_eval_target_pos(self.level, self.sites, start_pos)
+        prev_actor_uid = initial_actor.uid
+        prev_pos = Vector2(initial_trans.pos)
+        prev_fuel = float(initial_tank.fuel)
+        distance_flown = 0.0
+        fuel_consumed = 0.0
 
         while self.running:
             if self.headless and max_time is not None and timers.elapsed_time >= max_time:
@@ -509,8 +545,23 @@ class LanderGame:
             if self.headless and print_freq > 0 and step_count % print_freq == 0:
                 self._print_headless_stats(timers)
 
-            step_count += 1
             active_actor = self.get_active_actor()
+            if active_actor.uid != prev_actor_uid:
+                prev_actor_uid = active_actor.uid
+                trans = _require_component(active_actor, Transform)
+                tank = _require_component(active_actor, FuelTank)
+                prev_pos = Vector2(trans.pos)
+                prev_fuel = float(tank.fuel)
+            else:
+                trans = _require_component(active_actor, Transform)
+                tank = _require_component(active_actor, FuelTank)
+                step_distance = math.hypot(trans.pos.x - prev_pos.x, trans.pos.y - prev_pos.y)
+                distance_flown += step_distance
+                fuel_consumed += max(0.0, prev_fuel - float(tank.fuel))
+                prev_pos = Vector2(trans.pos)
+                prev_fuel = float(tank.fuel)
+
+            step_count += 1
             active_ls = _require_component(active_actor, LanderState)
             state = active_ls.state
             if state != prev_state:
@@ -529,7 +580,27 @@ class LanderGame:
         self._elapsed_time = timers.elapsed_time
         self._landing_count = landing_count
         self._crash_count = crash_count
+        self._distance_flown = distance_flown
+        self._fuel_consumed = fuel_consumed
         result = self.level.end(self)
+        elapsed_time = max(0.0, float(timers.elapsed_time))
+        avg_speed = (distance_flown / elapsed_time) if elapsed_time > 1e-9 else 0.0
+        fuel_per_distance = (fuel_consumed / distance_flown) if distance_flown > 1e-9 else 0.0
+        spawn_to_target_distance = None
+        path_efficiency = None
+        if eval_target_pos is not None:
+            spawn_to_target_distance = math.hypot(
+                eval_target_pos.x - start_pos.x,
+                eval_target_pos.y - start_pos.y,
+            )
+            if distance_flown > 1e-9 and result.get("state") == "landed":
+                path_efficiency = min(1.0, spawn_to_target_distance / distance_flown)
+        result.setdefault("distance_flown", distance_flown)
+        result.setdefault("avg_speed", avg_speed)
+        result.setdefault("fuel_consumed", fuel_consumed)
+        result.setdefault("fuel_per_distance", fuel_per_distance)
+        result.setdefault("spawn_to_target_distance", spawn_to_target_distance)
+        result.setdefault("path_efficiency", path_efficiency)
         plot_extras = self.plotter.finalize()
         if plot_extras:
             result.update(plot_extras)

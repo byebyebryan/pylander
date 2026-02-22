@@ -210,6 +210,7 @@ class ScenarioLevel(Level):
         )
         setattr(self, "engine", engine)
         setattr(self, "scenario_name", spec.name)
+        setattr(self, "eval_target_pos", Vector2(target_x, target_y))
 
     def should_end(self, game) -> bool:
         return should_end_default(

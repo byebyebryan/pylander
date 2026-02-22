@@ -260,6 +260,12 @@ def _print_headless_results(result: dict) -> None:
         "credits",
         "fuel",
         "score",
+        "distance_flown",
+        "avg_speed",
+        "fuel_consumed",
+        "fuel_per_distance",
+        "spawn_to_target_distance",
+        "path_efficiency",
     ):
         if key in result:
             val = result[key]
@@ -457,6 +463,37 @@ def _print_batch_summary(
     json_path,
     csv_path,
 ) -> None:
+    def _print_efficiency_block(title: str, block: dict[str, Any] | None) -> None:
+        if not block:
+            return
+        print(f"\n{title}:")
+        metric_order = (
+            "distance_flown",
+            "avg_speed",
+            "fuel_consumed",
+            "fuel_per_distance",
+            "path_efficiency",
+            "time",
+        )
+        printed = 0
+        for metric in metric_order:
+            stats = block.get(metric)
+            if not isinstance(stats, dict):
+                continue
+            count = int(stats.get("count", 0) or 0)
+            if count <= 0:
+                continue
+            mean = float(stats.get("mean", 0.0) or 0.0)
+            median = float(stats.get("median", 0.0) or 0.0)
+            p90 = float(stats.get("p90", 0.0) or 0.0)
+            print(
+                f"  - {metric}: n={count} mean={mean:.2f} "
+                f"median={median:.2f} p90={p90:.2f}"
+            )
+            printed += 1
+        if printed == 0:
+            print("  (no data)")
+
     print("\n" + "=" * 60)
     print("BATCH RESULTS")
     print("=" * 60)
@@ -467,6 +504,8 @@ def _print_batch_summary(
     print(f"Flying:            {summary['flying']}")
     print(f"Other:             {summary['other']}")
     print(f"Success rate:      {summary['success_rate']:.2%}")
+    _print_efficiency_block("Efficiency (successful runs)", summary.get("efficiency_success"))
+    _print_efficiency_block("Efficiency (all runs)", summary.get("efficiency_all"))
     if summary.get("by_scenario"):
         print("\nPer-scenario:")
         for name in sorted(summary["by_scenario"]):

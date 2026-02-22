@@ -189,6 +189,27 @@ def test_game_run_returns_level_result_and_advances_time() -> None:
     assert game._elapsed_time == result["elapsed_time"]
 
 
+def test_game_run_emits_efficiency_metrics() -> None:
+    level = _ShortLevel(stop_after_updates=3)
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True)
+
+    result = game.run(print_freq=0, max_steps=100)
+
+    for key in (
+        "distance_flown",
+        "avg_speed",
+        "fuel_consumed",
+        "fuel_per_distance",
+        "spawn_to_target_distance",
+        "path_efficiency",
+    ):
+        assert key in result
+    assert result["distance_flown"] >= 0.0
+    assert result["avg_speed"] >= 0.0
+    assert result["fuel_consumed"] >= 0.0
+    assert result["fuel_per_distance"] >= 0.0
+
+
 def test_state_transition_runs_once_per_frame_with_engine_enabled() -> None:
     level = _ShortLevel(stop_after_updates=999)
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True)
@@ -441,20 +462,41 @@ def test_eval_aggregate_summary_shape() -> None:
             level_name="level_drop",
             scenario="spawn_above_target",
             seed=0,
-            result={"state": "landed", "time": 12.0, "landing_count": 1},
+            result={
+                "state": "landed",
+                "time": 12.0,
+                "landing_count": 1,
+                "distance_flown": 240.0,
+                "avg_speed": 20.0,
+                "fuel_consumed": 15.0,
+                "fuel_per_distance": 0.0625,
+                "path_efficiency": 0.90,
+            },
         ),
         normalize_run_result(
             bot_name="turtle",
             level_name="level_drop",
             scenario="spawn_above_target",
             seed=1,
-            result={"state": "crashed", "time": 9.0, "crash_count": 1},
+            result={
+                "state": "crashed",
+                "time": 9.0,
+                "crash_count": 1,
+                "distance_flown": 180.0,
+                "avg_speed": 20.0,
+                "fuel_consumed": 25.0,
+                "fuel_per_distance": 0.1389,
+            },
         ),
     ]
     summary = aggregate_eval_records(records)
     assert summary["runs"] == 2
     assert summary["landed"] == 1
     assert summary["crashed"] == 1
+    assert "efficiency_success" in summary
+    assert summary["efficiency_success"]["distance_flown"]["count"] == 1
+    assert "efficiency_all" in summary
+    assert summary["efficiency_all"]["distance_flown"]["count"] == 2
     assert "by_scenario" in summary
     assert "spawn_above_target" in summary["by_scenario"]
 
