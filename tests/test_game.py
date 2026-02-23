@@ -6,8 +6,6 @@ import main as main_module
 import pytest
 from bots import create_bot, list_available_bots
 from bots.descent import DescentBot
-from bots.descent_econ import DescentEconBot
-from bots.descent_speed import DescentSpeedBot
 from core.eval import aggregate_eval_records, normalize_run_result
 from core.bot import Bot, BotAction, PassiveSensors
 from core.components import (
@@ -40,16 +38,12 @@ from ui.hud import HudOverlay
 def test_bot_registry_exposes_descent_only() -> None:
     bots = list_available_bots()
     assert "descent" in bots
-    assert "descent_speed" in bots
-    assert "descent_econ" in bots
+    assert "descent_speed" not in bots
+    assert "descent_econ" not in bots
     assert "turtle" not in bots
     assert {"drop", "plunge", "drift", "ferry"}.isdisjoint(set(bots))
     descent_bot = create_bot("descent")
     assert descent_bot.__class__.__name__ == "DescentBot"
-    speed_bot = create_bot("descent_speed")
-    assert speed_bot.__class__.__name__ == "DescentSpeedBot"
-    econ_bot = create_bot("descent_econ")
-    assert econ_bot.__class__.__name__ == "DescentEconBot"
 
 
 def test_descent_bot_engine_profile_fallback_uses_realistic_defaults() -> None:
@@ -61,8 +55,8 @@ def test_descent_bot_engine_profile_fallback_uses_realistic_defaults() -> None:
     assert ramp_up == pytest.approx(1.1)
 
 
-def test_descent_econ_bot_blocks_overdrive_when_fuel_margin_is_low() -> None:
-    bot = DescentEconBot()
+def test_descent_econ_behavior_blocks_overdrive_when_fuel_margin_is_low() -> None:
+    bot = DescentBot(behavior="econ")
     passive = PassiveSensors(
         x=0.0,
         y=100.0,
@@ -85,8 +79,8 @@ def test_descent_econ_bot_blocks_overdrive_when_fuel_margin_is_low() -> None:
     assert not bot._can_use_overdrive(passive, vertical_mode="terminal_burn", alt=8.0)
 
 
-def test_descent_speed_status_prefix_is_distinct() -> None:
-    bot = DescentSpeedBot()
+def test_descent_speed_behavior_status_prefix_is_distinct() -> None:
+    bot = DescentBot(behavior="speed")
     passive = PassiveSensors(
         x=0.0,
         y=0.0,
@@ -110,8 +104,8 @@ def test_descent_speed_status_prefix_is_distinct() -> None:
     assert action.status.startswith("descent_speed:")
 
 
-def test_descent_speed_can_use_overdrive_outside_terminal_mode() -> None:
-    bot = DescentSpeedBot()
+def test_descent_speed_behavior_can_use_overdrive_outside_terminal_mode() -> None:
+    bot = DescentBot(behavior="speed")
     passive = PassiveSensors(
         x=0.0,
         y=100.0,
@@ -649,6 +643,7 @@ def test_resolve_batch_plan_uses_quick_benchmark_wave1_levels() -> None:
     config = RunConfig(
         level_name="level_drop",
         bot_name="descent",
+        bot_behavior=None,
         headless=True,
         batch=False,
         print_freq=0,
@@ -755,7 +750,8 @@ def test_print_batch_summary_includes_per_scenario_efficiency_means(capsys) -> N
 def test_parse_args_defaults_to_quiet_batch_output() -> None:
     args = argparse.Namespace(
         level_name="level_drop",
-        bot_name="descent",
+        bot="descent",
+        bot_behavior=None,
         headless=True,
         batch=False,
         freq=None,
@@ -783,7 +779,8 @@ def test_parse_args_defaults_to_quiet_batch_output() -> None:
 def test_parse_args_accepts_scenario_options() -> None:
     args = argparse.Namespace(
         level_name="level_drop",
-        bot_name="descent",
+        bot="descent",
+        bot_behavior="speed",
         headless=True,
         batch=False,
         freq=None,
@@ -807,6 +804,7 @@ def test_parse_args_accepts_scenario_options() -> None:
     config = _parse_args(args)
     assert config.scenario_name == "alt_800"
     assert config.batch_scenarios == "alt_800,speed_high"
+    assert config.bot_behavior == "speed"
 
 
 def test_hud_altitude_matches_passive_sensor_clearance_convention() -> None:
@@ -916,6 +914,7 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
     config = RunConfig(
         level_name="level_drop",
         bot_name="descent",
+        bot_behavior=None,
         headless=True,
         batch=True,
         print_freq=0,
@@ -962,6 +961,7 @@ def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
     config = RunConfig(
         level_name="level_drop",
         bot_name="descent",
+        bot_behavior=None,
         headless=True,
         batch=True,
         print_freq=0,
@@ -995,6 +995,7 @@ def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:
     config = RunConfig(
         level_name="level_drop",
         bot_name="descent",
+        bot_behavior=None,
         headless=True,
         batch=True,
         print_freq=0,
@@ -1027,6 +1028,7 @@ def test_run_batch_rejects_empty_level_plan(monkeypatch) -> None:
     config = RunConfig(
         level_name="level_drop",
         bot_name="descent",
+        bot_behavior=None,
         headless=True,
         batch=True,
         print_freq=0,

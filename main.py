@@ -17,6 +17,7 @@ from core.eval import (
 )
 from game import LanderGame
 from bots import create_bot, list_available_bots
+from bots.descent import list_behavior_names as list_descent_behaviors
 from levels import create_level, list_available_levels
 from landers import list_available_landers
 
@@ -25,6 +26,7 @@ from landers import list_available_landers
 class RunConfig:
     level_name: str
     bot_name: str | None
+    bot_behavior: str | None
     headless: bool
     batch: bool
     print_freq: int
@@ -56,6 +58,7 @@ def _format_list(title: str, items: list[str]) -> str:
 def _build_parser() -> argparse.ArgumentParser:
     levels = list_available_levels()
     bots = list_available_bots()
+    descent_behaviors = list_descent_behaviors()
     landers = list_available_landers()
     default_level = "level_flat" if "level_flat" in levels else (levels[0] if levels else None)
 
@@ -79,7 +82,22 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=levels,
         help=f"Level module name (default: {default_level})",
     )
-    parser.add_argument("bot_name", nargs="?", choices=bots, help="Bot name")
+    parser.add_argument(
+        "--bot",
+        dest="bot",
+        choices=bots,
+        default=None,
+        help="Bot name (overrides level default bot)",
+    )
+    parser.add_argument(
+        "--bot-behavior",
+        choices=descent_behaviors,
+        default=None,
+        help=(
+            "Behavior profile for the descent bot "
+            f"(choices: {', '.join(descent_behaviors)})"
+        ),
+    )
     parser.add_argument(
         "--headless",
         action="store_true",
@@ -197,7 +215,8 @@ def _parse_args(args: argparse.Namespace) -> RunConfig:
 
     return RunConfig(
         level_name=args.level_name,
-        bot_name=args.bot_name,
+        bot_name=args.bot,
+        bot_behavior=(args.bot_behavior.strip() if args.bot_behavior else None),
         headless=args.headless,
         batch=args.batch,
         print_freq=print_freq,
@@ -464,6 +483,15 @@ def _run_once(
     _configure_level(level, config)
     run_bot_name = _resolve_run_bot_name(config, level)
     bot = create_bot(run_bot_name) if run_bot_name is not None else None
+    if config.bot_behavior is not None:
+        if bot is None:
+            raise ValueError("Bot behavior requires a bot (explicit --bot or level default)")
+        set_behavior = getattr(bot, "set_behavior", None)
+        if not callable(set_behavior):
+            raise ValueError(
+                f"Bot '{run_bot_name}' does not support --bot-behavior"
+            )
+        set_behavior(config.bot_behavior)
     game = LanderGame(seed=seed, bot=bot, headless=config.headless, level=level)
     result = game.run(
         print_freq=config.print_freq,
@@ -472,6 +500,8 @@ def _run_once(
     )
     if run_bot_name is not None:
         result["_bot_name"] = run_bot_name
+    if config.bot_behavior is not None:
+        result["_bot_behavior"] = config.bot_behavior
     result["_level_name"] = run_level_name
     result["_scenario_name"] = getattr(level, "scenario_name", run_level_name)
     if config.headless and print_results:
@@ -494,6 +524,9 @@ def _run_once_record(
         print_results=False,
     )
     record_bot_name = str(result.get("_bot_name") or config.bot_name or "none")
+    record_bot_behavior = result.get("_bot_behavior") or config.bot_behavior
+    if record_bot_behavior:
+        record_bot_name = f"{record_bot_name}:{record_bot_behavior}"
     record_level_name = str(result.get("_level_name") or level_name)
     record_scenario_name = str(result.get("_scenario_name") or record_level_name)
     return normalize_run_result(
@@ -611,6 +644,8 @@ def _print_batch_summary(
 
 def _run_batch(config: RunConfig) -> int:
     batch_bot_name = config.bot_name or "level_default"
+    if config.bot_behavior:
+        batch_bot_name = f"{batch_bot_name}:{config.bot_behavior}"
     if not config.headless:
         raise ValueError("Batch mode requires --headless")
 
@@ -758,6 +793,8 @@ def main() -> None:
         print(f"Running with bot {config.bot_name}")
     elif default_bot_name is not None:
         print(f"Running with bot {default_bot_name} (level default)")
+    if config.bot_behavior is not None:
+        print(f"Using bot behavior {config.bot_behavior}")
 
     try:
         result = _run_once(

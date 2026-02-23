@@ -78,6 +78,13 @@ class DescentPolicy:
     emergency_low_alt: float = 12.0
     emergency_low_alt_vy_threshold: float = -3.5
     min_fuel_ratio_for_overdrive: float = 0.16
+    enable_gravity_glide: bool = False
+    glide_altitude_min: float = 120.0
+    glide_upward_vy_min: float = 1.0
+    enable_speed_dive: bool = False
+    speed_dive_altitude_min: float = 180.0
+    speed_dive_downspeed_max: float = 8.0
+    speed_dive_target_vy: float = -9.0
 
 
 BALANCED_POLICY = DescentPolicy(status_prefix="descent")
@@ -93,6 +100,10 @@ SPEED_POLICY = DescentPolicy(
     overdrive_soft_cap=1.6,
     overdrive_requires_terminal_burn=False,
     min_fuel_ratio_for_overdrive=0.03,
+    enable_speed_dive=True,
+    speed_dive_altitude_min=160.0,
+    speed_dive_downspeed_max=10.0,
+    speed_dive_target_vy=-11.0,
 )
 ECON_POLICY = DescentPolicy(
     status_prefix="descent_econ",
@@ -107,9 +118,10 @@ ECON_POLICY = DescentPolicy(
     min_fuel_ratio_for_overdrive=0.45,
     emergency_vy_threshold=-7.0,
     emergency_low_alt_vy_threshold=-4.5,
+    enable_gravity_glide=True,
+    glide_altitude_min=80.0,
+    glide_upward_vy_min=0.6,
 )
-
-
 class StrategyDescentBot(Bot):
     def __init__(self, policy: DescentPolicy) -> None:
         super().__init__()
@@ -161,7 +173,27 @@ class StrategyDescentBot(Bot):
             )
         )
 
-        if burn_now:
+        gravity_glide = (
+            self._policy.enable_gravity_glide
+            and alt >= self._policy.glide_altitude_min
+            and passive.vy_up >= self._policy.glide_upward_vy_min
+        )
+        speed_dive = (
+            self._policy.enable_speed_dive
+            and alt >= self._policy.speed_dive_altitude_min
+            and down_speed <= self._policy.speed_dive_downspeed_max
+            and not burn_now
+        )
+
+        if gravity_glide:
+            vertical_mode = "eco_glide"
+            vy_sp = -0.2
+            vx_sp = 0.0
+        elif speed_dive:
+            vertical_mode = "speed_dive"
+            vy_sp = self._policy.speed_dive_target_vy
+            vx_sp = clamp(vx_sp, -1.8, 1.8)
+        elif burn_now:
             vertical_mode = "terminal_burn"
             vy_sp = -clamp(0.45 + (0.11 * alt), 0.55, 2.2)
             vy_sp *= self._policy.descent_rate_scale
@@ -186,6 +218,10 @@ class StrategyDescentBot(Bot):
             vertical_mode = "flare"
             vy_sp = -clamp(0.3 + (0.07 * alt), 0.4, 0.75)
             vy_sp *= self._policy.descent_rate_scale
+        elif gravity_glide:
+            phase = "eco_glide"
+        elif speed_dive:
+            phase = "speed_dive"
         elif burn_now:
             phase = "terminal_burn"
         elif vertical_mode == "flare":
@@ -222,6 +258,10 @@ class StrategyDescentBot(Bot):
         up_acc_max: float,
     ) -> float:
         if vertical_mode == "coast":
+            return 0.0
+        if vertical_mode == "eco_glide":
+            return 0.0
+        if vertical_mode == "speed_dive":
             return 0.0
         if vertical_mode == "terminal_burn":
             brake_gain = (
