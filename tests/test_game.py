@@ -30,8 +30,8 @@ from core.level import Level, LevelWorld
 from game import LanderGame, LoopTimers, _build_headless_stats
 from main import RunConfig, _parse_args, _parse_seed_spec, _resolve_batch_plan, _run_batch
 from levels import create_level as create_level_by_name
-from levels.level_flat import create_level as create_level_flat
-from levels.level_mountains import create_level as create_level_mountains
+from levels.flat import create_level as create_level_flat
+from levels.mountains import create_level as create_level_mountains
 from ui.hud import HudOverlay
 
 
@@ -306,7 +306,7 @@ def test_game_run_emits_efficiency_metrics() -> None:
 
     for key in (
         "distance_flown",
-        "landing_distance_from_center",
+        "landing_offset",
         "avg_speed",
         "fuel_consumed",
         "fuel_remaining",
@@ -333,7 +333,7 @@ def test_game_run_records_landing_distance_from_target_center_when_landed() -> N
 
     result = game.run(print_freq=0, max_steps=10)
     assert result["state"] == "landed"
-    assert result["landing_distance_from_center"] == pytest.approx(25.0)
+    assert result["landing_offset"] == pytest.approx(25.0)
 
 
 def test_state_transition_runs_once_per_frame_with_engine_enabled() -> None:
@@ -548,20 +548,20 @@ def test_dynamic_sites_keep_radar_guidance_and_refuel_bridges() -> None:
 
 def test_level_registry_includes_named_presets() -> None:
     level_names = main_module.list_available_levels()
-    assert "level_flat" in level_names
-    assert "level_mountains" in level_names
-    assert "level_drift" in level_names
+    assert "flat" in level_names
+    assert "mountains" in level_names
+    assert "drift" in level_names
     assert "level_1" not in level_names
 
 
-def test_cli_defaults_to_level_flat_when_omitted() -> None:
+def test_cli_defaults_to_flat_when_omitted() -> None:
     parser = main_module._build_parser()
     args = parser.parse_args([])
-    assert args.level_name == "level_flat"
+    assert args.level_name == "flat"
 
 
 def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
-    level_a = create_level_by_name("level_drop")
+    level_a = create_level_by_name("drop")
     level_a.set_eval_scenario("alt_400")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=77)
     actor_a = game_a.actors[0]
@@ -570,7 +570,7 @@ def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
     site_a = level_a.world.site_entities[0].get_component(Transform)
     assert site_a is not None
 
-    level_b = create_level_by_name("level_drop")
+    level_b = create_level_by_name("drop")
     level_b.set_eval_scenario("alt_400")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=77)
     actor_b = game_b.actors[0]
@@ -586,7 +586,7 @@ def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
 
 
 def test_descent_level_lists_expected_scenarios() -> None:
-    level = create_level_by_name("level_drop")
+    level = create_level_by_name("drop")
     list_scenarios = getattr(level, "list_batch_scenarios", None)
     assert callable(list_scenarios)
     scenarios = set(list_scenarios())
@@ -610,7 +610,7 @@ def test_descent_level_lists_expected_scenarios() -> None:
 
 
 def test_descent_cargo_scenario_applies_heavy_cargo_mass() -> None:
-    level = create_level_by_name("level_drop")
+    level = create_level_by_name("drop")
     level.set_eval_scenario("alt_400_cargo_high")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
@@ -620,7 +620,7 @@ def test_descent_cargo_scenario_applies_heavy_cargo_mass() -> None:
 
 
 def test_descent_upward_scenario_starts_with_positive_vertical_velocity() -> None:
-    level = create_level_by_name("level_drop")
+    level = create_level_by_name("drop")
     level.set_eval_scenario("upward_low")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
@@ -630,7 +630,7 @@ def test_descent_upward_scenario_starts_with_positive_vertical_velocity() -> Non
 
 
 def test_descent_speed_high_scenario_sets_recoverable_initial_velocity() -> None:
-    level = create_level_by_name("level_drop")
+    level = create_level_by_name("drop")
     level.set_eval_scenario("speed_high")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
@@ -653,7 +653,7 @@ def test_descent_speed_high_scenario_sets_recoverable_initial_velocity() -> None
 
 
 def test_drift_level_lists_expected_scenarios() -> None:
-    level = create_level_by_name("level_drift")
+    level = create_level_by_name("drift")
     list_scenarios = getattr(level, "list_batch_scenarios", None)
     assert callable(list_scenarios)
     scenarios = set(list_scenarios())
@@ -679,7 +679,7 @@ def test_drift_level_lists_expected_scenarios() -> None:
 
 
 def test_drift_scenario_sets_offset_and_horizontal_velocity() -> None:
-    level = create_level_by_name("level_drift")
+    level = create_level_by_name("drift")
     level.set_eval_scenario("alt_400_offset_vx_toward")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
@@ -693,13 +693,13 @@ def test_drift_scenario_sets_offset_and_horizontal_velocity() -> None:
 
 
 def test_drift_scenario_direction_is_deterministic_for_seed() -> None:
-    level_a = create_level_by_name("level_drift")
+    level_a = create_level_by_name("drift")
     level_a.set_eval_scenario("alt_400_offset")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=19)
     trans_a = game_a.actors[0].get_component(Transform)
     assert trans_a is not None
 
-    level_b = create_level_by_name("level_drift")
+    level_b = create_level_by_name("drift")
     level_b.set_eval_scenario("alt_400_offset")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=19)
     trans_b = game_b.actors[0].get_component(Transform)
@@ -709,7 +709,7 @@ def test_drift_scenario_direction_is_deterministic_for_seed() -> None:
 
 
 def test_drift_cargo_scenario_applies_heavy_cargo_mass() -> None:
-    level = create_level_by_name("level_drift")
+    level = create_level_by_name("drift")
     level.set_eval_scenario("alt_400_offset_vx_away_cargo_high")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
@@ -727,7 +727,7 @@ def test_parse_seed_spec_supports_ranges_and_lists() -> None:
 
 def test_resolve_batch_plan_uses_quick_benchmark_wave1_levels() -> None:
     config = RunConfig(
-        level_name="level_drop",
+        level_name="drop",
         bot_name="descent",
         bot_behavior=None,
         headless=True,
@@ -750,14 +750,14 @@ def test_resolve_batch_plan_uses_quick_benchmark_wave1_levels() -> None:
     )
     seeds, levels = _resolve_batch_plan(config)
     assert seeds == [0, 1, 2]
-    assert levels == ["level_drop"]
+    assert levels == ["drop"]
 
 
 def test_eval_aggregate_summary_shape() -> None:
     records = [
         normalize_run_result(
             bot_name="descent",
-            level_name="level_drop",
+            level_name="drop",
             scenario="alt_100",
             seed=0,
             result={
@@ -765,7 +765,7 @@ def test_eval_aggregate_summary_shape() -> None:
                 "time": 12.0,
                 "landing_count": 1,
                 "distance_flown": 240.0,
-                "landing_distance_from_center": 6.5,
+                "landing_offset": 6.5,
                 "avg_speed": 20.0,
                 "fuel_consumed": 15.0,
                 "fuel_per_distance": 0.0625,
@@ -774,7 +774,7 @@ def test_eval_aggregate_summary_shape() -> None:
         ),
         normalize_run_result(
             bot_name="descent",
-            level_name="level_drop",
+            level_name="drop",
             scenario="alt_100",
             seed=1,
             result={
@@ -794,7 +794,7 @@ def test_eval_aggregate_summary_shape() -> None:
     assert summary["crashed"] == 1
     assert "efficiency_success" in summary
     assert summary["efficiency_success"]["distance_flown"]["count"] == 1
-    assert summary["efficiency_success"]["landing_distance_from_center"]["count"] == 1
+    assert summary["efficiency_success"]["landing_offset"]["count"] == 1
     assert "efficiency_all" in summary
     assert summary["efficiency_all"]["distance_flown"]["count"] == 2
     assert summary["efficiency_all"]["fuel_remaining"]["count"] == 2
@@ -837,7 +837,7 @@ def test_print_batch_summary_includes_per_scenario_efficiency_means(capsys) -> N
 
 def test_parse_args_defaults_to_quiet_batch_output() -> None:
     args = argparse.Namespace(
-        level_name="level_drop",
+        level_name="drop",
         bot="descent",
         bot_behavior=None,
         headless=True,
@@ -866,7 +866,7 @@ def test_parse_args_defaults_to_quiet_batch_output() -> None:
 
 def test_parse_args_accepts_scenario_options() -> None:
     args = argparse.Namespace(
-        level_name="level_drop",
+        level_name="drop",
         bot="descent",
         bot_behavior="speed",
         headless=True,
@@ -983,7 +983,7 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
             raise RuntimeError("boom")
 
     def _fake_plan(_config):
-        return [0, 1], ["level_drop"]
+        return [0, 1], ["drop"]
 
     def _fake_run_once_record(config, *, seed, level_name, eval_scenario_name=None):
         _ = config, level_name
@@ -1000,7 +1000,7 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
     monkeypatch.setattr(main_module.os, "cpu_count", lambda: 8)
 
     config = RunConfig(
-        level_name="level_drop",
+        level_name="drop",
         bot_name="descent",
         bot_behavior=None,
         headless=True,
@@ -1015,7 +1015,7 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
         seed=None,
         lander_name=None,
         batch_seeds="0-1",
-        batch_levels="level_drop",
+        batch_levels="drop",
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
@@ -1031,7 +1031,7 @@ def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
     seen_scenarios: list[str | None] = []
 
     def _fake_plan(_config):
-        return [0], ["level_drop"]
+        return [0], ["drop"]
 
     def _fake_run_once_record(config, *, seed, level_name, eval_scenario_name=None):
         _ = config, seed, level_name
@@ -1047,7 +1047,7 @@ def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
     monkeypatch.setattr(main_module.os, "cpu_count", lambda: 1)
 
     config = RunConfig(
-        level_name="level_drop",
+        level_name="drop",
         bot_name="descent",
         bot_behavior=None,
         headless=True,
@@ -1062,7 +1062,7 @@ def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
         seed=None,
         lander_name=None,
         batch_seeds="0",
-        batch_levels="level_drop",
+        batch_levels="drop",
         batch_scenarios="alt_400,speed_high",
         batch_json=None,
         batch_csv=None,
@@ -1076,12 +1076,12 @@ def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
 
 def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:
     def _fake_plan(_config):
-        return [], ["level_drop"]
+        return [], ["drop"]
 
     monkeypatch.setattr(main_module, "_resolve_batch_plan", _fake_plan)
 
     config = RunConfig(
-        level_name="level_drop",
+        level_name="drop",
         bot_name="descent",
         bot_behavior=None,
         headless=True,
@@ -1096,7 +1096,7 @@ def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:
         seed=None,
         lander_name=None,
         batch_seeds="",
-        batch_levels="level_drop",
+        batch_levels="drop",
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
@@ -1114,7 +1114,7 @@ def test_run_batch_rejects_empty_level_plan(monkeypatch) -> None:
     monkeypatch.setattr(main_module, "_resolve_batch_plan", _fake_plan)
 
     config = RunConfig(
-        level_name="level_drop",
+        level_name="drop",
         bot_name="descent",
         bot_behavior=None,
         headless=True,

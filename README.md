@@ -11,7 +11,7 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 - Continuous gameplay (land, refuel, take off again)
 - AI bot interface for autonomous play
 - Unified descent benchmark bot (`descent`)
-- Horizontal-control benchmark level (`level_drift`) with two-phase bot (`drift`)
+- Horizontal-control benchmark level (`drift`) with two-phase bot (`drift`)
 
 ## Setup
 
@@ -21,7 +21,7 @@ uv sync
 
 ## Running
 
-Default level is `level_flat` when omitted. List all levels with `--help`.
+Default level is `flat` when omitted. List all levels with `--help`.
 
 ### Human Mode
 ```bash
@@ -32,64 +32,64 @@ uv run python main.py
 Watch an AI bot play using the sensor/action API:
 ```bash
 # Canonical descent benchmark level + bot
-uv run python main.py level_drop
+uv run python main.py drop
 
 # Pick a specific descent scenario
-uv run python main.py level_drop --scenario alt_400
+uv run python main.py drop --scenario alt_400
 
 # Horizontal-control benchmark level + bot
-uv run python main.py level_drift
+uv run python main.py drift
 
 # Pick a specific drift scenario
-uv run python main.py level_drift --scenario alt_400_offset_vx_away
+uv run python main.py drift --scenario alt_400_offset_vx_away
 
 # Use descent bot on other levels if desired
-uv run python main.py level_flat descent
+uv run python main.py flat descent
 ```
 
 ### Headless Mode (Testing/Training)
 Run simulations without graphics for bot development:
 ```bash
 # Run bot in headless mode (prints stats every second by default)
-uv run python main.py level_drop --headless
+uv run python main.py drop --headless
 
 # Print every frame for detailed debugging
-uv run python main.py level_drop --headless --freq 1 --steps 300
+uv run python main.py drop --headless --freq 1 --steps 300
 
 # Print every 0.5 seconds
-uv run python main.py level_drop --headless --freq 30
+uv run python main.py drop --headless --freq 30
 
 # Disable output for fastest execution
-uv run python main.py level_drop --headless --freq 0 --steps 10000
+uv run python main.py drop --headless --freq 0 --steps 10000
 
 # Use different seed or lander
-uv run python main.py level_drop --headless --seed 123
-uv run python main.py level_drop --headless --scenario speed_high --seed 123
-uv run python main.py level_drift --headless --scenario alt_400_offset_vx_toward --seed 123
-uv run python main.py level_flat --lander differential
+uv run python main.py drop --headless --seed 123
+uv run python main.py drop --headless --scenario speed_high --seed 123
+uv run python main.py drift --headless --scenario alt_400_offset_vx_toward --seed 123
+uv run python main.py flat --lander differential
 ```
 
 Batch evaluation (headless, sequential single-bot runs):
 ```bash
-# Fast preset benchmark (3 seeds x level_drop scenarios)
-uv run python main.py level_drop --headless --quick-benchmark
+# Fast preset benchmark (3 seeds x drop scenarios)
+uv run python main.py drop --headless --quick-benchmark
 
 # Scenario-specific batch using level default bot
-uv run python main.py level_drop --headless --batch \
+uv run python main.py drop --headless --batch \
   --batch-seeds 0-19 \
   --batch-json auto \
   --batch-csv auto
 
 # Explicit batch list
-uv run python main.py level_drop --headless --batch \
+uv run python main.py drop --headless --batch \
   --batch-seeds 0-19 \
-  --batch-levels level_drop \
+  --batch-levels drop \
   --batch-scenarios alt_400,speed_high \
   --batch-json auto \
   --batch-csv auto
 
 # Drift-focused horizontal-control batch
-uv run python main.py level_drift --headless --batch \
+uv run python main.py drift --headless --batch \
   --batch-seeds 0-19 \
   --batch-scenarios alt_400_offset,alt_400_offset_vx_away \
   --batch-json auto \
@@ -139,7 +139,7 @@ class MyBot(Bot):
 ## Scenario Levels
 
 Dedicated scenario levels (default bot in parentheses):
-- `level_drop` (`descent`) - unified descent benchmark with scenarios:
+- `drop` (`descent`) - unified descent benchmark with scenarios:
   - `alt_100`
   - `alt_400`
   - `alt_1600`
@@ -149,7 +149,7 @@ Dedicated scenario levels (default bot in parentheses):
   - cargo variants for `alt_400`, `speed_high`, and `upward_low`:
     - `*_cargo_low`
     - `*_cargo_high`
-- `level_drift` (`drift`) - horizontal-control benchmark:
+- `drift` (`drift`) - horizontal-control benchmark:
   - varies altitude (`spawn_clearance`)
   - varies horizontal spawn offset (`start_x`) with deterministic random direction per seed
   - includes initial horizontal velocity (`initial_vx`) scenarios
@@ -161,7 +161,7 @@ Dedicated scenario levels (default bot in parentheses):
 python main.py [level_name] [bot_name] [options]
 ```
 
-**Levels:** Run `python main.py --help` to list (e.g. `level_flat`, `level_mountains`, `level_drop`).
+**Levels:** Run `python main.py --help` to list (e.g. `flat`, `mountains`, `drop`).
 
 **Bot names:** `descent` (see `--help`).
 
@@ -188,7 +188,7 @@ python main.py [level_name] [bot_name] [options]
 Batch mode defaults to `--freq 0` (quiet) for speed; pass `--freq` to enable per-run stats.
 Quiet mode disables per-step stats output, but batch progress lines still print.
 
-Batch/headless eval records include `landing_distance_from_center` (absolute horizontal error from target center on landed runs).
+Batch/headless eval records include `landing_offset` (absolute horizontal error from target center on landed runs).
 
 ## Promotion Gates (Descent Bot)
 

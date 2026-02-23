@@ -23,11 +23,13 @@ def _package_path() -> str:
 
 def list_available_levels() -> List[str]:
     """Return available level module names (filenames without extension)."""
+    internal_modules = {"common", "scenario_common"}
     modules: List[str] = []
     for mod in pkgutil.iter_modules([_package_path()]):
         name = mod.name
-        if name.startswith("level_"):
-            modules.append(name)
+        if name.startswith("_") or name in internal_modules:
+            continue
+        modules.append(name)
     modules.sort()
     return modules
 
@@ -67,7 +69,7 @@ def _find_level_class_in_module(module: ModuleType) -> Type[Level] | None:
 
 def load_level_class(name: str) -> Type[Level]:
     """
-    Load Level subclass by module name (e.g., "level_flat").
+    Load Level subclass by module name (e.g., "flat").
     Raises ImportError/ValueError on failure.
     """
     module_name = name.strip().lower().replace("-", "_")
@@ -75,16 +77,16 @@ def load_level_class(name: str) -> Type[Level]:
         raise ValueError(f"Invalid level name: {name!r}")
 
     module = importlib.import_module(f"levels.{module_name}")
-    level_cls = _find_level_class_in_module(module)
-    if level_cls is None:
+    cls = _find_level_class_in_module(module)
+    if cls is None:
         raise ValueError(f"No Level subclass found in module 'levels.{module_name}'")
-    return level_cls
+    return cls
 
 
 def create_level(name: str) -> Level:
     """Instantiate a level by module name."""
-    level_cls = load_level_class(name)
-    return level_cls()
+    cls = load_level_class(name)
+    return cls()
 
 
 __all__ = [

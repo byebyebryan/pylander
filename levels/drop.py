@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import random
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from core.components import CargoHold, Engine, FuelTank, PhysicsState, Transform
 from core.level import Level
@@ -10,48 +9,38 @@ from levels.scenario_common import ScenarioLevel, ScenarioLevelSpec, _require_co
 
 
 @dataclass(frozen=True)
-class DriftScenario:
+class DescentScenario:
     name: str
     spawn_clearance: float
-    start_x: float
     initial_vx: float = 0.0
     initial_vy_up: float = 0.0
     initial_angle: float = 0.0
     cargo_mass: float = 1800.0
 
 
-_BASE_SCENARIOS: tuple[DriftScenario, ...] = (
-    DriftScenario(name="alt_100_offset", spawn_clearance=100.0, start_x=100.0),
-    DriftScenario(name="alt_400_offset", spawn_clearance=400.0, start_x=180.0),
-    DriftScenario(name="alt_1600_offset", spawn_clearance=1600.0, start_x=300.0),
-    DriftScenario(
-        name="alt_400_offset_vx_toward",
-        spawn_clearance=400.0,
-        start_x=180.0,
-        initial_vx=-8.0,
-    ),
-    DriftScenario(
-        name="alt_400_offset_vx_away",
-        spawn_clearance=400.0,
-        start_x=180.0,
-        initial_vx=8.0,
-    ),
+_BASE_SCENARIOS: tuple[DescentScenario, ...] = (
+    DescentScenario(name="alt_100", spawn_clearance=100.0),
+    DescentScenario(name="alt_400", spawn_clearance=400.0),
+    DescentScenario(name="alt_1600", spawn_clearance=1600.0),
+    DescentScenario(name="speed_low", spawn_clearance=220.0, initial_vy_up=-12.0),
+    DescentScenario(name="speed_high", spawn_clearance=320.0, initial_vy_up=-24.0),
+    DescentScenario(name="upward_low", spawn_clearance=260.0, initial_vy_up=8.0),
 )
 _CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
     ("cargo_low", 0.0),
     ("cargo_high", 4500.0),
 )
 _CARGO_VARIANT_BASES: tuple[str, ...] = (
-    "alt_400_offset",
-    "alt_400_offset_vx_away",
+    "alt_400",
+    "speed_high",
+    "upward_low",
 )
-_SCENARIOS: tuple[DriftScenario, ...] = (
+_SCENARIOS: tuple[DescentScenario, ...] = (
     _BASE_SCENARIOS
     + tuple(
-        DriftScenario(
+        DescentScenario(
             name=f"{base.name}_{suffix}",
             spawn_clearance=base.spawn_clearance,
-            start_x=base.start_x,
             initial_vx=base.initial_vx,
             initial_vy_up=base.initial_vy_up,
             initial_angle=base.initial_angle,
@@ -64,42 +53,13 @@ _SCENARIOS: tuple[DriftScenario, ...] = (
 )
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "alt_400_offset"
-
-_DRIFT_CONE_OFFSET_MIN = 70.0
-_DRIFT_CONE_OFFSET_MAX = 280.0
-_DRIFT_CONE_OFFSET_PER_ALT = 0.35
-_DRIFT_CONE_SPEED_MIN = 3.5
-_DRIFT_CONE_SPEED_MAX = 9.0
-_DRIFT_CONE_SPEED_PER_ALT = 0.015
+_DEFAULT_SCENARIO = "alt_400"
 
 
-def _clamp_signed(value: float, magnitude_limit: float) -> float:
-    limit = max(0.0, float(magnitude_limit))
-    return max(-limit, min(limit, float(value)))
-
-
-def _apply_drift_envelope(scenario: DriftScenario) -> DriftScenario:
-    alt = max(0.0, float(scenario.spawn_clearance))
-    offset_limit = min(
-        _DRIFT_CONE_OFFSET_MAX,
-        max(_DRIFT_CONE_OFFSET_MIN, _DRIFT_CONE_OFFSET_PER_ALT * alt),
-    )
-    speed_limit = min(
-        _DRIFT_CONE_SPEED_MAX,
-        max(_DRIFT_CONE_SPEED_MIN, _DRIFT_CONE_SPEED_PER_ALT * alt),
-    )
-    return replace(
-        scenario,
-        start_x=_clamp_signed(scenario.start_x, offset_limit),
-        initial_vx=_clamp_signed(scenario.initial_vx, speed_limit),
-    )
-
-
-def _make_spec(scenario: DriftScenario) -> ScenarioLevelSpec:
+def _make_spec(scenario: DescentScenario) -> ScenarioLevelSpec:
     return ScenarioLevelSpec(
         name=scenario.name,
-        start_x=scenario.start_x,
+        start_x=0.0,
         target_x=0.0,
         spawn_clearance=scenario.spawn_clearance,
         terrain_kind="flat",
@@ -110,7 +70,7 @@ def _make_spec(scenario: DriftScenario) -> ScenarioLevelSpec:
     )
 
 
-def _validate_recoverability(actor, scenario: DriftScenario) -> None:
+def _validate_recoverability(actor, scenario: DescentScenario) -> None:
     phys = _require_component(actor, PhysicsState)
     tank = _require_component(actor, FuelTank)
     engine = _require_component(actor, Engine)
@@ -139,8 +99,8 @@ def _validate_recoverability(actor, scenario: DriftScenario) -> None:
         )
 
 
-class DriftLevel(ScenarioLevel):
-    default_bot_name = "drift"
+class DescentLevel(ScenarioLevel):
+    default_bot_name = "descent"
 
     def __init__(self) -> None:
         super().__init__()
@@ -155,18 +115,11 @@ class DriftLevel(ScenarioLevel):
         key = str(name).strip().lower()
         if key not in _SCENARIO_BY_NAME:
             known = ", ".join(sorted(_SCENARIO_BY_NAME))
-            raise ValueError(f"Unknown drift scenario '{name}'. Expected one of: {known}")
+            raise ValueError(f"Unknown descent scenario '{name}'. Expected one of: {known}")
         self._eval_scenario_name = key
 
     def setup(self, game, seed: int) -> None:
-        scenario_base = _apply_drift_envelope(_SCENARIO_BY_NAME[self._eval_scenario_name])
-        dir_rng = random.Random(seed ^ (sum(ord(ch) for ch in scenario_base.name) << 1))
-        direction = -1.0 if dir_rng.random() < 0.5 else 1.0
-        scenario = replace(
-            scenario_base,
-            start_x=float(scenario_base.start_x) * direction,
-            initial_vx=float(scenario_base.initial_vx) * direction,
-        )
+        scenario = _SCENARIO_BY_NAME[self._eval_scenario_name]
         self.scenario = _make_spec(scenario)
         super().setup(game, seed)
 
@@ -193,8 +146,8 @@ class DriftLevel(ScenarioLevel):
                     uid=actor.uid,
                 )
 
-        setattr(self, "scenario_name", scenario_base.name)
+        setattr(self, "scenario_name", scenario.name)
 
 
 def create_level() -> Level:
-    return DriftLevel()
+    return DescentLevel()

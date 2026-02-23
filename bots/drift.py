@@ -11,7 +11,7 @@ from bots._descent_core import (
     StrategyDescentBot,
     clamp,
 )
-from core.bot import Bot
+from core.bot import Bot, PassiveSensors
 from core.sensor import RadarContact
 
 
@@ -67,7 +67,7 @@ class DriftBot(StrategyDescentBot):
 
     def _guidance(
         self,
-        passive,
+        passive: PassiveSensors,
         target: RadarContact,
         *,
         max_force: float,
@@ -131,7 +131,7 @@ class DriftBot(StrategyDescentBot):
 
     def _horizontal_controller(
         self,
-        passive,
+        passive: PassiveSensors,
         vx_sp: float,
     ) -> float:
         vx_err = vx_sp - passive.vx
@@ -143,7 +143,7 @@ class DriftBot(StrategyDescentBot):
     def _allocate_controls(
         self,
         dt: float,
-        passive,
+        passive: PassiveSensors,
         *,
         a_x_sp: float,
         a_up_sp: float,

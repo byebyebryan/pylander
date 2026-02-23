@@ -616,14 +616,14 @@ class LanderGame:
         fuel_per_distance = (fuel_consumed / distance_flown) if distance_flown > 1e-9 else 0.0
         spawn_to_target_distance = None
         path_efficiency = None
-        landing_distance_from_center = None
+        landing_offset = None
         if eval_target_pos is not None:
             spawn_to_target_distance = math.hypot(
                 eval_target_pos.x - start_pos.x,
                 eval_target_pos.y - start_pos.y,
             )
             if result.get("state") == "landed":
-                landing_distance_from_center = abs(final_trans.pos.x - eval_target_pos.x)
+                landing_offset = abs(final_trans.pos.x - eval_target_pos.x)
                 if distance_flown > 1e-9:
                     path_efficiency = min(1.0, spawn_to_target_distance / distance_flown)
         result.setdefault("distance_flown", distance_flown)
@@ -633,7 +633,7 @@ class LanderGame:
         result.setdefault("fuel_per_distance", fuel_per_distance)
         result.setdefault("spawn_to_target_distance", spawn_to_target_distance)
         result.setdefault("path_efficiency", path_efficiency)
-        result.setdefault("landing_distance_from_center", landing_distance_from_center)
+        result.setdefault("landing_offset", landing_offset)
         result.setdefault("time_to_first_land", time_to_first_land)
         plot_extras = self.plotter.finalize()
         if plot_extras:

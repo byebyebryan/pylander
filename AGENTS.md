@@ -55,6 +55,6 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - `uv run pytest`
 - `uv run ruff check .`
 - If behavior changed: run a relevant headless eval and compare metrics to a baseline
-  - Example smoke test: `uv run python main.py level_drop --headless --quick-benchmark`
+  - Example smoke test: `uv run python main.py drop --headless --quick-benchmark`
 - If CLI/defaults/workflows changed: update `README.md`
 - Don’t check in artifacts (`outputs/` stays local/ignored)

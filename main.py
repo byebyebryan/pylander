@@ -60,7 +60,7 @@ def _build_parser() -> argparse.ArgumentParser:
     bots = list_available_bots()
     descent_behaviors = list_descent_behaviors()
     landers = list_available_landers()
-    default_level = "level_flat" if "level_flat" in levels else (levels[0] if levels else None)
+    default_level = "flat" if "flat" in levels else (levels[0] if levels else None)
 
     epilog = "\n".join(
         [
@@ -301,7 +301,7 @@ def _print_headless_results(result: dict) -> None:
         "fuel",
         "score",
         "distance_flown",
-        "landing_distance_from_center",
+        "landing_offset",
         "avg_speed",
         "fuel_consumed",
         "fuel_per_distance",
@@ -370,12 +370,12 @@ def _parse_name_csv(spec: str) -> list[str]:
 
 
 def _list_wave1_levels() -> list[str]:
-    preferred = ["level_drop"]
+    preferred = ["drop"]
     available = set(list_available_levels())
     return [name for name in preferred if name in available]
 
 
-def _resolve_level_default_bot(level_name: str) -> str | None:
+def _resolve_default_bot(level_name: str) -> str | None:
     try:
         level = create_level(level_name)
     except Exception:
@@ -397,7 +397,7 @@ def _resolve_run_bot_name(config: RunConfig, level) -> str | None:
     return default_bot if default_bot else None
 
 
-def _resolve_level_batch_scenarios(level_name: str) -> list[str]:
+def _resolve_level_scenarios(level_name: str) -> list[str]:
     try:
         level = create_level(level_name)
     except Exception:
@@ -409,23 +409,23 @@ def _resolve_level_batch_scenarios(level_name: str) -> list[str]:
     return [name for name in out if name]
 
 
-def _set_level_eval_scenario(level, name: str | None) -> None:
+def _set_eval_scenario(level, name: str | None) -> None:
     if name is None:
         return
     set_scenario = getattr(level, "set_eval_scenario", None)
     if not callable(set_scenario):
-        level_name = type(level).__name__
-        raise ValueError(f"Level '{level_name}' does not support scenario selection")
+        level_type_name = type(level).__name__
+        raise ValueError(f"Level '{level_type_name}' does not support scenario selection")
     set_scenario(name)
     return
 
 
-def _resolve_config_batch_scenarios(config: RunConfig, level_name: str) -> list[str]:
+def _resolve_scenarios_for_config(config: RunConfig, level_name: str) -> list[str]:
     if config.batch_scenarios:
         return _parse_name_csv(config.batch_scenarios)
     if config.scenario_name:
         return [config.scenario_name]
-    return _resolve_level_batch_scenarios(level_name)
+    return _resolve_level_scenarios(level_name)
 
 
 def _resolve_batch_plan(config: RunConfig) -> tuple[list[int], list[str]]:
@@ -475,12 +475,12 @@ def _run_once(
     eval_scenario_name: str | None = None,
     print_results: bool = True,
 ) -> dict[str, Any]:
-    run_level_name = level_name or config.level_name
-    level = create_level(run_level_name)
+    run_name = level_name or config.level_name
+    level = create_level(run_name)
     chosen_scenario = eval_scenario_name
     if chosen_scenario is None and not _is_batch_mode(config):
         chosen_scenario = config.scenario_name
-    _set_level_eval_scenario(level, chosen_scenario)
+    _set_eval_scenario(level, chosen_scenario)
     _configure_level(level, config)
     run_bot_name = _resolve_run_bot_name(config, level)
     bot = create_bot(run_bot_name) if run_bot_name is not None else None
@@ -503,8 +503,8 @@ def _run_once(
         result["_bot_name"] = run_bot_name
     if config.bot_behavior is not None:
         result["_bot_behavior"] = config.bot_behavior
-    result["_level_name"] = run_level_name
-    result["_scenario_name"] = getattr(level, "scenario_name", run_level_name)
+    result["_level_name"] = run_name
+    result["_scenario_name"] = getattr(level, "scenario_name", run_name)
     if config.headless and print_results:
         _print_headless_results(result)
     return result
@@ -528,11 +528,11 @@ def _run_once_record(
     record_bot_behavior = result.get("_bot_behavior") or config.bot_behavior
     if record_bot_behavior:
         record_bot_name = f"{record_bot_name}:{record_bot_behavior}"
-    record_level_name = str(result.get("_level_name") or level_name)
-    record_scenario_name = str(result.get("_scenario_name") or record_level_name)
+    record_name = str(result.get("_level_name") or level_name)
+    record_scenario_name = str(result.get("_scenario_name") or record_name)
     return normalize_run_result(
         bot_name=record_bot_name,
-        level_name=record_level_name,
+        level_name=record_name,
         scenario=record_scenario_name,
         seed=seed,
         result=result,
@@ -575,7 +575,7 @@ def _print_batch_summary(
         print(f"\n{title}:")
         metric_order = (
             "distance_flown",
-            "landing_distance_from_center",
+            "landing_offset",
             "avg_speed",
             "fuel_consumed",
             "fuel_per_distance",
@@ -659,7 +659,7 @@ def _run_batch(config: RunConfig) -> int:
 
     run_plan: list[tuple[int, str, str | None]] = []
     for level_name in levels:
-        scenarios = _resolve_config_batch_scenarios(config, level_name)
+        scenarios = _resolve_scenarios_for_config(config, level_name)
         if not scenarios:
             run_plan.extend((seed, level_name, None) for seed in seeds)
             continue
@@ -670,7 +670,7 @@ def _run_batch(config: RunConfig) -> int:
         raise ValueError("Batch mode resolved no runs")
     if config.bot_name is None:
         missing_defaults = [
-            level_name for level_name in levels if _resolve_level_default_bot(level_name) is None
+            level_name for level_name in levels if _resolve_default_bot(level_name) is None
         ]
         if missing_defaults:
             missing_csv = ",".join(missing_defaults)
@@ -780,7 +780,7 @@ def main() -> None:
 
     _announce_config(config, args)
 
-    default_bot_name = _resolve_level_default_bot(config.level_name)
+    default_bot_name = _resolve_default_bot(config.level_name)
     if config.headless and not (config.bot_name or default_bot_name):
         parser.error("Headless mode requires a bot name or a level default bot")
     if _is_batch_mode(config):
