@@ -90,18 +90,24 @@ class Renderer:
         """Initialize renderer with level reference and manage display/clock."""
         self.level = level
         self.bot = bot
+        self.design_width = int(width)
+        self.design_height = int(height)
         # Avoid forcing an OpenGL context; some environments set this and lack GLX.
         os.environ.pop("PYGAME_FORCE_OPENGL", None)
         # Prefer EGL or software paths over GLX when available to avoid X_GLXCreateContext failures.
         os.environ.setdefault("SDL_VIDEO_X11_FORCE_EGL", "1")
         os.environ.setdefault("SDL_RENDER_DRIVER", "software")
         pygame.init()
-        self.screen = pygame.display.set_mode((width, height))
+        self.window_surface = pygame.display.set_mode((width, height))
         title = "Lunar Lander"
         pygame.display.set_caption(title)
         self.clock = pygame.time.Clock()
+        # Render to a fixed logical canvas, then scale to the real window.
+        # This keeps camera/UI layout stable even when the OS force-resizes.
+        self.screen = pygame.Surface((self.design_width, self.design_height)).convert()
+        self._scaled_surface: pygame.Surface | None = None
         # Renderer owns the main camera
-        self.main_camera = Camera(width, height)
+        self.main_camera = Camera(self.design_width, self.design_height)
         # Auto-zoom controller is owned by the renderer
         self.auto_zoom = AutoZoomController(delay_seconds=3.0, response_rate=1.0)
 
@@ -125,8 +131,8 @@ class Renderer:
 
         # Create minimap
         self.minimap = Minimap(
-            self.screen.get_width(),
-            self.screen.get_height(),
+            self.design_width,
+            self.design_height,
             self.level.terrain,
         )
 
@@ -417,7 +423,42 @@ class Renderer:
 
         # Always draw FPS overlay (top-right)
         self.fps_overlay.draw()
+        self._present_to_window()
         pygame.display.flip()
+
+    def _present_to_window(self) -> None:
+        window = pygame.display.get_surface() or self.window_surface
+        if window is None:
+            return
+
+        window_w, window_h = window.get_size()
+        if window_w <= 0 or window_h <= 0:
+            return
+
+        scale = min(window_w / self.design_width, window_h / self.design_height)
+        target_w = max(1, int(round(self.design_width * scale)))
+        target_h = max(1, int(round(self.design_height * scale)))
+        target_x = (window_w - target_w) // 2
+        target_y = (window_h - target_h) // 2
+
+        window.fill(self.bg_color)
+        if target_w == self.design_width and target_h == self.design_height:
+            window.blit(self.screen, (target_x, target_y))
+            return
+
+        if (
+            self._scaled_surface is None
+            or self._scaled_surface.get_width() != target_w
+            or self._scaled_surface.get_height() != target_h
+        ):
+            self._scaled_surface = pygame.Surface((target_w, target_h)).convert()
+
+        pygame.transform.smoothscale(
+            self.screen,
+            (target_w, target_h),
+            self._scaled_surface,
+        )
+        window.blit(self._scaled_surface, (target_x, target_y))
 
     # draw_proximity_ui/draw_radar_ui moved to SensorOverlay
 
