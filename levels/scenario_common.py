@@ -8,15 +8,15 @@ from core.components import (
     ActorControlRole,
     ActorProfile,
     CargoHold,
+    Engine,
     FuelTank,
     LandingSite as LandingSiteComponent,
     LandingSiteEconomy,
     LanderGeometry,
-    LanderState,
+    PhysicsState,
     PlayerControlled,
     PlayerSelectable,
     Transform,
-    Wallet,
 )
 from core.ecs import Entity
 from core.landing_sites import (
@@ -30,6 +30,7 @@ from core.physics import PhysicsEngine
 from landers import create_lander
 from core.ecs import require_component
 from levels.common import (
+    build_end_result_default,
     compute_score_default,
     compute_spawn_pos,
     get_mass,
@@ -56,6 +57,43 @@ class ScenarioLevelSpec:
     target_size: float = 100.0
     cargo_mass: float | None = None
 
+
+def validate_scenario_recoverability(
+    actor,
+    *,
+    scenario_name: str,
+    spawn_clearance: float,
+    initial_vy_up: float,
+) -> None:
+    """Fail fast for scenarios that cannot physically arrest descent in time."""
+    phys = require_component(actor, PhysicsState)
+    tank = require_component(actor, FuelTank)
+    engine = require_component(actor, Engine)
+    cargo = actor.get_component(CargoHold)
+
+    cargo_mass = 0.0
+    if cargo is not None:
+        cargo_mass = max(0.0, min(float(cargo.cargo_mass), float(cargo.max_cargo_mass)))
+    total_mass = max(
+        0.5,
+        float(phys.mass) + float(tank.fuel) * float(tank.density) + cargo_mass,
+    )
+    max_up_acc = (float(engine.max_power) * float(engine.max_thrust) / total_mass) - 9.8
+    if max_up_acc <= 1e-6:
+        raise ValueError(
+            f"Scenario '{scenario_name}' is unrecoverable: no upward acceleration"
+        )
+
+    downward_speed = max(0.0, -float(initial_vy_up))
+    stop_distance = (downward_speed * downward_speed) / (2.0 * max_up_acc)
+    safety_margin = max(8.0, float(spawn_clearance) * 0.18)
+    usable_altitude = max(0.0, float(spawn_clearance) - safety_margin)
+
+    if stop_distance > usable_altitude:
+        raise ValueError(
+            f"Scenario '{scenario_name}' is unrecoverable: "
+            f"stop_distance={stop_distance:.2f} usable_altitude={usable_altitude:.2f}"
+        )
 
 
 def _build_base_terrain(seed: int, spec: ScenarioLevelSpec):
@@ -218,14 +256,12 @@ class ScenarioLevel(Level):
             landing_score=100.0,
             crash_penalty=-200.0,
         )
-        return {
-            "time": getattr(game, "_elapsed_time", 0.0),
-            "state": require_component(game.lander, LanderState).state,
-            "landing_count": landing_count,
-            "crash_count": crash_count,
-            "credits": require_component(game.lander, Wallet).credits,
-            "fuel": require_component(game.lander, FuelTank).fuel,
-            "score": score,
-            "scenario": getattr(self, "scenario_name", type(self).__name__),
-        }
+        result = build_end_result_default(
+            game,
+            landing_count=landing_count,
+            crash_count=crash_count,
+            score=score,
+        )
+        result["scenario"] = getattr(self, "scenario_name", type(self).__name__)
+        return result
 

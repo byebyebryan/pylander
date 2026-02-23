@@ -32,6 +32,7 @@ from main import RunConfig, _parse_args, _parse_seed_spec, _resolve_batch_plan, 
 from levels import create_level as create_level_by_name
 from levels.flat import create_level as create_level_flat
 from levels.mountains import create_level as create_level_mountains
+from levels.scenario_common import validate_scenario_recoverability
 from ui.hud import HudOverlay
 
 
@@ -260,6 +261,30 @@ class _FakeEngine:
 
     def raycast(self, _origin: Vector2, _angle: float, _max_distance: float) -> dict:
         return {"hit": False, "hit_x": 0.0, "hit_y": 0.0, "distance": None}
+
+
+def test_validate_scenario_recoverability_allows_reasonable_inputs() -> None:
+    actor = Lander(start_pos=Vector2(0.0, 200.0))
+    validate_scenario_recoverability(
+        actor,
+        scenario_name="ok_case",
+        spawn_clearance=300.0,
+        initial_vy_up=-4.0,
+    )
+
+
+def test_validate_scenario_recoverability_rejects_unthrustable_setup() -> None:
+    actor = Lander(start_pos=Vector2(0.0, 200.0))
+    engine = actor.get_component(Engine)
+    assert engine is not None
+    engine.max_power = 0.0
+    with pytest.raises(ValueError, match="no upward acceleration"):
+        validate_scenario_recoverability(
+            actor,
+            scenario_name="bad_case",
+            spawn_clearance=300.0,
+            initial_vy_up=-4.0,
+        )
 
 
 def test_headless_mode_requires_bot() -> None:

@@ -12,6 +12,7 @@ import pygame
 from core.components import Transform
 from core.ecs import require_component
 from core.maths import Range1D, Vector2
+from core.terrain import pick_lod_for_world_step, sample_terrain_height, terrain_resolution
 from ui.camera import Camera
 from levels import create_level, list_available_levels
 
@@ -63,16 +64,7 @@ class LevelViewer:
         # Rendering settings
         self.height_scale = 1.0
         self.target_segments = 60  # desired number of segments across screen
-
-    def _lod_for_zoom(self) -> int:
-        z = self.camera.zoom
-        if z >= 1.0:
-            return 0
-        if z >= 0.5:
-            return 1
-        if z >= 0.25:
-            return 2
-        return 3
+        self._last_lod = 0
 
     def handle_events(self) -> bool:
         for event in pygame.event.get():
@@ -111,9 +103,11 @@ class LevelViewer:
         visible = self.camera.get_visible_world_rect()
         world_span = visible.width
 
-        lod = self._lod_for_zoom()
-        base_interval = self.terrain.get_resolution(lod)
-        world_step = max(world_span / self.target_segments, base_interval)
+        desired_step = world_span / max(1, self.target_segments)
+        lod = pick_lod_for_world_step(self.terrain, desired_step)
+        self._last_lod = lod
+        base_interval = terrain_resolution(self.terrain, lod=lod, minimum=1e-6)
+        world_step = max(desired_step, base_interval)
 
         # Anchor to a world grid so the polyline slides smoothly when panning
         import math as _math
@@ -124,7 +118,7 @@ class LevelViewer:
         pts = []
         wx = start_world_x
         while wx <= end_world_x:
-            world_y = self.terrain(wx, lod)
+            world_y = sample_terrain_height(self.terrain, wx, lod=lod)
             sx, sy = self.camera.world_to_screen(Vector2(wx, world_y * self.height_scale))
             pts.append((sx, sy))
             wx += world_step
@@ -152,7 +146,7 @@ class LevelViewer:
         info = (
             f"cam=({self.camera.x:.1f}, {self.camera.y:.1f}) "
             f"size=({visible.width:.1f}, {visible.height:.1f}) "
-            f"zoom={self.camera.zoom:.3f} lod={self._lod_for_zoom()}"
+            f"zoom={self.camera.zoom:.3f} lod={self._last_lod}"
         )
         txt = self.font.render(info, True, self.text_color)
         self.screen.blit(txt, (10, 10))

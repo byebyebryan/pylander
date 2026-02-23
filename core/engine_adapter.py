@@ -17,35 +17,41 @@ class EngineAdapter:
     def enabled(self) -> bool:
         return self._engine is not None
 
-    def set_lander_mass(self, mass: float) -> None:
-        if self._engine is not None:
+    def _resolve_uid(self, uid: str | None) -> str | None:
+        return self._primary_actor_uid if uid is None else uid
+
+    def _call_engine(
+        self,
+        method_name: str,
+        *args,
+        uid: str | None = None,
+        default=None,
+        **kwargs,
+    ):
+        if self._engine is None:
+            return default
+        method = getattr(self._engine, method_name, None)
+        if not callable(method):
+            return default
+        resolved_uid = self._resolve_uid(uid)
+        if resolved_uid is not None:
             try:
-                self._engine.set_lander_mass(mass, uid=self._primary_actor_uid)
+                return method(*args, uid=resolved_uid, **kwargs)
             except TypeError:
-                self._engine.set_lander_mass(mass)
+                pass
+        return method(*args, **kwargs)
+
+    def set_lander_mass(self, mass: float) -> None:
+        self._call_engine("set_lander_mass", mass)
 
     def set_lander_controls(self, thrust_force: float, angle: float) -> None:
-        if self._engine is not None:
-            try:
-                self._engine.set_lander_controls(
-                    thrust_force, angle, uid=self._primary_actor_uid
-                )
-            except TypeError:
-                self._engine.set_lander_controls(thrust_force, angle)
+        self._call_engine("set_lander_controls", thrust_force, angle)
 
     def set_actor_mass(self, uid: str, mass: float) -> None:
-        if self._engine is not None:
-            try:
-                self._engine.set_lander_mass(mass, uid=uid)
-            except TypeError:
-                self._engine.set_lander_mass(mass)
+        self._call_engine("set_lander_mass", mass, uid=uid)
 
     def set_actor_controls(self, uid: str, thrust_force: float, angle: float) -> None:
-        if self._engine is not None:
-            try:
-                self._engine.set_lander_controls(thrust_force, angle, uid=uid)
-            except TypeError:
-                self._engine.set_lander_controls(thrust_force, angle)
+        self._call_engine("set_lander_controls", thrust_force, angle, uid=uid)
 
     def set_lander_velocity(
         self,
@@ -53,15 +59,17 @@ class EngineAdapter:
         angular_velocity: float = 0.0,
         uid: str | None = None,
     ) -> None:
-        if self._engine is not None and hasattr(self._engine, "set_lander_velocity"):
-            try:
-                self._engine.set_lander_velocity(
-                    velocity,
-                    angular_velocity=angular_velocity,
-                    uid=uid if uid is not None else self._primary_actor_uid,
-                )
-            except TypeError:
-                self._engine.set_lander_velocity(velocity)
+        if self._engine is None or not hasattr(self._engine, "set_lander_velocity"):
+            return
+        try:
+            self._call_engine(
+                "set_lander_velocity",
+                velocity,
+                angular_velocity=angular_velocity,
+                uid=uid,
+            )
+        except TypeError:
+            self._engine.set_lander_velocity(velocity)
 
     def set_actor_velocity(
         self,
@@ -72,13 +80,7 @@ class EngineAdapter:
         self.set_lander_velocity(velocity, angular_velocity=angular_velocity, uid=uid)
 
     def override(self, angle: float, uid: str | None = None) -> None:
-        if self._engine is not None and hasattr(self._engine, "override"):
-            try:
-                self._engine.override(
-                    angle, uid=uid if uid is not None else self._primary_actor_uid
-                )
-            except TypeError:
-                self._engine.override(angle)
+        self._call_engine("override", angle, uid=uid)
 
     def override_for(self, uid: str, angle: float) -> None:
         self.override(angle, uid=uid)
@@ -86,15 +88,7 @@ class EngineAdapter:
     def apply_force(
         self, force: Vector2, point: Vector2 | None = None, uid: str | None = None
     ) -> None:
-        if self._engine is not None and hasattr(self._engine, "apply_force"):
-            try:
-                self._engine.apply_force(
-                    force,
-                    point,
-                    uid=uid if uid is not None else self._primary_actor_uid,
-                )
-            except TypeError:
-                self._engine.apply_force(force, point)
+        self._call_engine("apply_force", force, point, uid=uid)
 
     def apply_force_for(
         self, uid: str, force: Vector2, point: Vector2 | None = None
@@ -106,39 +100,26 @@ class EngineAdapter:
             self._engine.step(dt)
 
     def get_pose(self, uid: str | None = None) -> tuple[Vector2, float]:
-        if self._engine is None:
-            return Vector2(0.0, 0.0), 0.0
-        try:
-            return self._engine.get_pose(
-                uid=uid if uid is not None else self._primary_actor_uid
-            )
-        except TypeError:
-            return self._engine.get_pose()
+        return self._call_engine("get_pose", uid=uid, default=(Vector2(0.0, 0.0), 0.0))
 
     def get_velocity(self, uid: str | None = None) -> tuple[Vector2, float]:
-        if self._engine is None:
-            return Vector2(0.0, 0.0), 0.0
-        try:
-            return self._engine.get_velocity(
-                uid=uid if uid is not None else self._primary_actor_uid
-            )
-        except TypeError:
-            return self._engine.get_velocity()
+        return self._call_engine(
+            "get_velocity",
+            uid=uid,
+            default=(Vector2(0.0, 0.0), 0.0),
+        )
 
     def get_contact_report(self, uid: str | None = None) -> dict:
-        if self._engine is None:
-            return {
+        return self._call_engine(
+            "get_contact_report",
+            uid=uid,
+            default={
                 "colliding": False,
                 "normal": None,
                 "rel_speed": 0.0,
                 "point": None,
-            }
-        try:
-            return self._engine.get_contact_report(
-                uid=uid if uid is not None else self._primary_actor_uid
-            )
-        except TypeError:
-            return self._engine.get_contact_report()
+            },
+        )
 
     def teleport_lander(
         self,
@@ -147,18 +128,13 @@ class EngineAdapter:
         clear_velocity: bool = True,
         uid: str | None = None,
     ) -> None:
-        if self._engine is not None:
-            try:
-                self._engine.teleport_lander(
-                    pos,
-                    angle=angle,
-                    clear_velocity=clear_velocity,
-                    uid=uid if uid is not None else self._primary_actor_uid,
-                )
-            except TypeError:
-                self._engine.teleport_lander(
-                    pos, angle=angle, clear_velocity=clear_velocity
-                )
+        self._call_engine(
+            "teleport_lander",
+            pos,
+            angle=angle,
+            clear_velocity=clear_velocity,
+            uid=uid,
+        )
 
     def teleport_actor(
         self,
@@ -176,17 +152,14 @@ class EngineAdapter:
         max_distance: float,
         uid: str | None = None,
     ) -> dict:
-        if self._engine is None:
-            return {"hit": False, "hit_x": 0.0, "hit_y": 0.0, "distance": None}
-        try:
-            return self._engine.raycast(
-                origin,
-                angle,
-                max_distance,
-                uid=uid if uid is not None else self._primary_actor_uid,
-            )
-        except TypeError:
-            return self._engine.raycast(origin, angle, max_distance)
+        return self._call_engine(
+            "raycast",
+            origin,
+            angle,
+            max_distance,
+            uid=uid,
+            default={"hit": False, "hit_x": 0.0, "hit_y": 0.0, "distance": None},
+        )
 
     def set_primary_actor(self, uid: str | None) -> None:
         self._primary_actor_uid = uid

@@ -27,6 +27,7 @@ from core.landing_sites import LandingSiteSurfaceModel, LandingSiteTerrainModifi
 from core.level import Level, LevelWorld
 from core.maths import Vector2
 from core.physics import PhysicsEngine
+from core.terrain import sample_terrain_height
 from landers import create_lander
 
 
@@ -62,10 +63,6 @@ def get_mass(entity) -> float:
     return phys.mass + tank.fuel * tank.density + cargo_mass
 
 
-def _get_mass(entity) -> float:
-    return get_mass(entity)
-
-
 def compute_spawn_pos(
     terrain,
     x: float,
@@ -81,23 +78,6 @@ def compute_spawn_pos(
         sx = x - half_w + (2.0 * half_w * t)
         max_ground = max(max_ground, terrain(sx))
     return Vector2(x, max_ground + half_h + clearance)
-
-
-def _compute_lander_spawn_pos(
-    terrain,
-    x: float,
-    geo: LanderGeometry,
-    *,
-    clearance: float,
-) -> Vector2:
-    return compute_spawn_pos(terrain, x, geo, clearance=clearance)
-
-
-def _sample_terrain_height(terrain, x: float) -> float:
-    try:
-        return float(terrain(x, lod=0))
-    except TypeError:
-        return float(terrain(x))
 
 
 def should_end_default(
@@ -124,6 +104,19 @@ def should_end_default(
     ):
         return True
     return False
+
+
+def build_end_result_default(game, *, landing_count: int, crash_count: int, score: float) -> dict:
+    actor = _get_focus_actor(game)
+    return {
+        "time": getattr(game, "_elapsed_time", 0.0),
+        "state": require_component(actor, LanderState).state,
+        "landing_count": landing_count,
+        "crash_count": crash_count,
+        "credits": require_component(actor, Wallet).credits,
+        "fuel": require_component(actor, FuelTank).fuel,
+        "score": score,
+    }
 
 
 class PresetLevel(Level):
@@ -264,7 +257,7 @@ class PresetLevel(Level):
             self._dynamic_next_site_x_left = x - next_spacing
             self._dynamic_site_min_x = min(self._dynamic_site_min_x, x)
 
-        ground_y = _sample_terrain_height(base_terrain, x)
+        ground_y = sample_terrain_height(base_terrain, x, lod=0)
         distance = abs(x)
         if site_kind == "refuel_bridge":
             terrain_mode = "flush_flatten"
@@ -410,7 +403,7 @@ class PresetLevel(Level):
             player_radar.inner_range = player_radar.outer_range * 0.7
 
         spawn_x = self.spawn_x + rng.uniform(-self.spawn_x_jitter, self.spawn_x_jitter)
-        start_pos = _compute_lander_spawn_pos(
+        start_pos = compute_spawn_pos(
             terrain,
             spawn_x,
             player_geo,
@@ -439,7 +432,7 @@ class PresetLevel(Level):
         engine.attach_lander(
             width=player_geo.width,
             height=player_geo.height,
-            mass=_get_mass(player_lander),
+            mass=get_mass(player_lander),
             uid=player_lander.uid,
             friction=0.9,
             elasticity=0.0,
@@ -554,15 +547,12 @@ class PresetLevel(Level):
             landing_score=100.0,
             crash_penalty=-200.0,
         )
-        return {
-            "time": getattr(game, "_elapsed_time", 0.0),
-            "state": require_component(game.lander, LanderState).state,
-            "landing_count": landing_count,
-            "crash_count": crash_count,
-            "credits": require_component(game.lander, Wallet).credits,
-            "fuel": require_component(game.lander, FuelTank).fuel,
-            "score": score,
-        }
+        return build_end_result_default(
+            game,
+            landing_count=landing_count,
+            crash_count=crash_count,
+            score=score,
+        )
 
 
 def compute_score_default(

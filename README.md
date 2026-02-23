@@ -11,7 +11,7 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 - Continuous gameplay (land, refuel, take off again)
 - AI bot interface for autonomous play
 - Unified descent benchmark bot (`descent`)
-- Horizontal-control benchmark level (`drift`) with two-phase bot (`drift`)
+- Horizontal-control benchmark level (`drift`) with drift-first bot (`drift`)
 
 ## Setup
 
@@ -44,7 +44,7 @@ uv run python main.py drift
 uv run python main.py drift --scenario alt_400_offset_vx_away
 
 # Use descent bot on other levels if desired
-uv run python main.py flat descent
+uv run python main.py flat --bot descent
 ```
 
 ### Headless Mode (Testing/Training)
@@ -158,12 +158,12 @@ Dedicated scenario levels (default bot in parentheses):
 ## Command Line Options
 
 ```bash
-python main.py [level_name] [bot_name] [options]
+uv run python main.py [level_name] [options]
 ```
 
-**Levels:** Run `python main.py --help` to list (e.g. `flat`, `mountains`, `drop`).
+**Levels:** Run `uv run python main.py --help` to list (e.g. `flat`, `mountains`, `drop`).
 
-**Bot names:** `descent` (see `--help`).
+**Bot names:** `descent` (set via `--bot`; see `--help`).
 
 **Options:**
 - `--headless` - Run without graphics (requires bot)

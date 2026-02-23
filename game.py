@@ -27,6 +27,7 @@ from core.ecs import Entity, World, require_component
 from core.engine_adapter import EngineAdapter
 from core.level import Level
 from core.maths import Range1D, Vector2, clearance_above_terrain
+from core.terrain import estimate_terrain_slope, sample_terrain_height
 from core.systems.contact import ContactSystem
 from core.systems.control_routing import ControlRoutingSystem
 from core.systems.force_application import ForceApplicationSystem
@@ -42,6 +43,7 @@ from ui.renderer import Renderer
 from utils.input import InputHandler
 from utils.plot import Plotter
 from utils.protocols import ControlTuple
+from levels.common import get_mass
 
 from core.config import (
     BOT_FPS,
@@ -50,40 +52,6 @@ from core.config import (
     PHYSICS_FPS,
     TARGET_RENDERING_FPS,
 )
-
-
-def _get_mass(entity) -> float:
-    phys = require_component(entity, PhysicsState)
-    tank = require_component(entity, FuelTank)
-    cargo = entity.get_component(CargoHold)
-    cargo_mass = 0.0
-    if cargo is not None:
-        cargo_mass = max(0.0, min(float(cargo.cargo_mass), float(cargo.max_cargo_mass)))
-    return phys.mass + tank.fuel * tank.density + cargo_mass
-
-
-def _sample_terrain_height(terrain, world_x: float, lod: int = 0) -> float:
-    try:
-        return float(terrain(world_x, lod))
-    except TypeError:
-        return float(terrain(world_x))
-
-
-def _terrain_resolution(terrain, lod: int = 0) -> float:
-    get_resolution = getattr(terrain, "get_resolution", None)
-    if callable(get_resolution):
-        try:
-            return max(0.5, float(get_resolution(lod)))
-        except Exception:
-            return 2.0
-    return 2.0
-
-
-def _estimate_terrain_slope(terrain, world_x: float, lod: int = 0) -> float:
-    step = _terrain_resolution(terrain, lod=lod)
-    y0 = _sample_terrain_height(terrain, world_x - step, lod=lod)
-    y1 = _sample_terrain_height(terrain, world_x + step, lod=lod)
-    return (y1 - y0) / (2.0 * step)
 
 
 def _resolve_eval_target_pos(level: Level, sites, start_pos: Vector2) -> Vector2 | None:
@@ -169,8 +137,8 @@ def _build_passive_sensors(entity, terrain) -> PassiveSensors:
     ls = require_component(entity, LanderState)
     geo = require_component(entity, LanderGeometry)
     readings = require_component(entity, SensorReadings)
-    terrain_y = _sample_terrain_height(terrain, trans.pos.x, lod=0)
-    terrain_slope = _estimate_terrain_slope(terrain, trans.pos.x, lod=0)
+    terrain_y = sample_terrain_height(terrain, trans.pos.x, lod=0)
+    terrain_slope = estimate_terrain_slope(terrain, trans.pos.x, lod=0)
     altitude = clearance_above_terrain(
         trans.pos.y,
         terrain_y,
@@ -187,7 +155,7 @@ def _build_passive_sensors(entity, terrain) -> PassiveSensors:
         angle=trans.rotation,
         ax=phys.acc.x,
         ay_up=phys.acc.y,
-        mass=_get_mass(entity),
+        mass=get_mass(entity),
         thrust_level=eng.thrust_level,
         fuel=tank.fuel,
         max_fuel=tank.max_fuel,
@@ -203,7 +171,7 @@ def _build_headless_stats(entity, terrain) -> str:
     eng = require_component(entity, Engine)
     tank = require_component(entity, FuelTank)
     geo = require_component(entity, LanderGeometry)
-    terrain_y = _sample_terrain_height(terrain, trans.pos.x, lod=0)
+    terrain_y = sample_terrain_height(terrain, trans.pos.x, lod=0)
     altitude = clearance_above_terrain(
         trans.pos.y,
         terrain_y,
@@ -278,7 +246,7 @@ class LanderGame:
         level: Level,
         width: int = DEFAULT_SCREEN_WIDTH,
         height: int = DEFAULT_SCREEN_HEIGHT,
-        seed: int = None,
+        seed: int | None = None,
         bot: Bot | None = None,
         headless: bool = False,
     ):
@@ -491,6 +459,8 @@ class LanderGame:
         prev_fuel = float(initial_tank.fuel)
         distance_flown = 0.0
         fuel_consumed = 0.0
+        controls_by_uid: dict[str, ControlTuple | None] = {}
+        state_before: dict[str, str] = {}
 
         while self.running:
             if self.headless and max_time is not None and timers.elapsed_time >= max_time:
@@ -513,7 +483,7 @@ class LanderGame:
             else:
                 self._bot_override_timer = max(0.0, self._bot_override_timer - frame_dt)
 
-            controls_by_uid: dict[str, ControlTuple | None] = {}
+            controls_by_uid.clear()
             if user_controls is not None:
                 controls_by_uid[self.active_player_actor_uid] = user_controls
             if self._bot_override_timer == 0.0:
@@ -523,7 +493,7 @@ class LanderGame:
                         continue
                     controls_by_uid[uid] = controls
 
-            state_before: dict[str, str] = {}
+            state_before.clear()
             for actor in self.actors:
                 ls = actor.get_component(LanderState)
                 if ls is not None:
@@ -701,7 +671,7 @@ class LanderGame:
 
     def _sync_actor_masses_to_engine(self) -> None:
         for actor in self.actors:
-            self.engine_adapter.set_actor_mass(actor.uid, _get_mass(actor))
+            self.engine_adapter.set_actor_mass(actor.uid, get_mass(actor))
 
     def _update_bot_steps(self, timers: LoopTimers) -> dict[str, ControlTuple | None]:
         bot_controls_by_uid: dict[str, ControlTuple | None] = {}

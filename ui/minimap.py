@@ -1,7 +1,9 @@
 """Minimap display showing camera position and terrain overview."""
 
+import math
 import pygame
 from core.maths import Range1D, Rect, Size2, Vector2
+from core.terrain import pick_lod_for_world_step, terrain_resolution
 from .camera import Camera, OffsetCamera
 
 
@@ -45,29 +47,6 @@ class Minimap:
         # Fixed world span shown on the minimap (independent of main camera zoom)
         # Horizontal span in world units
         self.world_span_x = 20000.0
-
-    def _terrain_resolution(self, lod: int) -> float:
-        get_resolution = getattr(self.terrain, "get_resolution", None)
-        if callable(get_resolution):
-            try:
-                return max(1e-6, float(get_resolution(lod)))
-            except Exception:
-                return 2.0
-        return 2.0
-
-    def _pick_lod_for_world_step(self, world_step: float, max_lod: int = 8) -> int:
-        target = max(1e-6, float(world_step))
-        import math as _math
-
-        best_lod = 0
-        best_score = float("inf")
-        for lod in range(max(0, int(max_lod)) + 1):
-            res = self._terrain_resolution(lod)
-            score = abs(_math.log2(res / target))
-            if score < best_score:
-                best_lod = lod
-                best_score = score
-        return best_lod
 
     def draw(
         self,
@@ -117,11 +96,13 @@ class Minimap:
         minimap_visible = self.camera.get_visible_world_rect()
         world_span = minimap_visible.width
         desired_step = world_span / 80.0
-        lod = self._pick_lod_for_world_step(desired_step)
-        world_step = max(desired_step, self._terrain_resolution(lod))
-        import math as _math
+        lod = pick_lod_for_world_step(self.terrain, desired_step)
+        world_step = max(
+            desired_step,
+            terrain_resolution(self.terrain, lod=lod, minimum=1e-6),
+        )
 
-        start_world_x = _math.floor(minimap_visible.min_x / world_step) * world_step
+        start_world_x = math.floor(minimap_visible.min_x / world_step) * world_step
         end_world_x = minimap_visible.max_x + world_step
 
         minimap_points = []

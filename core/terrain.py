@@ -11,7 +11,7 @@ from opensimplex import OpenSimplex
 from core.maths import Vector2
 
 
-def _sample_height(height_func: Any, x: float, lod: int = 0) -> float:
+def sample_terrain_height(height_func: Any, x: float, lod: int = 0) -> float:
     """Sample a terrain-like callable with optional lod support."""
     try:
         return float(height_func(x, lod))
@@ -19,7 +19,42 @@ def _sample_height(height_func: Any, x: float, lod: int = 0) -> float:
         return float(height_func(x))
 
 
-def _anchored_profile(
+def terrain_resolution(height_func: Any, lod: int = 0, minimum: float = 0.5) -> float:
+    """Resolve terrain sampling resolution, with safe fallback."""
+    get_resolution = getattr(height_func, "get_resolution", None)
+    if callable(get_resolution):
+        try:
+            return max(float(minimum), float(get_resolution(lod)))
+        except Exception:
+            return 2.0
+    return 2.0
+
+
+def estimate_terrain_slope(height_func: Any, x: float, lod: int = 0) -> float:
+    """Estimate local terrain slope around x using central difference."""
+    step = terrain_resolution(height_func, lod=lod)
+    y0 = sample_terrain_height(height_func, x - step, lod=lod)
+    y1 = sample_terrain_height(height_func, x + step, lod=lod)
+    return (y1 - y0) / (2.0 * step)
+
+
+def pick_lod_for_world_step(
+    height_func: Any, world_step: float, max_lod: int = 8
+) -> int:
+    """Pick LOD whose terrain resolution best matches desired world-step."""
+    target = max(1e-6, float(world_step))
+    best_lod = 0
+    best_score = float("inf")
+    for lod in range(max(0, int(max_lod)) + 1):
+        res = terrain_resolution(height_func, lod=lod, minimum=1e-6)
+        score = abs(math.log2(res / target))
+        if score < best_score:
+            best_lod = lod
+            best_score = score
+    return best_lod
+
+
+def anchored_profile(
     height_func: Any,
     x0: float,
     x1: float,
@@ -37,7 +72,7 @@ def _anchored_profile(
     out: list[tuple[float, float]] = []
     xx = start_x
     while xx <= end_x + 1e-9:
-        out.append((xx, _sample_height(height_func, xx, lod=lod)))
+        out.append((xx, sample_terrain_height(height_func, xx, lod=lod)))
         xx += step
     return out
 
@@ -275,7 +310,7 @@ class UniformGridGenerator:
         self, x0: float, x1: float, *, step: float | None = None
     ) -> list[tuple[float, float]]:
         use_step = self.resolution if step is None else max(self.resolution, float(step))
-        return _anchored_profile(self.height_func, x0, x1, step=use_step, lod=0)
+        return anchored_profile(self.height_func, x0, x1, step=use_step, lod=0)
 
 
 class LodGridGenerator:
@@ -313,7 +348,7 @@ class LodGridGenerator:
     ) -> list[tuple[float, float]]:
         base_step = self.get_resolution(lod)
         use_step = base_step if step is None else max(base_step, float(step))
-        return _anchored_profile(self, x0, x1, step=use_step, lod=lod)
+        return anchored_profile(self, x0, x1, step=use_step, lod=lod)
 
 
 class AddHeightModifier:
@@ -322,7 +357,7 @@ class AddHeightModifier:
         self.modifier_func = modifier_func
 
     def __call__(self, x: float, lod: int = 0) -> float:
-        base_y = _sample_height(self.height_func, x, lod=lod)
+        base_y = sample_terrain_height(self.height_func, x, lod=lod)
         return self.modifier_func(Vector2(x, base_y), base_y, lod)
 
     def profile(
@@ -342,7 +377,7 @@ class AddHeightModifier:
                     step = 2.0
             else:
                 step = 2.0
-        return _anchored_profile(self, x0, x1, step=max(1e-6, float(step)), lod=lod)
+        return anchored_profile(self, x0, x1, step=max(1e-6, float(step)), lod=lod)
 
     def __getattr__(self, name: str):
         return getattr(self.height_func, name)

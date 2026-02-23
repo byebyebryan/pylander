@@ -64,11 +64,13 @@ class World:
 
     def get_entities_with(self, *component_types: Type) -> list[Entity]:
         """Return all entities that have ALL of the specified component types."""
-        result = []
-        for entity in self.entities:
-            if all(entity.has_component(ct) for ct in component_types):
-                result.append(entity)
-        return result
+        if not component_types:
+            return list(self.entities)
+        return [
+            entity
+            for entity in self.entities
+            if all(component_type in entity.components for component_type in component_types)
+        ]
 
     def update(self, dt: float) -> None:
         for system in self.systems:

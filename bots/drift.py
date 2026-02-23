@@ -110,7 +110,7 @@ class DriftBot(StrategyDescentBot):
             # Keep drift runs thrust-backed during correction, not ballistic.
             vertical_mode = "drift_coast"
         if (
-            guidance.vertical_mode == "coast"
+            vertical_mode == "coast"
             and alt >= self._course_cfg.fast_descent_min_altitude
         ):
             fast_descent_vy = -clamp(

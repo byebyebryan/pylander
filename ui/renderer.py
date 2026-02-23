@@ -23,6 +23,7 @@ from core.components import (
 from core.ecs import require_component
 from core.lander_visuals import Thrust
 from core.maths import RigidTransform2, Vector2
+from core.terrain import pick_lod_for_world_step, terrain_resolution
 
 if TYPE_CHECKING:
     from core.level import Level
@@ -180,27 +181,6 @@ class Renderer:
         except Exception:
             pass
 
-    def _terrain_resolution(self, lod: int) -> float:
-        get_resolution = getattr(self.level.terrain, "get_resolution", None)
-        if callable(get_resolution):
-            try:
-                return max(1e-6, float(get_resolution(lod)))
-            except Exception:
-                return 2.0
-        return 2.0
-
-    def _pick_lod_for_world_step(self, world_step: float, max_lod: int = 8) -> int:
-        target = max(1e-6, float(world_step))
-        best_lod = 0
-        best_score = float("inf")
-        for lod in range(max(0, int(max_lod)) + 1):
-            res = self._terrain_resolution(lod)
-            score = abs(math.log2(res / target))
-            if score < best_score:
-                best_lod = lod
-                best_score = score
-        return best_lod
-
     def draw_terrain(self):
         """Draw terrain as a polyline sampled on a stable world grid to reduce shimmer."""
         visible = self.main_camera.get_visible_world_rect()
@@ -210,8 +190,8 @@ class Renderer:
         if self.target_segments <= 0:
             self.target_segments = 80
         desired_step = world_span / max(1, self.target_segments)
-        lod = self._pick_lod_for_world_step(desired_step)
-        base_interval = self._terrain_resolution(lod)
+        lod = pick_lod_for_world_step(self.level.terrain, desired_step)
+        base_interval = terrain_resolution(self.level.terrain, lod=lod, minimum=1e-6)
         world_step = max(desired_step, base_interval)
 
         profile_fn = getattr(self.level.terrain, "profile", None)

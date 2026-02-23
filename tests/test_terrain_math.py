@@ -120,3 +120,35 @@ def test_add_height_modifier_profile_matches_callable_samples() -> None:
     profile = wrapped.profile(-50.0, 50.0, lod=0, step=6.0)
     for x, y in profile:
         assert y == pytest.approx(wrapped(x, lod=0))
+
+
+def test_sample_terrain_height_supports_lod_and_non_lod_callables() -> None:
+    class _WithLod:
+        def __call__(self, x: float, lod: int = 0) -> float:
+            return x + (2.0 * lod)
+
+    class _NoLod:
+        def __call__(self, x: float) -> float:
+            return x - 3.0
+
+    assert terrain.sample_terrain_height(_WithLod(), 5.0, lod=2) == pytest.approx(9.0)
+    assert terrain.sample_terrain_height(_NoLod(), 5.0, lod=2) == pytest.approx(2.0)
+
+
+def test_terrain_resolution_and_slope_helpers_match_expected_values() -> None:
+    def line(x: float) -> float:
+        return (0.75 * x) + 10.0
+
+    lod_terrain = terrain.LodGridGenerator(line, base_resolution=4.0)
+
+    assert terrain.terrain_resolution(lod_terrain, lod=0) == pytest.approx(4.0)
+    assert terrain.terrain_resolution(lod_terrain, lod=2) == pytest.approx(16.0)
+    assert terrain.terrain_resolution(line, lod=0) == pytest.approx(2.0)
+    assert terrain.estimate_terrain_slope(lod_terrain, 128.0, lod=0) == pytest.approx(0.75)
+
+
+def test_pick_lod_for_world_step_prefers_closest_resolution() -> None:
+    lod_terrain = terrain.LodGridGenerator(lambda x: x, base_resolution=4.0)
+    assert terrain.pick_lod_for_world_step(lod_terrain, 5.0) == 0
+    assert terrain.pick_lod_for_world_step(lod_terrain, 9.0) == 1
+    assert terrain.pick_lod_for_world_step(lod_terrain, 35.0) == 3

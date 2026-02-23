@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.components import CargoHold, Engine, FuelTank, PhysicsState, Transform
+from core.components import PhysicsState, Transform
 from core.level import Level
 from core.maths import Vector2
 from core.ecs import require_component
-from levels.scenario_common import ScenarioLevel, ScenarioLevelSpec
+from levels.scenario_common import (
+    ScenarioLevel,
+    ScenarioLevelSpec,
+    validate_scenario_recoverability,
+)
 
 
 @dataclass(frozen=True)
@@ -71,35 +75,6 @@ def _make_spec(scenario: DescentScenario) -> ScenarioLevelSpec:
     )
 
 
-def _validate_recoverability(actor, scenario: DescentScenario) -> None:
-    phys = require_component(actor, PhysicsState)
-    tank = require_component(actor, FuelTank)
-    engine = require_component(actor, Engine)
-    cargo = actor.get_component(CargoHold)
-
-    cargo_mass = 0.0
-    if cargo is not None:
-        cargo_mass = max(0.0, min(float(cargo.cargo_mass), float(cargo.max_cargo_mass)))
-    total_mass = max(
-        0.5,
-        float(phys.mass) + float(tank.fuel) * float(tank.density) + cargo_mass,
-    )
-    max_up_acc = (float(engine.max_power) * float(engine.max_thrust) / total_mass) - 9.8
-    if max_up_acc <= 1e-6:
-        raise ValueError(f"Scenario '{scenario.name}' is unrecoverable: no upward acceleration")
-
-    downward_speed = max(0.0, -float(scenario.initial_vy_up))
-    stop_distance = (downward_speed * downward_speed) / (2.0 * max_up_acc)
-    safety_margin = max(8.0, scenario.spawn_clearance * 0.18)
-    usable_altitude = max(0.0, scenario.spawn_clearance - safety_margin)
-
-    if stop_distance > usable_altitude:
-        raise ValueError(
-            f"Scenario '{scenario.name}' is unrecoverable: "
-            f"stop_distance={stop_distance:.2f} usable_altitude={usable_altitude:.2f}"
-        )
-
-
 class DescentLevel(ScenarioLevel):
     default_bot_name = "descent"
 
@@ -125,7 +100,12 @@ class DescentLevel(ScenarioLevel):
         super().setup(game, seed)
 
         actor = self.world.actors[0]
-        _validate_recoverability(actor, scenario)
+        validate_scenario_recoverability(
+            actor,
+            scenario_name=scenario.name,
+            spawn_clearance=scenario.spawn_clearance,
+            initial_vy_up=scenario.initial_vy_up,
+        )
 
         trans = require_component(actor, Transform)
         phys = require_component(actor, PhysicsState)

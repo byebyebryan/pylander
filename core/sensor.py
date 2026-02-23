@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from collections import OrderedDict
 from .maths import Range1D, Vector2
+from .terrain import estimate_terrain_slope, sample_terrain_height, terrain_resolution
 
 
 def closest_point_on_terrain(
@@ -21,23 +22,15 @@ def closest_point_on_terrain(
     Returns (closest_x, closest_y, euclidean_distance).
     """
 
-    def _get_res(obj, level: int) -> float:
-        try:
-            return max(1e-6, float(obj.get_resolution(level)))
-        except Exception:
-            return 2.0
-
     def _sample(obj, xx: float, level: int) -> float:
         try:
-            return float(obj(xx, level))
-        except TypeError:
-            return float(obj(xx))
+            return sample_terrain_height(obj, xx, lod=level)
         except Exception:
             return float("nan")
 
     x, y = pos.x, pos.y
 
-    step = _get_res(height_at, lod)
+    step = terrain_resolution(height_at, lod=lod, minimum=1e-6)
     min_x = x - search_radius
     max_x = x + search_radius
 
@@ -99,11 +92,13 @@ def get_radar_contacts(
     x, y = pos.x, pos.y
     tgts = sites.get_sites(Range1D.from_center(x, outer_range))
     contacts: list[RadarContact] = []
+    outer_range_sq = outer_range * outer_range
     for t in tgts:
         dx = t.x - x
         dy = t.y - y
-        dist = math.hypot(dx, dy)
-        if dist <= outer_range:
+        dist_sq = (dx * dx) + (dy * dy)
+        if dist_sq <= outer_range_sq:
+            dist = math.sqrt(dist_sq)
             angle = math.atan2(dy, dx)
             contacts.append(
                 RadarContact(
@@ -120,11 +115,8 @@ def get_radar_contacts(
                 )
             )
 
-    # Sort by distance (unknown last)
-    def _sort_key(c: RadarContact):
-        return c.distance
-
-    contacts.sort(key=_sort_key)
+    if len(contacts) > 1:
+        contacts.sort(key=lambda c: c.distance)
     return contacts
 
 
@@ -157,26 +149,8 @@ def get_proximity_contact(
     terrain,
     range: float = 500.0,
 ) -> ProximityContact | None:
-    def _sample_terrain(obj, xx: float, lod: int = 0) -> float:
-        try:
-            return float(obj(xx, lod))
-        except TypeError:
-            return float(obj(xx))
-
-    def _terrain_resolution(obj, lod: int = 0) -> float:
-        get_resolution = getattr(obj, "get_resolution", None)
-        if callable(get_resolution):
-            try:
-                return max(0.5, float(get_resolution(lod)))
-            except Exception:
-                return 2.0
-        return 2.0
-
     def _surface_metrics(obj, xx: float) -> tuple[float, float, float]:
-        step = _terrain_resolution(obj, lod=0)
-        y0 = _sample_terrain(obj, xx - step, lod=0)
-        y1 = _sample_terrain(obj, xx + step, lod=0)
-        slope = (y1 - y0) / (2.0 * step)
+        slope = estimate_terrain_slope(obj, xx, lod=0)
         nx, ny = -slope, 1.0
         nlen = math.hypot(nx, ny)
         if nlen <= 1e-9:
