@@ -9,6 +9,7 @@ from core.eval import aggregate_eval_records, normalize_run_result
 from core.bot import Bot, BotAction
 from core.components import (
     ActorControlRole,
+    CargoHold,
     Engine,
     FuelTank,
     LandingSite,
@@ -259,15 +260,19 @@ def test_physics_step_syncs_engine_mass_from_remaining_fuel() -> None:
     actor = game.actors[0]
     phys = actor.get_component(PhysicsState)
     tank = actor.get_component(FuelTank)
+    cargo = actor.get_component(CargoHold)
     engine = actor.get_component(Engine)
     assert phys is not None
     assert tank is not None
+    assert cargo is not None
     assert engine is not None
 
     phys.mass = 1.0
     tank.fuel = 100.0
     tank.density = 0.01
-    tank.burn_rate = 6.0
+    cargo.cargo_mass = 2.0
+    cargo.max_cargo_mass = 10.0
+    engine.base_burn_rate = 6.0
     engine.thrust_level = 1.0
     engine.target_thrust = 1.0
 
@@ -281,7 +286,9 @@ def test_physics_step_syncs_engine_mass_from_remaining_fuel() -> None:
 
     assert tank.fuel == pytest.approx(99.4)
     assert fake_engine.mass_updates
-    assert fake_engine.mass_updates[-1] == pytest.approx(1.0 + tank.fuel * tank.density)
+    assert fake_engine.mass_updates[-1] == pytest.approx(
+        1.0 + tank.fuel * tank.density + cargo.cargo_mass
+    )
 
 
 def test_game_switches_active_actor_and_updates_alias() -> None:
@@ -496,14 +503,17 @@ def test_descent_speed_high_scenario_sets_recoverable_initial_velocity() -> None
     actor = game.actors[0]
     phys = actor.get_component(PhysicsState)
     tank = actor.get_component(FuelTank)
+    cargo = actor.get_component(CargoHold)
     engine = actor.get_component(Engine)
     assert phys is not None
     assert tank is not None
+    assert cargo is not None
     assert engine is not None
     assert phys.vel.y < 0.0
 
-    total_mass = max(0.5, phys.mass + tank.fuel * tank.density)
-    max_up_acc = (engine.max_power / total_mass) - 9.8
+    cargo_mass = max(0.0, min(cargo.cargo_mass, cargo.max_cargo_mass))
+    total_mass = max(0.5, phys.mass + tank.fuel * tank.density + cargo_mass)
+    max_up_acc = ((engine.max_power * engine.max_thrust) / total_mass) - 9.8
     assert max_up_acc > 0.0
     stop_distance = (abs(phys.vel.y) ** 2) / (2.0 * max_up_acc)
     assert stop_distance < 320.0 * 0.82
@@ -689,7 +699,66 @@ def test_hud_altitude_matches_passive_sensor_clearance_convention() -> None:
     alt_line = next(line for line in lines if line.startswith("ALT: "))
 
     # Transform y=100, terrain y=20, half-height=4 => clearance is 76.
-    assert alt_line == "ALT: 76.0 m"
+    assert "ALT: 76.0 m" in alt_line
+
+
+def test_hud_includes_mass_breakdown_lines() -> None:
+    actor = Lander(start_pos=Vector2(0.0, 100.0))
+    level = _FixedTerrainLevel()
+    hud = HudOverlay(font=None, screen=None)
+
+    lines = hud._build_info_lines(level, actor)
+    mass_line = next(line for line in lines if line.startswith("MASS: "))
+    assert " t" in mass_line
+    assert "dry " in mass_line
+    assert "fuel " in mass_line
+    assert "cargo " in mass_line
+
+
+def test_hud_includes_acceleration_and_twr_lines() -> None:
+    actor = Lander(start_pos=Vector2(0.0, 100.0))
+    level = _FixedTerrainLevel()
+    hud = HudOverlay(font=None, screen=None)
+
+    lines = hud._build_info_lines(level, actor)
+    assert any(line.startswith("ACC: ") for line in lines)
+    assert any(line.startswith("TWR N/B: ") for line in lines)
+
+
+def test_hud_thrust_line_turns_red_in_overdrive() -> None:
+    actor = Lander(start_pos=Vector2(0.0, 100.0))
+    level = _FixedTerrainLevel()
+    engine = actor.get_component(Engine)
+    assert engine is not None
+    engine.thrust_level = 1.2
+    engine.target_thrust = 1.3
+    hud = HudOverlay(font=None, screen=None)
+
+    specs = hud._build_info_line_specs(level, actor)
+    thrust_entry = next(entry for entry in specs if entry[0].startswith("THRUST:"))
+    assert thrust_entry[1] == (255, 90, 90)
+    assert "[OD]" in thrust_entry[0]
+
+
+def test_hud_suppresses_negative_zero_jitter() -> None:
+    actor = Lander(start_pos=Vector2(0.0, 100.0))
+    level = _FixedTerrainLevel()
+    phys = actor.get_component(PhysicsState)
+    trans = actor.get_component(Transform)
+    eng = actor.get_component(Engine)
+    assert phys is not None
+    assert trans is not None
+    assert eng is not None
+    phys.vel = Vector2(-0.01, -0.01)
+    phys.acc = Vector2(-0.001, -0.001)
+    trans.rotation = -0.01
+    eng.target_angle = -0.01
+    hud = HudOverlay(font=None, screen=None)
+
+    lines = hud._build_info_lines(level, actor)
+    text = " | ".join(lines)
+    assert "-0.0" not in text
+    assert "-0.00" not in text
 
 
 def test_headless_stats_altitude_matches_passive_sensor_clearance_convention() -> None:

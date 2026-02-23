@@ -62,7 +62,8 @@ class ScriptedControlSystem(System):
 
         if engine is not None:
             if frame.target_thrust is not None:
-                engine.target_thrust = max(0.0, min(1.0, frame.target_thrust))
+                max_thrust = max(0.0, float(engine.max_thrust))
+                engine.target_thrust = max(0.0, min(max_thrust, frame.target_thrust))
             if frame.target_angle is not None:
                 engine.target_angle = frame.target_angle
 

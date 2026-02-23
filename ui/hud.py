@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 
 from core.components import (
+    CargoHold,
     Engine,
     FuelTank,
     LanderGeometry,
@@ -34,12 +35,22 @@ class HudOverlay:
         # Caller can pass a bot override; fall back to the stored reference
         effective_bot = bot if bot is not None else self.bot
 
-        info_lines = self._build_info_lines(level, focus_actor, effective_bot)
+        info_lines = self._build_info_line_specs(level, focus_actor, effective_bot)
         self._draw_text_lines(info_lines, 10, (220, 220, 220))
 
         control_lines = self._build_control_lines(focus_actor)
         y_offset = screen_rect.bottom - 20 - (len(control_lines) * 18)
         self._draw_text_lines(control_lines, y_offset, (200, 200, 200))
+
+    def _build_info_line_specs(self, level, actor, bot=None):
+        lines = self._build_info_lines(level, actor, bot)
+        specs: list[tuple[str, tuple[int, int, int] | None]] = []
+        for line in lines:
+            if line.startswith("THRUST:") and "[OD]" in line:
+                specs.append((line, (255, 90, 90)))
+            else:
+                specs.append((line, None))
+        return specs
 
     def _build_info_lines(self, level, actor, bot=None) -> list[str]:
         _ = bot
@@ -50,11 +61,16 @@ class HudOverlay:
         phys = actor.get_component(PhysicsState)
         tank = actor.get_component(FuelTank)
         eng = actor.get_component(Engine)
+        cargo = actor.get_component(CargoHold)
         geo = actor.get_component(LanderGeometry)
         ls = actor.get_component(LanderState)
         readings = actor.get_component(SensorReadings)
         if None in (trans, phys, tank, eng, geo, ls, readings):
             raise RuntimeError("Lander missing expected HUD components")
+
+        def _stable(value: float, digits: int = 1) -> float:
+            epsilon = 0.5 * (10.0 ** (-digits))
+            return 0.0 if abs(value) < epsilon else value
 
         speed = math.hypot(phys.vel.x, phys.vel.y)
         terrain_y = level.terrain(trans.pos.x)
@@ -72,31 +88,73 @@ class HudOverlay:
         target_rot_deg = math.degrees(eng.target_angle)
         thrust_pct = eng.thrust_level * 100.0
         target_thrust_pct = eng.target_thrust * 100.0
+        fuel_pct = 100.0 * tank.fuel / max(1e-6, tank.max_fuel)
+        dry_mass = float(phys.mass)
+        fuel_mass = float(tank.fuel) * float(tank.density)
+        cargo_mass = 0.0
+        cargo_limit = 0.0
+        if cargo is not None:
+            cargo_limit = max(0.0, float(cargo.max_cargo_mass))
+            cargo_mass = max(0.0, min(float(cargo.cargo_mass), cargo_limit))
+        wet_mass = dry_mass + fuel_mass + cargo_mass
+        wet_mass_t = wet_mass / 1000.0
+        dry_mass_t = dry_mass / 1000.0
+        fuel_mass_t = fuel_mass / 1000.0
+        cargo_mass_t = cargo_mass / 1000.0
+        cargo_limit_t = cargo_limit / 1000.0
+        weight_newton = max(1e-6, wet_mass * 9.8)
+        normal_twr = max(0.0, float(eng.max_power)) / weight_newton
+        boost_twr = max(0.0, float(eng.max_power) * float(eng.max_thrust)) / weight_newton
+        ax = _stable(float(phys.acc.x), digits=2)
+        ay = _stable(float(phys.acc.y), digits=2)
+        acc_mag = _stable(math.hypot(ax, ay), digits=2)
+        speed = _stable(speed, digits=1)
+        altitude = _stable(altitude, digits=1)
+        rotation_deg = _stable(rotation_deg, digits=1)
+        target_rot_deg = _stable(target_rot_deg, digits=1)
+        thrust_pct = _stable(thrust_pct, digits=0)
+        target_thrust_pct = _stable(target_thrust_pct, digits=0)
+        vx = _stable(float(phys.vel.x), digits=1)
+        vy = _stable(float(phys.vel.y), digits=1)
+        prox_dist_stable = (
+            _stable(float(prox_dist), digits=1) if prox_dist is not None else None
+        )
+        prox_angle_deg_stable = (
+            _stable(float(prox_angle_deg), digits=0) if prox_angle_deg is not None else None
+        )
 
-        lines: list[str] = [f"CREDITS: {wallet.credits:.0f}"]
+        lines: list[str] = [f"STATE: {ls.state.upper()}    CREDITS: {wallet.credits:.0f}"]
         lines.append("")
-        lines.append(f"FUEL: {tank.fuel:.1f}%")
+        lines.append(f"FUEL: {fuel_pct:.1f}% ({tank.fuel:.1f}/{tank.max_fuel:.1f})")
         if abs(target_thrust_pct - thrust_pct) < 1e-3:
-            lines.append(f"THRUST: {thrust_pct:.0f}%")
+            od_tag = " [OD]" if eng.thrust_level > 1.0 else ""
+            lines.append(f"THRUST: {thrust_pct:.0f}%{od_tag}")
         else:
-            lines.append(f"THRUST: {thrust_pct:.0f}% -> {target_thrust_pct:.0f}%")
+            od_tag = " [OD]" if (eng.thrust_level > 1.0 or eng.target_thrust > 1.0) else ""
+            lines.append(f"THRUST: {thrust_pct:.0f}% -> {target_thrust_pct:.0f}%{od_tag}")
+        if cargo is not None:
+            lines.append(
+                f"MASS: {wet_mass_t:.2f} t (dry {dry_mass_t:.2f}, fuel {fuel_mass_t:.2f}, "
+                f"cargo {cargo_mass_t:.2f}/{cargo_limit_t:.2f} t)"
+            )
+        else:
+            lines.append(
+                f"MASS: {wet_mass_t:.2f} t (dry {dry_mass_t:.2f}, fuel {fuel_mass_t:.2f})"
+            )
+
+        lines.append("")
+        lines.append(f"ALT: {altitude:.1f} m    SPEED: {speed:.1f} m/s")
+        lines.append(f"V-SPEED: {vy:.1f} m/s    H-SPEED: {vx:.1f} m/s")
+        lines.append(f"ACC: {acc_mag:.2f} m/s^2 (x {ax:.2f}, y {ay:.2f})")
+        lines.append(f"TWR N/B: {normal_twr:.2f} / {boost_twr:.2f}")
         if abs(target_rot_deg - rotation_deg) < 0.5:
             lines.append(f"ANGLE: {rotation_deg:.1f}deg")
         else:
             lines.append(f"ANGLE: {rotation_deg:.1f}deg -> {target_rot_deg:.1f}deg")
-
-        lines.append("")
-        lines.append(f"SPEED: {speed:.1f} m/s")
-        lines.append(f"ALT: {altitude:.1f} m")
-        lines.append(f"H-SPEED: {phys.vel.x:.1f} m/s")
-        lines.append(f"V-SPEED: {phys.vel.y:.1f} m/s")
-        if prox_dist is not None and prox_angle_deg is not None:
-            lines.append(f"PROX: {prox_dist:.1f} m @ {prox_angle_deg:.0f}deg")
+        if prox_dist_stable is not None and prox_angle_deg_stable is not None:
+            lines.append(f"PROX: {prox_dist_stable:.1f} m @ {prox_angle_deg_stable:.0f}deg")
         else:
             lines.append("PROX: --")
-
-        lines.append("")
-        lines.append(f"STATE: {ls.state.upper()}")
         return lines
 
     def _build_control_lines(self, lander) -> list[str]:
@@ -105,6 +163,7 @@ class HudOverlay:
             "Controls:",
             "W/UP: Increase thrust",
             "S/DOWN: Decrease thrust",
+            "THRUST [OD] in red: overdrive burn",
             "A/LEFT: Rotate left",
             "D/RIGHT: Rotate right",
             "F: Refuel (when landed)",
@@ -113,11 +172,17 @@ class HudOverlay:
             "Q/ESC: Quit",
         ]
 
-    def _draw_text_lines(self, lines: list[str], y_offset: int, color) -> None:
-        for line in lines:
+    def _draw_text_lines(self, lines, y_offset: int, color) -> None:
+        for entry in lines:
+            if isinstance(entry, tuple):
+                line, line_color = entry
+                draw_color = line_color if line_color is not None else color
+            else:
+                line = entry
+                draw_color = color
             if line:
                 shadow = self.font.render(line, True, (0, 0, 0))
                 self.screen.blit(shadow, (11, y_offset + 1))
-                text_surface = self.font.render(line, True, color)
+                text_surface = self.font.render(line, True, draw_color)
                 self.screen.blit(text_surface, (10, y_offset))
             y_offset += 18

@@ -117,6 +117,7 @@ class Renderer:
         self.thrust_flame_length = 20
         self.thrust_flame_color_low = (255, 0, 0)
         self.thrust_flame_color_high = (255, 255, 0)
+        self.thrust_flame_color_overdrive = (255, 80, 80)
 
         # Terrain rendering settings
         self.height_scale = 1.0  # Vertical scale for terrain height (in world units)
@@ -342,15 +343,18 @@ class Renderer:
             right_x = t.x - px * half_w
             right_y = t.y - py * half_w
 
-            # Color gradient based on power
-            p = max(0.0, min(1.0, t.power))
-            low = self.thrust_flame_color_low
-            high = self.thrust_flame_color_high
-            color = (
-                int(low[0] * (1 - p) + high[0] * p),
-                int(low[1] * (1 - p) + high[1] * p),
-                int(low[2] * (1 - p) + high[2] * p),
-            )
+            # Color gradient based on power; overdrive has explicit warning color.
+            if t.power > 1.0:
+                color = self.thrust_flame_color_overdrive
+            else:
+                p = max(0.0, min(1.0, t.power))
+                low = self.thrust_flame_color_low
+                high = self.thrust_flame_color_high
+                color = (
+                    int(low[0] * (1 - p) + high[0] * p),
+                    int(low[1] * (1 - p) + high[1] * p),
+                    int(low[2] * (1 - p) + high[2] * p),
+                )
 
             # Transform to screen space and draw two lines
             tip_pos = camera.world_to_screen(Vector2(tip_x, tip_y))

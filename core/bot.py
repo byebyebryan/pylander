@@ -12,8 +12,16 @@ class VehicleInfo:
     width: float
     height: float
     dry_mass: float
+    cargo_mass: float
+    max_cargo_mass: float
     fuel_density: float
     max_thrust_power: float
+    min_thrust: float
+    max_thrust: float
+    thrust_increase_rate: float
+    thrust_decrease_rate: float
+    base_burn_rate: float
+    overdrive_burn_multiplier: float
     safe_landing_velocity: float
     safe_landing_angle: float
     radar_outer_range: float
@@ -46,7 +54,7 @@ class PassiveSensors:
     mass: float
 
     # Lander resources/state
-    thrust_level: float  # 0..1
+    thrust_level: float  # 0..vehicle.max_thrust
     fuel: float  # 0..100
     state: str  # "flying", "landed", "crashed", ...
 
@@ -83,7 +91,7 @@ class ActiveSensors(Protocol):
 class BotAction:
     """Explicit action outputs from the bot for this frame (target-based)."""
 
-    target_thrust: float  # 0..1
+    target_thrust: float  # 0..vehicle.max_thrust
     target_angle: float  # radians
     refuel: bool
     status: str = ""  # bot status for UI

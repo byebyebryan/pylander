@@ -35,26 +35,36 @@ class PhysicsState:
     """Component representing physical properties."""
     vel: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
     acc: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
-    mass: float = 1.0
+    mass: float = 9000.0  # Dry mass (kg), includes hull + installed systems
 
 @dataclass
 class FuelTank:
     """Component representing fuel storage."""
     fuel: float = 100.0
     max_fuel: float = 100.0
-    burn_rate: float = 1.0  # Units per second at max thrust
-    density: float = 0.01   # Mass per unit of fuel
+    density: float = 45.0   # Mass per fuel unit (kg/unit)
+
+
+@dataclass
+class CargoHold:
+    """Component representing carried cargo mass constraints."""
+    cargo_mass: float = 1800.0
+    max_cargo_mass: float = 6000.0
 
 @dataclass
 class Engine:
     """Component representing propulsion capabilities."""
-    thrust_level: float = 0.0       # Current output (0..1)
-    target_thrust: float = 0.0      # Desired output (0..1)
-    max_power: float = 50.0         # Max force in Newtons
+    thrust_level: float = 0.0           # Current output (0..max_thrust)
+    target_thrust: float = 0.0          # Desired output (0..max_thrust, 0=off)
+    min_thrust: float = 0.25            # Ignited minimum throttle floor
+    max_thrust: float = 1.6             # Allows overdrive above nominal 1.0
+    max_power: float = 230000.0         # Force at nominal thrust=1.0 (N)
+    base_burn_rate: float = 1.10        # Fuel units/sec at nominal thrust=1.0
+    overdrive_burn_multiplier: float = 9.0  # Extra burn slope above nominal
     
     # Control characteristics
-    increase_rate: float = 2.0      # Per second
-    decrease_rate: float = 4.0      # Per second
+    increase_rate: float = 1.1          # Throttle units/sec
+    decrease_rate: float = 1.8          # Throttle units/sec
     
     # Rotation control
     target_angle: float = 0.0

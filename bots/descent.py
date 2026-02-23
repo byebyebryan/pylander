@@ -13,6 +13,11 @@ def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
 
 
+def _stable(value: float, digits: int = 1) -> float:
+    epsilon = 0.5 * (10.0 ** (-digits))
+    return 0.0 if abs(value) < epsilon else value
+
+
 def _pick_target(passive: PassiveSensors) -> RadarContact | None:
     contacts = passive.radar_contacts or []
     if not contacts:
@@ -45,30 +50,41 @@ class DescentBot(Bot):
         return 1e9
 
     @staticmethod
-    def _vehicle_limits(passive: PassiveSensors, max_thrust: float) -> tuple[float, float]:
+    def _vehicle_limits(passive: PassiveSensors, max_force: float) -> tuple[float, float]:
         mass = max(0.5, passive.mass)
-        up_acc_max = max(0.1, (max_thrust / mass) - 9.8)
+        up_acc_max = max(0.1, (max_force / mass) - 9.8)
         return mass, up_acc_max
+
+    def _engine_profile(self) -> tuple[float, float, float, float]:
+        if self.vehicle_info is None:
+            return 50.0, 0.0, 1.0, 2.0
+        max_power = max(1e-3, float(self.vehicle_info.max_thrust_power))
+        max_throttle = max(0.0, float(self.vehicle_info.max_thrust))
+        min_throttle = max(0.0, min(float(self.vehicle_info.min_thrust), max_throttle))
+        ramp_up = max(0.1, float(self.vehicle_info.thrust_increase_rate))
+        return max_power, min_throttle, max_throttle, ramp_up
 
     def _guidance(
         self,
         passive: PassiveSensors,
         target: RadarContact,
         *,
-        max_thrust: float,
+        max_force: float,
+        max_throttle: float,
+        ramp_up: float,
     ) -> _GuidanceTargets:
         alt = self._finite_altitude(passive)
         dx = target.x - passive.x
         abs_dx = abs(dx)
-        _, up_acc_max = self._vehicle_limits(passive, max_thrust)
+        _, up_acc_max = self._vehicle_limits(passive, max_force)
 
         align_band = 10.0
         vx_cap = _clamp(2.2 + (0.03 * alt), 2.2, 8.0)
         vx_sp = _clamp(dx * 0.09, -vx_cap, vx_cap)
 
         down_speed = max(0.0, -passive.vy_up)
-        thrust_ramp_up = 2.0
-        spool_time = max(0.0, 1.0 - passive.thrust_level) / thrust_ramp_up
+        nominal_throttle = min(1.0, max_throttle)
+        spool_time = max(0.0, nominal_throttle - max(0.0, passive.thrust_level)) / ramp_up
         spool_distance = (down_speed * spool_time) + (4.9 * spool_time * spool_time)
         flare_speed = _clamp(0.45 + (0.11 * alt), 0.7, 2.5)
         speed_to_kill = max(0.0, down_speed - flare_speed)
@@ -168,15 +184,14 @@ class DescentBot(Bot):
         a_up_sp: float,
         alt: float,
         dx: float,
+        vertical_mode: str,
     ) -> BotAction:
-        max_thrust = (
-            self.vehicle_info.max_thrust_power if self.vehicle_info is not None else 50.0
-        )
-        max_thrust = max(1e-3, max_thrust)
-        mass, _ = self._vehicle_limits(passive, max_thrust)
+        max_power, min_throttle, max_throttle, _ = self._engine_profile()
+        max_force = max_power * max_throttle
+        mass, _ = self._vehicle_limits(passive, max_force)
 
         # Parallel allocator: lateral acceleration chooses tilt.
-        req = _clamp((a_x_sp * mass) / max_thrust, -0.95, 0.95)
+        req = _clamp((a_x_sp * mass) / max(max_force, 1e-3), -0.95, 0.95)
         angle_cmd = math.asin(req)
         max_tilt = 0.18 if alt < 20.0 else 0.56
         angle_cmd = _clamp(angle_cmd, -max_tilt, max_tilt)
@@ -191,14 +206,22 @@ class DescentBot(Bot):
         self._prev_angle_cmd = angle_cmd
 
         cos_term = max(0.25, abs(math.cos(angle_cmd)))
-        thrust = (mass * a_up_sp) / max(max_thrust * cos_term, 1e-3)
+        thrust = (mass * a_up_sp) / max(max_power * cos_term, 1e-3)
         if alt < 9.0 and abs(dx) <= 10.0:
             angle_cmd = 0.0
         if alt < 2.5 and abs(dx) <= 7.0 and abs(passive.vx) < 0.6 and abs(passive.vy_up) < 0.9:
             thrust = 0.0
             angle_cmd = 0.0
 
-        thrust = _clamp(thrust, 0.0, 1.0)
+        emergency_overdrive = vertical_mode == "terminal_burn" and (
+            passive.vy_up < -6.0 or (alt < 12.0 and passive.vy_up < -3.5)
+        )
+        if thrust > 1.0 and not emergency_overdrive:
+            thrust = 1.0
+
+        thrust = _clamp(thrust, 0.0, max_throttle)
+        if thrust > 0.0:
+            thrust = max(min_throttle, thrust)
         return BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)
 
     def update(
@@ -213,11 +236,9 @@ class DescentBot(Bot):
             self.status = action.status
             return action
 
-        max_thrust = (
-            self.vehicle_info.max_thrust_power if self.vehicle_info is not None else 50.0
-        )
-        max_thrust = max(1e-3, max_thrust)
-        _, up_acc_max = self._vehicle_limits(passive, max_thrust)
+        max_power, _, max_throttle, ramp_up = self._engine_profile()
+        max_force = max_power * max_throttle
+        _, up_acc_max = self._vehicle_limits(passive, max_force)
 
         target = _pick_target(passive)
         if target is None:
@@ -236,12 +257,19 @@ class DescentBot(Bot):
                 a_up_sp=a_up_sp,
                 dx=0.0,
                 alt=self._finite_altitude(passive),
+                vertical_mode="flare",
             )
             action.status = "descent:search"
             self.status = action.status
             return action
 
-        guidance = self._guidance(passive, target, max_thrust=max_thrust)
+        guidance = self._guidance(
+            passive,
+            target,
+            max_force=max_force,
+            max_throttle=max_throttle,
+            ramp_up=ramp_up,
+        )
         if guidance.vertical_mode == "coast" and abs(guidance.dx) <= 14.0:
             a_x_sp = 0.0
         else:
@@ -260,13 +288,14 @@ class DescentBot(Bot):
             a_up_sp=a_up_sp,
             dx=guidance.dx,
             alt=guidance.alt,
+            vertical_mode=guidance.vertical_mode,
         )
 
         action.status = (
-            f"descent:{guidance.phase} dx:{guidance.dx:6.1f} "
-            f"vx:{passive.vx:5.1f} vy:{passive.vy_up:5.1f} "
-            f"vys:{guidance.vy_sp:5.1f} "
-            f"balt:{guidance.burn_altitude:5.1f}"
+            f"descent:{guidance.phase} dx:{_stable(guidance.dx, 1):6.1f} "
+            f"vx:{_stable(passive.vx, 1):5.1f} vy:{_stable(passive.vy_up, 1):5.1f} "
+            f"vys:{_stable(guidance.vy_sp, 1):5.1f} "
+            f"balt:{_stable(guidance.burn_altitude, 1):5.1f}"
         )
         self.status = action.status
         return action

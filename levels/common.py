@@ -9,6 +9,7 @@ import core.terrain as _terrain
 from core.components import (
     ActorControlRole,
     ActorProfile,
+    CargoHold,
     FuelTank,
     LandingSite as LandingSiteComponent,
     LandingSiteEconomy,
@@ -64,7 +65,11 @@ def _get_focus_actor(game):
 def get_mass(entity) -> float:
     phys = _require_component(entity, PhysicsState)
     tank = _require_component(entity, FuelTank)
-    return phys.mass + tank.fuel * tank.density
+    cargo = entity.get_component(CargoHold)
+    cargo_mass = 0.0
+    if cargo is not None:
+        cargo_mass = max(0.0, min(float(cargo.cargo_mass), float(cargo.max_cargo_mass)))
+    return phys.mass + tank.fuel * tank.density + cargo_mass
 
 
 def _get_mass(entity) -> float:

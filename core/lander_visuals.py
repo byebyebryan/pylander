@@ -25,7 +25,7 @@ class LanderVisuals:
     - x, y: float (world coordinates)
     - rotation: float (radians)
     - width, height: float
-    - thrust_level: float (0..1)
+    - thrust_level: float (0..max_thrust)
     """
 
     def get_body_polygon(self) -> list[Vector2]:

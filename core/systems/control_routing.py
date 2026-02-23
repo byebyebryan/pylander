@@ -45,7 +45,8 @@ class ControlRoutingSystem(System):
             intent.refuel_requested = bool(refuel)
 
             if target_thrust is not None:
-                engine.target_thrust = max(0.0, min(1.0, target_thrust))
+                max_thrust = max(0.0, float(engine.max_thrust))
+                engine.target_thrust = max(0.0, min(max_thrust, target_thrust))
             if target_angle is not None:
                 engine.target_angle = target_angle
         self._pending_controls.clear()

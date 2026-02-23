@@ -15,6 +15,7 @@ class PlayerController:
         signals: dict,
         dt: float,
         current_target_thrust: float,
+        max_thrust: float,
         current_target_angle: float,
         max_rotation_rate: float,
     ) -> ControlTuple | None:
@@ -28,7 +29,7 @@ class PlayerController:
         
         # Thrust control
         if signals.get("thrust_up"):
-            target_thrust = min(1.0, target_thrust + 1.5 * dt)
+            target_thrust = min(max_thrust, target_thrust + 1.5 * dt)
         if signals.get("thrust_down"):
             target_thrust = max(0.0, target_thrust - 1.5 * dt)
         

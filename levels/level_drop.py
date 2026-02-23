@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.components import Engine, FuelTank, PhysicsState, Transform
+from core.components import CargoHold, Engine, FuelTank, PhysicsState, Transform
 from core.level import Level
 from core.maths import Vector2
 from levels.scenario_common import ScenarioLevel, ScenarioLevelSpec, _require_component
@@ -47,9 +47,16 @@ def _validate_recoverability(actor, scenario: DescentScenario) -> None:
     phys = _require_component(actor, PhysicsState)
     tank = _require_component(actor, FuelTank)
     engine = _require_component(actor, Engine)
+    cargo = actor.get_component(CargoHold)
 
-    total_mass = max(0.5, float(phys.mass) + float(tank.fuel) * float(tank.density))
-    max_up_acc = (float(engine.max_power) / total_mass) - 9.8
+    cargo_mass = 0.0
+    if cargo is not None:
+        cargo_mass = max(0.0, min(float(cargo.cargo_mass), float(cargo.max_cargo_mass)))
+    total_mass = max(
+        0.5,
+        float(phys.mass) + float(tank.fuel) * float(tank.density) + cargo_mass,
+    )
+    max_up_acc = (float(engine.max_power) * float(engine.max_thrust) / total_mass) - 9.8
     if max_up_acc <= 1e-6:
         raise ValueError(f"Scenario '{scenario.name}' is unrecoverable: no upward acceleration")
 

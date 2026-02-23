@@ -5,6 +5,7 @@ from __future__ import annotations
 from core.components import (
     ActorControlRole,
     ActorProfile,
+    CargoHold,
     ControlIntent,
     Engine,
     FuelTank,
@@ -33,6 +34,7 @@ class Lander(Entity):
         self.add_component(Transform(pos=Vector2(spawn_pos)))
         self.add_component(PhysicsState())
         self.add_component(FuelTank())
+        self.add_component(CargoHold())
         self.add_component(Engine())
         self.add_component(LanderGeometry())
         self.add_component(Radar())
