@@ -44,11 +44,15 @@ class SiteSpec:
     support_height: float = 40.0
 
 
-def _require_component(entity, component_type):
+def require_component(entity, component_type):
     comp = entity.get_component(component_type)
     if comp is None:
         raise RuntimeError(f"Entity {entity.uid} missing component {component_type.__name__}")
     return comp
+
+
+def _require_component(entity, component_type):
+    return require_component(entity, component_type)
 
 
 def _get_focus_actor(game):
@@ -57,13 +61,17 @@ def _get_focus_actor(game):
     return game.lander
 
 
-def _get_mass(entity) -> float:
+def get_mass(entity) -> float:
     phys = _require_component(entity, PhysicsState)
     tank = _require_component(entity, FuelTank)
     return phys.mass + tank.fuel * tank.density
 
 
-def _compute_lander_spawn_pos(
+def _get_mass(entity) -> float:
+    return get_mass(entity)
+
+
+def compute_spawn_pos(
     terrain,
     x: float,
     geo: LanderGeometry,
@@ -78,6 +86,16 @@ def _compute_lander_spawn_pos(
         sx = x - half_w + (2.0 * half_w * t)
         max_ground = max(max_ground, terrain(sx))
     return Vector2(x, max_ground + half_h + clearance)
+
+
+def _compute_lander_spawn_pos(
+    terrain,
+    x: float,
+    geo: LanderGeometry,
+    *,
+    clearance: float,
+) -> Vector2:
+    return compute_spawn_pos(terrain, x, geo, clearance=clearance)
 
 
 def _sample_terrain_height(terrain, x: float) -> float:

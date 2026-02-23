@@ -350,7 +350,7 @@ def _parse_name_csv(spec: str) -> list[str]:
 
 
 def _list_wave1_levels() -> list[str]:
-    preferred = ["level_descent"]
+    preferred = ["level_drop"]
     available = set(list_available_levels())
     return [name for name in preferred if name in available]
 

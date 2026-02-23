@@ -12,7 +12,6 @@ from core.components import (
     LandingSiteEconomy,
     LanderGeometry,
     LanderState,
-    PhysicsState,
     PlayerControlled,
     PlayerSelectable,
     Transform,
@@ -28,7 +27,13 @@ from core.level import Level, LevelWorld
 from core.maths import Vector2
 from core.physics import PhysicsEngine
 from landers import create_lander
-from levels.common import compute_score_default, should_end_default
+from levels.common import (
+    compute_score_default,
+    compute_spawn_pos,
+    get_mass,
+    require_component,
+    should_end_default,
+)
 
 
 @dataclass(frozen=True)
@@ -51,33 +56,8 @@ class ScenarioLevelSpec:
 
 
 def _require_component(entity, component_type):
-    comp = entity.get_component(component_type)
-    if comp is None:
-        raise RuntimeError(f"Entity {entity.uid} missing component {component_type.__name__}")
-    return comp
-
-
-def _get_mass(entity) -> float:
-    phys = _require_component(entity, PhysicsState)
-    tank = _require_component(entity, FuelTank)
-    return phys.mass + tank.fuel * tank.density
-
-
-def _compute_spawn_pos(
-    terrain,
-    x: float,
-    geo: LanderGeometry,
-    *,
-    clearance: float,
-) -> Vector2:
-    half_w = max(geo.width * 0.5, 1.0)
-    half_h = max(geo.height * 0.5, 1.0)
-    max_ground = terrain(x)
-    for i in range(9):
-        t = i / 8.0
-        sx = x - half_w + (2.0 * half_w * t)
-        max_ground = max(max_ground, terrain(sx))
-    return Vector2(x, max_ground + half_h + clearance)
+    # Backward-compatible shim for level modules importing this helper.
+    return require_component(entity, component_type)
 
 
 def _build_base_terrain(seed: int, spec: ScenarioLevelSpec):
@@ -171,7 +151,7 @@ class ScenarioLevel(Level):
         start_x = spec.start_x
         if spec.start_x_jitter > 0.0:
             start_x += rng.uniform(-spec.start_x_jitter, spec.start_x_jitter)
-        start_pos = _compute_spawn_pos(
+        start_pos = compute_spawn_pos(
             terrain,
             start_x,
             geo,
@@ -191,7 +171,7 @@ class ScenarioLevel(Level):
         engine.attach_lander(
             width=geo.width,
             height=geo.height,
-            mass=_get_mass(lander),
+            mass=get_mass(lander),
             uid=lander.uid,
             friction=0.9,
             elasticity=0.0,

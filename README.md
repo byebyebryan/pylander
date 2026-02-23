@@ -31,10 +31,10 @@ uv run python main.py
 Watch an AI bot play using the sensor/action API:
 ```bash
 # Canonical descent benchmark level + bot
-uv run python main.py level_descent
+uv run python main.py level_drop
 
 # Pick a specific descent scenario
-uv run python main.py level_descent --scenario alt_800
+uv run python main.py level_drop --scenario alt_800
 
 # Use descent bot on other levels if desired
 uv run python main.py level_flat descent
@@ -44,38 +44,38 @@ uv run python main.py level_flat descent
 Run simulations without graphics for bot development:
 ```bash
 # Run bot in headless mode (prints stats every second by default)
-uv run python main.py level_descent --headless
+uv run python main.py level_drop --headless
 
 # Print every frame for detailed debugging
-uv run python main.py level_descent --headless --freq 1 --steps 300
+uv run python main.py level_drop --headless --freq 1 --steps 300
 
 # Print every 0.5 seconds
-uv run python main.py level_descent --headless --freq 30
+uv run python main.py level_drop --headless --freq 30
 
 # Disable output for fastest execution
-uv run python main.py level_descent --headless --freq 0 --steps 10000
+uv run python main.py level_drop --headless --freq 0 --steps 10000
 
 # Use different seed or lander
-uv run python main.py level_descent --headless --seed 123
-uv run python main.py level_descent --headless --scenario speed_high --seed 123
+uv run python main.py level_drop --headless --seed 123
+uv run python main.py level_drop --headless --scenario speed_high --seed 123
 uv run python main.py level_flat --lander differential
 ```
 
 Batch evaluation (headless, sequential single-bot runs):
 ```bash
-# Fast preset benchmark (3 seeds x level_descent scenarios)
-uv run python main.py level_descent --headless --quick-benchmark
+# Fast preset benchmark (3 seeds x level_drop scenarios)
+uv run python main.py level_drop --headless --quick-benchmark
 
 # Scenario-specific batch using level default bot
-uv run python main.py level_descent --headless --batch \
+uv run python main.py level_drop --headless --batch \
   --batch-seeds 0-19 \
   --batch-json auto \
   --batch-csv auto
 
 # Explicit batch list
-uv run python main.py level_descent --headless --batch \
+uv run python main.py level_drop --headless --batch \
   --batch-seeds 0-19 \
-  --batch-levels level_descent \
+  --batch-levels level_drop \
   --batch-scenarios alt_800,speed_high \
   --batch-json auto \
   --batch-csv auto
@@ -124,7 +124,7 @@ class MyBot(Bot):
 ## Scenario Levels
 
 Dedicated scenario levels (default bot in parentheses):
-- `level_descent` (`descent`) - unified descent benchmark with scenarios:
+- `level_drop` (`descent`) - unified descent benchmark with scenarios:
   - `alt_100`
   - `alt_200`
   - `alt_400`
@@ -138,7 +138,7 @@ Dedicated scenario levels (default bot in parentheses):
 python main.py [level_name] [bot_name] [options]
 ```
 
-**Levels:** Run `python main.py --help` to list (e.g. `level_flat`, `level_mountains`, `level_descent`).
+**Levels:** Run `python main.py --help` to list (e.g. `level_flat`, `level_mountains`, `level_drop`).
 
 **Bot names:** `descent` (see `--help`).
 
