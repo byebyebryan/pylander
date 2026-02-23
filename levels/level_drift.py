@@ -21,20 +21,20 @@ class DriftScenario:
 
 
 _BASE_SCENARIOS: tuple[DriftScenario, ...] = (
-    DriftScenario(name="alt_100_offset", spawn_clearance=100.0, start_x=180.0),
-    DriftScenario(name="alt_400_offset", spawn_clearance=400.0, start_x=340.0),
-    DriftScenario(name="alt_1600_offset", spawn_clearance=1600.0, start_x=540.0),
+    DriftScenario(name="alt_100_offset", spawn_clearance=100.0, start_x=100.0),
+    DriftScenario(name="alt_400_offset", spawn_clearance=400.0, start_x=180.0),
+    DriftScenario(name="alt_1600_offset", spawn_clearance=1600.0, start_x=300.0),
     DriftScenario(
         name="alt_400_offset_vx_toward",
         spawn_clearance=400.0,
-        start_x=340.0,
-        initial_vx=-10.0,
+        start_x=180.0,
+        initial_vx=-8.0,
     ),
     DriftScenario(
         name="alt_400_offset_vx_away",
         spawn_clearance=400.0,
-        start_x=340.0,
-        initial_vx=10.0,
+        start_x=180.0,
+        initial_vx=8.0,
     ),
 )
 _CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
@@ -65,6 +65,35 @@ _SCENARIOS: tuple[DriftScenario, ...] = (
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
 _DEFAULT_SCENARIO = "alt_400_offset"
+
+_DRIFT_CONE_OFFSET_MIN = 70.0
+_DRIFT_CONE_OFFSET_MAX = 280.0
+_DRIFT_CONE_OFFSET_PER_ALT = 0.35
+_DRIFT_CONE_SPEED_MIN = 3.5
+_DRIFT_CONE_SPEED_MAX = 9.0
+_DRIFT_CONE_SPEED_PER_ALT = 0.015
+
+
+def _clamp_signed(value: float, magnitude_limit: float) -> float:
+    limit = max(0.0, float(magnitude_limit))
+    return max(-limit, min(limit, float(value)))
+
+
+def _apply_drift_envelope(scenario: DriftScenario) -> DriftScenario:
+    alt = max(0.0, float(scenario.spawn_clearance))
+    offset_limit = min(
+        _DRIFT_CONE_OFFSET_MAX,
+        max(_DRIFT_CONE_OFFSET_MIN, _DRIFT_CONE_OFFSET_PER_ALT * alt),
+    )
+    speed_limit = min(
+        _DRIFT_CONE_SPEED_MAX,
+        max(_DRIFT_CONE_SPEED_MIN, _DRIFT_CONE_SPEED_PER_ALT * alt),
+    )
+    return replace(
+        scenario,
+        start_x=_clamp_signed(scenario.start_x, offset_limit),
+        initial_vx=_clamp_signed(scenario.initial_vx, speed_limit),
+    )
 
 
 def _make_spec(scenario: DriftScenario) -> ScenarioLevelSpec:
@@ -130,7 +159,7 @@ class DriftLevel(ScenarioLevel):
         self._eval_scenario_name = key
 
     def setup(self, game, seed: int) -> None:
-        scenario_base = _SCENARIO_BY_NAME[self._eval_scenario_name]
+        scenario_base = _apply_drift_envelope(_SCENARIO_BY_NAME[self._eval_scenario_name])
         dir_rng = random.Random(seed ^ (sum(ord(ch) for ch in scenario_base.name) << 1))
         direction = -1.0 if dir_rng.random() < 0.5 else 1.0
         scenario = replace(
