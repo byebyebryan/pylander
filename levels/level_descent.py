@@ -18,15 +18,16 @@ class DescentScenario:
 
 
 _SCENARIOS: tuple[DescentScenario, ...] = (
-    DescentScenario(name="vertical_low", spawn_clearance=70.0),
-    DescentScenario(name="vertical_mid_a", spawn_clearance=105.0),
-    DescentScenario(name="vertical_mid_b", spawn_clearance=155.0),
-    DescentScenario(name="vertical_high", spawn_clearance=220.0),
-    DescentScenario(name="vertical_speed", spawn_clearance=105.0, initial_vy_up=-16.0),
+    DescentScenario(name="alt_100", spawn_clearance=100.0),
+    DescentScenario(name="alt_200", spawn_clearance=200.0),
+    DescentScenario(name="alt_400", spawn_clearance=400.0),
+    DescentScenario(name="alt_800", spawn_clearance=800.0),
+    DescentScenario(name="speed_low", spawn_clearance=220.0, initial_vy_up=-12.0),
+    DescentScenario(name="speed_high", spawn_clearance=320.0, initial_vy_up=-24.0),
 )
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "vertical_mid_a"
+_DEFAULT_SCENARIO = "alt_200"
 
 
 def _make_spec(scenario: DescentScenario) -> ScenarioLevelSpec:

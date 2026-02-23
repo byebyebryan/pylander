@@ -415,7 +415,7 @@ def test_cli_defaults_to_level_flat_when_omitted() -> None:
 
 def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
     level_a = create_level_by_name("level_descent")
-    level_a.set_eval_scenario("vertical_mid_b")
+    level_a.set_eval_scenario("alt_400")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=77)
     actor_a = game_a.actors[0]
     trans_a = actor_a.get_component(Transform)
@@ -424,7 +424,7 @@ def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
     assert site_a is not None
 
     level_b = create_level_by_name("level_descent")
-    level_b.set_eval_scenario("vertical_mid_b")
+    level_b.set_eval_scenario("alt_400")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=77)
     actor_b = game_b.actors[0]
     trans_b = actor_b.get_component(Transform)
@@ -444,17 +444,18 @@ def test_descent_level_lists_expected_scenarios() -> None:
     assert callable(list_scenarios)
     scenarios = list_scenarios()
     assert scenarios == [
-        "vertical_low",
-        "vertical_mid_a",
-        "vertical_mid_b",
-        "vertical_high",
-        "vertical_speed",
+        "alt_100",
+        "alt_200",
+        "alt_400",
+        "alt_800",
+        "speed_low",
+        "speed_high",
     ]
 
 
-def test_descent_vertical_speed_scenario_sets_recoverable_initial_velocity() -> None:
+def test_descent_speed_high_scenario_sets_recoverable_initial_velocity() -> None:
     level = create_level_by_name("level_descent")
-    level.set_eval_scenario("vertical_speed")
+    level.set_eval_scenario("speed_high")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
     phys = actor.get_component(PhysicsState)
@@ -469,7 +470,7 @@ def test_descent_vertical_speed_scenario_sets_recoverable_initial_velocity() -> 
     max_up_acc = (engine.max_power / total_mass) - 9.8
     assert max_up_acc > 0.0
     stop_distance = (abs(phys.vel.y) ** 2) / (2.0 * max_up_acc)
-    assert stop_distance < 105.0 * 0.82
+    assert stop_distance < 320.0 * 0.82
 
 
 def test_parse_seed_spec_supports_ranges_and_lists() -> None:
@@ -511,7 +512,7 @@ def test_eval_aggregate_summary_shape() -> None:
         normalize_run_result(
             bot_name="descent",
             level_name="level_descent",
-            scenario="vertical_low",
+            scenario="alt_100",
             seed=0,
             result={
                 "state": "landed",
@@ -527,7 +528,7 @@ def test_eval_aggregate_summary_shape() -> None:
         normalize_run_result(
             bot_name="descent",
             level_name="level_descent",
-            scenario="vertical_low",
+            scenario="alt_100",
             seed=1,
             result={
                 "state": "crashed",
@@ -550,7 +551,7 @@ def test_eval_aggregate_summary_shape() -> None:
     assert summary["efficiency_all"]["distance_flown"]["count"] == 2
     assert summary["efficiency_all"]["fuel_remaining"]["count"] == 2
     assert "by_scenario" in summary
-    assert "vertical_low" in summary["by_scenario"]
+    assert "alt_100" in summary["by_scenario"]
 
 
 def test_print_batch_summary_includes_per_scenario_efficiency_means(capsys) -> None:
@@ -565,7 +566,7 @@ def test_print_batch_summary_includes_per_scenario_efficiency_means(capsys) -> N
         "efficiency_success": {},
         "efficiency_all": {},
         "by_scenario": {
-            "vertical_low": {
+            "alt_100": {
                 "runs": 1,
                 "landed": 1,
                 "crashed": 0,
@@ -628,19 +629,19 @@ def test_parse_args_accepts_scenario_options() -> None:
         stop_on_out_of_fuel=False,
         stop_on_first_land=False,
         seed=None,
-        scenario="vertical_high",
+        scenario="alt_800",
         lander=None,
         batch_seeds=None,
         batch_levels=None,
-        batch_scenarios="vertical_high,vertical_speed",
+        batch_scenarios="alt_800,speed_high",
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
         batch_workers=1,
     )
     config = _parse_args(args)
-    assert config.scenario_name == "vertical_high"
-    assert config.batch_scenarios == "vertical_high,vertical_speed"
+    assert config.scenario_name == "alt_800"
+    assert config.batch_scenarios == "alt_800,speed_high"
 
 
 def test_hud_altitude_matches_passive_sensor_clearance_convention() -> None:
@@ -750,7 +751,7 @@ def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
         lander_name=None,
         batch_seeds="0",
         batch_levels="level_descent",
-        batch_scenarios="vertical_high,vertical_speed",
+        batch_scenarios="alt_800,speed_high",
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
@@ -758,7 +759,7 @@ def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
     )
     exit_code = _run_batch(config)
     assert exit_code == 0
-    assert seen_scenarios == ["vertical_high", "vertical_speed"]
+    assert seen_scenarios == ["alt_800", "speed_high"]
 
 
 def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:
