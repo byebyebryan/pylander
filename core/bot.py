@@ -15,6 +15,7 @@ class VehicleInfo:
     cargo_mass: float
     max_cargo_mass: float
     fuel_density: float
+    max_fuel: float
     max_thrust_power: float
     min_thrust: float
     max_thrust: float
@@ -56,6 +57,7 @@ class PassiveSensors:
     # Lander resources/state
     thrust_level: float  # 0..vehicle.max_thrust
     fuel: float  # 0..100
+    max_fuel: float
     state: str  # "flying", "landed", "crashed", ...
 
     # Radar contacts: list of RadarContact

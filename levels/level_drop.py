@@ -15,15 +15,38 @@ class DescentScenario:
     initial_vx: float = 0.0
     initial_vy_up: float = 0.0
     initial_angle: float = 0.0
+    cargo_mass: float = 1800.0
 
 
-_SCENARIOS: tuple[DescentScenario, ...] = (
+_BASE_SCENARIOS: tuple[DescentScenario, ...] = (
     DescentScenario(name="alt_100", spawn_clearance=100.0),
     DescentScenario(name="alt_200", spawn_clearance=200.0),
     DescentScenario(name="alt_400", spawn_clearance=400.0),
     DescentScenario(name="alt_800", spawn_clearance=800.0),
+    DescentScenario(name="alt_1600", spawn_clearance=1600.0),
     DescentScenario(name="speed_low", spawn_clearance=220.0, initial_vy_up=-12.0),
     DescentScenario(name="speed_high", spawn_clearance=320.0, initial_vy_up=-24.0),
+    DescentScenario(name="upward_low", spawn_clearance=260.0, initial_vy_up=8.0),
+    DescentScenario(name="upward_high", spawn_clearance=420.0, initial_vy_up=16.0),
+)
+_CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
+    ("cargo_low", 0.0),
+    ("cargo_high", 4500.0),
+)
+_SCENARIOS: tuple[DescentScenario, ...] = (
+    _BASE_SCENARIOS
+    + tuple(
+        DescentScenario(
+            name=f"{base.name}_{suffix}",
+            spawn_clearance=base.spawn_clearance,
+            initial_vx=base.initial_vx,
+            initial_vy_up=base.initial_vy_up,
+            initial_angle=base.initial_angle,
+            cargo_mass=cargo_mass,
+        )
+        for base in _BASE_SCENARIOS
+        for suffix, cargo_mass in _CARGO_VARIANTS
+    )
 )
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
@@ -40,6 +63,7 @@ def _make_spec(scenario: DescentScenario) -> ScenarioLevelSpec:
         target_mode="flush_flatten",
         target_offset_y=0.0,
         target_size=110.0,
+        cargo_mass=scenario.cargo_mass,
     )
 
 

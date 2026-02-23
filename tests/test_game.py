@@ -6,8 +6,10 @@ import main as main_module
 import pytest
 from bots import create_bot, list_available_bots
 from bots.descent import DescentBot
+from bots.descent_econ import DescentEconBot
+from bots.descent_speed import DescentSpeedBot
 from core.eval import aggregate_eval_records, normalize_run_result
-from core.bot import Bot, BotAction
+from core.bot import Bot, BotAction, PassiveSensors
 from core.components import (
     ActorControlRole,
     CargoHold,
@@ -38,10 +40,16 @@ from ui.hud import HudOverlay
 def test_bot_registry_exposes_descent_only() -> None:
     bots = list_available_bots()
     assert "descent" in bots
+    assert "descent_speed" in bots
+    assert "descent_econ" in bots
     assert "turtle" not in bots
     assert {"drop", "plunge", "drift", "ferry"}.isdisjoint(set(bots))
     descent_bot = create_bot("descent")
     assert descent_bot.__class__.__name__ == "DescentBot"
+    speed_bot = create_bot("descent_speed")
+    assert speed_bot.__class__.__name__ == "DescentSpeedBot"
+    econ_bot = create_bot("descent_econ")
+    assert econ_bot.__class__.__name__ == "DescentEconBot"
 
 
 def test_descent_bot_engine_profile_fallback_uses_realistic_defaults() -> None:
@@ -51,6 +59,79 @@ def test_descent_bot_engine_profile_fallback_uses_realistic_defaults() -> None:
     assert min_throttle == pytest.approx(0.25)
     assert max_throttle == pytest.approx(1.6)
     assert ramp_up == pytest.approx(1.1)
+
+
+def test_descent_econ_bot_blocks_overdrive_when_fuel_margin_is_low() -> None:
+    bot = DescentEconBot()
+    passive = PassiveSensors(
+        x=0.0,
+        y=100.0,
+        altitude=20.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-8.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=1.0,
+        fuel=8.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    assert not bot._can_use_overdrive(passive, vertical_mode="terminal_burn", alt=8.0)
+
+
+def test_descent_speed_status_prefix_is_distinct() -> None:
+    bot = DescentSpeedBot()
+    passive = PassiveSensors(
+        x=0.0,
+        y=0.0,
+        altitude=0.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=0.0,
+        angle=0.12,
+        ax=0.0,
+        ay_up=0.0,
+        mass=1.0,
+        thrust_level=0.0,
+        fuel=0.0,
+        max_fuel=100.0,
+        state="landed",
+        radar_contacts=[],
+        proximity=None,
+    )
+    action = bot.update(1.0 / 60.0, passive, active=None)
+    assert action.status.startswith("descent_speed:")
+
+
+def test_descent_speed_can_use_overdrive_outside_terminal_mode() -> None:
+    bot = DescentSpeedBot()
+    passive = PassiveSensors(
+        x=0.0,
+        y=100.0,
+        altitude=30.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-7.5,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=1.0,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    assert bot._can_use_overdrive(passive, vertical_mode="flare", alt=30.0)
 
 
 class _FlatTerrain:
@@ -495,15 +576,43 @@ def test_descent_level_lists_expected_scenarios() -> None:
     level = create_level_by_name("level_drop")
     list_scenarios = getattr(level, "list_batch_scenarios", None)
     assert callable(list_scenarios)
-    scenarios = list_scenarios()
-    assert scenarios == [
+    scenarios = set(list_scenarios())
+    base = {
         "alt_100",
         "alt_200",
         "alt_400",
         "alt_800",
+        "alt_1600",
         "speed_low",
         "speed_high",
-    ]
+        "upward_low",
+        "upward_high",
+    }
+    assert base.issubset(scenarios)
+    for name in base:
+        assert f"{name}_cargo_low" in scenarios
+        assert f"{name}_cargo_high" in scenarios
+    assert len(scenarios) == len(base) * 3
+
+
+def test_descent_cargo_scenario_applies_heavy_cargo_mass() -> None:
+    level = create_level_by_name("level_drop")
+    level.set_eval_scenario("alt_200_cargo_high")
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
+    actor = game.actors[0]
+    cargo = actor.get_component(CargoHold)
+    assert cargo is not None
+    assert cargo.cargo_mass == pytest.approx(4500.0)
+
+
+def test_descent_upward_scenario_starts_with_positive_vertical_velocity() -> None:
+    level = create_level_by_name("level_drop")
+    level.set_eval_scenario("upward_high")
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
+    actor = game.actors[0]
+    phys = actor.get_component(PhysicsState)
+    assert phys is not None
+    assert phys.vel.y > 0.0
 
 
 def test_descent_speed_high_scenario_sets_recoverable_initial_velocity() -> None:

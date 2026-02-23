@@ -7,6 +7,7 @@ import core.terrain as _terrain
 from core.components import (
     ActorControlRole,
     ActorProfile,
+    CargoHold,
     FuelTank,
     LandingSite as LandingSiteComponent,
     LandingSiteEconomy,
@@ -53,6 +54,7 @@ class ScenarioLevelSpec:
     target_mode: str = "flush_flatten"
     target_offset_y: float = 0.0
     target_size: float = 100.0
+    cargo_mass: float | None = None
 
 
 def _require_component(entity, component_type):
@@ -141,6 +143,13 @@ class ScenarioLevel(Level):
 
         lander_name = getattr(self, "lander_name", "classic")
         lander = create_lander(lander_name)
+        if spec.cargo_mass is not None:
+            cargo = lander.get_component(CargoHold)
+            if cargo is not None:
+                cargo.cargo_mass = max(
+                    0.0,
+                    min(float(spec.cargo_mass), float(cargo.max_cargo_mass)),
+                )
         lander.add_component(ActorProfile(kind="lander", name="player"))
         lander.add_component(ActorControlRole(role="human"))
         lander.add_component(PlayerSelectable(order=0))
