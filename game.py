@@ -677,9 +677,14 @@ class LanderGame:
             self.propulsion_system.update(physics_dt)
             self.force_application_system.update(physics_dt)
             if self.engine_adapter.enabled:
+                self._sync_actor_masses_to_engine()
                 self.engine_adapter.step(physics_dt)
                 self.physics_sync_system.update(physics_dt)
                 self.contact_system.update(physics_dt)
+
+    def _sync_actor_masses_to_engine(self) -> None:
+        for actor in self.actors:
+            self.engine_adapter.set_actor_mass(actor.uid, _get_mass(actor))
 
     def _update_bot_steps(self, timers: LoopTimers) -> dict[str, ControlTuple | None]:
         bot_controls_by_uid: dict[str, ControlTuple | None] = {}

@@ -25,7 +25,7 @@ from core.landing_sites import LandingSiteSurfaceModel
 from core.maths import Vector2
 from core.lander import Lander
 from core.level import Level, LevelWorld
-from game import LanderGame, _build_headless_stats
+from game import LanderGame, LoopTimers, _build_headless_stats
 from main import RunConfig, _parse_args, _parse_seed_spec, _resolve_batch_plan, _run_batch
 from levels import create_level as create_level_by_name
 from levels.level_flat import create_level as create_level_flat
@@ -133,9 +133,11 @@ class _FakeEngine:
     def __init__(self):
         self.pose = (Vector2(0.0, 100.0), 0.0)
         self.velocity = (Vector2(0.0, 0.0), 0.0)
+        self.mass_updates: list[float] = []
 
-    def set_lander_mass(self, _mass: float) -> None:
-        pass
+    def set_lander_mass(self, mass: float, uid: str | None = None) -> None:
+        _ = uid
+        self.mass_updates.append(float(mass))
 
     def set_lander_controls(self, _thrust_force: float, _angle: float) -> None:
         pass
@@ -246,6 +248,40 @@ def test_state_transition_runs_once_per_frame_with_engine_enabled() -> None:
     result = game.run(print_freq=0, max_steps=3)
     assert result["updates"] == 3
     assert calls["count"] == 3
+
+
+def test_physics_step_syncs_engine_mass_from_remaining_fuel() -> None:
+    level = _ShortLevel(stop_after_updates=999)
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True)
+    fake_engine = _FakeEngine()
+    game.engine_adapter._engine = fake_engine
+
+    actor = game.actors[0]
+    phys = actor.get_component(PhysicsState)
+    tank = actor.get_component(FuelTank)
+    engine = actor.get_component(Engine)
+    assert phys is not None
+    assert tank is not None
+    assert engine is not None
+
+    phys.mass = 1.0
+    tank.fuel = 100.0
+    tank.density = 0.01
+    tank.burn_rate = 6.0
+    engine.thrust_level = 1.0
+    engine.target_thrust = 1.0
+
+    timers = LoopTimers(
+        physics_dt=0.1,
+        bot_dt=1.0,
+        frame_dt=0.1,
+        time_accum_physics=0.1,
+    )
+    game._update_physics_steps(timers)
+
+    assert tank.fuel == pytest.approx(99.4)
+    assert fake_engine.mass_updates
+    assert fake_engine.mass_updates[-1] == pytest.approx(1.0 + tank.fuel * tank.density)
 
 
 def test_game_switches_active_actor_and_updates_alias() -> None:
