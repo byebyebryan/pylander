@@ -28,11 +28,11 @@ from core.level import Level, LevelWorld
 from core.maths import Vector2
 from core.physics import PhysicsEngine
 from landers import create_lander
+from core.ecs import require_component
 from levels.common import (
     compute_score_default,
     compute_spawn_pos,
     get_mass,
-    require_component,
     should_end_default,
 )
 
@@ -56,10 +56,6 @@ class ScenarioLevelSpec:
     target_size: float = 100.0
     cargo_mass: float | None = None
 
-
-def _require_component(entity, component_type):
-    # Backward-compatible shim for level modules importing this helper.
-    return require_component(entity, component_type)
 
 
 def _build_base_terrain(seed: int, spec: ScenarioLevelSpec):
@@ -155,8 +151,8 @@ class ScenarioLevel(Level):
         lander.add_component(PlayerSelectable(order=0))
         lander.add_component(PlayerControlled(active=True))
 
-        trans = _require_component(lander, Transform)
-        geo = _require_component(lander, LanderGeometry)
+        trans = require_component(lander, Transform)
+        geo = require_component(lander, LanderGeometry)
         start_x = spec.start_x
         if spec.start_x_jitter > 0.0:
             start_x += rng.uniform(-spec.start_x_jitter, spec.start_x_jitter)
@@ -224,11 +220,11 @@ class ScenarioLevel(Level):
         )
         return {
             "time": getattr(game, "_elapsed_time", 0.0),
-            "state": _require_component(game.lander, LanderState).state,
+            "state": require_component(game.lander, LanderState).state,
             "landing_count": landing_count,
             "crash_count": crash_count,
-            "credits": _require_component(game.lander, Wallet).credits,
-            "fuel": _require_component(game.lander, FuelTank).fuel,
+            "credits": require_component(game.lander, Wallet).credits,
+            "fuel": require_component(game.lander, FuelTank).fuel,
             "score": score,
             "scenario": getattr(self, "scenario_name", type(self).__name__),
         }

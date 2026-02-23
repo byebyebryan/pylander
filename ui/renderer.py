@@ -1,7 +1,7 @@
 """Rendering system for terrain visualization (Level-centric)."""
 
 import os
-import random  # noqa: F401 (may be used elsewhere by runtime effects)
+import random
 import pygame
 from .camera import OffsetCamera, Camera
 from .minimap import Minimap
@@ -20,6 +20,7 @@ from core.components import (
     SensorReadings,
     Transform,
 )
+from core.ecs import require_component
 from core.lander_visuals import Thrust
 from core.maths import RigidTransform2, Vector2
 
@@ -31,16 +32,9 @@ if TYPE_CHECKING:
 class Renderer:
     """Handles all rendering operations for the terrain app."""
 
-    @staticmethod
-    def _require_component(entity, component_type):
-        comp = entity.get_component(component_type)
-        if comp is None:
-            raise RuntimeError(f"Entity {entity.uid} missing component {component_type.__name__}")
-        return comp
-
     def _get_body_polygon(self, entity) -> list[Vector2]:
-        trans = self._require_component(entity, Transform)
-        geo = self._require_component(entity, LanderGeometry)
+        trans = require_component(entity, Transform)
+        geo = require_component(entity, LanderGeometry)
         local = geo.polygon_points
         if not local:
             half_w = geo.width / 2.0
@@ -164,8 +158,8 @@ class Renderer:
         """Update camera follow and auto-zoom based on level state."""
         lander = self.level.lander
         if lander:
-            trans = self._require_component(lander, Transform)
-            state = self._require_component(lander, LanderState)
+            trans = require_component(lander, Transform)
+            state = require_component(lander, LanderState)
             if state.state == "flying":
                 self.main_camera.x = trans.pos.x
                 self.main_camera.y = trans.pos.y
@@ -250,7 +244,7 @@ class Renderer:
         lander = self.level.lander
         if lander is None:
             return []
-        readings = self._require_component(lander, SensorReadings)
+        readings = require_component(lander, SensorReadings)
         return readings.radar_contacts
 
     def draw_targets(self, contacts=None):
@@ -389,7 +383,7 @@ class Renderer:
         # Draw sensor overlays
         proximity = None
         if self.level.lander is not None:
-            proximity = self._require_component(self.level.lander, SensorReadings).proximity
+            proximity = require_component(self.level.lander, SensorReadings).proximity
         self.sensor_overlay.draw(
             proximity,
             self.level.sites,
@@ -473,7 +467,7 @@ class Renderer:
         lander = self.level.lander
         if not lander:
             return
-        trans = self._require_component(lander, Transform)
+        trans = require_component(lander, Transform)
 
         # Rectangle same size as minimap, positioned at bottom-right of screen
         mm = self.minimap

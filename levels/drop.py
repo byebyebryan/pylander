@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from core.components import CargoHold, Engine, FuelTank, PhysicsState, Transform
 from core.level import Level
 from core.maths import Vector2
-from levels.scenario_common import ScenarioLevel, ScenarioLevelSpec, _require_component
+from core.ecs import require_component
+from levels.scenario_common import ScenarioLevel, ScenarioLevelSpec
 
 
 @dataclass(frozen=True)
@@ -71,9 +72,9 @@ def _make_spec(scenario: DescentScenario) -> ScenarioLevelSpec:
 
 
 def _validate_recoverability(actor, scenario: DescentScenario) -> None:
-    phys = _require_component(actor, PhysicsState)
-    tank = _require_component(actor, FuelTank)
-    engine = _require_component(actor, Engine)
+    phys = require_component(actor, PhysicsState)
+    tank = require_component(actor, FuelTank)
+    engine = require_component(actor, Engine)
     cargo = actor.get_component(CargoHold)
 
     cargo_mass = 0.0
@@ -126,8 +127,8 @@ class DescentLevel(ScenarioLevel):
         actor = self.world.actors[0]
         _validate_recoverability(actor, scenario)
 
-        trans = _require_component(actor, Transform)
-        phys = _require_component(actor, PhysicsState)
+        trans = require_component(actor, Transform)
+        phys = require_component(actor, PhysicsState)
         trans.rotation = float(scenario.initial_angle)
         phys.vel = Vector2(float(scenario.initial_vx), float(scenario.initial_vy_up))
 

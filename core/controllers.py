@@ -64,13 +64,3 @@ class PlayerController:
         if any_pressed:
             return (target_thrust, target_angle, refuel)
         return None
-
-    def is_user_active(self, signals: dict) -> bool:
-        """Check if user is actively providing input."""
-        return (
-            signals.get("thrust_up")
-            or signals.get("thrust_down")
-            or signals.get("rot_left")
-            or signals.get("rot_right")
-            or signals.get("refuel")
-        )

@@ -22,7 +22,7 @@ from core.components import (
     Transform,
     Wallet,
 )
-from core.ecs import Entity
+from core.ecs import Entity, require_component
 from core.landing_sites import LandingSiteSurfaceModel, LandingSiteTerrainModifier, to_view
 from core.level import Level, LevelWorld
 from core.maths import Vector2
@@ -45,16 +45,6 @@ class SiteSpec:
     support_height: float = 40.0
 
 
-def require_component(entity, component_type):
-    comp = entity.get_component(component_type)
-    if comp is None:
-        raise RuntimeError(f"Entity {entity.uid} missing component {component_type.__name__}")
-    return comp
-
-
-def _require_component(entity, component_type):
-    return require_component(entity, component_type)
-
 
 def _get_focus_actor(game):
     if hasattr(game, "get_active_actor"):
@@ -63,8 +53,8 @@ def _get_focus_actor(game):
 
 
 def get_mass(entity) -> float:
-    phys = _require_component(entity, PhysicsState)
-    tank = _require_component(entity, FuelTank)
+    phys = require_component(entity, PhysicsState)
+    tank = require_component(entity, FuelTank)
     cargo = entity.get_component(CargoHold)
     cargo_mass = 0.0
     if cargo is not None:
@@ -119,8 +109,8 @@ def should_end_default(
     max_time=None,
 ) -> bool:
     actor = _get_focus_actor(game)
-    state = _require_component(actor, LanderState).state
-    tank = _require_component(actor, FuelTank)
+    state = require_component(actor, LanderState).state
+    tank = require_component(actor, FuelTank)
     if stop_on_crash and state == "crashed":
         return True
     if stop_on_first_land and state == "landed":
@@ -409,9 +399,9 @@ class PresetLevel(Level):
         player_lander.add_component(ActorControlRole(role="human"))
         player_lander.add_component(PlayerSelectable(order=0))
         player_lander.add_component(PlayerControlled(active=True))
-        player_trans = _require_component(player_lander, Transform)
-        player_geo = _require_component(player_lander, LanderGeometry)
-        player_radar = _require_component(player_lander, Radar)
+        player_trans = require_component(player_lander, Transform)
+        player_geo = require_component(player_lander, LanderGeometry)
+        player_radar = require_component(player_lander, Radar)
 
         min_outer = max(1000.0, float(self.dynamic_min_radar_outer_range))
         if player_radar.outer_range < min_outer:
@@ -472,7 +462,7 @@ class PresetLevel(Level):
         self._dynamic_site_uid_index = 0
         if site_entities:
             site_xs = [
-                _require_component(site_entity, Transform).pos.x
+                require_component(site_entity, Transform).pos.x
                 for site_entity in site_entities
             ]
             self._dynamic_site_min_x = min(site_xs)
@@ -566,11 +556,11 @@ class PresetLevel(Level):
         )
         return {
             "time": getattr(game, "_elapsed_time", 0.0),
-            "state": _require_component(game.lander, LanderState).state,
+            "state": require_component(game.lander, LanderState).state,
             "landing_count": landing_count,
             "crash_count": crash_count,
-            "credits": _require_component(game.lander, Wallet).credits,
-            "fuel": _require_component(game.lander, FuelTank).fuel,
+            "credits": require_component(game.lander, Wallet).credits,
+            "fuel": require_component(game.lander, FuelTank).fuel,
             "score": score,
         }
 
@@ -586,8 +576,8 @@ def compute_score_default(
     crash_penalty=-200.0,
 ) -> float:
     actor = _get_focus_actor(game)
-    wallet = _require_component(actor, Wallet)
-    tank = _require_component(actor, FuelTank)
+    wallet = require_component(actor, Wallet)
+    tank = require_component(actor, FuelTank)
     return (
         wallet.credits * credits_score
         + tank.fuel * fuel_score

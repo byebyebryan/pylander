@@ -5,8 +5,6 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
-from typing import Type, TypeVar
-
 from core.bot import Bot, BotAction, PassiveSensors, VehicleInfo, _ActiveSensorImpl
 from core.components import (
     ActorControlRole,
@@ -25,7 +23,7 @@ from core.components import (
     Transform,
 )
 from core.controllers import PlayerController
-from core.ecs import Entity, World
+from core.ecs import Entity, World, require_component
 from core.engine_adapter import EngineAdapter
 from core.level import Level
 from core.maths import Range1D, Vector2, clearance_above_terrain
@@ -53,19 +51,10 @@ from core.config import (
     TARGET_RENDERING_FPS,
 )
 
-T = TypeVar("T")
-
-
-def _require_component(entity, component_type: Type[T]) -> T:
-    comp = entity.get_component(component_type)
-    if comp is None:
-        raise RuntimeError(f"Entity {entity.uid} missing component {component_type.__name__}")
-    return comp
-
 
 def _get_mass(entity) -> float:
-    phys = _require_component(entity, PhysicsState)
-    tank = _require_component(entity, FuelTank)
+    phys = require_component(entity, PhysicsState)
+    tank = require_component(entity, FuelTank)
     cargo = entity.get_component(CargoHold)
     cargo_mass = 0.0
     if cargo is not None:
@@ -124,14 +113,14 @@ def _resolve_eval_target_pos(level: Level, sites, start_pos: Vector2) -> Vector2
 
 
 def _build_vehicle_info(entity) -> VehicleInfo:
-    geo = _require_component(entity, LanderGeometry)
-    phys = _require_component(entity, PhysicsState)
-    tank = _require_component(entity, FuelTank)
-    eng = _require_component(entity, Engine)
+    geo = require_component(entity, LanderGeometry)
+    phys = require_component(entity, PhysicsState)
+    tank = require_component(entity, FuelTank)
+    eng = require_component(entity, Engine)
     cargo = entity.get_component(CargoHold)
-    ls = _require_component(entity, LanderState)
-    radar = _require_component(entity, Radar)
-    refuel = _require_component(entity, RefuelConfig)
+    ls = require_component(entity, LanderState)
+    radar = require_component(entity, Radar)
+    refuel = require_component(entity, RefuelConfig)
     cargo_mass = 0.0
     cargo_limit = 0.0
     if cargo is not None:
@@ -161,8 +150,8 @@ def _build_vehicle_info(entity) -> VehicleInfo:
 
 
 def _build_active_sensors(entity, engine_adapter, terrain):
-    trans = _require_component(entity, Transform)
-    radar = _require_component(entity, Radar)
+    trans = require_component(entity, Transform)
+    radar = require_component(entity, Radar)
     return _ActiveSensorImpl(
         origin_fn=lambda: Vector2(trans.pos),
         radar_range_fn=lambda: radar.inner_range,
@@ -173,13 +162,13 @@ def _build_active_sensors(entity, engine_adapter, terrain):
 
 
 def _build_passive_sensors(entity, terrain) -> PassiveSensors:
-    trans = _require_component(entity, Transform)
-    phys = _require_component(entity, PhysicsState)
-    tank = _require_component(entity, FuelTank)
-    eng = _require_component(entity, Engine)
-    ls = _require_component(entity, LanderState)
-    geo = _require_component(entity, LanderGeometry)
-    readings = _require_component(entity, SensorReadings)
+    trans = require_component(entity, Transform)
+    phys = require_component(entity, PhysicsState)
+    tank = require_component(entity, FuelTank)
+    eng = require_component(entity, Engine)
+    ls = require_component(entity, LanderState)
+    geo = require_component(entity, LanderGeometry)
+    readings = require_component(entity, SensorReadings)
     terrain_y = _sample_terrain_height(terrain, trans.pos.x, lod=0)
     terrain_slope = _estimate_terrain_slope(terrain, trans.pos.x, lod=0)
     altitude = clearance_above_terrain(
@@ -209,11 +198,11 @@ def _build_passive_sensors(entity, terrain) -> PassiveSensors:
 
 
 def _build_headless_stats(entity, terrain) -> str:
-    trans = _require_component(entity, Transform)
-    phys = _require_component(entity, PhysicsState)
-    eng = _require_component(entity, Engine)
-    tank = _require_component(entity, FuelTank)
-    geo = _require_component(entity, LanderGeometry)
+    trans = require_component(entity, Transform)
+    phys = require_component(entity, PhysicsState)
+    eng = require_component(entity, Engine)
+    tank = require_component(entity, FuelTank)
+    geo = require_component(entity, LanderGeometry)
     terrain_y = _sample_terrain_height(terrain, trans.pos.x, lod=0)
     altitude = clearance_above_terrain(
         trans.pos.y,
@@ -232,12 +221,12 @@ def _build_headless_stats(entity, terrain) -> str:
 
 
 def _reset_lander_entity(entity) -> None:
-    trans = _require_component(entity, Transform)
-    phys = _require_component(entity, PhysicsState)
-    tank = _require_component(entity, FuelTank)
-    eng = _require_component(entity, Engine)
-    ls = _require_component(entity, LanderState)
-    intent = _require_component(entity, ControlIntent)
+    trans = require_component(entity, Transform)
+    phys = require_component(entity, PhysicsState)
+    tank = require_component(entity, FuelTank)
+    eng = require_component(entity, Engine)
+    ls = require_component(entity, LanderState)
+    intent = require_component(entity, ControlIntent)
     start_pos = getattr(entity, "start_pos", Vector2(0.0, 0.0))
     trans.pos = Vector2(start_pos)
     trans.rotation = 0.0
@@ -493,8 +482,8 @@ class LanderGame:
         self.plotter.seed_initial_sample()
         self._elapsed_time = 0.0
         initial_actor = self.get_active_actor()
-        initial_trans = _require_component(initial_actor, Transform)
-        initial_tank = _require_component(initial_actor, FuelTank)
+        initial_trans = require_component(initial_actor, Transform)
+        initial_tank = require_component(initial_actor, FuelTank)
         start_pos = Vector2(getattr(initial_actor, "start_pos", initial_trans.pos))
         eval_target_pos = _resolve_eval_target_pos(self.level, self.sites, start_pos)
         prev_actor_uid = initial_actor.uid
@@ -572,20 +561,20 @@ class LanderGame:
             active_actor = self.get_active_actor()
             if active_actor.uid != prev_actor_uid:
                 prev_actor_uid = active_actor.uid
-                trans = _require_component(active_actor, Transform)
-                tank = _require_component(active_actor, FuelTank)
+                trans = require_component(active_actor, Transform)
+                tank = require_component(active_actor, FuelTank)
                 prev_pos = Vector2(trans.pos)
                 prev_fuel = float(tank.fuel)
             else:
-                trans = _require_component(active_actor, Transform)
-                tank = _require_component(active_actor, FuelTank)
+                trans = require_component(active_actor, Transform)
+                tank = require_component(active_actor, FuelTank)
                 step_distance = math.hypot(trans.pos.x - prev_pos.x, trans.pos.y - prev_pos.y)
                 distance_flown += step_distance
                 fuel_consumed += max(0.0, prev_fuel - float(tank.fuel))
                 prev_pos = Vector2(trans.pos)
                 prev_fuel = float(tank.fuel)
 
-            active_ls = _require_component(active_actor, LanderState)
+            active_ls = require_component(active_actor, LanderState)
             state = active_ls.state
             if state != prev_state:
                 if state == "landed":
@@ -609,8 +598,8 @@ class LanderGame:
         self._fuel_consumed = fuel_consumed
         result = self.level.end(self)
         final_actor = self.get_active_actor()
-        final_trans = _require_component(final_actor, Transform)
-        final_tank = _require_component(final_actor, FuelTank)
+        final_trans = require_component(final_actor, Transform)
+        final_tank = require_component(final_actor, FuelTank)
         elapsed_time = max(0.0, float(timers.elapsed_time))
         avg_speed = (distance_flown / elapsed_time) if elapsed_time > 1e-9 else 0.0
         fuel_per_distance = (fuel_consumed / distance_flown) if distance_flown > 1e-9 else 0.0
@@ -658,8 +647,8 @@ class LanderGame:
 
         user_controls = None
         active_actor = self.get_active_actor()
-        ls = _require_component(active_actor, LanderState)
-        eng = _require_component(active_actor, Engine)
+        ls = require_component(active_actor, LanderState)
+        eng = require_component(active_actor, Engine)
         if ls.state in ("flying", "landed") and self.player_controller is not None:
             user_controls = self.player_controller.update(
                 input_events,
@@ -680,7 +669,7 @@ class LanderGame:
     def _do_reset(self) -> None:
         active_actor = self.get_active_actor()
         _reset_lander_entity(active_actor)
-        trans = _require_component(active_actor, Transform)
+        trans = require_component(active_actor, Transform)
         if self.engine_adapter.enabled:
             self.engine_adapter.teleport_lander(
                 trans.pos,

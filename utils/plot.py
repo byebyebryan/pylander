@@ -10,13 +10,7 @@ from pathlib import Path
 from typing import Literal
 
 from core.components import Engine, PhysicsState, Transform
-
-
-def _require_component(entity, component_type):
-    comp = entity.get_component(component_type)
-    if comp is None:
-        raise RuntimeError(f"Entity {entity.uid} missing component {component_type.__name__}")
-    return comp
+from core.ecs import require_component
 
 
 def save_trajectory_plot(
@@ -201,9 +195,9 @@ class Plotter:
             self._record_sample()
 
     def _record_sample(self) -> None:
-        trans = _require_component(self.lander, Transform)
-        phys = _require_component(self.lander, PhysicsState)
-        eng = _require_component(self.lander, Engine)
+        trans = require_component(self.lander, Transform)
+        phys = require_component(self.lander, PhysicsState)
+        eng = require_component(self.lander, Engine)
         speed = (phys.vel.x * phys.vel.x + phys.vel.y * phys.vel.y) ** 0.5
         self._samples.append((trans.pos.x, trans.pos.y, speed, eng.thrust_level))
 
