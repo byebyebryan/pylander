@@ -26,6 +26,7 @@ class DriftCourseConfig:
     correction_vx_high_alt_cap: float = 7.4
     correction_vx_low_alt_cap: float = 3.0
     correction_vx_low_alt_threshold: float = 32.0
+    terminal_burn_correction_vx_floor: float = 4.2
     fast_descent_min_altitude: float = 26.0
     fast_descent_base: float = 1.8
     fast_descent_sqrt_gain: float = 0.28
@@ -89,7 +90,7 @@ class DriftBot(StrategyDescentBot):
         cone_limit = self._cone_dx_limit(alt)
         vx_cap = self._correction_vx_cap(alt)
         if guidance.vertical_mode == "terminal_burn" and abs_dx > max(16.0, 0.75 * cone_limit):
-            vx_cap = max(vx_cap, 2.2)
+            vx_cap = max(vx_cap, self._course_cfg.terminal_burn_correction_vx_floor)
         vx_sp = clamp(guidance.vx_sp, -vx_cap, vx_cap)
 
         if abs_dx > cone_limit:
