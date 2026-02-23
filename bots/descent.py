@@ -57,7 +57,8 @@ class DescentBot(Bot):
 
     def _engine_profile(self) -> tuple[float, float, float, float]:
         if self.vehicle_info is None:
-            return 50.0, 0.0, 1.0, 2.0
+            # Keep fallback aligned with Engine defaults in SI-like units.
+            return 230000.0, 0.25, 1.6, 1.1
         max_power = max(1e-3, float(self.vehicle_info.max_thrust_power))
         max_throttle = max(0.0, float(self.vehicle_info.max_thrust))
         min_throttle = max(0.0, min(float(self.vehicle_info.min_thrust), max_throttle))

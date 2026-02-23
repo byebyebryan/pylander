@@ -5,6 +5,7 @@ import argparse
 import main as main_module
 import pytest
 from bots import create_bot, list_available_bots
+from bots.descent import DescentBot
 from core.eval import aggregate_eval_records, normalize_run_result
 from core.bot import Bot, BotAction
 from core.components import (
@@ -41,6 +42,15 @@ def test_bot_registry_exposes_descent_only() -> None:
     assert {"drop", "plunge", "drift", "ferry"}.isdisjoint(set(bots))
     descent_bot = create_bot("descent")
     assert descent_bot.__class__.__name__ == "DescentBot"
+
+
+def test_descent_bot_engine_profile_fallback_uses_realistic_defaults() -> None:
+    bot = DescentBot()
+    max_power, min_throttle, max_throttle, ramp_up = bot._engine_profile()
+    assert max_power == pytest.approx(230000.0)
+    assert min_throttle == pytest.approx(0.25)
+    assert max_throttle == pytest.approx(1.6)
+    assert ramp_up == pytest.approx(1.1)
 
 
 class _FlatTerrain:
