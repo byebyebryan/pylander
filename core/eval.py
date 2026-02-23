@@ -61,6 +61,7 @@ def _metric_summary(records: list[dict[str, Any]], field: str) -> dict[str, Any]
 def _efficiency_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
     fields = (
         "distance_flown",
+        "landing_distance_from_center",
         "avg_speed",
         "fuel_consumed",
         "fuel_remaining",
@@ -100,6 +101,9 @@ def normalize_run_result(
         ),
         "score": _to_float(result.get("score", 0.0), 0.0),
         "distance_flown": _to_float(result.get("distance_flown", 0.0), 0.0),
+        "landing_distance_from_center": _to_optional_float(
+            result.get("landing_distance_from_center")
+        ),
         "avg_speed": _to_float(result.get("avg_speed", 0.0), 0.0),
         "fuel_consumed": _to_float(result.get("fuel_consumed", 0.0), 0.0),
         "fuel_per_distance": _to_float(result.get("fuel_per_distance", 0.0), 0.0),

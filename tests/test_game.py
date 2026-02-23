@@ -35,15 +35,18 @@ from levels.level_mountains import create_level as create_level_mountains
 from ui.hud import HudOverlay
 
 
-def test_bot_registry_exposes_descent_only() -> None:
+def test_bot_registry_exposes_expected_bots() -> None:
     bots = list_available_bots()
     assert "descent" in bots
+    assert "drift" in bots
     assert "descent_speed" not in bots
     assert "descent_econ" not in bots
     assert "turtle" not in bots
-    assert {"drop", "plunge", "drift", "ferry"}.isdisjoint(set(bots))
+    assert {"drop", "plunge", "ferry"}.isdisjoint(set(bots))
     descent_bot = create_bot("descent")
+    drift_bot = create_bot("drift")
     assert descent_bot.__class__.__name__ == "DescentBot"
+    assert drift_bot.__class__.__name__ == "DriftBot"
 
 
 def test_descent_bot_engine_profile_fallback_uses_realistic_defaults() -> None:
@@ -303,6 +306,7 @@ def test_game_run_emits_efficiency_metrics() -> None:
 
     for key in (
         "distance_flown",
+        "landing_distance_from_center",
         "avg_speed",
         "fuel_consumed",
         "fuel_remaining",
@@ -316,6 +320,20 @@ def test_game_run_emits_efficiency_metrics() -> None:
     assert result["avg_speed"] >= 0.0
     assert result["fuel_consumed"] >= 0.0
     assert result["fuel_per_distance"] >= 0.0
+
+
+def test_game_run_records_landing_distance_from_target_center_when_landed() -> None:
+    level = _ShortLevel(stop_after_updates=1)
+    level.eval_target_pos = Vector2(25.0, 0.0)
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True)
+
+    ls = game.actors[0].get_component(LanderState)
+    assert ls is not None
+    ls.state = "landed"
+
+    result = game.run(print_freq=0, max_steps=10)
+    assert result["state"] == "landed"
+    assert result["landing_distance_from_center"] == pytest.approx(25.0)
 
 
 def test_state_transition_runs_once_per_frame_with_engine_enabled() -> None:
@@ -532,6 +550,7 @@ def test_level_registry_includes_named_presets() -> None:
     level_names = main_module.list_available_levels()
     assert "level_flat" in level_names
     assert "level_mountains" in level_names
+    assert "level_drift" in level_names
     assert "level_1" not in level_names
 
 
@@ -633,6 +652,72 @@ def test_descent_speed_high_scenario_sets_recoverable_initial_velocity() -> None
     assert stop_distance < 320.0 * 0.82
 
 
+def test_drift_level_lists_expected_scenarios() -> None:
+    level = create_level_by_name("level_drift")
+    list_scenarios = getattr(level, "list_batch_scenarios", None)
+    assert callable(list_scenarios)
+    scenarios = set(list_scenarios())
+    base = {
+        "alt_100_offset",
+        "alt_400_offset",
+        "alt_1600_offset",
+        "alt_400_offset_vx_toward",
+        "alt_400_offset_vx_away",
+    }
+    assert base.issubset(scenarios)
+    cargo_variants = {
+        "alt_400_offset",
+        "alt_400_offset_vx_away",
+    }
+    for name in cargo_variants:
+        assert f"{name}_cargo_low" in scenarios
+        assert f"{name}_cargo_high" in scenarios
+    for name in (base - cargo_variants):
+        assert f"{name}_cargo_low" not in scenarios
+        assert f"{name}_cargo_high" not in scenarios
+    assert len(scenarios) == len(base) + (len(cargo_variants) * 2)
+
+
+def test_drift_scenario_sets_offset_and_horizontal_velocity() -> None:
+    level = create_level_by_name("level_drift")
+    level.set_eval_scenario("alt_400_offset_vx_toward")
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
+    actor = game.actors[0]
+    trans = actor.get_component(Transform)
+    phys = actor.get_component(PhysicsState)
+    assert trans is not None
+    assert phys is not None
+    assert abs(trans.pos.x) > 0.0
+    assert abs(phys.vel.x) > 0.0
+    assert trans.pos.x * phys.vel.x < 0.0  # toward target from randomized side
+
+
+def test_drift_scenario_direction_is_deterministic_for_seed() -> None:
+    level_a = create_level_by_name("level_drift")
+    level_a.set_eval_scenario("alt_400_offset")
+    game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=19)
+    trans_a = game_a.actors[0].get_component(Transform)
+    assert trans_a is not None
+
+    level_b = create_level_by_name("level_drift")
+    level_b.set_eval_scenario("alt_400_offset")
+    game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=19)
+    trans_b = game_b.actors[0].get_component(Transform)
+    assert trans_b is not None
+
+    assert trans_a.pos.x == pytest.approx(trans_b.pos.x)
+
+
+def test_drift_cargo_scenario_applies_heavy_cargo_mass() -> None:
+    level = create_level_by_name("level_drift")
+    level.set_eval_scenario("alt_400_offset_vx_away_cargo_high")
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
+    actor = game.actors[0]
+    cargo = actor.get_component(CargoHold)
+    assert cargo is not None
+    assert cargo.cargo_mass == pytest.approx(4500.0)
+
+
 def test_parse_seed_spec_supports_ranges_and_lists() -> None:
     assert _parse_seed_spec("0-3") == [0, 1, 2, 3]
     assert _parse_seed_spec("3-1") == [3, 2, 1]
@@ -680,6 +765,7 @@ def test_eval_aggregate_summary_shape() -> None:
                 "time": 12.0,
                 "landing_count": 1,
                 "distance_flown": 240.0,
+                "landing_distance_from_center": 6.5,
                 "avg_speed": 20.0,
                 "fuel_consumed": 15.0,
                 "fuel_per_distance": 0.0625,
@@ -708,6 +794,7 @@ def test_eval_aggregate_summary_shape() -> None:
     assert summary["crashed"] == 1
     assert "efficiency_success" in summary
     assert summary["efficiency_success"]["distance_flown"]["count"] == 1
+    assert summary["efficiency_success"]["landing_distance_from_center"]["count"] == 1
     assert "efficiency_all" in summary
     assert summary["efficiency_all"]["distance_flown"]["count"] == 2
     assert summary["efficiency_all"]["fuel_remaining"]["count"] == 2

@@ -11,6 +11,7 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 - Continuous gameplay (land, refuel, take off again)
 - AI bot interface for autonomous play
 - Unified descent benchmark bot (`descent`)
+- Horizontal-control benchmark level (`level_drift`) with two-phase bot (`drift`)
 
 ## Setup
 
@@ -36,6 +37,12 @@ uv run python main.py level_drop
 # Pick a specific descent scenario
 uv run python main.py level_drop --scenario alt_400
 
+# Horizontal-control benchmark level + bot
+uv run python main.py level_drift
+
+# Pick a specific drift scenario
+uv run python main.py level_drift --scenario alt_400_offset_vx_away
+
 # Use descent bot on other levels if desired
 uv run python main.py level_flat descent
 ```
@@ -58,6 +65,7 @@ uv run python main.py level_drop --headless --freq 0 --steps 10000
 # Use different seed or lander
 uv run python main.py level_drop --headless --seed 123
 uv run python main.py level_drop --headless --scenario speed_high --seed 123
+uv run python main.py level_drift --headless --scenario alt_400_offset_vx_toward --seed 123
 uv run python main.py level_flat --lander differential
 ```
 
@@ -77,6 +85,13 @@ uv run python main.py level_drop --headless --batch \
   --batch-seeds 0-19 \
   --batch-levels level_drop \
   --batch-scenarios alt_400,speed_high \
+  --batch-json auto \
+  --batch-csv auto
+
+# Drift-focused horizontal-control batch
+uv run python main.py level_drift --headless --batch \
+  --batch-seeds 0-19 \
+  --batch-scenarios alt_400_offset,alt_400_offset_vx_away \
   --batch-json auto \
   --batch-csv auto
 ```
@@ -134,6 +149,11 @@ Dedicated scenario levels (default bot in parentheses):
   - cargo variants for `alt_400`, `speed_high`, and `upward_low`:
     - `*_cargo_low`
     - `*_cargo_high`
+- `level_drift` (`drift`) - horizontal-control benchmark:
+  - varies altitude (`spawn_clearance`)
+  - varies horizontal spawn offset (`start_x`) with deterministic random direction per seed
+  - includes initial horizontal velocity (`initial_vx`) scenarios
+  - includes cargo variants (`*_cargo_low`, `*_cargo_high`) for selected base cases
 
 ## Command Line Options
 
@@ -167,6 +187,8 @@ python main.py [level_name] [bot_name] [options]
 
 Batch mode defaults to `--freq 0` (quiet) for speed; pass `--freq` to enable per-run stats.
 Quiet mode disables per-step stats output, but batch progress lines still print.
+
+Batch/headless eval records include `landing_distance_from_center` (absolute horizontal error from target center on landed runs).
 
 ## Promotion Gates (Descent Bot)
 

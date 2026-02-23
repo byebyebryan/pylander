@@ -301,6 +301,7 @@ def _print_headless_results(result: dict) -> None:
         "fuel",
         "score",
         "distance_flown",
+        "landing_distance_from_center",
         "avg_speed",
         "fuel_consumed",
         "fuel_per_distance",
@@ -574,6 +575,7 @@ def _print_batch_summary(
         print(f"\n{title}:")
         metric_order = (
             "distance_flown",
+            "landing_distance_from_center",
             "avg_speed",
             "fuel_consumed",
             "fuel_per_distance",
