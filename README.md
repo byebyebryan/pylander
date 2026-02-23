@@ -34,7 +34,7 @@ Watch an AI bot play using the sensor/action API:
 uv run python main.py level_drop
 
 # Pick a specific descent scenario
-uv run python main.py level_drop --scenario alt_800
+uv run python main.py level_drop --scenario alt_400
 
 # Use descent bot on other levels if desired
 uv run python main.py level_flat descent
@@ -76,7 +76,7 @@ uv run python main.py level_drop --headless --batch \
 uv run python main.py level_drop --headless --batch \
   --batch-seeds 0-19 \
   --batch-levels level_drop \
-  --batch-scenarios alt_800,speed_high \
+  --batch-scenarios alt_400,speed_high \
   --batch-json auto \
   --batch-csv auto
 ```
@@ -126,11 +126,14 @@ class MyBot(Bot):
 Dedicated scenario levels (default bot in parentheses):
 - `level_drop` (`descent`) - unified descent benchmark with scenarios:
   - `alt_100`
-  - `alt_200`
   - `alt_400`
-  - `alt_800`
+  - `alt_1600`
   - `speed_low`
   - `speed_high`
+  - `upward_low`
+  - cargo variants for `alt_400`, `speed_high`, and `upward_low`:
+    - `*_cargo_low`
+    - `*_cargo_high`
 
 ## Command Line Options
 

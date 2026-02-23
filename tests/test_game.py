@@ -573,25 +573,26 @@ def test_descent_level_lists_expected_scenarios() -> None:
     scenarios = set(list_scenarios())
     base = {
         "alt_100",
-        "alt_200",
         "alt_400",
-        "alt_800",
         "alt_1600",
         "speed_low",
         "speed_high",
         "upward_low",
-        "upward_high",
     }
     assert base.issubset(scenarios)
-    for name in base:
+    cargo_variants = {"alt_400", "speed_high", "upward_low"}
+    for name in cargo_variants:
         assert f"{name}_cargo_low" in scenarios
         assert f"{name}_cargo_high" in scenarios
-    assert len(scenarios) == len(base) * 3
+    for name in (base - cargo_variants):
+        assert f"{name}_cargo_low" not in scenarios
+        assert f"{name}_cargo_high" not in scenarios
+    assert len(scenarios) == len(base) + (len(cargo_variants) * 2)
 
 
 def test_descent_cargo_scenario_applies_heavy_cargo_mass() -> None:
     level = create_level_by_name("level_drop")
-    level.set_eval_scenario("alt_200_cargo_high")
+    level.set_eval_scenario("alt_400_cargo_high")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
     cargo = actor.get_component(CargoHold)
@@ -601,7 +602,7 @@ def test_descent_cargo_scenario_applies_heavy_cargo_mass() -> None:
 
 def test_descent_upward_scenario_starts_with_positive_vertical_velocity() -> None:
     level = create_level_by_name("level_drop")
-    level.set_eval_scenario("upward_high")
+    level.set_eval_scenario("upward_low")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
     phys = actor.get_component(PhysicsState)
@@ -791,19 +792,19 @@ def test_parse_args_accepts_scenario_options() -> None:
         stop_on_out_of_fuel=False,
         stop_on_first_land=False,
         seed=None,
-        scenario="alt_800",
+        scenario="alt_400",
         lander=None,
         batch_seeds=None,
         batch_levels=None,
-        batch_scenarios="alt_800,speed_high",
+        batch_scenarios="alt_400,speed_high",
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
         batch_workers=1,
     )
     config = _parse_args(args)
-    assert config.scenario_name == "alt_800"
-    assert config.batch_scenarios == "alt_800,speed_high"
+    assert config.scenario_name == "alt_400"
+    assert config.batch_scenarios == "alt_400,speed_high"
     assert config.bot_behavior == "speed"
 
 
@@ -975,7 +976,7 @@ def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
         lander_name=None,
         batch_seeds="0",
         batch_levels="level_drop",
-        batch_scenarios="alt_800,speed_high",
+        batch_scenarios="alt_400,speed_high",
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
@@ -983,7 +984,7 @@ def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
     )
     exit_code = _run_batch(config)
     assert exit_code == 0
-    assert seen_scenarios == ["alt_800", "speed_high"]
+    assert seen_scenarios == ["alt_400", "speed_high"]
 
 
 def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:

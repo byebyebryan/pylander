@@ -20,18 +20,20 @@ class DescentScenario:
 
 _BASE_SCENARIOS: tuple[DescentScenario, ...] = (
     DescentScenario(name="alt_100", spawn_clearance=100.0),
-    DescentScenario(name="alt_200", spawn_clearance=200.0),
     DescentScenario(name="alt_400", spawn_clearance=400.0),
-    DescentScenario(name="alt_800", spawn_clearance=800.0),
     DescentScenario(name="alt_1600", spawn_clearance=1600.0),
     DescentScenario(name="speed_low", spawn_clearance=220.0, initial_vy_up=-12.0),
     DescentScenario(name="speed_high", spawn_clearance=320.0, initial_vy_up=-24.0),
     DescentScenario(name="upward_low", spawn_clearance=260.0, initial_vy_up=8.0),
-    DescentScenario(name="upward_high", spawn_clearance=420.0, initial_vy_up=16.0),
 )
 _CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
     ("cargo_low", 0.0),
     ("cargo_high", 4500.0),
+)
+_CARGO_VARIANT_BASES: tuple[str, ...] = (
+    "alt_400",
+    "speed_high",
+    "upward_low",
 )
 _SCENARIOS: tuple[DescentScenario, ...] = (
     _BASE_SCENARIOS
@@ -45,12 +47,13 @@ _SCENARIOS: tuple[DescentScenario, ...] = (
             cargo_mass=cargo_mass,
         )
         for base in _BASE_SCENARIOS
+        if base.name in _CARGO_VARIANT_BASES
         for suffix, cargo_mass in _CARGO_VARIANTS
     )
 )
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "alt_200"
+_DEFAULT_SCENARIO = "alt_400"
 
 
 def _make_spec(scenario: DescentScenario) -> ScenarioLevelSpec:
