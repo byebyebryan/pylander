@@ -59,6 +59,11 @@ _SCENARIOS: tuple[DescentScenario, ...] = (
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
 _DEFAULT_SCENARIO = "alt_400"
+_QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
+    "alt_400",
+    "speed_high",
+    "upward_low",
+)
 
 
 def _make_spec(scenario: DescentScenario) -> ScenarioLevelSpec:
@@ -86,6 +91,10 @@ class DescentLevel(ScenarioLevel):
     @staticmethod
     def list_batch_scenarios() -> list[str]:
         return [item.name for item in _SCENARIOS]
+
+    @staticmethod
+    def list_quick_benchmark_scenarios() -> list[str]:
+        return [name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME]
 
     def set_eval_scenario(self, name: str) -> None:
         key = str(name).strip().lower()

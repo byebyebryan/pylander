@@ -6,7 +6,7 @@ import argparse
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from core.eval import (
     aggregate_eval_records,
@@ -377,8 +377,8 @@ def _parse_name_csv(spec: str) -> list[str]:
     return out
 
 
-def _list_wave1_levels() -> list[str]:
-    preferred = ["drop"]
+def _list_quick_benchmark_levels() -> list[str]:
+    preferred = ["drop", "drift"]
     available = set(list_available_levels())
     return [name for name in preferred if name in available]
 
@@ -405,12 +405,17 @@ def _resolve_run_bot_name(config: RunConfig, level) -> str | None:
     return default_bot if default_bot else None
 
 
-def _resolve_level_scenarios(level_name: str) -> list[str]:
+def _resolve_level_scenarios(level_name: str, *, quick_benchmark: bool = False) -> list[str]:
     try:
         level = create_level(level_name)
     except Exception:
         return []
-    list_scenarios = getattr(level, "list_batch_scenarios", None)
+    if quick_benchmark:
+        list_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
+        if not callable(list_scenarios):
+            list_scenarios = getattr(level, "list_batch_scenarios", None)
+    else:
+        list_scenarios = getattr(level, "list_batch_scenarios", None)
     if not callable(list_scenarios):
         return []
     out = [str(name).strip() for name in list_scenarios()]
@@ -428,18 +433,30 @@ def _set_eval_scenario(level, name: str | None) -> None:
     return
 
 
-def _resolve_scenarios_for_config(config: RunConfig, level_name: str) -> list[str]:
+def _resolve_scenarios_for_config(
+    config: RunConfig,
+    level_name: str,
+    *,
+    level_scenario_resolver: Callable[[str, bool], list[str]] | None = None,
+) -> list[str]:
+    resolver = level_scenario_resolver or (
+        lambda name, quick_benchmark: _resolve_level_scenarios(
+            name, quick_benchmark=quick_benchmark
+        )
+    )
     if config.batch_scenarios:
         return _parse_name_csv(config.batch_scenarios)
     if config.scenario_name:
         return [config.scenario_name]
-    return _resolve_level_scenarios(level_name)
+    if config.quick_benchmark:
+        return resolver(level_name, True)
+    return resolver(level_name, False)
 
 
 def _resolve_batch_plan(config: RunConfig) -> tuple[list[int], list[str]]:
     if config.quick_benchmark:
         seeds = [0, 1, 2]
-        levels = _list_wave1_levels() or [config.level_name]
+        levels = _list_quick_benchmark_levels() or [config.level_name]
         return seeds, levels
 
     seeds: list[int]
@@ -670,9 +687,29 @@ def _run_batch(config: RunConfig) -> int:
     if not levels:
         raise ValueError("Batch mode resolved no levels")
 
+    default_bot_cache: dict[str, str | None] = {}
+    level_scenarios_cache: dict[tuple[str, bool], list[str]] = {}
+
+    def _resolve_default_bot_cached(level_name: str) -> str | None:
+        if level_name not in default_bot_cache:
+            default_bot_cache[level_name] = _resolve_default_bot(level_name)
+        return default_bot_cache[level_name]
+
+    def _resolve_level_scenarios_cached(level_name: str, quick_benchmark: bool) -> list[str]:
+        key = (level_name, quick_benchmark)
+        if key not in level_scenarios_cache:
+            level_scenarios_cache[key] = _resolve_level_scenarios(
+                level_name, quick_benchmark=quick_benchmark
+            )
+        return level_scenarios_cache[key]
+
     run_plan: list[tuple[int, str, str | None]] = []
     for level_name in levels:
-        scenarios = _resolve_scenarios_for_config(config, level_name)
+        scenarios = _resolve_scenarios_for_config(
+            config,
+            level_name,
+            level_scenario_resolver=_resolve_level_scenarios_cached,
+        )
         if not scenarios:
             run_plan.extend((seed, level_name, None) for seed in seeds)
             continue
@@ -683,7 +720,7 @@ def _run_batch(config: RunConfig) -> int:
         raise ValueError("Batch mode resolved no runs")
     if config.bot_name is None:
         missing_defaults = [
-            level_name for level_name in levels if _resolve_default_bot(level_name) is None
+            level_name for level_name in levels if _resolve_default_bot_cached(level_name) is None
         ]
         if missing_defaults:
             missing_csv = ",".join(missing_defaults)

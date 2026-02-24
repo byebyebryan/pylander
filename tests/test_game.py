@@ -680,6 +680,13 @@ def test_descent_level_lists_expected_scenarios() -> None:
     assert len(scenarios) == len(base) + (len(cargo_variants) * 2)
 
 
+def test_descent_level_lists_expected_quick_benchmark_scenarios() -> None:
+    level = create_level_by_name("drop")
+    list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
+    assert callable(list_quick_scenarios)
+    assert list_quick_scenarios() == ["alt_400", "speed_high", "upward_low"]
+
+
 def test_descent_cargo_scenario_applies_heavy_cargo_mass() -> None:
     level = create_level_by_name("drop")
     level.set_eval_scenario("alt_400_cargo_high")
@@ -749,6 +756,13 @@ def test_drift_level_lists_expected_scenarios() -> None:
     assert len(scenarios) == len(base) + (len(cargo_variants) * 2)
 
 
+def test_drift_level_lists_expected_quick_benchmark_scenarios() -> None:
+    level = create_level_by_name("drift")
+    list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
+    assert callable(list_quick_scenarios)
+    assert list_quick_scenarios() == ["alt_400_offset", "alt_400_offset_vx_away"]
+
+
 def test_drift_scenario_sets_offset_and_horizontal_velocity() -> None:
     level = create_level_by_name("drift")
     level.set_eval_scenario("alt_400_offset_vx_toward")
@@ -796,7 +810,7 @@ def test_parse_seed_spec_supports_ranges_and_lists() -> None:
     assert _parse_seed_spec("0-2,2,4") == [0, 1, 2, 4]
 
 
-def test_resolve_batch_plan_uses_quick_benchmark_wave1_levels() -> None:
+def test_resolve_batch_plan_uses_quick_benchmark_cross_level_suite() -> None:
     config = RunConfig(
         level_name="drop",
         bot_name="descent",
@@ -821,7 +835,7 @@ def test_resolve_batch_plan_uses_quick_benchmark_wave1_levels() -> None:
     )
     seeds, levels = _resolve_batch_plan(config)
     assert seeds == [0, 1, 2]
-    assert levels == ["drop"]
+    assert levels == ["drop", "drift"]
 
 
 def test_eval_aggregate_summary_shape() -> None:
@@ -1143,6 +1157,66 @@ def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
     exit_code = _run_batch(config)
     assert exit_code == 0
     assert seen_scenarios == ["alt_400", "speed_high"]
+
+
+def test_run_batch_quick_benchmark_uses_cross_level_core_suite(monkeypatch) -> None:
+    seen_runs: list[tuple[int | None, str, str | None]] = []
+
+    def _fake_run_once_record(config, *, seed, level_name, eval_scenario_name=None):
+        _ = config
+        seen_runs.append((seed, level_name, eval_scenario_name))
+        return {
+            "seed": seed,
+            "state": "landed",
+            "success": True,
+        }
+
+    monkeypatch.setattr(main_module, "_run_once_record", _fake_run_once_record)
+    monkeypatch.setattr(main_module.os, "cpu_count", lambda: 1)
+
+    config = RunConfig(
+        level_name="drop",
+        bot_name="descent",
+        bot_behavior=None,
+        headless=True,
+        batch=True,
+        print_freq=0,
+        max_time=300.0,
+        max_steps=100,
+        plot_mode="none",
+        stop_on_crash=True,
+        stop_on_out_of_fuel=True,
+        stop_on_first_land=True,
+        seed=None,
+        lander_name=None,
+        batch_seeds=None,
+        batch_levels=None,
+        batch_scenarios=None,
+        batch_json=None,
+        batch_csv=None,
+        quick_benchmark=True,
+        batch_workers=1,
+    )
+    exit_code = _run_batch(config)
+    assert exit_code == 0
+
+    drop_scenarios = sorted(
+        {
+            scenario
+            for _seed, level_name, scenario in seen_runs
+            if level_name == "drop" and scenario is not None
+        }
+    )
+    drift_scenarios = sorted(
+        {
+            scenario
+            for _seed, level_name, scenario in seen_runs
+            if level_name == "drift" and scenario is not None
+        }
+    )
+    assert drop_scenarios == ["alt_400", "speed_high", "upward_low"]
+    assert drift_scenarios == ["alt_400_offset", "alt_400_offset_vx_away"]
+    assert len(seen_runs) == 15  # 3 seeds x 5 quick scenarios
 
 
 def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:

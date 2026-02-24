@@ -11,6 +11,7 @@ from bots._descent_core import (
     clamp,
     finite_altitude,
     pick_target,
+    rate_limit_angle_command,
     stable,
     vehicle_limits,
 )
@@ -180,8 +181,11 @@ class DriftBot(StrategyDescentBot):
         tilt_frac = min(1.0, abs(dvx) / max(approach_zone, 0.01))
         raw_angle = math.copysign(tilt_frac * cfg.max_tilt, dvx)
 
-        max_delta = 2.2 * max(dt, 1e-3)
-        angle_cmd = clamp(raw_angle, self._prev_angle_cmd - max_delta, self._prev_angle_cmd + max_delta)
+        angle_cmd = rate_limit_angle_command(
+            raw_angle,
+            self._prev_angle_cmd,
+            dt,
+        )
         self._prev_angle_cmd = angle_cmd
 
         _, _, max_throttle, _ = self._engine_profile()
@@ -215,8 +219,6 @@ class DriftBot(StrategyDescentBot):
             self._transfer_vx_target = None
             return super().update(dt, passive, active)
 
-        max_delta = 2.2 * max(dt, 1e-3)
-
         # Soft-coast: if descending too fast, apply minimum gravity compensation to cap
         # downspeed and keep terminal entry costs sane. This is NOT hovering — it only fires
         # when descent rate exceeds the cap, and at the minimum thrust to hold it.
@@ -226,7 +228,11 @@ class DriftBot(StrategyDescentBot):
             thrust = clamp(grav_comp, 0.0, max_throttle)
             if thrust > 0.0:
                 thrust = max(min_throttle, thrust)
-            angle_cmd = clamp(0.0, self._prev_angle_cmd - max_delta, self._prev_angle_cmd + max_delta)
+            angle_cmd = rate_limit_angle_command(
+                0.0,
+                self._prev_angle_cmd,
+                dt,
+            )
             self._prev_angle_cmd = angle_cmd
             action = BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)
             action.status = (
@@ -243,7 +249,11 @@ class DriftBot(StrategyDescentBot):
             # Small correction: tilt against the landing error at moderate throttle.
             # Negative sign: land right of target (pred_err > 0) → tilt left (negative angle).
             raw_angle = clamp(-pred_err * cfg.coast_correction_angle_scale, -0.35, 0.35)
-            angle_cmd = clamp(raw_angle, self._prev_angle_cmd - max_delta, self._prev_angle_cmd + max_delta)
+            angle_cmd = rate_limit_angle_command(
+                raw_angle,
+                self._prev_angle_cmd,
+                dt,
+            )
             self._prev_angle_cmd = angle_cmd
             thrust = max_throttle * cfg.coast_correction_throttle
             if thrust > 0.0:
@@ -255,7 +265,11 @@ class DriftBot(StrategyDescentBot):
             )
         else:
             # True coast: engine off, let the ship level.
-            angle_cmd = clamp(0.0, self._prev_angle_cmd - max_delta, self._prev_angle_cmd + max_delta)
+            angle_cmd = rate_limit_angle_command(
+                0.0,
+                self._prev_angle_cmd,
+                dt,
+            )
             self._prev_angle_cmd = angle_cmd
             action = BotAction(target_thrust=0.0, target_angle=angle_cmd, refuel=False)
             action.status = (

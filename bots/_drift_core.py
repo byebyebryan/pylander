@@ -5,7 +5,13 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, replace
 
-from bots._descent_core import BALANCED_POLICY, DescentPolicy, GuidanceTargets, clamp
+from bots._descent_core import (
+    BALANCED_POLICY,
+    DescentPolicy,
+    GuidanceTargets,
+    clamp,
+    resolve_behavior,
+)
 
 
 @dataclass(frozen=True)
@@ -313,11 +319,12 @@ _DRIFT_BEHAVIORS: dict[str, tuple[DescentPolicy, DriftCourseConfig, TransferBurn
 def resolve_drift_behavior(
     behavior: str,
 ) -> tuple[str, DescentPolicy, DriftCourseConfig, TransferBurnConfig]:
-    key = str(behavior).strip().lower().replace("-", "_")
-    if key not in _DRIFT_BEHAVIORS:
-        known = ", ".join(sorted(_DRIFT_BEHAVIORS))
-        raise ValueError(f"Unknown drift behavior '{behavior}'. Expected one of: {known}")
-    policy, cfg, transfer_cfg = _DRIFT_BEHAVIORS[key]
+    key, value = resolve_behavior(
+        behavior,
+        _DRIFT_BEHAVIORS,
+        context="drift",
+    )
+    policy, cfg, transfer_cfg = value
     return key, policy, cfg, transfer_cfg
 
 

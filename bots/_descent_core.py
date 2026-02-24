@@ -4,13 +4,46 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Mapping, TypeVar
 
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors, VehicleInfo
 from core.sensor import RadarContact
 
+_BehaviorT = TypeVar("_BehaviorT")
+
 
 def clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, value))
+
+
+def normalize_behavior_key(behavior: str) -> str:
+    return str(behavior).strip().lower().replace("-", "_")
+
+
+def resolve_behavior(
+    behavior: str,
+    behaviors: Mapping[str, _BehaviorT],
+    *,
+    context: str,
+) -> tuple[str, _BehaviorT]:
+    key = normalize_behavior_key(behavior)
+    if key not in behaviors:
+        known = ", ".join(sorted(behaviors))
+        raise ValueError(
+            f"Unknown {context} behavior '{behavior}'. Expected one of: {known}"
+        )
+    return key, behaviors[key]
+
+
+def rate_limit_angle_command(
+    target_angle: float,
+    prev_angle: float,
+    dt: float,
+    *,
+    max_rate: float = 2.2,
+) -> float:
+    max_delta = max_rate * max(dt, 1e-3)
+    return clamp(target_angle, prev_angle - max_delta, prev_angle + max_delta)
 
 
 def stable(value: float, digits: int = 1) -> float:
@@ -324,11 +357,10 @@ class StrategyDescentBot(Bot):
         max_tilt = 0.18 if alt < 20.0 else 0.56
         angle_cmd = clamp(angle_cmd, -max_tilt, max_tilt)
 
-        max_delta = 2.2 * max(dt, 1e-3)
-        angle_cmd = clamp(
+        angle_cmd = rate_limit_angle_command(
             angle_cmd,
-            self._prev_angle_cmd - max_delta,
-            self._prev_angle_cmd + max_delta,
+            self._prev_angle_cmd,
+            dt,
         )
         self._prev_angle_cmd = angle_cmd
 
@@ -445,7 +477,10 @@ __all__ = [
     "clamp",
     "engine_profile",
     "finite_altitude",
+    "normalize_behavior_key",
     "pick_target",
+    "rate_limit_angle_command",
+    "resolve_behavior",
     "stable",
     "vehicle_limits",
 ]

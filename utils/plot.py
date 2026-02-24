@@ -163,9 +163,11 @@ class Plotter:
         self._samples: list[tuple[float, float, float, float]] = []
         self._sample_period_s: float = 1.0
         self._time_accum: float = 0.0
+        self._sampling_enabled: bool = bool(self.enabled and self.mode != "none")
 
     def set_mode(self, mode: Literal["none", "speed", "thrust", "all"]) -> None:
         self.mode = mode
+        self._sampling_enabled = bool(self.enabled and self.mode != "none")
 
     def set_sampling_from_print_freq(self, print_freq: int, target_fps: float) -> None:
         """Configure sampling period using print frequency and a reference FPS.
@@ -180,14 +182,14 @@ class Plotter:
             self._sample_period_s = 1.0
 
     def seed_initial_sample(self) -> None:
-        if not self.enabled:
+        if not self._sampling_enabled:
             return
         self._samples.clear()
         self._time_accum = 0.0
         self._record_sample()
 
     def update(self, dt: float) -> None:
-        if not self.enabled:
+        if not self._sampling_enabled:
             return
         self._time_accum += dt
         while self._time_accum >= self._sample_period_s:

@@ -71,7 +71,7 @@ uv run python main.py flat --lander differential
 
 Batch evaluation (headless, sequential single-bot runs):
 ```bash
-# Fast preset benchmark (3 seeds x drop scenarios)
+# Fast cross-level benchmark (15 runs = 3 seeds x 5 core scenarios)
 uv run python main.py drop --headless --quick-benchmark
 
 # Scenario-specific batch using level default bot
@@ -97,6 +97,12 @@ uv run python main.py drift --headless --batch \
 ```
 
 By default, generated artifacts (batch JSON/CSV and trajectory plots) are written under `outputs/`.
+
+`--quick-benchmark` runs a fixed core suite:
+- `drop`: `alt_400`, `speed_high`, `upward_low`
+- `drift`: `alt_400_offset`, `alt_400_offset_vx_away`
+
+Use `--batch-scenarios` when you want a narrower or custom scenario slice.
 
 Stats output format:
 ```
@@ -184,7 +190,7 @@ uv run python main.py [level_name] [options]
 - `--batch-json PATH|auto` - Write JSON report
 - `--batch-csv PATH|auto` - Write CSV rows
 - `--batch-workers N` - Parallel worker processes for batch runs (`1` = sequential; effective workers are capped by CPU count and run count)
-- `--quick-benchmark` - Built-in small benchmark preset
+- `--quick-benchmark` - Built-in cross-level core benchmark preset (`drop` + `drift` subsets)
 - `--help`, `-h` - Show help message
 
 Batch mode defaults to `--freq 0` (quiet) for speed; pass `--freq` to enable per-run stats.

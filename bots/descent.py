@@ -8,6 +8,7 @@ from bots._descent_core import (
     SPEED_POLICY,
     DescentPolicy,
     StrategyDescentBot,
+    resolve_behavior,
 )
 from core.bot import Bot
 
@@ -26,11 +27,12 @@ class DescentBot(StrategyDescentBot):
         self.set_behavior(behavior)
 
     def set_behavior(self, behavior: str) -> None:
-        key = str(behavior).strip().lower().replace("-", "_")
-        if key not in _BEHAVIOR_POLICIES:
-            known = ", ".join(sorted(_BEHAVIOR_POLICIES))
-            raise ValueError(f"Unknown descent behavior '{behavior}'. Expected one of: {known}")
-        self._policy = _BEHAVIOR_POLICIES[key]
+        key, policy = resolve_behavior(
+            behavior,
+            _BEHAVIOR_POLICIES,
+            context="descent",
+        )
+        self._policy = policy
         self._behavior = key
 
     @property
