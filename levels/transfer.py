@@ -41,7 +41,7 @@ class _RangeTier:
 
 _ALTITUDE_TIERS: tuple[_AltitudeTier, ...] = (
     _AltitudeTier(key="low", clearance=300.0),
-    _AltitudeTier(key="high", clearance=820.0),
+    _AltitudeTier(key="high", clearance=900.0),
 )
 _RANGE_TIERS: tuple[_RangeTier, ...] = (
     _RangeTier(key="short", offset=220.0, vx_factor=0.35),
@@ -69,7 +69,7 @@ _STRESS_SCENARIOS: tuple[TransferScenario, ...] = (
     ),
     TransferScenario(
         name="air_high_long_reverse",
-        spawn_clearance=820.0,
+        spawn_clearance=900.0,
         start_x=1080.0,
         vx_factor=-0.70,
         initial_vy_up=0.0,

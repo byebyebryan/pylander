@@ -21,7 +21,7 @@ from bots._drift_core import (
     cone_dx_limit,
 )
 from bots.drift import DriftBot
-from core.bot import Bot, BotAction, PassiveSensors
+from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
 
 
@@ -43,23 +43,25 @@ class TransferSetupConfig:
     setup_sideburn_boost_thrust: float = 1.25
     setup_sideburn_boost_dx_cone_ratio: float = 2.8
     setup_sideburn_boost_vx_err_min: float = 6.0
+    handoff_center_tolerance_min: float = 6.0
+    handoff_center_tolerance_base: float = 8.0
+    handoff_center_tolerance_per_s: float = 2.5
+    handoff_center_tolerance_cap: float = 34.0
+    handoff_target_edge_margin: float = 2.0
+    handoff_shortfall_guard_ratio: float = 0.25
+
+
+@dataclass(frozen=True)
+class _BallisticProjection:
+    projected_dx: float
+    t_fall: float
+    target_x: float | None
+    impact_x: float | None
 
 
 def _ballistic_fall_time(*, alt: float, vy_up: float, g: float = 9.8) -> float:
     disc = max(0.0, (vy_up * vy_up) + (2.0 * g * max(0.0, alt)))
     return max(0.5, (vy_up + math.sqrt(disc)) / g)
-
-
-def _projected_ballistic_dx(
-    *,
-    dx: float,
-    alt: float,
-    vx: float,
-    vy_up: float,
-    g: float = 9.8,
-) -> float:
-    t_fall = _ballistic_fall_time(alt=alt, vy_up=vy_up, g=g)
-    return dx - (vx * t_fall)
 
 
 def _predict_response_state(
@@ -81,6 +83,112 @@ def _predict_response_state(
     return dx_pred, alt_pred, vx, vy_pred
 
 
+def _predict_response_world_state(
+    *,
+    x: float | None,
+    y: float | None,
+    vx: float,
+    vy_up: float,
+    delay_s: float,
+) -> tuple[float | None, float | None]:
+    if (
+        x is None
+        or y is None
+        or not (math.isfinite(float(x)) and math.isfinite(float(y)))
+    ):
+        return None, None
+    lag = max(0.0, float(delay_s))
+    if lag <= 1e-6:
+        return float(x), float(y)
+    x_pred = float(x) + (vx * lag)
+    y_pred = float(y) + (vy_up * lag) - (4.9 * lag * lag)
+    return x_pred, y_pred
+
+
+def _coerce_finite(value: float | None, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(numeric):
+        return default
+    return numeric
+
+
+def _estimate_ballistic_projection(
+    *,
+    dx: float,
+    alt: float,
+    vx: float,
+    vy_up: float,
+    x: float | None = None,
+    y: float | None = None,
+    active: ActiveSensors | None = None,
+    clearance: float = 0.0,
+) -> _BallisticProjection:
+    safe_alt = max(0.0, _coerce_finite(alt, 0.0))
+    safe_vx = _coerce_finite(vx, 0.0)
+    safe_vy_up = _coerce_finite(vy_up, 0.0)
+    safe_dx = _coerce_finite(dx, 0.0)
+    target_x = None
+    if x is not None and math.isfinite(_coerce_finite(x, float("nan"))):
+        target_x = _coerce_finite(x, 0.0) + safe_dx
+    fallback_t_fall = _ballistic_fall_time(alt=safe_alt, vy_up=safe_vy_up)
+    fallback_projected_dx = safe_dx - (safe_vx * fallback_t_fall)
+    fallback_impact_x = None
+    safe_x_for_fallback = _coerce_finite(x, float("nan"))
+    if math.isfinite(safe_x_for_fallback):
+        fallback_impact_x = safe_x_for_fallback + (safe_vx * fallback_t_fall)
+    fallback = _BallisticProjection(
+        projected_dx=fallback_projected_dx,
+        t_fall=fallback_t_fall,
+        target_x=target_x,
+        impact_x=fallback_impact_x,
+    )
+    safe_x = _coerce_finite(x, float("nan"))
+    safe_y = _coerce_finite(y, float("nan"))
+    if active is None or not (math.isfinite(safe_x) and math.isfinite(safe_y)):
+        return fallback
+    distance_budget = max(
+        600.0,
+        abs(safe_dx) + (abs(safe_vx) * max(2.0, fallback_t_fall)) + 300.0,
+    )
+    try:
+        traj = active.ballistic_trajectory(
+            x=safe_x,
+            y=safe_y,
+            vx=safe_vx,
+            vy_up=safe_vy_up,
+            max_distance=min(5000.0, distance_budget),
+            segment_length=22.0,
+            max_points=192,
+            lod=0,
+            clearance=max(0.0, float(clearance)),
+        )
+    except Exception:
+        return fallback
+    if not isinstance(traj, dict):
+        return fallback
+    if not bool(traj.get("hit")):
+        return fallback
+    hit_x_raw = traj.get("hit_x")
+    if not isinstance(hit_x_raw, (int, float)) or not math.isfinite(float(hit_x_raw)):
+        return fallback
+    target_x = safe_x + safe_dx
+    sensor_projected_dx = target_x - float(hit_x_raw)
+    hit_time = traj.get("hit_time")
+    duration = traj.get("duration")
+    sensor_t_fall = _coerce_finite(hit_time, _coerce_finite(duration, fallback_t_fall))
+    return _BallisticProjection(
+        projected_dx=sensor_projected_dx,
+        t_fall=max(0.5, sensor_t_fall),
+        target_x=target_x,
+        impact_x=float(hit_x_raw),
+    )
+
+
 def _ballistic_reference_vy(
     guidance: GuidanceTargets,
     setup_cfg: TransferSetupConfig,
@@ -92,6 +200,45 @@ def _ballistic_reference_vy(
     return clamp(mixed_vy, vy_pred, envelope_vy)
 
 
+def _target_half_width(target_size: float | None) -> float:
+    if target_size is None:
+        return 55.0
+    try:
+        numeric = abs(float(target_size))
+    except (TypeError, ValueError):
+        return 55.0
+    if not math.isfinite(numeric):
+        return 55.0
+    return max(6.0, 0.5 * numeric)
+
+
+def _handoff_alignment(
+    *,
+    projected_dx: float,
+    t_fall: float,
+    target_size: float | None,
+    setup_cfg: TransferSetupConfig,
+) -> tuple[bool, bool, bool, float, float]:
+    target_half = _target_half_width(target_size)
+    dynamic_tol = (
+        setup_cfg.handoff_center_tolerance_base
+        + (setup_cfg.handoff_center_tolerance_per_s * max(0.0, t_fall))
+    )
+    center_tol = clamp(
+        dynamic_tol,
+        setup_cfg.handoff_center_tolerance_min,
+        setup_cfg.handoff_center_tolerance_cap,
+    )
+    # Keep centered-tolerance strictly within the target footprint.
+    center_tol = min(
+        center_tol,
+        max(0.5, target_half - setup_cfg.handoff_target_edge_margin),
+    )
+    inside_target = abs(projected_dx) <= target_half
+    centered = abs(projected_dx) <= center_tol
+    return centered and inside_target, centered, inside_target, center_tol, target_half
+
+
 def should_handoff_to_drift(
     guidance: GuidanceTargets,
     course_cfg: DriftCourseConfig,
@@ -99,7 +246,14 @@ def should_handoff_to_drift(
     *,
     vx: float | None,
     vy_up: float | None,
+    active: ActiveSensors | None = None,
+    x: float | None = None,
+    y: float | None = None,
+    target_size: float | None = None,
+    clearance: float = 0.0,
+    debug: dict[str, object] | None = None,
 ) -> bool:
+    _ = course_cfg
     alt = max(0.0, float(guidance.alt))
     safe_vx = float(vx) if vx is not None and math.isfinite(vx) else 0.0
     safe_vy_up = float(vy_up) if vy_up is not None and math.isfinite(vy_up) else 0.0
@@ -110,28 +264,64 @@ def should_handoff_to_drift(
         vy_up=safe_vy_up,
         delay_s=setup_cfg.setup_response_delay_s,
     )
+    x_pred, y_pred = _predict_response_world_state(
+        x=x,
+        y=y,
+        vx=safe_vx,
+        vy_up=safe_vy_up,
+        delay_s=setup_cfg.setup_response_delay_s,
+    )
     planned_vy_up = _ballistic_reference_vy(guidance, setup_cfg, vy_pred)
-    t_fall = _ballistic_fall_time(alt=alt_pred, vy_up=planned_vy_up)
-    projected_dx = _projected_ballistic_dx(
+    projection = _estimate_ballistic_projection(
         dx=dx_pred,
         alt=alt_pred,
         vx=vx_pred,
         vy_up=planned_vy_up,
+        x=x_pred,
+        y=y_pred,
+        active=active,
+        clearance=clearance,
     )
-    cone_limit = cone_dx_limit(alt_pred, course_cfg)
-    on_track = abs(projected_dx) <= max(
-        24.0,
-        setup_cfg.handoff_projected_dx_ratio * cone_limit,
+    t_fall = projection.t_fall
+    projected_dx = projection.projected_dx
+    on_track, centered, inside_target, center_tol, target_half = _handoff_alignment(
+        projected_dx=projected_dx,
+        t_fall=t_fall,
+        target_size=target_size,
+        setup_cfg=setup_cfg,
     )
-    vx_needed = dx_pred / max(0.5, t_fall)
+    shortfall_guard = max(2.0, setup_cfg.handoff_shortfall_guard_ratio * target_half)
+    shortfall_metric = projected_dx * math.copysign(1.0, float(guidance.dx))
+    not_falling_short = shortfall_metric <= shortfall_guard
+    vx_needed = vx_pred + (projected_dx / max(0.5, t_fall))
     vx_err = abs(vx_needed - vx_pred)
     speed_ready = vx_err <= max(
         2.5,
         0.16 * max(abs(vx_needed), setup_cfg.setup_vx_floor),
     )
+    if debug is not None:
+        debug.update(
+            {
+                "projected_dx": projected_dx,
+                "on_track": on_track,
+                "centered": centered,
+                "inside_target": inside_target,
+                "center_tolerance": center_tol,
+                "target_half": target_half,
+                "shortfall_guard": shortfall_guard,
+                "not_falling_short": not_falling_short,
+                "speed_ready": speed_ready,
+                "alt_pred": alt_pred,
+                "t_fall": t_fall,
+                "vx_needed": vx_needed,
+                "vx_err": vx_err,
+                "impact_x": projection.impact_x,
+                "target_x": projection.target_x,
+            }
+        )
     if alt_pred <= setup_cfg.handoff_force_drift_altitude:
-        return on_track
-    return on_track and speed_ready
+        return on_track and not_falling_short
+    return on_track and speed_ready and not_falling_short
 
 
 def apply_transfer_setup_guidance(
@@ -141,6 +331,11 @@ def apply_transfer_setup_guidance(
     *,
     vx: float | None,
     vy_up: float | None,
+    active: ActiveSensors | None = None,
+    x: float | None = None,
+    y: float | None = None,
+    target_size: float | None = None,
+    clearance: float = 0.0,
 ) -> GuidanceTargets:
     alt = max(0.0, float(guidance.alt))
     safe_vx = float(vx) if vx is not None and math.isfinite(vx) else 0.0
@@ -152,19 +347,36 @@ def apply_transfer_setup_guidance(
         vy_up=safe_vy_up,
         delay_s=setup_cfg.setup_response_delay_s,
     )
+    x_pred, y_pred = _predict_response_world_state(
+        x=x,
+        y=y,
+        vx=safe_vx,
+        vy_up=safe_vy_up,
+        delay_s=setup_cfg.setup_response_delay_s,
+    )
     planned_vy_up = _ballistic_reference_vy(guidance, setup_cfg, vy_pred)
-    projected_dx = _projected_ballistic_dx(
+    projection = _estimate_ballistic_projection(
         dx=dx_pred,
         alt=alt_pred,
         vx=vx_pred,
         vy_up=planned_vy_up,
+        x=x_pred,
+        y=y_pred,
+        active=active,
+        clearance=clearance,
     )
-    t_fall = _ballistic_fall_time(alt=alt_pred, vy_up=planned_vy_up)
-    cone_limit = cone_dx_limit(alt_pred, course_cfg)
+    projected_dx = projection.projected_dx
+    t_fall = projection.t_fall
+    _, centered, inside_target, _, _ = _handoff_alignment(
+        projected_dx=projected_dx,
+        t_fall=t_fall,
+        target_size=target_size,
+        setup_cfg=setup_cfg,
+    )
     vx_cap = max(setup_cfg.setup_vx_floor, setup_cfg.setup_vx_cap)
-    vx_needed = dx_pred / max(0.5, t_fall)
+    vx_needed = vx_pred + (projected_dx / max(0.5, t_fall))
     vx_sp = clamp(vx_needed, -vx_cap, vx_cap)
-    if abs(projected_dx) > max(20.0, 0.85 * cone_limit):
+    if not (centered and inside_target):
         vx_sp = math.copysign(max(abs(vx_sp), setup_cfg.setup_vx_floor), vx_needed)
     return replace(
         guidance,
@@ -206,6 +418,10 @@ class TransferBot(DriftBot):
         self._setup_phase_seen = False
         self._handoff_done = False
         self._setup_direction = 0.0
+        self._active_sensors: ActiveSensors | None = None
+        self._debug_projection_summary = ""
+        self._handoff_event_summary = ""
+        self._last_target_size: float | None = None
 
     def set_behavior(self, behavior: str) -> None:
         key, policy, cfg, setup_cfg = resolve_transfer_behavior(behavior)
@@ -216,18 +432,46 @@ class TransferBot(DriftBot):
         self._setup_phase_seen = False
         self._handoff_done = False
         self._setup_direction = 0.0
+        self._active_sensors = None
+        self._debug_projection_summary = ""
+        self._handoff_event_summary = ""
+        self._last_target_size = None
+
+    def _ballistic_clearance(self) -> float:
+        if self.vehicle_info is None:
+            return 0.0
+        return max(0.0, 0.5 * float(self.vehicle_info.height))
 
     def update(
         self,
         dt: float,
         passive: PassiveSensors,
-        active,
+        active: ActiveSensors,
     ) -> BotAction:
         if passive.state != "flying":
             self._setup_phase_seen = False
             self._handoff_done = False
             self._setup_direction = 0.0
-        return super().update(dt, passive, active)
+            self._debug_projection_summary = ""
+            self._handoff_event_summary = ""
+            self._last_target_size = None
+        self._active_sensors = active
+        try:
+            return super().update(dt, passive, active)
+        finally:
+            self._active_sensors = None
+
+    @staticmethod
+    def _fmt_debug_float(value: float | None) -> str:
+        if value is None:
+            return "na"
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return "na"
+        if not math.isfinite(numeric):
+            return "na"
+        return f"{numeric:.1f}"
 
     def _guidance(
         self,
@@ -251,13 +495,39 @@ class TransferBot(DriftBot):
             dx=float(target.x) - float(passive.x),
             alt=float(passive.altitude),
         )
+        current_projection = _estimate_ballistic_projection(
+            dx=current_guidance.dx,
+            alt=current_guidance.alt,
+            vx=passive.vx,
+            vy_up=passive.vy_up,
+            x=passive.x,
+            y=passive.y,
+            active=self._active_sensors,
+            clearance=self._ballistic_clearance(),
+        )
+        target_size = _coerce_finite(getattr(target, "size", None), float("nan"))
+        if not math.isfinite(target_size):
+            target_size = None
+        self._last_target_size = target_size
+        current_on_track, current_centered, current_inside_target, current_center_tol, current_target_half = _handoff_alignment(
+            projected_dx=current_projection.projected_dx,
+            t_fall=current_projection.t_fall,
+            target_size=target_size,
+            setup_cfg=self._setup_cfg,
+        )
         setup_guidance = apply_transfer_setup_guidance(
             current_guidance,
             self._course_cfg,
             self._setup_cfg,
             vx=passive.vx,
             vy_up=passive.vy_up,
+            active=self._active_sensors,
+            x=passive.x,
+            y=passive.y,
+            target_size=target_size,
+            clearance=self._ballistic_clearance(),
         )
+        handoff_debug: dict[str, object] = {}
         if self._handoff_done:
             guidance = apply_drift_guidance(
                 current_guidance,
@@ -274,8 +544,25 @@ class TransferBot(DriftBot):
             self._setup_cfg,
             vx=passive.vx,
             vy_up=passive.vy_up,
+            active=self._active_sensors,
+            x=passive.x,
+            y=passive.y,
+            target_size=target_size,
+            clearance=self._ballistic_clearance(),
+            debug=handoff_debug,
         ):
             self._handoff_done = True
+            self._handoff_event_summary = (
+                "handoff_evt "
+                f"pdx:{self._fmt_debug_float(handoff_debug.get('projected_dx'))} "
+                f"pix:{self._fmt_debug_float(handoff_debug.get('impact_x'))} "
+                f"ptx:{self._fmt_debug_float(handoff_debug.get('target_x'))} "
+                f"on:{int(bool(handoff_debug.get('on_track')))} "
+                f"ctr:{int(bool(handoff_debug.get('centered')))} "
+                f"in:{int(bool(handoff_debug.get('inside_target')))} "
+                f"ns:{int(bool(handoff_debug.get('not_falling_short')))} "
+                f"spd:{int(bool(handoff_debug.get('speed_ready')))}"
+            )
             guidance = apply_drift_guidance(
                 current_guidance,
                 self._course_cfg,
@@ -284,8 +571,39 @@ class TransferBot(DriftBot):
             )
         else:
             guidance = setup_guidance
+        self._debug_projection_summary = (
+            f"proj pdx:{current_projection.projected_dx:6.1f} "
+            f"pix:{self._fmt_debug_float(current_projection.impact_x)} "
+            f"ptx:{self._fmt_debug_float(current_projection.target_x)} "
+            f"on:{int(current_on_track)} "
+            f"ctr:{int(current_centered)} "
+            f"in:{int(current_inside_target)} "
+            f"ct:{current_center_tol:4.1f} "
+            f"th:{current_target_half:4.1f} "
+            f"hf:{int(self._handoff_done)}"
+        )
+        if handoff_debug:
+            self._debug_projection_summary += (
+                f" hdx:{self._fmt_debug_float(handoff_debug.get('projected_dx'))}"
+                f" hon:{int(bool(handoff_debug.get('on_track')))}"
+                f" hns:{int(bool(handoff_debug.get('not_falling_short')))}"
+                f" hct:{self._fmt_debug_float(handoff_debug.get('center_tolerance'))}"
+                f" hth:{self._fmt_debug_float(handoff_debug.get('target_half'))}"
+                f" hsp:{int(bool(handoff_debug.get('speed_ready')))}"
+            )
         self._last_guidance = guidance
         return guidance
+
+    def get_headless_stats(self) -> str:
+        base = super().get_headless_stats()
+        if not base:
+            return ""
+        parts = [base]
+        if self._debug_projection_summary:
+            parts.append(self._debug_projection_summary)
+        if self._handoff_event_summary:
+            parts.append(self._handoff_event_summary)
+        return " ".join(parts)
 
     def _horizontal_controller(
         self,
@@ -329,7 +647,22 @@ class TransferBot(DriftBot):
             )
         max_power, min_throttle, max_throttle, _ = self._engine_profile()
         mass = max(0.5, passive.mass)
-        if abs(dx) > 1e-3:
+        projection_now = _estimate_ballistic_projection(
+            dx=float(dx),
+            alt=max(0.0, float(alt)),
+            vx=float(passive.vx),
+            vy_up=float(passive.vy_up),
+            x=float(passive.x),
+            y=float(passive.y),
+            active=self._active_sensors,
+            clearance=self._ballistic_clearance(),
+        )
+        projected_dx_now = projection_now.projected_dx
+        t_fall_now = projection_now.t_fall
+        cone_limit_now = cone_dx_limit(max(0.0, float(alt)), self._course_cfg)
+        if abs(projected_dx_now) > 1e-3:
+            desired_direction = 1.0 if projected_dx_now > 0.0 else -1.0
+        elif abs(dx) > 1e-3:
             desired_direction = 1.0 if dx > 0.0 else -1.0
         elif abs(a_x_sp) > 1e-3:
             desired_direction = 1.0 if a_x_sp > 0.0 else -1.0
@@ -339,7 +672,11 @@ class TransferBot(DriftBot):
             desired_direction = 1.0
         if self._setup_direction == 0.0:
             self._setup_direction = desired_direction
-        elif desired_direction != self._setup_direction and abs(dx) < 10.0:
+        elif desired_direction != self._setup_direction and (
+            abs(projected_dx_now) < 10.0
+            or abs(projected_dx_now) > (1.25 * cone_limit_now)
+            or abs(dx) < 10.0
+        ):
             self._setup_direction = desired_direction
 
         target_angle = self._setup_direction * self._setup_cfg.setup_sideburn_angle_rad
@@ -361,13 +698,7 @@ class TransferBot(DriftBot):
         )
         ax_from_guidance = max(0.0, along_track_ax)
         ax_target = max(ax_from_guidance, ax_from_vx)
-        t_fall_now = _ballistic_fall_time(
-            alt=max(0.0, float(alt)),
-            vy_up=float(passive.vy_up),
-        )
-        projected_dx_now = float(dx) - (float(passive.vx) * t_fall_now)
         along_track_miss = self._setup_direction * projected_dx_now
-        cone_limit_now = cone_dx_limit(max(0.0, float(alt)), self._course_cfg)
         miss_outside_cone = abs(projected_dx_now) > (
             self._setup_cfg.handoff_projected_dx_ratio * cone_limit_now
         )
@@ -381,6 +712,8 @@ class TransferBot(DriftBot):
                     self._setup_cfg.setup_sideburn_lateral_accel_cap,
                 ),
             )
+        elif miss_outside_cone:
+            ax_target = max(ax_target, self._setup_cfg.setup_sideburn_lateral_accel_floor)
         boost_mode = (
             miss_outside_cone
             and abs(projected_dx_now)
@@ -397,14 +730,12 @@ class TransferBot(DriftBot):
                 target_angle=angle_cmd,
                 refuel=False,
             )
-        if along_track_err > self._setup_cfg.setup_vx_deadband or (
-            miss_outside_cone and along_track_miss > 0.0
-        ):
+        if miss_outside_cone or along_track_err > self._setup_cfg.setup_vx_deadband:
             ax_target = max(ax_target, self._setup_cfg.setup_sideburn_lateral_accel_floor)
         else:
             ax_target = min(ax_target, 0.6)
         ax_target = clamp(ax_target, 0.0, self._setup_cfg.setup_sideburn_lateral_accel_cap)
-        if ax_target <= 0.12:
+        if ax_target <= 0.12 and not miss_outside_cone:
             return BotAction(target_thrust=0.0, target_angle=angle_cmd, refuel=False)
         sin_term = max(0.2, abs(math.sin(angle_cmd)))
         thrust = (mass * ax_target) / max(max_power * sin_term, 1e-3)

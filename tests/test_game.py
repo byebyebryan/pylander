@@ -377,6 +377,103 @@ def test_apply_transfer_setup_guidance_uses_thrust_backed_side_burn_for_non_clim
     assert abs(adjusted.vx_sp) >= setup_cfg.setup_vx_floor
 
 
+def test_apply_transfer_setup_guidance_uses_sensor_projection_when_available() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    setup_cfg = TransferSetupConfig(
+        setup_response_delay_s=0.0,
+        setup_vx_floor=1.0,
+    )
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.0,
+        vy_sp=-2.0,
+        dx=140.0,
+        alt=240.0,
+        burn_altitude=32.0,
+    )
+
+    class _FakeActive:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            self.calls += 1
+            return {
+                "hit": True,
+                "hit_x": 80.0,
+                "hit_time": 4.0,
+                "duration": 4.0,
+            }
+
+    active = _FakeActive()
+    adjusted = apply_transfer_setup_guidance(
+        guidance,
+        cfg,
+        setup_cfg,
+        vx=4.0,
+        vy_up=-1.0,
+        active=active,
+        x=20.0,
+        y=260.0,
+    )
+    assert active.calls == 1
+    assert adjusted.vx_sp == pytest.approx(24.0)
+
+
+def test_apply_transfer_setup_guidance_falls_back_when_sensor_has_no_hit() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    setup_cfg = TransferSetupConfig(setup_response_delay_s=0.0)
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.0,
+        vy_sp=-2.0,
+        dx=140.0,
+        alt=240.0,
+        burn_altitude=32.0,
+    )
+
+    class _FakeActiveNoHit:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            self.calls += 1
+            return {
+                "hit": False,
+                "hit_x": None,
+                "hit_time": None,
+                "duration": 3.0,
+                "termination": "point_budget",
+            }
+
+    active = _FakeActiveNoHit()
+    baseline = apply_transfer_setup_guidance(
+        guidance,
+        cfg,
+        setup_cfg,
+        vx=4.0,
+        vy_up=-1.0,
+        x=20.0,
+        y=260.0,
+    )
+    adjusted = apply_transfer_setup_guidance(
+        guidance,
+        cfg,
+        setup_cfg,
+        vx=4.0,
+        vy_up=-1.0,
+        active=active,
+        x=20.0,
+        y=260.0,
+    )
+    assert active.calls == 1
+    assert adjusted.vx_sp == pytest.approx(baseline.vx_sp)
+
+
 def test_should_handoff_to_drift_requires_low_projected_error() -> None:
     _, _, cfg = resolve_drift_behavior("drift")
     setup_cfg = TransferSetupConfig()
@@ -404,6 +501,59 @@ def test_should_handoff_to_drift_requires_low_projected_error() -> None:
         vx=1.2,
         vy_up=-0.8,
     )
+
+
+def test_should_handoff_to_drift_uses_sensor_projection_when_available() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    setup_cfg = TransferSetupConfig(setup_response_delay_s=0.0)
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.0,
+        vy_sp=-2.2,
+        dx=120.0,
+        alt=560.0,
+        burn_altitude=30.0,
+    )
+
+    class _FakeActive:
+        def __init__(self, hit_x: float) -> None:
+            self.hit_x = hit_x
+
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {
+                "hit": True,
+                "hit_x": self.hit_x,
+                "hit_time": 6.0,
+                "duration": 6.0,
+            }
+
+    x_now = 40.0
+    y_now = 640.0
+    target_x = x_now + guidance.dx
+    on_track = should_handoff_to_drift(
+        guidance,
+        cfg,
+        setup_cfg,
+        vx=0.0,
+        vy_up=-1.0,
+        active=_FakeActive(hit_x=target_x),
+        x=x_now,
+        y=y_now,
+    )
+    far_track = should_handoff_to_drift(
+        guidance,
+        cfg,
+        setup_cfg,
+        vx=0.0,
+        vy_up=-1.0,
+        active=_FakeActive(hit_x=target_x - 260.0),
+        x=x_now,
+        y=y_now,
+    )
+    assert on_track
+    assert not far_track
 
 
 def test_transfer_bot_guidance_handoff_uses_drift_guidance_function(monkeypatch) -> None:
@@ -513,6 +663,61 @@ def test_transfer_sideburn_allocation_targets_near_full_rotation() -> None:
         vertical_mode="transfer_sideburn",
     )
     assert abs(action.target_angle) >= 1.2
+    assert action.target_thrust >= bot._setup_cfg.setup_sideburn_min_thrust
+
+
+def test_transfer_sideburn_allocation_keeps_thrust_while_sensor_miss_is_outside_cone() -> None:
+    bot = TransferBot()
+    bot._last_guidance = GuidanceTargets(
+        phase="transfer_setup_sideburn",
+        vertical_mode="transfer_sideburn",
+        vx_sp=0.0,
+        vy_sp=-2.2,
+        dx=220.0,
+        alt=320.0,
+        burn_altitude=64.0,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {
+                "hit": True,
+                "hit_x": -260.0,
+                "hit_time": 7.0,
+                "duration": 7.0,
+            }
+
+    bot._active_sensors = _FakeActive()
+    passive = PassiveSensors(
+        x=0.0,
+        y=320.0,
+        altitude=320.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-2.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.5,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    action = bot._allocate_controls(
+        dt=1.0,
+        passive=passive,
+        a_x_sp=0.0,
+        a_up_sp=0.0,
+        alt=320.0,
+        dx=220.0,
+        vertical_mode="transfer_sideburn",
+    )
+    bot._active_sensors = None
     assert action.target_thrust >= bot._setup_cfg.setup_sideburn_min_thrust
 
 
