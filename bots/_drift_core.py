@@ -407,6 +407,7 @@ def cap_low_altitude_angle(
 DRIFT_POLICY = replace(
     BALANCED_POLICY,
     status_prefix="drift",
+    use_projected_lateral_error=False,
     lateral_gain=1.12,
     descent_rate_scale=1.0,
     burn_margin_scale=0.94,

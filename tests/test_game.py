@@ -10,6 +10,7 @@ import pytest
 import bots.transfer as transfer_module
 from bots._drop_core import GuidanceTargets, ballistic_time_to_impact
 from bots._drift_core import (
+    DRIFT_POLICY,
     DriftCourseConfig,
     apply_drift_guidance,
     cap_low_altitude_angle,
@@ -584,6 +585,12 @@ def test_resolve_transfer_behavior_exposes_single_profile() -> None:
     assert key == "transfer"
     with pytest.raises(ValueError):
         resolve_transfer_behavior("accuracy")
+
+
+def test_projection_lateral_error_is_disabled_for_drift_only() -> None:
+    assert DRIFT_POLICY.use_projected_lateral_error is False
+    _, transfer_policy, _, _ = resolve_transfer_behavior("transfer")
+    assert transfer_policy.use_projected_lateral_error is True
 
 
 def test_apply_transfer_setup_guidance_uses_dedicated_sideburn_phase() -> None:
@@ -2382,6 +2389,26 @@ def test_transfer_full_eval_does_not_end_on_handoff(monkeypatch) -> None:
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=23)
     level.update(game, 1.0 / 60.0)
     assert level.should_end(game) is False
+
+
+def test_transfer_focused_eval_without_handoff_keeps_handoff_angle_empty(
+    monkeypatch,
+) -> None:
+    def _no_handoff_snapshot(_game):
+        return {"kind": "transfer", "handoff_done": False}
+
+    level = create_level_by_name("transfer")
+    level.set_eval_mode("focused")
+    monkeypatch.setattr(
+        level.__class__,
+        "_resolve_transfer_snapshot",
+        staticmethod(_no_handoff_snapshot),
+    )
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=31)
+    result = game.run(print_freq=0, max_steps=1)
+    assert result["eval_mode"] == "focused"
+    assert result["transfer_handoff_done"] is False
+    assert result["transfer_handoff_abs_angle_deg"] is None
 
 
 def test_hud_altitude_matches_passive_sensor_clearance_convention() -> None:

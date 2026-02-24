@@ -358,7 +358,7 @@ class TransferLevel(ScenarioLevel):
         if isinstance(start_pos, Vector2) and isinstance(target_pos, Vector2) and setup_distance > 1e-9:
             straight_line = math.hypot(target_pos.x - start_pos.x, target_pos.y - start_pos.y)
             setup_path_efficiency = min(1.0, straight_line / setup_distance)
-        if self._phase1_handoff_abs_angle_deg is None:
+        if self._phase1_handoff_done and self._phase1_handoff_abs_angle_deg is None:
             self._phase1_handoff_abs_angle_deg = abs(math.degrees(float(trans.rotation)))
 
         result["eval_mode"] = self._resolved_eval_mode

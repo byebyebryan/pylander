@@ -364,6 +364,7 @@ def apply_transfer_setup_guidance(
 TRANSFER_POLICY = replace(
     DRIFT_POLICY,
     status_prefix="transfer",
+    use_projected_lateral_error=True,
 )
 TRANSFER_COURSE = replace(
     DRIFT_COURSE,

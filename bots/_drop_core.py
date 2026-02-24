@@ -240,6 +240,7 @@ class GuidanceTargets:
 @dataclass(frozen=True)
 class DropPolicy:
     status_prefix: str
+    use_projected_lateral_error: bool = True
     lateral_gain: float = 1.0
     lateral_track_gain: float = 0.09
     align_band: float = 10.0
@@ -390,20 +391,23 @@ class StrategyDropBot(Bot):
     ) -> GuidanceTargets:
         alt = finite_altitude(passive)
         dx = target.x - passive.x
-        projection = estimate_ballistic_projection(
-            dx=dx,
-            alt=alt,
-            vx=passive.vx,
-            vy_up=passive.vy_up,
-            x=passive.x,
-            y=passive.y,
-            active=active,
-            clearance=0.0,
-            segment_length=20.0,
-            max_points=192,
-            min_t_fall=0.0,
-        )
-        track_dx = projection.projected_dx
+        if self._policy.use_projected_lateral_error:
+            projection = estimate_ballistic_projection(
+                dx=dx,
+                alt=alt,
+                vx=passive.vx,
+                vy_up=passive.vy_up,
+                x=passive.x,
+                y=passive.y,
+                active=active,
+                clearance=0.0,
+                segment_length=20.0,
+                max_points=192,
+                min_t_fall=0.0,
+            )
+            track_dx = projection.projected_dx
+        else:
+            track_dx = dx
         abs_track_dx = abs(track_dx)
         _, up_acc_max = vehicle_limits(passive, max_force)
 
