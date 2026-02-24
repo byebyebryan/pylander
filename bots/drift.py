@@ -4,19 +4,33 @@ from __future__ import annotations
 
 from bots._descent_core import GuidanceTargets, StrategyDescentBot
 from bots._drift_core import (
-    DRIFT_POLICY,
+    DRIFT_BALANCED_POLICY,
     DriftCourseConfig,
     apply_drift_guidance,
     cap_low_altitude_angle,
+    list_drift_behavior_names,
+    resolve_drift_behavior,
 )
 from core.bot import Bot, PassiveSensors
 from core.sensor import RadarContact
 
 
 class DriftBot(StrategyDescentBot):
-    def __init__(self) -> None:
-        super().__init__(DRIFT_POLICY)
+    def __init__(self, behavior: str = "balanced") -> None:
+        super().__init__(DRIFT_BALANCED_POLICY)
         self._course_cfg = DriftCourseConfig()
+        self._behavior = "balanced"
+        self.set_behavior(behavior)
+
+    def set_behavior(self, behavior: str) -> None:
+        key, policy, cfg = resolve_drift_behavior(behavior)
+        self._policy = policy
+        self._course_cfg = cfg
+        self._behavior = key
+
+    @property
+    def behavior(self) -> str:
+        return self._behavior
 
     def _guidance(
         self,
@@ -80,4 +94,8 @@ def create_bot() -> Bot:
     return DriftBot()
 
 
-__all__ = ["DriftBot", "create_bot"]
+def list_behavior_names() -> tuple[str, ...]:
+    return list_drift_behavior_names()
+
+
+__all__ = ["DriftBot", "create_bot", "list_behavior_names"]

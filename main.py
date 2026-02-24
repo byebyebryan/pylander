@@ -18,6 +18,7 @@ from core.eval import (
 from game import LanderGame
 from bots import create_bot, list_available_bots
 from bots.descent import list_behavior_names as list_descent_behaviors
+from bots.drift import list_behavior_names as list_drift_behaviors
 from levels import create_level, list_available_levels
 from landers import list_available_landers
 
@@ -58,7 +59,14 @@ def _format_list(title: str, items: list[str]) -> str:
 def _build_parser() -> argparse.ArgumentParser:
     levels = list_available_levels()
     bots = list_available_bots()
-    descent_behaviors = list_descent_behaviors()
+    behavior_names = tuple(
+        sorted(
+            {
+                *list_descent_behaviors(),
+                *list_drift_behaviors(),
+            }
+        )
+    )
     landers = list_available_landers()
     default_level = "flat" if "flat" in levels else (levels[0] if levels else None)
 
@@ -91,11 +99,11 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--bot-behavior",
-        choices=descent_behaviors,
+        choices=behavior_names,
         default=None,
         help=(
-            "Behavior profile for the descent bot "
-            f"(choices: {', '.join(descent_behaviors)})"
+            "Behavior profile for bots that support behavior switching "
+            f"(choices: {', '.join(behavior_names)})"
         ),
     )
     parser.add_argument(

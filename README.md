@@ -163,9 +163,11 @@ uv run python main.py [level_name] [options]
 
 **Levels:** Run `uv run python main.py --help` to list (e.g. `flat`, `mountains`, `drop`).
 
-**Bot names:** `descent` (set via `--bot`; see `--help`).
+**Bot names:** `descent`, `drift` (set via `--bot`; see `--help`).
 
 **Options:**
+- `--bot NAME` - Select bot (`descent`, `drift`)
+- `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `descent` => `balanced|speed|econ`; `drift` => `balanced|efficiency|accuracy`)
 - `--headless` - Run without graphics (requires bot)
 - `--freq N` - Print stats every N frames (60 ≈ 1/s; 0 = off)
 - `--steps N` - Limit simulation to N steps (headless)

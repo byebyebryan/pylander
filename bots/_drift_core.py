@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, replace
 
-from bots._descent_core import BALANCED_POLICY, GuidanceTargets, clamp
+from bots._descent_core import BALANCED_POLICY, DescentPolicy, GuidanceTargets, clamp
 
 
 @dataclass(frozen=True)
@@ -27,6 +27,10 @@ class DriftCourseConfig:
     low_altitude_angle_limit_alt: float = 14.0
     low_altitude_angle_limit_dx: float = 24.0
     low_altitude_angle_cap: float = 0.16
+    drift_coast_enter_scale: float = 1.0
+    drift_coast_min_altitude: float = 0.0
+    drift_coast_descent_floor: float = 0.0
+    terminal_correction_cone_scale: float = 0.75
 
 
 def cone_dx_limit(alt: float, cfg: DriftCourseConfig) -> float:
@@ -59,7 +63,10 @@ def apply_drift_guidance(guidance: GuidanceTargets, cfg: DriftCourseConfig) -> G
     abs_dx = abs(guidance.dx)
     cone_limit = cone_dx_limit(alt, cfg)
     vx_cap = correction_vx_cap(alt, cfg)
-    if guidance.vertical_mode == "terminal_burn" and abs_dx > max(16.0, 0.75 * cone_limit):
+    if guidance.vertical_mode == "terminal_burn" and abs_dx > max(
+        16.0,
+        cfg.terminal_correction_cone_scale * cone_limit,
+    ):
         vx_cap = max(vx_cap, cfg.terminal_burn_correction_vx_floor)
     vx_sp = clamp(guidance.vx_sp, -vx_cap, vx_cap)
 
@@ -76,9 +83,16 @@ def apply_drift_guidance(guidance: GuidanceTargets, cfg: DriftCourseConfig) -> G
 
     vy_sp = guidance.vy_sp
     vertical_mode = guidance.vertical_mode
-    if vertical_mode == "coast" and abs_dx > cone_limit:
+    drift_coast_limit = cone_limit * max(0.1, cfg.drift_coast_enter_scale)
+    if (
+        vertical_mode == "coast"
+        and alt >= cfg.drift_coast_min_altitude
+        and abs_dx > drift_coast_limit
+    ):
         # Keep drift runs thrust-backed during correction, not ballistic.
         vertical_mode = "drift_coast"
+    if vertical_mode == "drift_coast" and cfg.drift_coast_descent_floor > 0.0:
+        vy_sp = min(vy_sp, -cfg.drift_coast_descent_floor)
     if vertical_mode == "coast" and alt >= cfg.fast_descent_min_altitude:
         vy_sp = min(vy_sp, fast_descent_vy(alt, cfg))
 
@@ -105,7 +119,7 @@ def cap_low_altitude_angle(
     return target_angle
 
 
-DRIFT_POLICY = replace(
+DRIFT_BALANCED_POLICY = replace(
     BALANCED_POLICY,
     status_prefix="drift",
     lateral_gain=1.1,
@@ -117,10 +131,94 @@ DRIFT_POLICY = replace(
     terminal_brake_gain_low_alt=0.88,
 )
 
+DRIFT_EFFICIENCY_POLICY = replace(
+    DRIFT_BALANCED_POLICY,
+    status_prefix="drift_efficiency",
+    descent_rate_scale=1.12,
+    burn_margin_scale=0.9,
+    time_to_brake_buffer=0.04,
+    coast_horiz_deadband=5.5,
+    terminal_brake_gain_high_alt=1.05,
+    terminal_brake_gain_low_alt=0.94,
+)
+
+DRIFT_ACCURACY_POLICY = replace(
+    DRIFT_BALANCED_POLICY,
+    status_prefix="drift_accuracy",
+    descent_rate_scale=0.94,
+    burn_margin_scale=1.12,
+    time_to_brake_buffer=0.22,
+    coast_horiz_deadband=3.2,
+    terminal_brake_gain_high_alt=0.98,
+    terminal_brake_gain_low_alt=0.82,
+)
+
+DRIFT_BALANCED_COURSE = DriftCourseConfig()
+DRIFT_EFFICIENCY_COURSE = replace(
+    DRIFT_BALANCED_COURSE,
+    cone_dx_base=14.0,
+    cone_dx_per_alt=0.22,
+    cone_dx_max=170.0,
+    correction_vx_min=2.6,
+    correction_vx_per_excess=0.09,
+    correction_vx_per_alt=0.011,
+    correction_vx_high_alt_cap=8.8,
+    correction_vx_low_alt_cap=3.8,
+    correction_vx_low_alt_threshold=26.0,
+    terminal_burn_correction_vx_floor=5.0,
+    low_altitude_angle_limit_alt=12.0,
+    low_altitude_angle_limit_dx=20.0,
+    low_altitude_angle_cap=0.2,
+    drift_coast_enter_scale=1.25,
+    drift_coast_min_altitude=18.0,
+    drift_coast_descent_floor=2.8,
+    terminal_correction_cone_scale=0.9,
+)
+DRIFT_ACCURACY_COURSE = replace(
+    DRIFT_BALANCED_COURSE,
+    cone_dx_base=8.0,
+    cone_dx_per_alt=0.14,
+    cone_dx_max=105.0,
+    correction_vx_min=1.7,
+    correction_vx_per_excess=0.08,
+    correction_vx_per_alt=0.01,
+    correction_vx_high_alt_cap=7.0,
+    correction_vx_low_alt_cap=2.8,
+    correction_vx_low_alt_threshold=36.0,
+    terminal_burn_correction_vx_floor=4.4,
+    low_altitude_angle_limit_alt=20.0,
+    low_altitude_angle_limit_dx=30.0,
+    low_altitude_angle_cap=0.12,
+    drift_coast_enter_scale=0.72,
+    drift_coast_descent_floor=1.4,
+    terminal_correction_cone_scale=0.62,
+)
+
+_DRIFT_BEHAVIORS: dict[str, tuple[DescentPolicy, DriftCourseConfig]] = {
+    "balanced": (DRIFT_BALANCED_POLICY, DRIFT_BALANCED_COURSE),
+    "efficiency": (DRIFT_EFFICIENCY_POLICY, DRIFT_EFFICIENCY_COURSE),
+    "accuracy": (DRIFT_ACCURACY_POLICY, DRIFT_ACCURACY_COURSE),
+}
+
+
+def resolve_drift_behavior(behavior: str) -> tuple[str, DescentPolicy, DriftCourseConfig]:
+    key = str(behavior).strip().lower().replace("-", "_")
+    if key not in _DRIFT_BEHAVIORS:
+        known = ", ".join(sorted(_DRIFT_BEHAVIORS))
+        raise ValueError(f"Unknown drift behavior '{behavior}'. Expected one of: {known}")
+    policy, cfg = _DRIFT_BEHAVIORS[key]
+    return key, policy, cfg
+
+
+def list_drift_behavior_names() -> tuple[str, ...]:
+    return tuple(sorted(_DRIFT_BEHAVIORS))
+
 
 __all__ = [
-    "DRIFT_POLICY",
+    "DRIFT_BALANCED_POLICY",
     "DriftCourseConfig",
     "apply_drift_guidance",
     "cap_low_altitude_angle",
+    "list_drift_behavior_names",
+    "resolve_drift_behavior",
 ]
