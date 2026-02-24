@@ -1,4 +1,4 @@
-"""Shared descent guidance/control core for strategy variants."""
+"""Shared drop guidance/control core for strategy variants."""
 
 from __future__ import annotations
 
@@ -73,6 +73,107 @@ def vehicle_limits(passive: PassiveSensors, max_force: float) -> tuple[float, fl
     return mass, up_acc_max
 
 
+def coerce_finite(value: float | None, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(numeric):
+        return default
+    return numeric
+
+
+@dataclass(frozen=True)
+class BallisticProjection:
+    projected_dx: float
+    t_fall: float
+    target_x: float | None
+    impact_x: float | None
+    used_sensor: bool
+
+
+def estimate_ballistic_projection(
+    *,
+    dx: float,
+    alt: float,
+    vx: float | None,
+    vy_up: float | None,
+    x: float | None,
+    y: float | None,
+    active: ActiveSensors | None,
+    clearance: float,
+    segment_length: float = 22.0,
+    max_points: int = 192,
+    max_distance_cap: float = 5000.0,
+    distance_floor: float = 600.0,
+    distance_time_horizon: float = 2.0,
+    distance_margin: float = 300.0,
+    min_t_fall: float = 0.5,
+) -> BallisticProjection:
+    safe_alt = max(0.0, coerce_finite(alt, 0.0))
+    safe_vx = coerce_finite(vx, 0.0)
+    safe_vy = coerce_finite(vy_up, 0.0)
+    safe_dx = coerce_finite(dx, 0.0)
+    fallback_t_fall = ballistic_fall_time(altitude=safe_alt, vy_up=safe_vy)
+    fallback_projected_dx = safe_dx - (safe_vx * fallback_t_fall)
+
+    safe_x = coerce_finite(x, float("nan"))
+    safe_y = coerce_finite(y, float("nan"))
+    target_x: float | None = None
+    fallback_impact_x: float | None = None
+    if math.isfinite(safe_x):
+        target_x = safe_x + safe_dx
+        fallback_impact_x = safe_x + (safe_vx * fallback_t_fall)
+    fallback = BallisticProjection(
+        projected_dx=fallback_projected_dx,
+        t_fall=max(float(min_t_fall), fallback_t_fall),
+        target_x=target_x,
+        impact_x=fallback_impact_x,
+        used_sensor=False,
+    )
+    if active is None or not (math.isfinite(safe_x) and math.isfinite(safe_y)):
+        return fallback
+
+    distance_budget = max(
+        distance_floor,
+        abs(safe_dx) + (abs(safe_vx) * max(distance_time_horizon, fallback_t_fall)) + distance_margin,
+    )
+    try:
+        traj = active.ballistic_trajectory(
+            x=safe_x,
+            y=safe_y,
+            vx=safe_vx,
+            vy_up=safe_vy,
+            max_distance=min(max_distance_cap, distance_budget),
+            segment_length=segment_length,
+            max_points=max_points,
+            lod=0,
+            clearance=max(0.0, float(clearance)),
+        )
+    except Exception:
+        return fallback
+    if not isinstance(traj, dict) or not bool(traj.get("hit")):
+        return fallback
+    hit_x_raw = traj.get("hit_x")
+    if not isinstance(hit_x_raw, (int, float)) or not math.isfinite(float(hit_x_raw)):
+        return fallback
+
+    target_x = safe_x + safe_dx
+    sensor_projected_dx = target_x - float(hit_x_raw)
+    hit_time = traj.get("hit_time")
+    duration = traj.get("duration")
+    sensor_t_fall = coerce_finite(hit_time, coerce_finite(duration, fallback_t_fall))
+    return BallisticProjection(
+        projected_dx=sensor_projected_dx,
+        t_fall=max(float(min_t_fall), sensor_t_fall),
+        target_x=target_x,
+        impact_x=float(hit_x_raw),
+        used_sensor=True,
+    )
+
+
 def ballistic_time_to_impact(
     passive: PassiveSensors,
     active: ActiveSensors | None,
@@ -137,9 +238,22 @@ class GuidanceTargets:
 
 
 @dataclass(frozen=True)
-class DescentPolicy:
+class DropPolicy:
     status_prefix: str
     lateral_gain: float = 1.0
+    lateral_track_gain: float = 0.09
+    align_band: float = 10.0
+    vx_cap_base: float = 2.2
+    vx_cap_alt_gain: float = 0.03
+    vx_cap_min: float = 2.2
+    vx_cap_max: float = 8.0
+    align_lateral_gain: float = 0.13
+    align_vx_cap: float = 7.5
+    align_low_altitude: float = 45.0
+    flare_altitude: float = 7.0
+    flare_track_band: float = 10.0
+    touchdown_altitude: float = 4.2
+    touchdown_track_band: float = 8.0
     descent_rate_scale: float = 1.0
     burn_margin_scale: float = 1.0
     time_to_brake_buffer: float = 0.2
@@ -163,9 +277,9 @@ class DescentPolicy:
     speed_dive_target_vy: float = -9.0
 
 
-BALANCED_POLICY = DescentPolicy(status_prefix="descent")
-SPEED_POLICY = DescentPolicy(
-    status_prefix="descent_speed",
+BALANCED_POLICY = DropPolicy(status_prefix="drop")
+SPEED_POLICY = DropPolicy(
+    status_prefix="drop_speed",
     lateral_gain=1.0,
     descent_rate_scale=1.28,
     burn_margin_scale=0.82,
@@ -181,8 +295,8 @@ SPEED_POLICY = DescentPolicy(
     speed_dive_downspeed_max=10.0,
     speed_dive_target_vy=-11.0,
 )
-ECON_POLICY = DescentPolicy(
-    status_prefix="descent_econ",
+ECON_POLICY = DropPolicy(
+    status_prefix="drop_econ",
     lateral_gain=1.0,
     descent_rate_scale=0.78,
     burn_margin_scale=1.35,
@@ -198,8 +312,10 @@ ECON_POLICY = DescentPolicy(
     glide_altitude_min=80.0,
     glide_upward_vy_min=0.6,
 )
-class StrategyDescentBot(Bot):
-    def __init__(self, policy: DescentPolicy) -> None:
+
+
+class StrategyDropBot(Bot):
+    def __init__(self, policy: DropPolicy) -> None:
         super().__init__()
         self._policy = policy
         self._prev_angle_cmd = 0.0
@@ -225,6 +341,43 @@ class StrategyDescentBot(Bot):
         _ = passive, alt, dx, spool_time, max_force
         return burn_altitude
 
+    def _lateral_velocity_targets(self, *, alt: float, track_dx: float) -> tuple[float, float]:
+        vx_cap = clamp(
+            self._policy.vx_cap_base + (self._policy.vx_cap_alt_gain * alt),
+            self._policy.vx_cap_min,
+            self._policy.vx_cap_max,
+        )
+        vx_sp = clamp(
+            track_dx * self._policy.lateral_track_gain * self._policy.lateral_gain,
+            -vx_cap,
+            vx_cap,
+        )
+        return vx_cap, vx_sp
+
+    def _resolve_phase(
+        self,
+        *,
+        alt: float,
+        track_dx: float,
+        gravity_glide: bool,
+        speed_dive: bool,
+        burn_now: bool,
+        vertical_mode: str,
+    ) -> str:
+        if alt < self._policy.touchdown_altitude and abs(track_dx) <= self._policy.touchdown_track_band:
+            return "touchdown"
+        if gravity_glide:
+            return "eco_glide"
+        if speed_dive:
+            return "speed_dive"
+        if burn_now:
+            return "terminal_burn"
+        if vertical_mode == "flare":
+            return "flare"
+        if abs(track_dx) > self._policy.align_band and alt < self._policy.align_low_altitude:
+            return "align"
+        return "coast"
+
     def _guidance(
         self,
         passive: PassiveSensors,
@@ -237,12 +390,24 @@ class StrategyDescentBot(Bot):
     ) -> GuidanceTargets:
         alt = finite_altitude(passive)
         dx = target.x - passive.x
-        abs_dx = abs(dx)
+        projection = estimate_ballistic_projection(
+            dx=dx,
+            alt=alt,
+            vx=passive.vx,
+            vy_up=passive.vy_up,
+            x=passive.x,
+            y=passive.y,
+            active=active,
+            clearance=0.0,
+            segment_length=20.0,
+            max_points=192,
+            min_t_fall=0.0,
+        )
+        track_dx = projection.projected_dx
+        abs_track_dx = abs(track_dx)
         _, up_acc_max = vehicle_limits(passive, max_force)
 
-        align_band = 10.0
-        vx_cap = clamp(2.2 + (0.03 * alt), 2.2, 8.0)
-        vx_sp = clamp(dx * 0.09 * self._policy.lateral_gain, -vx_cap, vx_cap)
+        _, vx_sp = self._lateral_velocity_targets(alt=alt, track_dx=track_dx)
 
         down_speed = max(0.0, -passive.vy_up)
         nominal_throttle = min(1.0, max_throttle)
@@ -251,12 +416,14 @@ class StrategyDescentBot(Bot):
         flare_speed = clamp(0.45 + (0.11 * alt), 0.7, 2.5)
         speed_to_kill = max(0.0, down_speed - flare_speed)
         stop_distance = (speed_to_kill * speed_to_kill) / (2.0 * max(up_acc_max, 1e-3))
-        burn_margin = (2.1 + (0.12 * max(0.0, abs_dx - align_band))) * self._policy.burn_margin_scale
+        burn_margin = (
+            2.1 + (0.12 * max(0.0, abs_track_dx - self._policy.align_band))
+        ) * self._policy.burn_margin_scale
         burn_altitude = stop_distance + spool_distance + burn_margin
         burn_altitude = self._terminal_brake_altitude(
             passive,
             alt=alt,
-            dx=dx,
+            dx=track_dx,
             burn_altitude=burn_altitude,
             spool_time=spool_time,
             max_force=max_force,
@@ -277,6 +444,7 @@ class StrategyDescentBot(Bot):
         self._ballistic_debug_summary = (
             f"ball tti:{stable(time_to_impact, 1):4.1f} "
             f"src:{'s' if impact_source == 'sensor' else 'a'} "
+            f"pdx:{stable(track_dx, 1):5.1f} "
             f"burn:{int(burn_now)}"
         )
 
@@ -305,38 +473,37 @@ class StrategyDescentBot(Bot):
             vy_sp = -clamp(0.45 + (0.11 * alt), 0.55, 2.2)
             vy_sp *= self._policy.descent_rate_scale
             vx_sp = clamp(vx_sp, -1.2, 1.2)
-        elif alt < 7.0 and abs_dx <= 10.0:
+        elif alt < self._policy.flare_altitude and abs_track_dx <= self._policy.flare_track_band:
             vertical_mode = "flare"
             vy_sp = -clamp(0.35 + (0.09 * alt), 0.45, 1.0)
             vy_sp *= self._policy.descent_rate_scale
             vx_sp = clamp(vx_sp, -0.8, 0.8)
-        elif abs_dx > align_band and alt < 45.0:
+        elif abs_track_dx > self._policy.align_band and alt < self._policy.align_low_altitude:
             vertical_mode = "coast"
             vy_sp = -clamp(1.1 + (0.18 * math.sqrt(max(0.0, alt))), 1.2, 3.0)
             vy_sp *= self._policy.descent_rate_scale
-            vx_sp = clamp(dx * 0.13 * self._policy.lateral_gain, -7.5, 7.5)
+            vx_sp = clamp(
+                track_dx * self._policy.align_lateral_gain * self._policy.lateral_gain,
+                -self._policy.align_vx_cap,
+                self._policy.align_vx_cap,
+            )
         else:
             vertical_mode = "coast"
             vy_sp = -clamp(1.2 + (0.3 * math.sqrt(max(0.0, alt))), 1.4, 6.0)
             vy_sp *= self._policy.descent_rate_scale
 
-        if alt < 4.2 and abs_dx <= 8.0:
-            phase = "touchdown"
+        phase = self._resolve_phase(
+            alt=alt,
+            track_dx=track_dx,
+            gravity_glide=gravity_glide,
+            speed_dive=speed_dive,
+            burn_now=burn_now,
+            vertical_mode=vertical_mode,
+        )
+        if phase == "touchdown":
             vertical_mode = "flare"
             vy_sp = -clamp(0.3 + (0.07 * alt), 0.4, 0.75)
             vy_sp *= self._policy.descent_rate_scale
-        elif gravity_glide:
-            phase = "eco_glide"
-        elif speed_dive:
-            phase = "speed_dive"
-        elif burn_now:
-            phase = "terminal_burn"
-        elif vertical_mode == "flare":
-            phase = "flare"
-        elif abs_dx > align_band and alt < 45.0:
-            phase = "align"
-        else:
-            phase = "coast"
 
         return GuidanceTargets(
             phase=phase,
@@ -574,10 +741,13 @@ __all__ = [
     "BALANCED_POLICY",
     "ECON_POLICY",
     "GuidanceTargets",
-    "DescentPolicy",
+    "DropPolicy",
     "SPEED_POLICY",
-    "StrategyDescentBot",
+    "StrategyDropBot",
+    "BallisticProjection",
     "clamp",
+    "coerce_finite",
+    "estimate_ballistic_projection",
     "ballistic_time_to_impact",
     "engine_profile",
     "finite_altitude",

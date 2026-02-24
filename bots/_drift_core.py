@@ -5,15 +5,16 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, replace
 
-from bots._descent_core import (
+from bots._drop_core import (
     BALANCED_POLICY,
-    DescentPolicy,
+    BallisticProjection,
+    DropPolicy,
     GuidanceTargets,
     clamp,
+    estimate_ballistic_projection,
     resolve_behavior,
 )
 from core.bot import ActiveSensors
-from core.terrain import ballistic_fall_time
 
 
 @dataclass(frozen=True)
@@ -90,27 +91,6 @@ class DriftBrakeWindow:
     time_to_target: float
 
 
-@dataclass(frozen=True)
-class DriftBallisticProjection:
-    projected_dx: float
-    t_fall: float
-    target_x: float | None
-    impact_x: float | None
-    used_sensor: bool
-
-
-def _coerce_finite(value: float | None, default: float = 0.0) -> float:
-    if value is None:
-        return default
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return default
-    if not math.isfinite(numeric):
-        return default
-    return numeric
-
-
 def _estimate_ballistic_projection(
     *,
     dx: float,
@@ -121,66 +101,16 @@ def _estimate_ballistic_projection(
     y: float | None,
     active: ActiveSensors | None,
     clearance: float,
-) -> DriftBallisticProjection:
-    safe_alt = max(0.0, _coerce_finite(alt, 0.0))
-    safe_vx = _coerce_finite(vx, 0.0)
-    safe_vy = _coerce_finite(vy_up, 0.0)
-    safe_dx = _coerce_finite(dx, 0.0)
-    fallback_t_fall = ballistic_fall_time(altitude=safe_alt, vy_up=safe_vy)
-    fallback_projected_dx = safe_dx - (safe_vx * fallback_t_fall)
-
-    safe_x = _coerce_finite(x, float("nan"))
-    safe_y = _coerce_finite(y, float("nan"))
-    target_x: float | None = None
-    fallback_impact_x: float | None = None
-    if math.isfinite(safe_x):
-        target_x = safe_x + safe_dx
-        fallback_impact_x = safe_x + (safe_vx * fallback_t_fall)
-    fallback = DriftBallisticProjection(
-        projected_dx=fallback_projected_dx,
-        t_fall=fallback_t_fall,
-        target_x=target_x,
-        impact_x=fallback_impact_x,
-        used_sensor=False,
-    )
-    if active is None or not (math.isfinite(safe_x) and math.isfinite(safe_y)):
-        return fallback
-
-    distance_budget = max(
-        600.0,
-        abs(safe_dx) + (abs(safe_vx) * max(2.0, fallback_t_fall)) + 300.0,
-    )
-    try:
-        traj = active.ballistic_trajectory(
-            x=safe_x,
-            y=safe_y,
-            vx=safe_vx,
-            vy_up=safe_vy,
-            max_distance=min(5000.0, distance_budget),
-            segment_length=22.0,
-            max_points=192,
-            lod=0,
-            clearance=max(0.0, float(clearance)),
-        )
-    except Exception:
-        return fallback
-    if not isinstance(traj, dict) or not bool(traj.get("hit")):
-        return fallback
-    hit_x_raw = traj.get("hit_x")
-    if not isinstance(hit_x_raw, (int, float)) or not math.isfinite(float(hit_x_raw)):
-        return fallback
-
-    target_x = safe_x + safe_dx
-    sensor_projected_dx = target_x - float(hit_x_raw)
-    hit_time = traj.get("hit_time")
-    duration = traj.get("duration")
-    sensor_t_fall = _coerce_finite(hit_time, _coerce_finite(duration, fallback_t_fall))
-    return DriftBallisticProjection(
-        projected_dx=sensor_projected_dx,
-        t_fall=max(0.5, sensor_t_fall),
-        target_x=target_x,
-        impact_x=float(hit_x_raw),
-        used_sensor=True,
+) -> BallisticProjection:
+    return estimate_ballistic_projection(
+        dx=dx,
+        alt=alt,
+        vx=vx,
+        vy_up=vy_up,
+        x=x,
+        y=y,
+        active=active,
+        clearance=clearance,
     )
 
 
@@ -537,14 +467,14 @@ DRIFT_COURSE = replace(
     drift_coast_min_entry_vx=10.0,
 )
 
-_DRIFT_BEHAVIORS: dict[str, tuple[DescentPolicy, DriftCourseConfig]] = {
+_DRIFT_BEHAVIORS: dict[str, tuple[DropPolicy, DriftCourseConfig]] = {
     "drift": (DRIFT_POLICY, DRIFT_COURSE),
 }
 
 
 def resolve_drift_behavior(
     behavior: str,
-) -> tuple[str, DescentPolicy, DriftCourseConfig]:
+) -> tuple[str, DropPolicy, DriftCourseConfig]:
     key, value = resolve_behavior(
         behavior,
         _DRIFT_BEHAVIORS,

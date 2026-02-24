@@ -10,7 +10,7 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 - Refueling system (exchange credits for fuel)
 - Continuous gameplay (land, refuel, take off again)
 - AI bot interface for autonomous play
-- Unified descent benchmark bot (`descent`)
+- Unified drop benchmark bot (`drop`)
 - Horizontal-control benchmark level (`drift`) with drift-first bot (`drift`)
 - Transfer setup benchmark level (`transfer`) with setup+handoff bot (`transfer`)
 
@@ -32,10 +32,10 @@ uv run python main.py
 ### Bot Mode
 Watch an AI bot play using the sensor/action API:
 ```bash
-# Canonical descent benchmark level + bot
+# Canonical drop benchmark level + bot
 uv run python main.py drop
 
-# Pick a specific descent scenario
+# Pick a specific drop scenario
 uv run python main.py drop --scenario alt_400
 
 # Horizontal-control benchmark level + bot
@@ -53,8 +53,8 @@ uv run python main.py transfer --scenario air_mid_reverse
 # Run transfer end-to-end (handoff + drift + terminal)
 uv run python main.py transfer --eval-mode full
 
-# Use descent bot on other levels if desired
-uv run python main.py flat --bot descent
+# Use drop bot on other levels if desired
+uv run python main.py flat --bot drop
 ```
 
 ### Headless Mode (Testing/Training)
@@ -117,6 +117,11 @@ By default, generated artifacts (batch JSON/CSV and trajectory plots) are writte
 Use `--batch-scenarios` when you want a narrower or custom scenario slice.
 When comparing benchmark runs, keep `--eval-mode` fixed (focused vs full are different goals).
 
+Suggested phase-first eval workflow:
+- Tune transfer setup in focused mode (`--eval-mode focused`) using handoff metrics.
+- Validate full transfer completion in full mode (`--eval-mode full`).
+- Confirm downstream impact with drop/drift batch checks.
+
 Stats output format:
 ```
 t=  1.00s | x:  105.4 alt: 106.1 | vx:  5.74 vy: -2.88 | ang:   6.0° thr: 30% | fuel: 99.7%
@@ -159,7 +164,7 @@ class MyBot(Bot):
 ## Scenario Levels
 
 Dedicated scenario levels (default bot in parentheses):
-- `drop` (`descent`) - unified descent benchmark with scenarios:
+- `drop` (`drop`) - unified drop benchmark with scenarios:
   - `alt_100`
   - `alt_400`
   - `alt_1600`
@@ -209,11 +214,11 @@ uv run python main.py [level_name] [options]
 
 **Levels:** Run `uv run python main.py --help` to list (e.g. `flat`, `mountains`, `drop`).
 
-**Bot names:** `descent`, `drift`, `transfer` (set via `--bot`; see `--help`).
+**Bot names:** `drop`, `drift`, `transfer` (set via `--bot`; see `--help`).
 
 **Options:**
-- `--bot NAME` - Select bot (`descent`, `drift`, `transfer`)
-- `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `descent` => `balanced|speed|econ`; `drift` => `drift`; `transfer` => `transfer`)
+- `--bot NAME` - Select bot (`drop`, `drift`, `transfer`)
+- `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `drop` => `balanced|speed|econ`; `drift` => `drift`; `transfer` => `transfer`)
 - `--headless` - Run without graphics (requires bot)
 - `--freq N` - Print stats every N frames (60 ≈ 1/s; 0 = off)
 - `--steps N` - Limit simulation to N steps (headless)
@@ -239,11 +244,13 @@ Quiet mode disables per-step stats output, but batch progress lines still print.
 
 Batch/headless eval records include `landing_offset` (absolute horizontal error from target center on landed runs).
 
-## Promotion Gates (Descent Bot)
+## Promotion Gates (Drop Bot)
 
-Current checks:
+Current checks (manual gate until automated):
 - Home scenario success rate >= 95% on seeds `0-9`
 - No `out_of_fuel` failures on seeds `0-9`
+- Suggested command:
+  - `uv run python main.py drop --headless --batch --batch-seeds 0-9 --batch-scenarios alt_400,speed_high,upward_low`
 
 ## Game Mechanics
 

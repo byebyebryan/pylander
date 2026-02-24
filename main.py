@@ -17,7 +17,7 @@ from core.eval import (
 )
 from game import LanderGame
 from bots import create_bot, list_available_bots
-from bots.descent import list_behavior_names as list_descent_behaviors
+from bots.drop import list_behavior_names as list_drop_behaviors
 from bots.drift import list_behavior_names as list_drift_behaviors
 from bots.transfer import list_behavior_names as list_transfer_behaviors
 from levels import create_level, list_available_levels
@@ -64,7 +64,7 @@ def _build_parser() -> argparse.ArgumentParser:
     behavior_names = tuple(
         sorted(
             {
-                *list_descent_behaviors(),
+                *list_drop_behaviors(),
                 *list_drift_behaviors(),
                 *list_transfer_behaviors(),
             }
@@ -864,7 +864,7 @@ def _run_batch(config: RunConfig) -> int:
         csv_path = write_csv_records(csv_target, records)
 
     _print_batch_summary(summary, failed, json_path, csv_path)
-    return 0 if summary["landed"] == summary["runs"] else 1
+    return 0 if summary["successes"] == summary["runs"] else 1
 
 
 def main() -> None:

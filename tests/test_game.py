@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import main as main_module
 import pytest
 import bots.transfer as transfer_module
-from bots._descent_core import GuidanceTargets, ballistic_time_to_impact
+from bots._drop_core import GuidanceTargets, ballistic_time_to_impact
 from bots._drift_core import (
     DriftCourseConfig,
     apply_drift_guidance,
@@ -18,7 +18,7 @@ from bots._drift_core import (
     resolve_drift_behavior,
 )
 from bots import create_bot, list_available_bots
-from bots.descent import DescentBot
+from bots.drop import DropBot
 from bots.transfer import (
     TransferBot,
     TransferSetupConfig,
@@ -59,19 +59,19 @@ from ui.hud import HudOverlay
 
 def test_bot_registry_exposes_expected_bots() -> None:
     bots = list_available_bots()
-    assert "descent" in bots
+    assert "drop" in bots
     assert "drift" in bots
     assert "transfer" in bots
-    assert "_descent_core" not in bots
+    assert "_drop_core" not in bots
     assert "_drift_core" not in bots
-    assert "descent_speed" not in bots
-    assert "descent_econ" not in bots
+    assert "drop_speed" not in bots
+    assert "drop_econ" not in bots
     assert "turtle" not in bots
-    assert {"drop", "plunge", "ferry"}.isdisjoint(set(bots))
-    descent_bot = create_bot("descent")
+    assert {"plunge", "ferry"}.isdisjoint(set(bots))
+    drop_bot = create_bot("drop")
     drift_bot = create_bot("drift")
     transfer_bot = create_bot("transfer")
-    assert descent_bot.__class__.__name__ == "DescentBot"
+    assert drop_bot.__class__.__name__ == "DropBot"
     assert drift_bot.__class__.__name__ == "DriftBot"
     assert transfer_bot.__class__.__name__ == "TransferBot"
 
@@ -181,8 +181,8 @@ def test_ballistic_time_to_impact_prefers_sensor_hit_time() -> None:
     assert t_fallback > t_sensor
 
 
-def test_descent_bot_engine_profile_fallback_uses_realistic_defaults() -> None:
-    bot = DescentBot()
+def test_drop_bot_engine_profile_fallback_uses_realistic_defaults() -> None:
+    bot = DropBot()
     max_power, min_throttle, max_throttle, ramp_up = bot._engine_profile()
     assert max_power == pytest.approx(230000.0)
     assert min_throttle == pytest.approx(0.25)
@@ -190,8 +190,8 @@ def test_descent_bot_engine_profile_fallback_uses_realistic_defaults() -> None:
     assert ramp_up == pytest.approx(1.1)
 
 
-def test_descent_econ_behavior_blocks_overdrive_when_fuel_margin_is_low() -> None:
-    bot = DescentBot(behavior="econ")
+def test_drop_econ_behavior_blocks_overdrive_when_fuel_margin_is_low() -> None:
+    bot = DropBot(behavior="econ")
     passive = PassiveSensors(
         x=0.0,
         y=100.0,
@@ -214,8 +214,8 @@ def test_descent_econ_behavior_blocks_overdrive_when_fuel_margin_is_low() -> Non
     assert not bot._can_use_overdrive(passive, vertical_mode="terminal_burn", alt=8.0)
 
 
-def test_descent_speed_behavior_status_prefix_is_distinct() -> None:
-    bot = DescentBot(behavior="speed")
+def test_drop_speed_behavior_status_prefix_is_distinct() -> None:
+    bot = DropBot(behavior="speed")
     passive = PassiveSensors(
         x=0.0,
         y=0.0,
@@ -236,11 +236,11 @@ def test_descent_speed_behavior_status_prefix_is_distinct() -> None:
         proximity=None,
     )
     action = bot.update(1.0 / 60.0, passive, active=None)
-    assert action.status.startswith("descent_speed:")
+    assert action.status.startswith("drop_speed:")
 
 
-def test_descent_bot_headless_stats_include_ballistic_summary() -> None:
-    bot = DescentBot()
+def test_drop_bot_headless_stats_include_ballistic_summary() -> None:
+    bot = DropBot()
     passive = PassiveSensors(
         x=0.0,
         y=140.0,
@@ -271,8 +271,8 @@ def test_descent_bot_headless_stats_include_ballistic_summary() -> None:
     assert "ball tti:" in stats
 
 
-def test_descent_guidance_uses_tighter_sensor_time_buffer(monkeypatch) -> None:
-    bot = DescentBot()
+def test_drop_guidance_uses_tighter_sensor_time_buffer(monkeypatch) -> None:
+    bot = DropBot()
     passive = PassiveSensors(
         x=0.0,
         y=180.0,
@@ -308,7 +308,7 @@ def test_descent_guidance_uses_tighter_sensor_time_buffer(monkeypatch) -> None:
     max_force = max_power * max_throttle
 
     monkeypatch.setattr(
-        "bots._descent_core.ballistic_time_to_impact",
+        "bots._drop_core.ballistic_time_to_impact",
         lambda _passive, _active: (1.16, "analytic"),
     )
     analytic_guidance = bot._guidance(
@@ -320,7 +320,7 @@ def test_descent_guidance_uses_tighter_sensor_time_buffer(monkeypatch) -> None:
     )
 
     monkeypatch.setattr(
-        "bots._descent_core.ballistic_time_to_impact",
+        "bots._drop_core.ballistic_time_to_impact",
         lambda _passive, _active: (1.16, "sensor"),
     )
     sensor_guidance = bot._guidance(
@@ -335,8 +335,8 @@ def test_descent_guidance_uses_tighter_sensor_time_buffer(monkeypatch) -> None:
     assert sensor_guidance.vertical_mode != "terminal_burn"
 
 
-def test_descent_speed_behavior_can_use_overdrive_outside_terminal_mode() -> None:
-    bot = DescentBot(behavior="speed")
+def test_drop_speed_behavior_can_use_overdrive_outside_terminal_mode() -> None:
+    bot = DropBot(behavior="speed")
     passive = PassiveSensors(
         x=0.0,
         y=100.0,
@@ -1760,7 +1760,7 @@ def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
     assert site_a.pos.y == site_b.pos.y
 
 
-def test_descent_level_lists_expected_scenarios() -> None:
+def test_drop_level_lists_expected_scenarios() -> None:
     level = create_level_by_name("drop")
     list_scenarios = getattr(level, "list_batch_scenarios", None)
     assert callable(list_scenarios)
@@ -1784,14 +1784,14 @@ def test_descent_level_lists_expected_scenarios() -> None:
     assert len(scenarios) == len(base) + (len(cargo_variants) * 2)
 
 
-def test_descent_level_lists_expected_quick_benchmark_scenarios() -> None:
+def test_drop_level_lists_expected_quick_benchmark_scenarios() -> None:
     level = create_level_by_name("drop")
     list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
     assert callable(list_quick_scenarios)
     assert list_quick_scenarios() == ["alt_400", "speed_high", "upward_low"]
 
 
-def test_descent_cargo_scenario_applies_heavy_cargo_mass() -> None:
+def test_drop_cargo_scenario_applies_heavy_cargo_mass() -> None:
     level = create_level_by_name("drop")
     level.set_eval_scenario("alt_400_cargo_high")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
@@ -1801,7 +1801,7 @@ def test_descent_cargo_scenario_applies_heavy_cargo_mass() -> None:
     assert cargo.cargo_mass == pytest.approx(4500.0)
 
 
-def test_descent_upward_scenario_starts_with_positive_vertical_velocity() -> None:
+def test_drop_upward_scenario_starts_with_positive_vertical_velocity() -> None:
     level = create_level_by_name("drop")
     level.set_eval_scenario("upward_low")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
@@ -1811,7 +1811,7 @@ def test_descent_upward_scenario_starts_with_positive_vertical_velocity() -> Non
     assert phys.vel.y > 0.0
 
 
-def test_descent_speed_high_scenario_sets_recoverable_initial_velocity() -> None:
+def test_drop_speed_high_scenario_sets_recoverable_initial_velocity() -> None:
     level = create_level_by_name("drop")
     level.set_eval_scenario("speed_high")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
@@ -2074,7 +2074,7 @@ def test_parse_seed_spec_supports_ranges_and_lists() -> None:
 def test_resolve_batch_plan_uses_quick_benchmark_cross_level_suite() -> None:
     config = RunConfig(
         level_name="drop",
-        bot_name="descent",
+        bot_name="drop",
         bot_behavior=None,
         headless=True,
         batch=False,
@@ -2102,7 +2102,7 @@ def test_resolve_batch_plan_uses_quick_benchmark_cross_level_suite() -> None:
 def test_eval_aggregate_summary_shape() -> None:
     records = [
         normalize_run_result(
-            bot_name="descent",
+            bot_name="drop",
             level_name="drop",
             scenario="alt_100",
             seed=0,
@@ -2119,7 +2119,7 @@ def test_eval_aggregate_summary_shape() -> None:
             },
         ),
         normalize_run_result(
-            bot_name="descent",
+            bot_name="drop",
             level_name="drop",
             scenario="alt_100",
             seed=1,
@@ -2213,7 +2213,7 @@ def test_print_batch_summary_includes_per_scenario_efficiency_means(capsys) -> N
 def test_parse_args_defaults_to_quiet_batch_output() -> None:
     args = argparse.Namespace(
         level_name="drop",
-        bot="descent",
+        bot="drop",
         bot_behavior=None,
         headless=True,
         batch=False,
@@ -2242,7 +2242,7 @@ def test_parse_args_defaults_to_quiet_batch_output() -> None:
 def test_parse_args_accepts_scenario_options() -> None:
     args = argparse.Namespace(
         level_name="drop",
-        bot="descent",
+        bot="drop",
         bot_behavior="speed",
         headless=True,
         batch=False,
@@ -2304,7 +2304,7 @@ def test_configure_level_rejects_explicit_eval_mode_for_unsupported_level() -> N
     level = create_level_flat()
     config = RunConfig(
         level_name="flat",
-        bot_name="descent",
+        bot_name="drop",
         bot_behavior=None,
         headless=True,
         batch=False,
@@ -2463,6 +2463,47 @@ def test_headless_stats_altitude_matches_passive_sensor_clearance_convention() -
     assert "alt:  76.0" in stats
 
 
+def test_run_batch_exit_code_uses_success_not_landed(monkeypatch) -> None:
+    def _fake_plan(_config):
+        return [0], ["transfer"]
+
+    def _fake_run_once_record(config, *, seed, level_name, eval_scenario_name=None):
+        _ = config, seed, level_name, eval_scenario_name
+        return {
+            "seed": 0,
+            "state": "flying",
+            "success": True,
+        }
+
+    monkeypatch.setattr(main_module, "_resolve_batch_plan", _fake_plan)
+    monkeypatch.setattr(main_module, "_run_once_record", _fake_run_once_record)
+    monkeypatch.setattr(main_module.os, "cpu_count", lambda: 1)
+
+    config = RunConfig(
+        level_name="transfer",
+        bot_name="transfer",
+        bot_behavior=None,
+        headless=True,
+        batch=True,
+        print_freq=0,
+        max_time=300.0,
+        max_steps=100,
+        plot_mode="none",
+        stop_on_crash=True,
+        stop_on_out_of_fuel=True,
+        stop_on_first_land=True,
+        seed=None,
+        lander_name=None,
+        batch_seeds="0",
+        batch_levels="transfer",
+        batch_json=None,
+        batch_csv=None,
+        quick_benchmark=False,
+        batch_workers=1,
+    )
+    assert _run_batch(config) == 0
+
+
 def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
     monkeypatch, capsys
 ) -> None:
@@ -2490,7 +2531,7 @@ def test_run_batch_falls_back_when_parallel_executor_raises_runtime_error(
 
     config = RunConfig(
         level_name="drop",
-        bot_name="descent",
+        bot_name="drop",
         bot_behavior=None,
         headless=True,
         batch=True,
@@ -2537,7 +2578,7 @@ def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
 
     config = RunConfig(
         level_name="drop",
-        bot_name="descent",
+        bot_name="drop",
         bot_behavior=None,
         headless=True,
         batch=True,
@@ -2580,7 +2621,7 @@ def test_run_batch_quick_benchmark_uses_cross_level_core_suite(monkeypatch) -> N
 
     config = RunConfig(
         level_name="drop",
-        bot_name="descent",
+        bot_name="drop",
         bot_behavior=None,
         headless=True,
         batch=True,
@@ -2631,7 +2672,7 @@ def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:
 
     config = RunConfig(
         level_name="drop",
-        bot_name="descent",
+        bot_name="drop",
         bot_behavior=None,
         headless=True,
         batch=True,
@@ -2664,7 +2705,7 @@ def test_run_batch_rejects_empty_level_plan(monkeypatch) -> None:
 
     config = RunConfig(
         level_name="drop",
-        bot_name="descent",
+        bot_name="drop",
         bot_behavior=None,
         headless=True,
         batch=True,

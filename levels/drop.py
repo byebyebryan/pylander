@@ -14,7 +14,7 @@ from levels.scenario_common import (
 
 
 @dataclass(frozen=True)
-class DescentScenario:
+class DropScenario:
     name: str
     spawn_clearance: float
     initial_vx: float = 0.0
@@ -23,13 +23,13 @@ class DescentScenario:
     cargo_mass: float = 1800.0
 
 
-_BASE_SCENARIOS: tuple[DescentScenario, ...] = (
-    DescentScenario(name="alt_100", spawn_clearance=100.0),
-    DescentScenario(name="alt_400", spawn_clearance=400.0),
-    DescentScenario(name="alt_1600", spawn_clearance=1600.0),
-    DescentScenario(name="speed_low", spawn_clearance=220.0, initial_vy_up=-12.0),
-    DescentScenario(name="speed_high", spawn_clearance=320.0, initial_vy_up=-24.0),
-    DescentScenario(name="upward_low", spawn_clearance=260.0, initial_vy_up=8.0),
+_BASE_SCENARIOS: tuple[DropScenario, ...] = (
+    DropScenario(name="alt_100", spawn_clearance=100.0),
+    DropScenario(name="alt_400", spawn_clearance=400.0),
+    DropScenario(name="alt_1600", spawn_clearance=1600.0),
+    DropScenario(name="speed_low", spawn_clearance=220.0, initial_vy_up=-12.0),
+    DropScenario(name="speed_high", spawn_clearance=320.0, initial_vy_up=-24.0),
+    DropScenario(name="upward_low", spawn_clearance=260.0, initial_vy_up=8.0),
 )
 _CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
     ("cargo_low", 0.0),
@@ -40,10 +40,10 @@ _CARGO_VARIANT_BASES: tuple[str, ...] = (
     "speed_high",
     "upward_low",
 )
-_SCENARIOS: tuple[DescentScenario, ...] = (
+_SCENARIOS: tuple[DropScenario, ...] = (
     _BASE_SCENARIOS
     + tuple(
-        DescentScenario(
+        DropScenario(
             name=f"{base.name}_{suffix}",
             spawn_clearance=base.spawn_clearance,
             initial_vx=base.initial_vx,
@@ -66,7 +66,7 @@ _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
 )
 
 
-def _make_spec(scenario: DescentScenario) -> ScenarioLevelSpec:
+def _make_spec(scenario: DropScenario) -> ScenarioLevelSpec:
     return ScenarioLevelSpec(
         name=scenario.name,
         start_x=0.0,
@@ -80,8 +80,8 @@ def _make_spec(scenario: DescentScenario) -> ScenarioLevelSpec:
     )
 
 
-class DescentLevel(ScenarioLevel):
-    default_bot_name = "descent"
+class DropLevel(ScenarioLevel):
+    default_bot_name = "drop"
 
     def __init__(self) -> None:
         super().__init__()
@@ -100,7 +100,7 @@ class DescentLevel(ScenarioLevel):
         key = str(name).strip().lower()
         if key not in _SCENARIO_BY_NAME:
             known = ", ".join(sorted(_SCENARIO_BY_NAME))
-            raise ValueError(f"Unknown descent scenario '{name}'. Expected one of: {known}")
+            raise ValueError(f"Unknown drop scenario '{name}'. Expected one of: {known}")
         self._eval_scenario_name = key
 
     def setup(self, game, seed: int) -> None:
@@ -140,4 +140,4 @@ class DescentLevel(ScenarioLevel):
 
 
 def create_level() -> Level:
-    return DescentLevel()
+    return DropLevel()

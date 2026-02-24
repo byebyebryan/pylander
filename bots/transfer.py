@@ -6,11 +6,14 @@ import math
 from dataclasses import dataclass, replace
 from typing import Any
 
-from bots._descent_core import (
-    DescentPolicy,
+from bots._drop_core import (
+    BallisticProjection,
+    DropPolicy,
     GuidanceTargets,
-    StrategyDescentBot,
+    StrategyDropBot,
     clamp,
+    coerce_finite,
+    estimate_ballistic_projection,
     rate_limit_angle_command,
     resolve_behavior,
 )
@@ -24,7 +27,6 @@ from bots._drift_core import (
 from bots.drift import DriftBot
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
-from core.terrain import ballistic_fall_time
 
 
 @dataclass(frozen=True)
@@ -51,14 +53,6 @@ class TransferSetupConfig:
     handoff_center_tolerance_cap: float = 24.0
     handoff_target_edge_margin: float = 8.0
     handoff_shortfall_guard_ratio: float = 0.12
-
-
-@dataclass(frozen=True)
-class _BallisticProjection:
-    projected_dx: float
-    t_fall: float
-    target_x: float | None
-    impact_x: float | None
 
 
 def _predict_response_state(
@@ -102,18 +96,6 @@ def _predict_response_world_state(
     return x_pred, y_pred
 
 
-def _coerce_finite(value: float | None, default: float = 0.0) -> float:
-    if value is None:
-        return default
-    try:
-        numeric = float(value)
-    except (TypeError, ValueError):
-        return default
-    if not math.isfinite(numeric):
-        return default
-    return numeric
-
-
 def _estimate_ballistic_projection(
     *,
     dx: float,
@@ -124,65 +106,16 @@ def _estimate_ballistic_projection(
     y: float | None = None,
     active: ActiveSensors | None = None,
     clearance: float = 0.0,
-) -> _BallisticProjection:
-    safe_alt = max(0.0, _coerce_finite(alt, 0.0))
-    safe_vx = _coerce_finite(vx, 0.0)
-    safe_vy_up = _coerce_finite(vy_up, 0.0)
-    safe_dx = _coerce_finite(dx, 0.0)
-    target_x = None
-    if x is not None and math.isfinite(_coerce_finite(x, float("nan"))):
-        target_x = _coerce_finite(x, 0.0) + safe_dx
-    fallback_t_fall = ballistic_fall_time(altitude=safe_alt, vy_up=safe_vy_up)
-    fallback_projected_dx = safe_dx - (safe_vx * fallback_t_fall)
-    fallback_impact_x = None
-    safe_x_for_fallback = _coerce_finite(x, float("nan"))
-    if math.isfinite(safe_x_for_fallback):
-        fallback_impact_x = safe_x_for_fallback + (safe_vx * fallback_t_fall)
-    fallback = _BallisticProjection(
-        projected_dx=fallback_projected_dx,
-        t_fall=fallback_t_fall,
-        target_x=target_x,
-        impact_x=fallback_impact_x,
-    )
-    safe_x = _coerce_finite(x, float("nan"))
-    safe_y = _coerce_finite(y, float("nan"))
-    if active is None or not (math.isfinite(safe_x) and math.isfinite(safe_y)):
-        return fallback
-    distance_budget = max(
-        600.0,
-        abs(safe_dx) + (abs(safe_vx) * max(2.0, fallback_t_fall)) + 300.0,
-    )
-    try:
-        traj = active.ballistic_trajectory(
-            x=safe_x,
-            y=safe_y,
-            vx=safe_vx,
-            vy_up=safe_vy_up,
-            max_distance=min(5000.0, distance_budget),
-            segment_length=22.0,
-            max_points=192,
-            lod=0,
-            clearance=max(0.0, float(clearance)),
-        )
-    except Exception:
-        return fallback
-    if not isinstance(traj, dict):
-        return fallback
-    if not bool(traj.get("hit")):
-        return fallback
-    hit_x_raw = traj.get("hit_x")
-    if not isinstance(hit_x_raw, (int, float)) or not math.isfinite(float(hit_x_raw)):
-        return fallback
-    target_x = safe_x + safe_dx
-    sensor_projected_dx = target_x - float(hit_x_raw)
-    hit_time = traj.get("hit_time")
-    duration = traj.get("duration")
-    sensor_t_fall = _coerce_finite(hit_time, _coerce_finite(duration, fallback_t_fall))
-    return _BallisticProjection(
-        projected_dx=sensor_projected_dx,
-        t_fall=max(0.5, sensor_t_fall),
-        target_x=target_x,
-        impact_x=float(hit_x_raw),
+) -> BallisticProjection:
+    return estimate_ballistic_projection(
+        dx=dx,
+        alt=alt,
+        vx=vx,
+        vy_up=vy_up,
+        x=x,
+        y=y,
+        active=active,
+        clearance=clearance,
     )
 
 
@@ -452,14 +385,14 @@ TRANSFER_COURSE = replace(
     lateral_terminal_zero_vx_alt=16.0,
     lateral_terminal_zero_vx_cap=1.2,
 )
-_TRANSFER_BEHAVIORS: dict[str, tuple[DescentPolicy, DriftCourseConfig, TransferSetupConfig]] = {
+_TRANSFER_BEHAVIORS: dict[str, tuple[DropPolicy, DriftCourseConfig, TransferSetupConfig]] = {
     "transfer": (TRANSFER_POLICY, TRANSFER_COURSE, TransferSetupConfig()),
 }
 
 
 def resolve_transfer_behavior(
     behavior: str,
-) -> tuple[str, DescentPolicy, DriftCourseConfig, TransferSetupConfig]:
+) -> tuple[str, DropPolicy, DriftCourseConfig, TransferSetupConfig]:
     key, value = resolve_behavior(
         behavior,
         _TRANSFER_BEHAVIORS,
@@ -592,7 +525,7 @@ class TransferBot(DriftBot):
         ramp_up: float,
         active: ActiveSensors | None = None,
     ) -> GuidanceTargets:
-        base_guidance = StrategyDescentBot._guidance(
+        base_guidance = StrategyDropBot._guidance(
             self,
             passive,
             target,
@@ -616,7 +549,7 @@ class TransferBot(DriftBot):
             active=self._active_sensors,
             clearance=self._ballistic_clearance(),
         )
-        target_size = _coerce_finite(getattr(target, "size", None), float("nan"))
+        target_size = coerce_finite(getattr(target, "size", None), float("nan"))
         if not math.isfinite(target_size):
             target_size = None
         self._last_target_size = target_size

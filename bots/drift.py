@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from bots._descent_core import (
+from bots._drop_core import (
     GuidanceTargets,
-    StrategyDescentBot,
+    StrategyDropBot,
 )
 from bots._drift_core import (
     DRIFT_POLICY,
@@ -20,7 +20,7 @@ from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
 
 
-class DriftBot(StrategyDescentBot):
+class DriftBot(StrategyDropBot):
     def __init__(self, behavior: str = "drift") -> None:
         super().__init__(DRIFT_POLICY)
         self._course_cfg = DriftCourseConfig()
