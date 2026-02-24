@@ -4,6 +4,8 @@ import argparse
 
 import main as main_module
 import pytest
+from bots._descent_core import GuidanceTargets
+from bots._drift_core import DriftCourseConfig, apply_drift_guidance, cap_low_altitude_angle
 from bots import create_bot, list_available_bots
 from bots.descent import DescentBot
 from core.eval import aggregate_eval_records, normalize_run_result
@@ -40,6 +42,8 @@ def test_bot_registry_exposes_expected_bots() -> None:
     bots = list_available_bots()
     assert "descent" in bots
     assert "drift" in bots
+    assert "_descent_core" not in bots
+    assert "_drift_core" not in bots
     assert "descent_speed" not in bots
     assert "descent_econ" not in bots
     assert "turtle" not in bots
@@ -130,6 +134,48 @@ def test_descent_speed_behavior_can_use_overdrive_outside_terminal_mode() -> Non
         proximity=None,
     )
     assert bot._can_use_overdrive(passive, vertical_mode="flare", alt=30.0)
+
+
+def test_apply_drift_guidance_pushes_large_offset_into_correction_mode() -> None:
+    cfg = DriftCourseConfig()
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.4,
+        vy_sp=-1.2,
+        dx=90.0,
+        alt=60.0,
+        burn_altitude=20.0,
+    )
+    adjusted = apply_drift_guidance(guidance, cfg)
+    assert adjusted.phase == "drift"
+    assert adjusted.vertical_mode == "drift_coast"
+    assert abs(adjusted.vx_sp) >= cfg.correction_vx_min
+
+
+def test_apply_drift_guidance_accelerates_coast_descent_at_high_altitude() -> None:
+    cfg = DriftCourseConfig()
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.0,
+        vy_sp=-1.0,
+        dx=0.0,
+        alt=120.0,
+        burn_altitude=30.0,
+    )
+    adjusted = apply_drift_guidance(guidance, cfg)
+    assert adjusted.phase == "drift"
+    assert adjusted.vertical_mode == "coast"
+    assert adjusted.vy_sp < guidance.vy_sp
+
+
+def test_cap_low_altitude_angle_only_applies_inside_touchdown_window() -> None:
+    cfg = DriftCourseConfig()
+    assert cap_low_altitude_angle(0.4, alt=8.0, dx=10.0, cfg=cfg) == pytest.approx(0.16)
+    assert cap_low_altitude_angle(-0.4, alt=8.0, dx=10.0, cfg=cfg) == pytest.approx(-0.16)
+    assert cap_low_altitude_angle(0.4, alt=40.0, dx=10.0, cfg=cfg) == pytest.approx(0.4)
+    assert cap_low_altitude_angle(0.4, alt=8.0, dx=40.0, cfg=cfg) == pytest.approx(0.4)
 
 
 class _FlatTerrain:
