@@ -28,28 +28,28 @@ from core.terrain import ballistic_fall_time
 
 @dataclass(frozen=True)
 class TransferSetupConfig:
-    handoff_projected_dx_ratio: float = 1.0
-    setup_vx_cap: float = 80.0
-    setup_vx_floor: float = 5.0
+    handoff_projected_dx_ratio: float = 0.85
+    setup_vx_cap: float = 92.0
+    setup_vx_floor: float = 6.0
     setup_descent_vy_target: float = -2.2
     setup_response_delay_s: float = 0.65
     setup_ballistic_vy_blend: float = 0.45
     handoff_force_drift_altitude: float = 420.0
     setup_vx_deadband: float = 1.6
     setup_sideburn_angle_rad: float = 1.40
-    setup_sideburn_lateral_accel_floor: float = 0.8
+    setup_sideburn_lateral_accel_floor: float = 1.0
     setup_sideburn_lateral_accel_cap: float = 10.0
     setup_sideburn_min_thrust: float = 0.35
     setup_sideburn_max_thrust: float = 1.6
     setup_sideburn_boost_thrust: float = 1.25
-    setup_sideburn_boost_dx_cone_ratio: float = 2.8
+    setup_sideburn_boost_dx_cone_ratio: float = 2.4
     setup_sideburn_boost_vx_err_min: float = 6.0
-    handoff_center_tolerance_min: float = 6.0
-    handoff_center_tolerance_base: float = 8.0
-    handoff_center_tolerance_per_s: float = 2.5
-    handoff_center_tolerance_cap: float = 34.0
-    handoff_target_edge_margin: float = 2.0
-    handoff_shortfall_guard_ratio: float = 0.25
+    handoff_center_tolerance_min: float = 4.5
+    handoff_center_tolerance_base: float = 6.5
+    handoff_center_tolerance_per_s: float = 1.8
+    handoff_center_tolerance_cap: float = 24.0
+    handoff_target_edge_margin: float = 8.0
+    handoff_shortfall_guard_ratio: float = 0.12
 
 
 @dataclass(frozen=True)
@@ -315,10 +315,10 @@ def should_handoff_to_drift(
         1.0,
         float(guidance.dx),
     )
-    current_shortfall_guard = max(shortfall_guard, target_half)
+    current_shortfall_guard = max(shortfall_guard, current_center_tol)
     current_not_falling_short = current_shortfall_metric <= current_shortfall_guard
-    current_guard_pass = current_inside_target and current_not_falling_short
-    if on_track and not current_inside_target:
+    current_guard_pass = current_centered and current_inside_target and current_not_falling_short
+    if on_track and not current_centered:
         track_ready = False
     else:
         track_ready = on_track or current_guard_pass
@@ -434,14 +434,22 @@ TRANSFER_POLICY = replace(
 TRANSFER_COURSE = replace(
     DRIFT_COURSE,
     # Transfer handoff often carries high lateral speed; start braking earlier.
+    correction_vx_per_excess=0.11,
+    correction_vx_per_alt=0.011,
+    correction_vx_high_alt_cap=28.0,
+    correction_vx_low_alt_cap=8.0,
+    correction_vx_low_alt_threshold=55.0,
+    terminal_burn_correction_vx_floor=6.2,
+    terminal_track_vx_scale=1.0,
+    terminal_track_vx_cap_max=12.0,
     lateral_stop_accel_estimate=4.6,
-    lateral_stop_vx_margin=0.82,
-    lateral_zero_vx_dx=42.0,
-    lateral_zero_vx_alt=70.0,
-    lateral_zero_vx_cap=1.2,
-    lateral_terminal_zero_vx_dx=34.0,
-    lateral_terminal_zero_vx_alt=22.0,
-    lateral_terminal_zero_vx_cap=0.75,
+    lateral_stop_vx_margin=0.95,
+    lateral_zero_vx_dx=32.0,
+    lateral_zero_vx_alt=52.0,
+    lateral_zero_vx_cap=1.5,
+    lateral_terminal_zero_vx_dx=22.0,
+    lateral_terminal_zero_vx_alt=16.0,
+    lateral_terminal_zero_vx_cap=1.2,
 )
 _TRANSFER_BEHAVIORS: dict[str, tuple[DescentPolicy, DriftCourseConfig, TransferSetupConfig]] = {
     "transfer": (TRANSFER_POLICY, TRANSFER_COURSE, TransferSetupConfig()),
@@ -724,9 +732,15 @@ class TransferBot(DriftBot):
         projected_dx_now = projection_now.projected_dx
         t_fall_now = projection_now.t_fall
         cone_limit_now = cone_dx_limit(max(0.0, float(alt)), self._course_cfg)
-        target_half_now = _target_half_width(self._last_target_size)
-        inside_target_now = abs(projected_dx_now) <= target_half_now
-        if abs(projected_dx_now) > 1e-3:
+        _, centered_now, inside_target_now, _, _ = _handoff_alignment(
+            projected_dx=projected_dx_now,
+            t_fall=t_fall_now,
+            target_size=self._last_target_size,
+            setup_cfg=self._setup_cfg,
+        )
+        if inside_target_now and (not centered_now) and abs(a_x_sp) > 1e-3:
+            desired_direction = 1.0 if a_x_sp > 0.0 else -1.0
+        elif abs(projected_dx_now) > 1e-3:
             desired_direction = 1.0 if projected_dx_now > 0.0 else -1.0
         elif abs(dx) > 1e-3:
             desired_direction = 1.0 if dx > 0.0 else -1.0
@@ -739,7 +753,9 @@ class TransferBot(DriftBot):
         if self._setup_direction == 0.0:
             self._setup_direction = desired_direction
         elif desired_direction != self._setup_direction and (
-            abs(projected_dx_now) < 10.0
+            (inside_target_now and not centered_now)
+            or abs(a_x_sp) > 0.35
+            or abs(projected_dx_now) < 10.0
             or abs(projected_dx_now) > (1.25 * cone_limit_now)
             or abs(dx) < 10.0
         ):
@@ -800,10 +816,10 @@ class TransferBot(DriftBot):
             )
         if miss_outside_cone or along_track_err > self._setup_cfg.setup_vx_deadband:
             ax_target = max(ax_target, self._setup_cfg.setup_sideburn_lateral_accel_floor)
-        elif inside_target_now:
+        elif centered_now and inside_target_now:
             ax_target = min(ax_target, 0.6)
         ax_target = clamp(ax_target, 0.0, self._setup_cfg.setup_sideburn_lateral_accel_cap)
-        if ax_target <= 0.12 and inside_target_now:
+        if ax_target <= 0.12 and centered_now and inside_target_now:
             return BotAction(target_thrust=0.0, target_angle=angle_cmd, refuel=False)
         sin_term = max(0.2, abs(math.sin(angle_cmd)))
         thrust = (mass * ax_target) / max(max_power * sin_term, 1e-3)
