@@ -736,36 +736,37 @@ def test_drift_level_lists_expected_scenarios() -> None:
     assert callable(list_scenarios)
     scenarios = set(list_scenarios())
     base = {
-        "alt_100_offset",
-        "alt_400_offset",
-        "alt_1600_offset",
-        "alt_400_offset_vx_toward",
-        "alt_400_offset_vx_away",
+        "flat_low",
+        "flat_low_correction",
+        "flat_mid",
+        "flat_mid_correction",
+        "flat_high",
+        "flat_high_correction",
     }
     assert base.issubset(scenarios)
     cargo_variants = {
-        "alt_400_offset",
-        "alt_400_offset_vx_away",
+        "flat_mid",
+        "flat_mid_correction",
+        "flat_high_correction",
     }
     for name in cargo_variants:
-        assert f"{name}_cargo_low" in scenarios
         assert f"{name}_cargo_high" in scenarios
-    for name in (base - cargo_variants):
         assert f"{name}_cargo_low" not in scenarios
+    for name in (base - cargo_variants):
         assert f"{name}_cargo_high" not in scenarios
-    assert len(scenarios) == len(base) + (len(cargo_variants) * 2)
+    assert len(scenarios) == len(base) + len(cargo_variants)
 
 
 def test_drift_level_lists_expected_quick_benchmark_scenarios() -> None:
     level = create_level_by_name("drift")
     list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
     assert callable(list_quick_scenarios)
-    assert list_quick_scenarios() == ["alt_400_offset", "alt_400_offset_vx_away"]
+    assert list_quick_scenarios() == ["flat_mid", "flat_high_correction"]
 
 
 def test_drift_scenario_sets_offset_and_horizontal_velocity() -> None:
     level = create_level_by_name("drift")
-    level.set_eval_scenario("alt_400_offset_vx_toward")
+    level.set_eval_scenario("flat_mid")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
     trans = actor.get_component(Transform)
@@ -779,13 +780,13 @@ def test_drift_scenario_sets_offset_and_horizontal_velocity() -> None:
 
 def test_drift_scenario_direction_is_deterministic_for_seed() -> None:
     level_a = create_level_by_name("drift")
-    level_a.set_eval_scenario("alt_400_offset")
+    level_a.set_eval_scenario("flat_mid")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=19)
     trans_a = game_a.actors[0].get_component(Transform)
     assert trans_a is not None
 
     level_b = create_level_by_name("drift")
-    level_b.set_eval_scenario("alt_400_offset")
+    level_b.set_eval_scenario("flat_mid")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=19)
     trans_b = game_b.actors[0].get_component(Transform)
     assert trans_b is not None
@@ -795,7 +796,7 @@ def test_drift_scenario_direction_is_deterministic_for_seed() -> None:
 
 def test_drift_cargo_scenario_applies_heavy_cargo_mass() -> None:
     level = create_level_by_name("drift")
-    level.set_eval_scenario("alt_400_offset_vx_away_cargo_high")
+    level.set_eval_scenario("flat_high_correction_cargo_high")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
     cargo = actor.get_component(CargoHold)
@@ -1215,7 +1216,7 @@ def test_run_batch_quick_benchmark_uses_cross_level_core_suite(monkeypatch) -> N
         }
     )
     assert drop_scenarios == ["alt_400", "speed_high", "upward_low"]
-    assert drift_scenarios == ["alt_400_offset", "alt_400_offset_vx_away"]
+    assert drift_scenarios == ["flat_high_correction", "flat_mid"]
     assert len(seen_runs) == 15  # 3 seeds x 5 quick scenarios
 
 

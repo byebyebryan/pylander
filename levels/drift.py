@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass, replace
 
@@ -19,36 +20,57 @@ class DriftScenario:
     name: str
     spawn_clearance: float
     start_x: float
-    initial_vx: float = 0.0
+    trajectory_error: float = 0.0
     initial_vy_up: float = 0.0
     initial_angle: float = 0.0
     cargo_mass: float = 1800.0
 
 
 _BASE_SCENARIOS: tuple[DriftScenario, ...] = (
-    DriftScenario(name="alt_100_offset", spawn_clearance=100.0, start_x=100.0),
-    DriftScenario(name="alt_400_offset", spawn_clearance=400.0, start_x=180.0),
-    DriftScenario(name="alt_1600_offset", spawn_clearance=1600.0, start_x=300.0),
     DriftScenario(
-        name="alt_400_offset_vx_toward",
-        spawn_clearance=400.0,
-        start_x=180.0,
-        initial_vx=-8.0,
+        name="flat_low",
+        spawn_clearance=200.0,
+        start_x=100.0,
+        trajectory_error=0.0,
     ),
     DriftScenario(
-        name="alt_400_offset_vx_away",
+        name="flat_low_correction",
+        spawn_clearance=200.0,
+        start_x=100.0,
+        trajectory_error=20.0,
+    ),
+    DriftScenario(
+        name="flat_mid",
         spawn_clearance=400.0,
-        start_x=180.0,
-        initial_vx=8.0,
+        start_x=280.0,
+        trajectory_error=0.0,
+    ),
+    DriftScenario(
+        name="flat_mid_correction",
+        spawn_clearance=400.0,
+        start_x=280.0,
+        trajectory_error=20.0,
+    ),
+    DriftScenario(
+        name="flat_high",
+        spawn_clearance=800.0,
+        start_x=800.0,
+        trajectory_error=0.0,
+    ),
+    DriftScenario(
+        name="flat_high_correction",
+        spawn_clearance=800.0,
+        start_x=800.0,
+        trajectory_error=20.0,
     ),
 )
 _CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
-    ("cargo_low", 0.0),
     ("cargo_high", 4500.0),
 )
 _CARGO_VARIANT_BASES: tuple[str, ...] = (
-    "alt_400_offset",
-    "alt_400_offset_vx_away",
+    "flat_mid",
+    "flat_mid_correction",
+    "flat_high_correction",
 )
 _SCENARIOS: tuple[DriftScenario, ...] = (
     _BASE_SCENARIOS
@@ -57,7 +79,7 @@ _SCENARIOS: tuple[DriftScenario, ...] = (
             name=f"{base.name}_{suffix}",
             spawn_clearance=base.spawn_clearance,
             start_x=base.start_x,
-            initial_vx=base.initial_vx,
+            trajectory_error=base.trajectory_error,
             initial_vy_up=base.initial_vy_up,
             initial_angle=base.initial_angle,
             cargo_mass=cargo_mass,
@@ -69,18 +91,18 @@ _SCENARIOS: tuple[DriftScenario, ...] = (
 )
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "alt_400_offset"
+_DEFAULT_SCENARIO = "flat_mid"
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    "alt_400_offset",
-    "alt_400_offset_vx_away",
+    "flat_mid",
+    "flat_high_correction",
 )
 
 _DRIFT_SPAWN_OFFSET_MIN = 70.0
-_DRIFT_SPAWN_OFFSET_MAX = 280.0
-_DRIFT_SPAWN_OFFSET_PER_ALT = 0.35
-_DRIFT_SPAWN_SPEED_MIN = 3.5
-_DRIFT_SPAWN_SPEED_MAX = 9.0
-_DRIFT_SPAWN_SPEED_PER_ALT = 0.015
+_DRIFT_SPAWN_OFFSET_MAX = 900.0
+_DRIFT_SPAWN_OFFSET_PER_ALT = 1.0
+_DRIFT_TRAJECTORY_ERROR_MIN = 0.0
+_DRIFT_TRAJECTORY_ERROR_MAX = 36.0
+_DRIFT_TRAJECTORY_ERROR_PER_ALT = 0.1
 
 
 def _clamp_signed(value: float, magnitude_limit: float) -> float:
@@ -94,15 +116,20 @@ def _apply_drift_envelope(scenario: DriftScenario) -> DriftScenario:
         _DRIFT_SPAWN_OFFSET_MAX,
         max(_DRIFT_SPAWN_OFFSET_MIN, _DRIFT_SPAWN_OFFSET_PER_ALT * alt),
     )
-    speed_limit = min(
-        _DRIFT_SPAWN_SPEED_MAX,
-        max(_DRIFT_SPAWN_SPEED_MIN, _DRIFT_SPAWN_SPEED_PER_ALT * alt),
+    error_limit = min(
+        _DRIFT_TRAJECTORY_ERROR_MAX,
+        max(_DRIFT_TRAJECTORY_ERROR_MIN, _DRIFT_TRAJECTORY_ERROR_PER_ALT * alt),
     )
     return replace(
         scenario,
         start_x=_clamp_signed(scenario.start_x, offset_limit),
-        initial_vx=_clamp_signed(scenario.initial_vx, speed_limit),
+        trajectory_error=_clamp_signed(scenario.trajectory_error, error_limit),
     )
+
+
+def _ballistic_fall_time(altitude: float, vy_up: float, g: float = 9.8) -> float:
+    disc = max(0.0, (vy_up * vy_up) + (2.0 * g * max(0.0, altitude)))
+    return max(0.5, (vy_up + math.sqrt(disc)) / g)
 
 
 def _make_spec(scenario: DriftScenario) -> ScenarioLevelSpec:
@@ -149,7 +176,6 @@ class DriftLevel(ScenarioLevel):
         scenario = replace(
             scenario_base,
             start_x=float(scenario_base.start_x) * direction,
-            initial_vx=float(scenario_base.initial_vx) * direction,
         )
         self.scenario = _make_spec(scenario)
         super().setup(game, seed)
@@ -165,7 +191,17 @@ class DriftLevel(ScenarioLevel):
         trans = require_component(actor, Transform)
         phys = require_component(actor, PhysicsState)
         trans.rotation = float(scenario.initial_angle)
-        phys.vel = Vector2(float(scenario.initial_vx), float(scenario.initial_vy_up))
+
+        target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
+        dx = float(target_pos.x - trans.pos.x)
+        alt = max(0.0, float(trans.pos.y - target_pos.y))
+        t_fall = _ballistic_fall_time(alt, float(scenario.initial_vy_up))
+        vx_ballistic = dx / t_fall
+        error_sign = 1.0 if trans.pos.x >= 0.0 else -1.0
+        error_distance = error_sign * abs(float(scenario.trajectory_error))
+        vx_error = error_distance / t_fall
+        initial_vx = vx_ballistic + vx_error
+        phys.vel = Vector2(initial_vx, float(scenario.initial_vy_up))
 
         engine = getattr(self, "engine", None)
         if engine is not None:
@@ -178,7 +214,7 @@ class DriftLevel(ScenarioLevel):
                 )
             if hasattr(engine, "set_lander_velocity"):
                 engine.set_lander_velocity(
-                    Vector2(float(scenario.initial_vx), float(scenario.initial_vy_up)),
+                    Vector2(initial_vx, float(scenario.initial_vy_up)),
                     uid=actor.uid,
                 )
 

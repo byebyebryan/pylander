@@ -41,7 +41,7 @@ uv run python main.py drop --scenario alt_400
 uv run python main.py drift
 
 # Pick a specific drift scenario
-uv run python main.py drift --scenario alt_400_offset_vx_away
+uv run python main.py drift --scenario flat_high_correction
 
 # Use descent bot on other levels if desired
 uv run python main.py flat --bot descent
@@ -65,7 +65,7 @@ uv run python main.py drop --headless --freq 0 --steps 10000
 # Use different seed or lander
 uv run python main.py drop --headless --seed 123
 uv run python main.py drop --headless --scenario speed_high --seed 123
-uv run python main.py drift --headless --scenario alt_400_offset_vx_toward --seed 123
+uv run python main.py drift --headless --scenario flat_mid_correction --seed 123
 uv run python main.py flat --lander differential
 ```
 
@@ -91,7 +91,7 @@ uv run python main.py drop --headless --batch \
 # Drift-focused horizontal-control batch
 uv run python main.py drift --headless --batch \
   --batch-seeds 0-19 \
-  --batch-scenarios alt_400_offset,alt_400_offset_vx_away \
+  --batch-scenarios flat_mid,flat_high_correction \
   --batch-json auto \
   --batch-csv auto
 ```
@@ -100,7 +100,7 @@ By default, generated artifacts (batch JSON/CSV and trajectory plots) are writte
 
 `--quick-benchmark` runs a fixed core suite:
 - `drop`: `alt_400`, `speed_high`, `upward_low`
-- `drift`: `alt_400_offset`, `alt_400_offset_vx_away`
+- `drift`: `flat_mid`, `flat_high_correction`
 
 Use `--batch-scenarios` when you want a narrower or custom scenario slice.
 
@@ -155,11 +155,21 @@ Dedicated scenario levels (default bot in parentheses):
   - cargo variants for `alt_400`, `speed_high`, and `upward_low`:
     - `*_cargo_low`
     - `*_cargo_high`
-- `drift` (`drift`) - horizontal-control benchmark:
-  - varies altitude (`spawn_clearance`)
-  - varies horizontal spawn offset (`start_x`) with deterministic random direction per seed
-  - includes initial horizontal velocity (`initial_vx`) scenarios
-  - includes cargo variants (`*_cargo_low`, `*_cargo_high`) for selected base cases
+- `drift` (`drift`) - correction-focused horizontal-control benchmark:
+  - base scenarios (curated 6) span two dimensions:
+    - trajectory flatness (`flat_low|mid|high`) -> more flat means more lateral speed to kill
+    - trajectory error (no suffix vs `_correction`) -> `_correction` scenarios need re-centering work
+  - scenario names:
+    - `flat_low`
+    - `flat_low_correction`
+    - `flat_mid`
+    - `flat_mid_correction`
+    - `flat_high`
+    - `flat_high_correction`
+  - targeted heavy-cargo variants (`*_cargo_high`) exist only for:
+    - `flat_mid`
+    - `flat_mid_correction`
+    - `flat_high_correction`
 
 ## Command Line Options
 
