@@ -271,6 +271,70 @@ def test_descent_bot_headless_stats_include_ballistic_summary() -> None:
     assert "ball tti:" in stats
 
 
+def test_descent_guidance_uses_tighter_sensor_time_buffer(monkeypatch) -> None:
+    bot = DescentBot()
+    passive = PassiveSensors(
+        x=0.0,
+        y=180.0,
+        altitude=180.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-4.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.0,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=180.0,
+        rel_x=0.0,
+        rel_y=-180.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    max_power, _, max_throttle, ramp_up = bot._engine_profile()
+    max_force = max_power * max_throttle
+
+    monkeypatch.setattr(
+        "bots._descent_core.ballistic_time_to_impact",
+        lambda _passive, _active: (1.16, "analytic"),
+    )
+    analytic_guidance = bot._guidance(
+        passive,
+        target,
+        max_force=max_force,
+        max_throttle=max_throttle,
+        ramp_up=ramp_up,
+    )
+
+    monkeypatch.setattr(
+        "bots._descent_core.ballistic_time_to_impact",
+        lambda _passive, _active: (1.16, "sensor"),
+    )
+    sensor_guidance = bot._guidance(
+        passive,
+        target,
+        max_force=max_force,
+        max_throttle=max_throttle,
+        ramp_up=ramp_up,
+    )
+
+    assert analytic_guidance.vertical_mode == "terminal_burn"
+    assert sensor_guidance.vertical_mode != "terminal_burn"
+
+
 def test_descent_speed_behavior_can_use_overdrive_outside_terminal_mode() -> None:
     bot = DescentBot(behavior="speed")
     passive = PassiveSensors(
@@ -754,6 +818,51 @@ def test_should_handoff_to_drift_uses_sensor_projection_when_available() -> None
     assert not far_track
 
 
+def test_should_handoff_to_drift_rejects_predicted_track_without_current_alignment() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    setup_cfg = TransferSetupConfig()
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.0,
+        vy_sp=-2.0,
+        dx=-200.0,
+        alt=560.0,
+        burn_altitude=30.0,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args
+            x = float(kwargs.get("x", 0.0))
+            if x < -10.0:
+                hit_x = -200.0
+            else:
+                hit_x = -120.0
+            return {
+                "hit": True,
+                "hit_x": hit_x,
+                "hit_time": 6.0,
+                "duration": 6.0,
+            }
+
+    debug: dict[str, object] = {}
+    handoff = should_handoff_to_drift(
+        guidance,
+        cfg,
+        setup_cfg,
+        vx=-50.0,
+        vy_up=-1.0,
+        active=_FakeActive(),
+        x=0.0,
+        y=640.0,
+        debug=debug,
+    )
+    assert not handoff
+    assert bool(debug.get("on_track"))
+    assert not bool(debug.get("current_guard_pass"))
+
+
 def test_transfer_bot_guidance_handoff_uses_drift_guidance_function(monkeypatch) -> None:
     bot = TransferBot()
     bot._setup_cfg = replace(  # force quick handoff in this narrow unit test
@@ -931,6 +1040,62 @@ def test_transfer_sideburn_allocation_keeps_thrust_while_sensor_miss_is_outside_
     assert action.target_thrust >= bot._setup_cfg.setup_sideburn_min_thrust
 
 
+def test_transfer_sideburn_allocation_keeps_thrust_when_inside_cone_outside_target() -> None:
+    bot = TransferBot()
+    bot._last_target_size = 110.0
+    bot._last_guidance = GuidanceTargets(
+        phase="transfer_setup_sideburn",
+        vertical_mode="transfer_sideburn",
+        vx_sp=0.0,
+        vy_sp=-2.2,
+        dx=80.0,
+        alt=250.0,
+        burn_altitude=56.0,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {
+                "hit": True,
+                "hit_x": 10.0,
+                "hit_time": 4.0,
+                "duration": 4.0,
+            }
+
+    bot._active_sensors = _FakeActive()
+    passive = PassiveSensors(
+        x=0.0,
+        y=250.0,
+        altitude=250.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-2.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.5,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    action = bot._allocate_controls(
+        dt=1.0,
+        passive=passive,
+        a_x_sp=0.0,
+        a_up_sp=0.0,
+        alt=250.0,
+        dx=80.0,
+        vertical_mode="transfer_sideburn",
+    )
+    bot._active_sensors = None
+    assert action.target_thrust >= bot._setup_cfg.setup_sideburn_min_thrust
+
+
 def test_lateral_tracking_command_increases_vx_target_for_large_offset() -> None:
     _, _, cfg = resolve_drift_behavior("drift")
     cmd = lateral_tracking_command(
@@ -944,6 +1109,44 @@ def test_lateral_tracking_command_increases_vx_target_for_large_offset() -> None
     )
     assert cmd.vx_target > 0.4
     assert cmd.ax_target > 0.0
+
+
+def test_lateral_tracking_command_uses_sensor_short_tgo_for_faster_correction() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    baseline = lateral_tracking_command(
+        cfg,
+        dx=4.0,
+        alt=80.0,
+        vx=0.0,
+        vy_up=-1.0,
+        ax=0.0,
+        vx_guidance=0.4,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {
+                "hit": True,
+                "hit_x": 4.0,
+                "hit_time": 0.6,
+                "duration": 0.6,
+            }
+
+    sensor = lateral_tracking_command(
+        cfg,
+        dx=4.0,
+        alt=80.0,
+        vx=0.0,
+        vy_up=-1.0,
+        ax=0.0,
+        vx_guidance=0.4,
+        active=_FakeActive(),
+        x=0.0,
+        y=80.0,
+    )
+    assert sensor.vx_target > baseline.vx_target
+    assert sensor.ax_target > baseline.ax_target
 
 
 def test_lateral_tracking_command_softens_near_touchdown_window() -> None:
@@ -1787,22 +1990,22 @@ def test_transfer_level_lists_expected_scenarios() -> None:
     assert callable(list_scenarios)
     scenarios = set(list_scenarios())
     base = {
-        "air_low_short",
-        "air_low_mid",
-        "air_low_long",
-        "air_high_short",
-        "air_high_mid",
-        "air_high_long",
+        "air_mid",
+        "air_long",
     }
     stress = {
-        "air_low_mid_reverse",
-        "air_high_long_reverse",
+        "air_mid_reverse",
+    }
+    heavy = {
+        "air_long_heavy",
+        "air_mid_reverse_heavy",
     }
     assert base.issubset(scenarios)
     assert stress.issubset(scenarios)
+    assert heavy.issubset(scenarios)
     assert "air_low_long_climb" not in scenarios
     assert "air_high_long_climb" not in scenarios
-    assert len(scenarios) == len(base) + len(stress)
+    assert len(scenarios) == len(base) + len(stress) + len(heavy)
 
 
 def test_transfer_level_lists_expected_quick_benchmark_scenarios() -> None:
@@ -1810,17 +2013,16 @@ def test_transfer_level_lists_expected_quick_benchmark_scenarios() -> None:
     list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
     assert callable(list_quick_scenarios)
     assert list_quick_scenarios() == [
-        "air_low_mid",
-        "air_high_long",
-        "air_low_long",
-        "air_low_mid_reverse",
-        "air_high_long_reverse",
+        "air_mid",
+        "air_long",
+        "air_mid_reverse",
+        "air_long_heavy",
     ]
 
 
 def test_transfer_scenario_direction_is_deterministic_for_seed() -> None:
     level_a = create_level_by_name("transfer")
-    level_a.set_eval_scenario("air_high_mid")
+    level_a.set_eval_scenario("air_mid")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=31)
     trans_a = game_a.actors[0].get_component(Transform)
     phys_a = game_a.actors[0].get_component(PhysicsState)
@@ -1828,7 +2030,7 @@ def test_transfer_scenario_direction_is_deterministic_for_seed() -> None:
     assert phys_a is not None
 
     level_b = create_level_by_name("transfer")
-    level_b.set_eval_scenario("air_high_mid")
+    level_b.set_eval_scenario("air_mid")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=31)
     trans_b = game_b.actors[0].get_component(Transform)
     phys_b = game_b.actors[0].get_component(PhysicsState)
@@ -1842,7 +2044,7 @@ def test_transfer_scenario_direction_is_deterministic_for_seed() -> None:
 
 def test_transfer_reverse_scenario_starts_with_velocity_away_from_target() -> None:
     level = create_level_by_name("transfer")
-    level.set_eval_scenario("air_low_mid_reverse")
+    level.set_eval_scenario("air_mid_reverse")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=17)
     actor = game.actors[0]
     trans = actor.get_component(Transform)
@@ -1850,6 +2052,16 @@ def test_transfer_reverse_scenario_starts_with_velocity_away_from_target() -> No
     assert trans is not None
     assert phys is not None
     assert trans.pos.x * phys.vel.x > 0.0
+
+
+def test_transfer_cargo_scenario_applies_heavy_cargo_mass() -> None:
+    level = create_level_by_name("transfer")
+    level.set_eval_scenario("air_long_heavy")
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=11)
+    actor = game.actors[0]
+    cargo = actor.get_component(CargoHold)
+    assert cargo is not None
+    assert cargo.cargo_mass == pytest.approx(3200.0)
 
 
 def test_parse_seed_spec_supports_ranges_and_lists() -> None:

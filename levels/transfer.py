@@ -27,63 +27,79 @@ class TransferScenario:
 
 
 @dataclass(frozen=True)
-class _AltitudeTier:
-    key: str
-    clearance: float
-
-
-@dataclass(frozen=True)
-class _RangeTier:
+class _TransferProfile:
     key: str
     offset: float
     vx_factor: float
 
 
-_ALTITUDE_TIERS: tuple[_AltitudeTier, ...] = (
-    _AltitudeTier(key="low", clearance=300.0),
-    _AltitudeTier(key="high", clearance=900.0),
+_MID_OFFSET = 520.0
+_LONG_OFFSET = 760.0
+_MID_SPAWN_CLEARANCE = 760.0
+_MID_VX_FACTOR = 0.14
+_LONG_VX_FACTOR = 0.05
+
+_TRANSFER_PROFILES: tuple[_TransferProfile, ...] = (
+    _TransferProfile(key="mid", offset=_MID_OFFSET, vx_factor=_MID_VX_FACTOR),
+    _TransferProfile(key="long", offset=_LONG_OFFSET, vx_factor=_LONG_VX_FACTOR),
 )
-_RANGE_TIERS: tuple[_RangeTier, ...] = (
-    _RangeTier(key="short", offset=220.0, vx_factor=0.35),
-    _RangeTier(key="mid", offset=520.0, vx_factor=0.16),
-    _RangeTier(key="long", offset=920.0, vx_factor=0.02),
-)
+
+
+def _proportional_clearance(offset: float) -> float:
+    return round((_MID_SPAWN_CLEARANCE * float(offset)) / _MID_OFFSET, 1)
+
 
 _BASE_SCENARIOS: tuple[TransferScenario, ...] = tuple(
     TransferScenario(
-        name=f"air_{alt_tier.key}_{range_tier.key}",
-        spawn_clearance=alt_tier.clearance,
-        start_x=range_tier.offset,
-        vx_factor=range_tier.vx_factor,
+        name=f"air_{profile.key}",
+        spawn_clearance=_proportional_clearance(profile.offset),
+        start_x=profile.offset,
+        vx_factor=profile.vx_factor,
     )
-    for alt_tier in _ALTITUDE_TIERS
-    for range_tier in _RANGE_TIERS
+    for profile in _TRANSFER_PROFILES
 )
 _STRESS_SCENARIOS: tuple[TransferScenario, ...] = (
     TransferScenario(
-        name="air_low_mid_reverse",
-        spawn_clearance=300.0,
-        start_x=560.0,
-        vx_factor=-0.75,
-        initial_vy_up=0.0,
-    ),
-    TransferScenario(
-        name="air_high_long_reverse",
-        spawn_clearance=900.0,
-        start_x=1080.0,
-        vx_factor=-0.70,
+        name="air_mid_reverse",
+        # Keep extra room for away-velocity correction before drift handoff.
+        spawn_clearance=max(900.0, _proportional_clearance(_MID_OFFSET) + 120.0),
+        start_x=_MID_OFFSET,
+        vx_factor=-0.52,
         initial_vy_up=0.0,
     ),
 )
-_SCENARIOS: tuple[TransferScenario, ...] = _BASE_SCENARIOS + _STRESS_SCENARIOS
+_CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
+    ("heavy", 3200.0),
+)
+_CARGO_VARIANT_BASES: tuple[str, ...] = (
+    "air_long",
+    "air_mid_reverse",
+)
+_CORE_SCENARIOS: tuple[TransferScenario, ...] = _BASE_SCENARIOS + _STRESS_SCENARIOS
+_SCENARIOS: tuple[TransferScenario, ...] = (
+    _CORE_SCENARIOS
+    + tuple(
+        TransferScenario(
+            name=f"{base.name}_{suffix}",
+            spawn_clearance=base.spawn_clearance,
+            start_x=base.start_x,
+            vx_factor=base.vx_factor,
+            initial_vy_up=base.initial_vy_up,
+            initial_angle=base.initial_angle,
+            cargo_mass=cargo_mass,
+        )
+        for base in _CORE_SCENARIOS
+        if base.name in _CARGO_VARIANT_BASES
+        for suffix, cargo_mass in _CARGO_VARIANTS
+    )
+)
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "air_high_mid"
+_DEFAULT_SCENARIO = "air_mid"
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    "air_low_mid",
-    "air_high_long",
-    "air_low_long",
-    "air_low_mid_reverse",
-    "air_high_long_reverse",
+    "air_mid",
+    "air_long",
+    "air_mid_reverse",
+    "air_long_heavy",
 )
 
 

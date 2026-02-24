@@ -253,6 +253,16 @@ def should_handoff_to_drift(
     alt = max(0.0, float(guidance.alt))
     safe_vx = float(vx) if vx is not None and math.isfinite(vx) else 0.0
     safe_vy_up = float(vy_up) if vy_up is not None and math.isfinite(vy_up) else 0.0
+    current_projection = _estimate_ballistic_projection(
+        dx=float(guidance.dx),
+        alt=alt,
+        vx=safe_vx,
+        vy_up=safe_vy_up,
+        x=x,
+        y=y,
+        active=active,
+        clearance=clearance,
+    )
     dx_pred, alt_pred, vx_pred, vy_pred = _predict_response_state(
         dx=float(guidance.dx),
         alt=alt,
@@ -286,9 +296,32 @@ def should_handoff_to_drift(
         target_size=target_size,
         setup_cfg=setup_cfg,
     )
+    (
+        current_on_track,
+        current_centered,
+        current_inside_target,
+        current_center_tol,
+        _,
+    ) = _handoff_alignment(
+        projected_dx=current_projection.projected_dx,
+        t_fall=current_projection.t_fall,
+        target_size=target_size,
+        setup_cfg=setup_cfg,
+    )
     shortfall_guard = max(2.0, setup_cfg.handoff_shortfall_guard_ratio * target_half)
     shortfall_metric = projected_dx * math.copysign(1.0, float(guidance.dx))
     not_falling_short = shortfall_metric <= shortfall_guard
+    current_shortfall_metric = current_projection.projected_dx * math.copysign(
+        1.0,
+        float(guidance.dx),
+    )
+    current_shortfall_guard = max(shortfall_guard, target_half)
+    current_not_falling_short = current_shortfall_metric <= current_shortfall_guard
+    current_guard_pass = current_inside_target and current_not_falling_short
+    if on_track and not current_inside_target:
+        track_ready = False
+    else:
+        track_ready = on_track or current_guard_pass
     vx_needed = vx_pred + (projected_dx / max(0.5, t_fall))
     vx_err = abs(vx_needed - vx_pred)
     speed_ready = vx_err <= max(
@@ -306,6 +339,15 @@ def should_handoff_to_drift(
                 "target_half": target_half,
                 "shortfall_guard": shortfall_guard,
                 "not_falling_short": not_falling_short,
+                "current_projected_dx": current_projection.projected_dx,
+                "current_on_track": current_on_track,
+                "current_centered": current_centered,
+                "current_inside_target": current_inside_target,
+                "current_center_tolerance": current_center_tol,
+                "current_shortfall_guard": current_shortfall_guard,
+                "current_not_falling_short": current_not_falling_short,
+                "current_guard_pass": current_guard_pass,
+                "track_ready": track_ready,
                 "speed_ready": speed_ready,
                 "alt_pred": alt_pred,
                 "t_fall": t_fall,
@@ -313,11 +355,13 @@ def should_handoff_to_drift(
                 "vx_err": vx_err,
                 "impact_x": projection.impact_x,
                 "target_x": projection.target_x,
+                "current_impact_x": current_projection.impact_x,
+                "current_target_x": current_projection.target_x,
             }
         )
     if alt_pred <= setup_cfg.handoff_force_drift_altitude:
-        return on_track and not_falling_short
-    return on_track and speed_ready and not_falling_short
+        return track_ready and not_falling_short
+    return track_ready and speed_ready and not_falling_short
 
 
 def apply_transfer_setup_guidance(
@@ -387,8 +431,20 @@ TRANSFER_POLICY = replace(
     DRIFT_POLICY,
     status_prefix="transfer",
 )
+TRANSFER_COURSE = replace(
+    DRIFT_COURSE,
+    # Transfer handoff often carries high lateral speed; start braking earlier.
+    lateral_stop_accel_estimate=4.6,
+    lateral_stop_vx_margin=0.82,
+    lateral_zero_vx_dx=42.0,
+    lateral_zero_vx_alt=70.0,
+    lateral_zero_vx_cap=1.2,
+    lateral_terminal_zero_vx_dx=34.0,
+    lateral_terminal_zero_vx_alt=22.0,
+    lateral_terminal_zero_vx_cap=0.75,
+)
 _TRANSFER_BEHAVIORS: dict[str, tuple[DescentPolicy, DriftCourseConfig, TransferSetupConfig]] = {
-    "transfer": (TRANSFER_POLICY, DRIFT_COURSE, TransferSetupConfig()),
+    "transfer": (TRANSFER_POLICY, TRANSFER_COURSE, TransferSetupConfig()),
 }
 
 
@@ -668,6 +724,8 @@ class TransferBot(DriftBot):
         projected_dx_now = projection_now.projected_dx
         t_fall_now = projection_now.t_fall
         cone_limit_now = cone_dx_limit(max(0.0, float(alt)), self._course_cfg)
+        target_half_now = _target_half_width(self._last_target_size)
+        inside_target_now = abs(projected_dx_now) <= target_half_now
         if abs(projected_dx_now) > 1e-3:
             desired_direction = 1.0 if projected_dx_now > 0.0 else -1.0
         elif abs(dx) > 1e-3:
@@ -722,6 +780,8 @@ class TransferBot(DriftBot):
             )
         elif miss_outside_cone:
             ax_target = max(ax_target, self._setup_cfg.setup_sideburn_lateral_accel_floor)
+        if not inside_target_now and along_track_miss > 0.0:
+            ax_target = max(ax_target, self._setup_cfg.setup_sideburn_lateral_accel_floor)
         boost_mode = (
             miss_outside_cone
             and abs(projected_dx_now)
@@ -740,10 +800,10 @@ class TransferBot(DriftBot):
             )
         if miss_outside_cone or along_track_err > self._setup_cfg.setup_vx_deadband:
             ax_target = max(ax_target, self._setup_cfg.setup_sideburn_lateral_accel_floor)
-        else:
+        elif inside_target_now:
             ax_target = min(ax_target, 0.6)
         ax_target = clamp(ax_target, 0.0, self._setup_cfg.setup_sideburn_lateral_accel_cap)
-        if ax_target <= 0.12 and not miss_outside_cone:
+        if ax_target <= 0.12 and inside_target_now:
             return BotAction(target_thrust=0.0, target_angle=angle_cmd, refuel=False)
         sin_term = max(0.2, abs(math.sin(angle_cmd)))
         thrust = (mass * ax_target) / max(max_power * sin_term, 1e-3)

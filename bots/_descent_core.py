@@ -143,6 +143,7 @@ class DescentPolicy:
     descent_rate_scale: float = 1.0
     burn_margin_scale: float = 1.0
     time_to_brake_buffer: float = 0.2
+    sensor_time_to_brake_buffer_scale: float = 0.75
     coast_horiz_deadband: float = 14.0
     terminal_brake_gain_high_alt: float = 0.94
     terminal_brake_gain_low_alt: float = 0.82
@@ -263,11 +264,14 @@ class StrategyDescentBot(Bot):
 
         time_to_impact, impact_source = ballistic_time_to_impact(passive, active)
         time_to_brake = spool_time + (speed_to_kill / max(up_acc_max, 1e-3))
+        time_to_brake_buffer = self._policy.time_to_brake_buffer
+        if impact_source == "sensor":
+            time_to_brake_buffer *= self._policy.sensor_time_to_brake_buffer_scale
         burn_now = bool(
             down_speed > 0.6
             and (
                 alt <= burn_altitude
-                or time_to_impact <= (time_to_brake + self._policy.time_to_brake_buffer)
+                or time_to_impact <= (time_to_brake + time_to_brake_buffer)
             )
         )
         self._ballistic_debug_summary = (

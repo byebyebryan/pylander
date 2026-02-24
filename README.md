@@ -48,7 +48,7 @@ uv run python main.py drift --scenario glide_long_stress_correction
 uv run python main.py transfer
 
 # Pick a specific transfer scenario
-uv run python main.py transfer --scenario air_low_mid_reverse
+uv run python main.py transfer --scenario air_mid_reverse
 
 # Use descent bot on other levels if desired
 uv run python main.py flat --bot descent
@@ -73,7 +73,7 @@ uv run python main.py drop --headless --freq 0 --steps 10000
 uv run python main.py drop --headless --seed 123
 uv run python main.py drop --headless --scenario speed_high --seed 123
 uv run python main.py drift --headless --scenario flat_correction --seed 123
-uv run python main.py transfer --headless --scenario air_high_long_reverse --seed 123
+uv run python main.py transfer --headless --scenario air_mid_reverse --seed 123
 uv run python main.py flat --lander differential
 ```
 
@@ -184,19 +184,15 @@ Dedicated scenario levels (default bot in parentheses):
     - `glide_long_correction`
     - `glide_long_stress_correction`
 - `transfer` (`transfer`) - air-start trajectory-establishment benchmark with drift handoff:
-  - base scenarios span two dimensions:
-    - starting altitude (`low|high`)
-    - lateral offset (`short|mid|long`)
+  - base scenarios are proportional profile steps:
+    - `air_mid`: medium offset with medium clearance
+    - `air_long`: longer offset with proportionally higher clearance
   - transfer setup emphasizes a hard side-burn to establish a ballistic path early, then hands off to drift/terminal phases
-  - base scenario names:
-    - `air_low_short`
-    - `air_low_mid`
-    - `air_low_long`
-    - `air_high_short`
-    - `air_high_mid`
-    - `air_high_long`
   - stress variants:
-    - opposite horizontal speed: `air_low_mid_reverse`, `air_high_long_reverse`
+    - opposite horizontal speed with extra room: `air_mid_reverse`
+  - heavy-cargo variants (`*_heavy`) exist for:
+    - `air_long`
+    - `air_mid_reverse`
 
 ## Command Line Options
 

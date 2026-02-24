@@ -49,8 +49,11 @@ class DriftCourseConfig:
     lateral_accel_cap: float = 8.5
     lateral_tgo_min: float = 1.0
     lateral_tgo_max: float = 11.0
+    sensor_lateral_tgo_min: float = 0.7
+    sensor_lateral_tgo_max: float = 12.5
     lateral_track_min_weight: float = 0.35
     lateral_track_dx_full: float = 60.0
+    sensor_track_weight_boost: float = 0.08
     lateral_soft_zone_alt: float = 16.0
     lateral_soft_zone_dx: float = 14.0
     lateral_soft_zone_scale: float = 0.55
@@ -407,10 +410,15 @@ def lateral_tracking_command(
         active=active,
         clearance=clearance,
     )
+    tgo_min = cfg.lateral_tgo_min
+    tgo_max = cfg.lateral_tgo_max
+    if projection.used_sensor:
+        tgo_min = min(tgo_min, cfg.sensor_lateral_tgo_min)
+        tgo_max = max(tgo_max, cfg.sensor_lateral_tgo_max)
     t_go = clamp(
         projection.t_fall,
-        cfg.lateral_tgo_min,
-        cfg.lateral_tgo_max,
+        tgo_min,
+        tgo_max,
     )
     vx_cap = correction_vx_cap(safe_alt, cfg)
     vx_track = clamp(dx / max(0.5, t_go), -vx_cap, vx_cap)
@@ -419,6 +427,12 @@ def lateral_tracking_command(
         cfg.lateral_track_min_weight,
         1.0,
     )
+    if projection.used_sensor and abs(dx) > 8.0:
+        track_weight = clamp(
+            track_weight + cfg.sensor_track_weight_boost,
+            cfg.lateral_track_min_weight,
+            1.0,
+        )
     vx_target = ((1.0 - track_weight) * vx_guidance) + (track_weight * vx_track)
     abs_dx = abs(dx)
     moving_toward_target = (abs_dx > 1e-3) and ((dx * vx) > 0.0)
@@ -497,8 +511,11 @@ DRIFT_COURSE = replace(
     lateral_accel_cap=8.2,
     lateral_tgo_min=1.0,
     lateral_tgo_max=10.5,
+    sensor_lateral_tgo_min=0.75,
+    sensor_lateral_tgo_max=12.0,
     lateral_track_min_weight=0.0,
     lateral_track_dx_full=56.0,
+    sensor_track_weight_boost=0.1,
     lateral_soft_zone_alt=14.0,
     lateral_soft_zone_dx=12.0,
     lateral_soft_zone_scale=0.5,
