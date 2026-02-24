@@ -12,6 +12,7 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 - AI bot interface for autonomous play
 - Unified descent benchmark bot (`descent`)
 - Horizontal-control benchmark level (`drift`) with drift-first bot (`drift`)
+- Transfer setup benchmark level (`transfer`) with setup+handoff bot (`transfer`)
 
 ## Setup
 
@@ -43,6 +44,12 @@ uv run python main.py drift
 # Pick a specific drift scenario
 uv run python main.py drift --scenario glide_long_stress_correction
 
+# Transfer setup benchmark level + bot
+uv run python main.py transfer
+
+# Pick a specific transfer scenario
+uv run python main.py transfer --scenario air_low_mid_reverse
+
 # Use descent bot on other levels if desired
 uv run python main.py flat --bot descent
 ```
@@ -66,6 +73,7 @@ uv run python main.py drop --headless --freq 0 --steps 10000
 uv run python main.py drop --headless --seed 123
 uv run python main.py drop --headless --scenario speed_high --seed 123
 uv run python main.py drift --headless --scenario flat_correction --seed 123
+uv run python main.py transfer --headless --scenario air_high_long_reverse --seed 123
 uv run python main.py flat --lander differential
 ```
 
@@ -174,6 +182,20 @@ Dedicated scenario levels (default bot in parentheses):
     - `glide_mid_correction`
     - `glide_long_correction`
     - `glide_long_stress_correction`
+- `transfer` (`transfer`) - air-start trajectory-establishment benchmark with drift handoff:
+  - base scenarios span two dimensions:
+    - starting altitude (`low|high`)
+    - lateral offset (`short|mid|long`)
+  - transfer setup emphasizes a hard side-burn to establish a ballistic path early, then hands off to drift/terminal phases
+  - base scenario names:
+    - `air_low_short`
+    - `air_low_mid`
+    - `air_low_long`
+    - `air_high_short`
+    - `air_high_mid`
+    - `air_high_long`
+  - stress variants:
+    - opposite horizontal speed: `air_low_mid_reverse`, `air_high_long_reverse`
 
 ## Command Line Options
 
@@ -183,11 +205,11 @@ uv run python main.py [level_name] [options]
 
 **Levels:** Run `uv run python main.py --help` to list (e.g. `flat`, `mountains`, `drop`).
 
-**Bot names:** `descent`, `drift` (set via `--bot`; see `--help`).
+**Bot names:** `descent`, `drift`, `transfer` (set via `--bot`; see `--help`).
 
 **Options:**
-- `--bot NAME` - Select bot (`descent`, `drift`)
-- `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `descent` => `balanced|speed|econ`; `drift` => `drift`)
+- `--bot NAME` - Select bot (`descent`, `drift`, `transfer`)
+- `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `descent` => `balanced|speed|econ`; `drift` => `drift`; `transfer` => `transfer`)
 - `--headless` - Run without graphics (requires bot)
 - `--freq N` - Print stats every N frames (60 ≈ 1/s; 0 = off)
 - `--steps N` - Limit simulation to N steps (headless)

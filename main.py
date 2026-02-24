@@ -19,6 +19,7 @@ from game import LanderGame
 from bots import create_bot, list_available_bots
 from bots.descent import list_behavior_names as list_descent_behaviors
 from bots.drift import list_behavior_names as list_drift_behaviors
+from bots.transfer import list_behavior_names as list_transfer_behaviors
 from levels import create_level, list_available_levels
 from landers import list_available_landers
 
@@ -64,6 +65,7 @@ def _build_parser() -> argparse.ArgumentParser:
             {
                 *list_descent_behaviors(),
                 *list_drift_behaviors(),
+                *list_transfer_behaviors(),
             }
         )
     )

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import argparse
 import math
+from dataclasses import replace
 
 import main as main_module
 import pytest
+import bots.transfer as transfer_module
 from bots._descent_core import GuidanceTargets
 from bots._drift_core import (
     DriftCourseConfig,
@@ -16,6 +18,13 @@ from bots._drift_core import (
 )
 from bots import create_bot, list_available_bots
 from bots.descent import DescentBot
+from bots.transfer import (
+    TransferBot,
+    TransferSetupConfig,
+    apply_transfer_setup_guidance,
+    resolve_transfer_behavior,
+    should_handoff_to_drift,
+)
 from core.eval import aggregate_eval_records, normalize_run_result
 from core.bot import Bot, BotAction, PassiveSensors
 from core.components import (
@@ -37,6 +46,7 @@ from core.landing_sites import LandingSiteSurfaceModel
 from core.maths import Vector2
 from core.lander import Lander
 from core.level import Level, LevelWorld
+from core.sensor import RadarContact
 from game import LanderGame, LoopTimers, _build_headless_stats
 from main import RunConfig, _parse_args, _parse_seed_spec, _resolve_batch_plan, _run_batch
 from levels import create_level as create_level_by_name
@@ -50,6 +60,7 @@ def test_bot_registry_exposes_expected_bots() -> None:
     bots = list_available_bots()
     assert "descent" in bots
     assert "drift" in bots
+    assert "transfer" in bots
     assert "_descent_core" not in bots
     assert "_drift_core" not in bots
     assert "descent_speed" not in bots
@@ -58,8 +69,10 @@ def test_bot_registry_exposes_expected_bots() -> None:
     assert {"drop", "plunge", "ferry"}.isdisjoint(set(bots))
     descent_bot = create_bot("descent")
     drift_bot = create_bot("drift")
+    transfer_bot = create_bot("transfer")
     assert descent_bot.__class__.__name__ == "DescentBot"
     assert drift_bot.__class__.__name__ == "DriftBot"
+    assert transfer_bot.__class__.__name__ == "TransferBot"
 
 
 def test_descent_bot_engine_profile_fallback_uses_realistic_defaults() -> None:
@@ -278,6 +291,205 @@ def test_resolve_drift_behavior_exposes_single_unified_profile() -> None:
     assert key == "drift"
     with pytest.raises(ValueError):
         resolve_drift_behavior("accuracy")
+
+
+def test_resolve_transfer_behavior_exposes_single_profile() -> None:
+    key, _, _, _ = resolve_transfer_behavior("transfer")
+    assert key == "transfer"
+    with pytest.raises(ValueError):
+        resolve_transfer_behavior("accuracy")
+
+
+def test_apply_transfer_setup_guidance_uses_dedicated_sideburn_phase() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    setup_cfg = TransferSetupConfig(
+        setup_descent_vy_target=-2.0,
+    )
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.0,
+        vy_sp=-2.4,
+        dx=240.0,
+        alt=190.0,
+        burn_altitude=28.0,
+    )
+    adjusted = apply_transfer_setup_guidance(
+        guidance,
+        cfg,
+        setup_cfg,
+        vx=0.0,
+        vy_up=-1.0,
+    )
+    assert adjusted.phase == "transfer_setup_sideburn"
+    assert adjusted.vertical_mode == "transfer_sideburn"
+    assert adjusted.vy_sp == pytest.approx(-2.0)
+
+
+def test_apply_transfer_setup_guidance_uses_thrust_backed_side_burn_for_non_climb_setup() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    setup_cfg = TransferSetupConfig(
+        setup_descent_vy_target=-1.6,
+    )
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.0,
+        vy_sp=-5.8,
+        dx=160.0,
+        alt=220.0,
+        burn_altitude=28.0,
+    )
+    adjusted = apply_transfer_setup_guidance(
+        guidance,
+        cfg,
+        setup_cfg,
+        vx=0.0,
+        vy_up=0.0,
+    )
+    assert adjusted.phase == "transfer_setup_sideburn"
+    assert adjusted.vertical_mode == "transfer_sideburn"
+    assert adjusted.vy_sp == pytest.approx(-1.6)
+    assert abs(adjusted.vx_sp) >= setup_cfg.setup_vx_floor
+
+
+def test_should_handoff_to_drift_requires_low_projected_error() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    setup_cfg = TransferSetupConfig()
+    near_track = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.0,
+        vy_sp=-1.8,
+        dx=14.0,
+        alt=120.0,
+        burn_altitude=26.0,
+    )
+    far_track = replace(near_track, dx=220.0)
+    assert should_handoff_to_drift(
+        near_track,
+        cfg,
+        setup_cfg,
+        vx=1.2,
+        vy_up=-0.8,
+    )
+    assert not should_handoff_to_drift(
+        far_track,
+        cfg,
+        setup_cfg,
+        vx=1.2,
+        vy_up=-0.8,
+    )
+
+
+def test_transfer_bot_guidance_handoff_uses_drift_guidance_function(monkeypatch) -> None:
+    bot = TransferBot()
+    bot._setup_cfg = replace(  # force quick handoff in this narrow unit test
+        bot._setup_cfg,
+        handoff_projected_dx_ratio=2.0,
+    )
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=126.5,
+        rel_x=-40.0,
+        rel_y=-120.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=40.0,
+        y=120.0,
+        altitude=120.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=-8.0,
+        vy_up=-1.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.5,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+
+    calls: list[tuple[float | None, float | None]] = []
+
+    def _fake_apply(guidance: GuidanceTargets, _cfg: DriftCourseConfig, *, vx, vy_up):
+        calls.append((vx, vy_up))
+        return replace(guidance, phase="drift_handoff")
+
+    monkeypatch.setattr(transfer_module, "apply_drift_guidance", _fake_apply)
+
+    first_guidance = bot._guidance(
+        passive,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+    )
+    assert first_guidance.phase == "transfer_setup_sideburn"
+    assert calls == []
+
+    second_guidance = bot._guidance(
+        passive,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+    )
+    assert calls == [(-8.0, -1.0)]
+    assert second_guidance.phase == "drift_handoff"
+
+
+def test_transfer_sideburn_allocation_targets_near_full_rotation() -> None:
+    bot = TransferBot()
+    bot._last_guidance = GuidanceTargets(
+        phase="transfer_setup_sideburn",
+        vertical_mode="transfer_sideburn",
+        vx_sp=8.0,
+        vy_sp=-2.2,
+        dx=200.0,
+        alt=300.0,
+        burn_altitude=60.0,
+    )
+    passive = PassiveSensors(
+        x=0.0,
+        y=300.0,
+        altitude=300.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-2.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.5,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    action = bot._allocate_controls(
+        dt=1.0,
+        passive=passive,
+        a_x_sp=6.0,
+        a_up_sp=0.0,
+        alt=300.0,
+        dx=200.0,
+        vertical_mode="transfer_sideburn",
+    )
+    assert abs(action.target_angle) >= 1.2
+    assert action.target_thrust >= bot._setup_cfg.setup_sideburn_min_thrust
 
 
 def test_lateral_tracking_command_increases_vx_target_for_large_offset() -> None:
@@ -871,6 +1083,7 @@ def test_level_registry_includes_named_presets() -> None:
     assert "flat" in level_names
     assert "mountains" in level_names
     assert "drift" in level_names
+    assert "transfer" in level_names
     assert "level_1" not in level_names
 
 
@@ -1127,6 +1340,77 @@ def test_drift_cargo_scenario_applies_heavy_cargo_mass() -> None:
     cargo = actor.get_component(CargoHold)
     assert cargo is not None
     assert cargo.cargo_mass == pytest.approx(4500.0)
+
+
+def test_transfer_level_lists_expected_scenarios() -> None:
+    level = create_level_by_name("transfer")
+    list_scenarios = getattr(level, "list_batch_scenarios", None)
+    assert callable(list_scenarios)
+    scenarios = set(list_scenarios())
+    base = {
+        "air_low_short",
+        "air_low_mid",
+        "air_low_long",
+        "air_high_short",
+        "air_high_mid",
+        "air_high_long",
+    }
+    stress = {
+        "air_low_mid_reverse",
+        "air_high_long_reverse",
+    }
+    assert base.issubset(scenarios)
+    assert stress.issubset(scenarios)
+    assert "air_low_long_climb" not in scenarios
+    assert "air_high_long_climb" not in scenarios
+    assert len(scenarios) == len(base) + len(stress)
+
+
+def test_transfer_level_lists_expected_quick_benchmark_scenarios() -> None:
+    level = create_level_by_name("transfer")
+    list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
+    assert callable(list_quick_scenarios)
+    assert list_quick_scenarios() == [
+        "air_low_mid",
+        "air_high_long",
+        "air_low_long",
+        "air_low_mid_reverse",
+        "air_high_long_reverse",
+    ]
+
+
+def test_transfer_scenario_direction_is_deterministic_for_seed() -> None:
+    level_a = create_level_by_name("transfer")
+    level_a.set_eval_scenario("air_high_mid")
+    game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=31)
+    trans_a = game_a.actors[0].get_component(Transform)
+    phys_a = game_a.actors[0].get_component(PhysicsState)
+    assert trans_a is not None
+    assert phys_a is not None
+
+    level_b = create_level_by_name("transfer")
+    level_b.set_eval_scenario("air_high_mid")
+    game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=31)
+    trans_b = game_b.actors[0].get_component(Transform)
+    phys_b = game_b.actors[0].get_component(PhysicsState)
+    assert trans_b is not None
+    assert phys_b is not None
+
+    assert trans_a.pos.x == pytest.approx(trans_b.pos.x)
+    assert phys_a.vel.x == pytest.approx(phys_b.vel.x)
+    assert phys_a.vel.y == pytest.approx(phys_b.vel.y)
+
+
+def test_transfer_reverse_scenario_starts_with_velocity_away_from_target() -> None:
+    level = create_level_by_name("transfer")
+    level.set_eval_scenario("air_low_mid_reverse")
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=17)
+    actor = game.actors[0]
+    trans = actor.get_component(Transform)
+    phys = actor.get_component(PhysicsState)
+    assert trans is not None
+    assert phys is not None
+    assert trans.pos.x * phys.vel.x > 0.0
 
 
 def test_parse_seed_spec_supports_ranges_and_lists() -> None:
