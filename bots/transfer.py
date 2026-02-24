@@ -197,7 +197,7 @@ def _ballistic_reference_vy(
     envelope_vy = min(float(guidance.vy_sp), setup_cfg.setup_descent_vy_target)
     blend = clamp(setup_cfg.setup_ballistic_vy_blend, 0.0, 1.0)
     mixed_vy = envelope_vy + (blend * (vy_pred - envelope_vy))
-    return clamp(mixed_vy, vy_pred, envelope_vy)
+    return clamp(mixed_vy, min(vy_pred, envelope_vy), max(vy_pred, envelope_vy))
 
 
 def _target_half_width(target_size: float | None) -> float:
