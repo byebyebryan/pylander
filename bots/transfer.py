@@ -3,17 +3,15 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from typing import Any
 
 from bots._drop_core import (
-    BallisticProjection,
     DropPolicy,
     GuidanceTargets,
     StrategyDropBot,
     clamp,
     coerce_finite,
-    estimate_ballistic_projection,
     rate_limit_angle_command,
     resolve_behavior,
 )
@@ -24,150 +22,19 @@ from bots._drift_core import (
     apply_drift_guidance,
     cone_dx_limit,
 )
+from bots._transfer_core import (
+    TransferSetupConfig,
+    _ballistic_reference_vy,
+    _estimate_ballistic_projection,
+    _handoff_alignment,
+    _predict_response_state,
+    _predict_response_world_state,
+    resolve_sideburn_target_angle,
+    setup_fuel_reserve_threshold,
+)
 from bots.drift import DriftBot
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
-
-
-@dataclass(frozen=True)
-class TransferSetupConfig:
-    handoff_projected_dx_ratio: float = 0.85
-    setup_vx_cap: float = 92.0
-    setup_vx_floor: float = 6.0
-    setup_descent_vy_target: float = -2.2
-    setup_response_delay_s: float = 0.65
-    setup_ballistic_vy_blend: float = 0.45
-    handoff_force_drift_altitude: float = 420.0
-    setup_vx_deadband: float = 1.6
-    setup_sideburn_angle_rad: float = 1.40
-    setup_sideburn_lateral_accel_floor: float = 1.0
-    setup_sideburn_lateral_accel_cap: float = 10.0
-    setup_sideburn_min_thrust: float = 0.35
-    setup_sideburn_max_thrust: float = 1.6
-    setup_sideburn_boost_thrust: float = 1.25
-    setup_sideburn_boost_dx_cone_ratio: float = 2.4
-    setup_sideburn_boost_vx_err_min: float = 6.0
-    handoff_center_tolerance_min: float = 4.5
-    handoff_center_tolerance_base: float = 6.5
-    handoff_center_tolerance_per_s: float = 1.8
-    handoff_center_tolerance_cap: float = 24.0
-    handoff_target_edge_margin: float = 8.0
-    handoff_shortfall_guard_ratio: float = 0.12
-
-
-def _predict_response_state(
-    *,
-    dx: float,
-    alt: float,
-    vx: float,
-    vy_up: float,
-    delay_s: float,
-) -> tuple[float, float, float, float]:
-    lag = max(0.0, float(delay_s))
-    if lag <= 1e-6:
-        return dx, alt, vx, vy_up
-    # Compensate for rotation + thrust spool delay by evaluating a short-horizon
-    # predicted state instead of chasing an immediate-state ballistic solution.
-    dx_pred = dx - (vx * lag)
-    alt_pred = max(0.0, alt + (vy_up * lag) - (4.9 * lag * lag))
-    vy_pred = vy_up - (9.8 * lag)
-    return dx_pred, alt_pred, vx, vy_pred
-
-
-def _predict_response_world_state(
-    *,
-    x: float | None,
-    y: float | None,
-    vx: float,
-    vy_up: float,
-    delay_s: float,
-) -> tuple[float | None, float | None]:
-    if (
-        x is None
-        or y is None
-        or not (math.isfinite(float(x)) and math.isfinite(float(y)))
-    ):
-        return None, None
-    lag = max(0.0, float(delay_s))
-    if lag <= 1e-6:
-        return float(x), float(y)
-    x_pred = float(x) + (vx * lag)
-    y_pred = float(y) + (vy_up * lag) - (4.9 * lag * lag)
-    return x_pred, y_pred
-
-
-def _estimate_ballistic_projection(
-    *,
-    dx: float,
-    alt: float,
-    vx: float,
-    vy_up: float,
-    x: float | None = None,
-    y: float | None = None,
-    active: ActiveSensors | None = None,
-    clearance: float = 0.0,
-) -> BallisticProjection:
-    return estimate_ballistic_projection(
-        dx=dx,
-        alt=alt,
-        vx=vx,
-        vy_up=vy_up,
-        x=x,
-        y=y,
-        active=active,
-        clearance=clearance,
-    )
-
-
-def _ballistic_reference_vy(
-    guidance: GuidanceTargets,
-    setup_cfg: TransferSetupConfig,
-    vy_pred: float,
-) -> float:
-    envelope_vy = min(float(guidance.vy_sp), setup_cfg.setup_descent_vy_target)
-    blend = clamp(setup_cfg.setup_ballistic_vy_blend, 0.0, 1.0)
-    mixed_vy = envelope_vy + (blend * (vy_pred - envelope_vy))
-    return clamp(mixed_vy, min(vy_pred, envelope_vy), max(vy_pred, envelope_vy))
-
-
-def _target_half_width(target_size: float | None) -> float:
-    if target_size is None:
-        return 55.0
-    try:
-        numeric = abs(float(target_size))
-    except (TypeError, ValueError):
-        return 55.0
-    if not math.isfinite(numeric):
-        return 55.0
-    return max(6.0, 0.5 * numeric)
-
-
-def _handoff_alignment(
-    *,
-    projected_dx: float,
-    t_fall: float,
-    target_size: float | None,
-    setup_cfg: TransferSetupConfig,
-) -> tuple[bool, bool, bool, float, float]:
-    target_half = _target_half_width(target_size)
-    dynamic_tol = (
-        setup_cfg.handoff_center_tolerance_base
-        + (setup_cfg.handoff_center_tolerance_per_s * max(0.0, t_fall))
-    )
-    center_tol = clamp(
-        dynamic_tol,
-        setup_cfg.handoff_center_tolerance_min,
-        setup_cfg.handoff_center_tolerance_cap,
-    )
-    # Keep centered-tolerance strictly within the target footprint.
-    center_tol = min(
-        center_tol,
-        max(0.5, target_half - setup_cfg.handoff_target_edge_margin),
-    )
-    inside_target = abs(projected_dx) <= target_half
-    centered = abs(projected_dx) <= center_tol
-    return centered and inside_target, centered, inside_target, center_tol, target_half
-
 
 def should_handoff_to_drift(
     guidance: GuidanceTargets,
@@ -386,8 +253,47 @@ TRANSFER_COURSE = replace(
     lateral_terminal_zero_vx_alt=16.0,
     lateral_terminal_zero_vx_cap=1.2,
 )
+FERRY_POLICY = replace(
+    TRANSFER_POLICY,
+    status_prefix="ferry",
+)
+FERRY_COURSE = replace(
+    TRANSFER_COURSE,
+    # Ferry scenarios stay in setup longer and tolerate broader miss while climbing.
+    cone_dx_base=16.0,
+    cone_dx_per_alt=0.24,
+    cone_dx_max=220.0,
+    correction_vx_per_excess=0.13,
+    correction_vx_per_alt=0.013,
+    correction_vx_high_alt_cap=32.0,
+    correction_vx_low_alt_cap=10.0,
+    correction_vx_low_alt_threshold=70.0,
+    terminal_track_vx_cap_max=13.5,
+)
 _TRANSFER_BEHAVIORS: dict[str, tuple[DropPolicy, DriftCourseConfig, TransferSetupConfig]] = {
     "transfer": (TRANSFER_POLICY, TRANSFER_COURSE, TransferSetupConfig()),
+    "ferry": (
+        FERRY_POLICY,
+        FERRY_COURSE,
+        TransferSetupConfig(
+            handoff_projected_dx_ratio=0.75,
+            setup_vx_cap=108.0,
+            setup_vx_floor=7.0,
+            setup_descent_vy_target=-1.8,
+            setup_response_delay_s=0.72,
+            setup_sideburn_angle_rad=0.95,
+            setup_sideburn_angle_min_rad=0.62,
+            setup_sideburn_angle_max_rad=1.28,
+            setup_sideburn_upward_vy_target=30.0,
+            setup_sideburn_upward_angle_gain=0.42,
+            handoff_force_drift_altitude=180.0,
+            setup_sideburn_lateral_accel_floor=0.6,
+            setup_sideburn_lateral_accel_cap=9.5,
+            setup_sideburn_boost_thrust=1.35,
+            setup_fuel_reserve_ratio=0.24,
+            setup_fuel_reserve_floor=20.0,
+        ),
+    ),
 }
 
 
@@ -748,7 +654,12 @@ class TransferBot(DriftBot):
         ):
             self._setup_direction = desired_direction
 
-        target_angle = self._setup_direction * self._setup_cfg.setup_sideburn_angle_rad
+        target_angle = self._setup_direction * resolve_sideburn_target_angle(
+            self._setup_cfg,
+            projected_dx=projected_dx_now,
+            cone_limit=cone_limit_now,
+            vy_up=float(passive.vy_up),
+        )
         angle_cmd = rate_limit_angle_command(
             target_angle,
             self._prev_angle_cmd,
@@ -791,7 +702,12 @@ class TransferBot(DriftBot):
             > (self._setup_cfg.setup_sideburn_boost_dx_cone_ratio * cone_limit_now)
             and along_track_err > self._setup_cfg.setup_sideburn_boost_vx_err_min
         )
-        if boost_mode:
+        reserve_fuel = setup_fuel_reserve_threshold(
+            self._setup_cfg,
+            max_fuel=float(passive.max_fuel),
+        )
+        fuel_guard_active = float(passive.fuel) <= reserve_fuel
+        if boost_mode and not fuel_guard_active:
             return BotAction(
                 target_thrust=clamp(
                     self._setup_cfg.setup_sideburn_boost_thrust,
@@ -806,6 +722,8 @@ class TransferBot(DriftBot):
         elif centered_now and inside_target_now:
             ax_target = min(ax_target, 0.6)
         ax_target = clamp(ax_target, 0.0, self._setup_cfg.setup_sideburn_lateral_accel_cap)
+        if fuel_guard_active and centered_now and inside_target_now and abs(projected_dx_now) <= cone_limit_now:
+            ax_target = 0.0
         if ax_target <= 0.12 and centered_now and inside_target_now:
             return BotAction(target_thrust=0.0, target_angle=angle_cmd, refuel=False)
         sin_term = max(0.2, abs(math.sin(angle_cmd)))
@@ -817,6 +735,8 @@ class TransferBot(DriftBot):
         )
         if thrust > 0.0:
             thrust = max(min_throttle, thrust)
+        if fuel_guard_active and thrust > 0.0:
+            thrust = min(thrust, max(min_throttle, self._setup_cfg.setup_sideburn_min_thrust))
         return BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)
 
 

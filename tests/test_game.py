@@ -63,18 +63,22 @@ def test_bot_registry_exposes_expected_bots() -> None:
     assert "drop" in bots
     assert "drift" in bots
     assert "transfer" in bots
+    assert "ferry" in bots
     assert "_drop_core" not in bots
     assert "_drift_core" not in bots
+    assert "_transfer_core" not in bots
     assert "drop_speed" not in bots
     assert "drop_econ" not in bots
     assert "turtle" not in bots
-    assert {"plunge", "ferry"}.isdisjoint(set(bots))
+    assert {"plunge", "launch"}.isdisjoint(set(bots))
     drop_bot = create_bot("drop")
     drift_bot = create_bot("drift")
     transfer_bot = create_bot("transfer")
+    ferry_bot = create_bot("ferry")
     assert drop_bot.__class__.__name__ == "DropBot"
     assert drift_bot.__class__.__name__ == "DriftBot"
     assert transfer_bot.__class__.__name__ == "TransferBot"
+    assert ferry_bot.__class__.__name__ == "FerryBot"
 
 
 def test_active_sensors_ballistic_trajectory_reports_hit_payload() -> None:
@@ -583,6 +587,8 @@ def test_resolve_drift_behavior_exposes_single_unified_profile() -> None:
 def test_resolve_transfer_behavior_exposes_single_profile() -> None:
     key, _, _, _ = resolve_transfer_behavior("transfer")
     assert key == "transfer"
+    ferry_key, _, _, _ = resolve_transfer_behavior("ferry")
+    assert ferry_key == "ferry"
     with pytest.raises(ValueError):
         resolve_transfer_behavior("accuracy")
 
@@ -1733,6 +1739,7 @@ def test_level_registry_includes_named_presets() -> None:
     assert "mountains" in level_names
     assert "drift" in level_names
     assert "transfer" in level_names
+    assert "ferry" in level_names
     assert "level_1" not in level_names
 
 
@@ -2069,6 +2076,42 @@ def test_transfer_cargo_scenario_applies_heavy_cargo_mass() -> None:
     cargo = actor.get_component(CargoHold)
     assert cargo is not None
     assert cargo.cargo_mass == pytest.approx(3200.0)
+
+
+def test_ferry_level_lists_expected_scenarios() -> None:
+    level = create_level_by_name("ferry")
+    list_scenarios = getattr(level, "list_batch_scenarios", None)
+    assert callable(list_scenarios)
+    assert list_scenarios() == ["air_low_long_climb"]
+
+
+def test_ferry_level_lists_expected_quick_benchmark_scenarios() -> None:
+    level = create_level_by_name("ferry")
+    list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
+    assert callable(list_quick_scenarios)
+    assert list_quick_scenarios() == ["air_low_long_climb"]
+
+
+def test_ferry_scenario_direction_is_deterministic_for_seed() -> None:
+    level_a = create_level_by_name("ferry")
+    level_a.set_eval_scenario("air_low_long_climb")
+    game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=29)
+    trans_a = game_a.actors[0].get_component(Transform)
+    phys_a = game_a.actors[0].get_component(PhysicsState)
+    assert trans_a is not None
+    assert phys_a is not None
+
+    level_b = create_level_by_name("ferry")
+    level_b.set_eval_scenario("air_low_long_climb")
+    game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=29)
+    trans_b = game_b.actors[0].get_component(Transform)
+    phys_b = game_b.actors[0].get_component(PhysicsState)
+    assert trans_b is not None
+    assert phys_b is not None
+
+    assert trans_a.pos.x == pytest.approx(trans_b.pos.x)
+    assert phys_a.vel.x == pytest.approx(phys_b.vel.x)
+    assert phys_a.vel.y == pytest.approx(phys_b.vel.y)
 
 
 def test_parse_seed_spec_supports_ranges_and_lists() -> None:
@@ -2409,6 +2452,59 @@ def test_transfer_focused_eval_without_handoff_keeps_handoff_angle_empty(
     assert result["eval_mode"] == "focused"
     assert result["transfer_handoff_done"] is False
     assert result["transfer_handoff_abs_angle_deg"] is None
+
+
+def test_ferry_focused_eval_stops_on_handoff_and_marks_success(monkeypatch) -> None:
+    def _handoff_snapshot(_game):
+        return {
+            "kind": "transfer",
+            "handoff_done": True,
+            "projected_dx": 3.0,
+            "impact_x": 8.0,
+            "target_x": 5.0,
+            "impact_error": 3.0,
+            "current_impact_x": 5.1,
+            "current_target_x": 5.0,
+            "current_impact_error": 0.1,
+            "on_track": True,
+            "speed_ready": True,
+            "not_falling_short": True,
+            "centered": True,
+            "inside_target": True,
+        }
+
+    level = create_level_by_name("ferry")
+    level.set_eval_mode("focused")
+    monkeypatch.setattr(
+        level.__class__,
+        "_resolve_transfer_snapshot",
+        staticmethod(_handoff_snapshot),
+    )
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=21)
+    result = game.run(print_freq=0, max_steps=60)
+    assert result["eval_mode"] == "focused"
+    assert result["eval_phase"] == "transfer_setup"
+    assert result["success"] is True
+    assert result["failure_mode"] == "none"
+    assert result["transfer_handoff_done"] is True
+    assert result["transfer_handoff_impact_error"] == pytest.approx(0.1)
+    assert result["state"] == "flying"
+
+
+def test_ferry_full_eval_does_not_end_on_handoff(monkeypatch) -> None:
+    def _handoff_snapshot(_game):
+        return {"kind": "transfer", "handoff_done": True}
+
+    level = create_level_by_name("ferry")
+    level.set_eval_mode("full")
+    monkeypatch.setattr(
+        level.__class__,
+        "_resolve_transfer_snapshot",
+        staticmethod(_handoff_snapshot),
+    )
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=25)
+    level.update(game, 1.0 / 60.0)
+    assert level.should_end(game) is False
 
 
 def test_hud_altitude_matches_passive_sensor_clearance_convention() -> None:

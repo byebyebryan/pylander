@@ -13,6 +13,7 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 - Unified drop benchmark bot (`drop`)
 - Horizontal-control benchmark level (`drift`) with drift-first bot (`drift`)
 - Transfer setup benchmark level (`transfer`) with setup+handoff bot (`transfer`)
+- Extended transfer benchmark level (`ferry`) with sustained-burn wrapper bot (`ferry`)
 
 ## Setup
 
@@ -53,6 +54,9 @@ uv run python main.py transfer --scenario air_mid_reverse
 # Run transfer end-to-end (handoff + drift + terminal)
 uv run python main.py transfer --eval-mode full
 
+# Extended transfer benchmark (low-alt, very long, climb-heavy setup)
+uv run python main.py ferry --scenario air_low_long_climb --eval-mode full
+
 # Use drop bot on other levels if desired
 uv run python main.py flat --bot drop
 ```
@@ -78,6 +82,7 @@ uv run python main.py drop --headless --scenario speed_high --seed 123
 uv run python main.py drift --headless --scenario flat_correction --seed 123
 uv run python main.py transfer --headless --scenario air_mid_reverse --seed 123
 uv run python main.py transfer --headless --scenario air_mid_reverse --eval-mode full --seed 123
+uv run python main.py ferry --headless --scenario air_low_long_climb --eval-mode full --seed 123
 uv run python main.py flat --lander differential
 ```
 
@@ -205,6 +210,13 @@ Dedicated scenario levels (default bot in parentheses):
   - heavy-cargo variants (`*_heavy`) exist for:
     - `air_long`
     - `air_mid_reverse`
+- `ferry` (`ferry`) - extended air-start transfer benchmark reusing transfer core with sustained setup burn:
+  - scenarios:
+    - `air_low_long_climb`
+      - single extreme case: lower altitude start with much longer offset (climb-first setup)
+  - default eval mode is **full** and supports `--eval-mode focused` for setup/handoff-only checks
+  - intended to validate longer initial burn windows and fuel reserve discipline on far targets
+  - land-launch/full point-to-point travel is intentionally deferred to the next level
 
 ## Command Line Options
 
@@ -214,11 +226,11 @@ uv run python main.py [level_name] [options]
 
 **Levels:** Run `uv run python main.py --help` to list (e.g. `flat`, `mountains`, `drop`).
 
-**Bot names:** `drop`, `drift`, `transfer` (set via `--bot`; see `--help`).
+**Bot names:** `drop`, `drift`, `transfer`, `ferry` (set via `--bot`; see `--help`).
 
 **Options:**
-- `--bot NAME` - Select bot (`drop`, `drift`, `transfer`)
-- `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `drop` => `balanced|speed|econ`; `drift` => `drift`; `transfer` => `transfer`)
+- `--bot NAME` - Select bot (`drop`, `drift`, `transfer`, `ferry`)
+- `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `drop` => `balanced|speed|econ`; `drift` => `drift`; `transfer` => `transfer|ferry`)
 - `--headless` - Run without graphics (requires bot)
 - `--freq N` - Print stats every N frames (60 ≈ 1/s; 0 = off)
 - `--steps N` - Limit simulation to N steps (headless)
