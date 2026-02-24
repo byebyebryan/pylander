@@ -16,7 +16,7 @@ from bots._drift_core import (
     list_drift_behavior_names,
     resolve_drift_behavior,
 )
-from core.bot import Bot, BotAction, PassiveSensors
+from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
 
 
@@ -26,6 +26,7 @@ class DriftBot(StrategyDescentBot):
         self._course_cfg = DriftCourseConfig()
         self._behavior = "drift"
         self._last_guidance: GuidanceTargets | None = None
+        self._active_sensors: ActiveSensors | None = None
         self.set_behavior(behavior)
 
     def set_behavior(self, behavior: str) -> None:
@@ -33,10 +34,28 @@ class DriftBot(StrategyDescentBot):
         self._policy = policy
         self._course_cfg = cfg
         self._behavior = key
+        self._ballistic_debug_summary = ""
 
     @property
     def behavior(self) -> str:
         return self._behavior
+
+    def _ballistic_clearance(self) -> float:
+        if self.vehicle_info is None:
+            return 0.0
+        return max(0.0, 0.5 * float(self.vehicle_info.height))
+
+    def update(
+        self,
+        dt: float,
+        passive: PassiveSensors,
+        active: ActiveSensors,
+    ) -> BotAction:
+        self._active_sensors = active
+        try:
+            return super().update(dt, passive, active)
+        finally:
+            self._active_sensors = None
 
     def _guidance(
         self,
@@ -46,6 +65,7 @@ class DriftBot(StrategyDescentBot):
         max_force: float,
         max_throttle: float,
         ramp_up: float,
+        active: ActiveSensors | None = None,
     ) -> GuidanceTargets:
         base_guidance = super()._guidance(
             passive,
@@ -53,12 +73,24 @@ class DriftBot(StrategyDescentBot):
             max_force=max_force,
             max_throttle=max_throttle,
             ramp_up=ramp_up,
+            active=active,
         )
+        drift_debug: dict[str, object] = {}
         guidance = apply_drift_guidance(
             base_guidance,
             self._course_cfg,
             vx=passive.vx,
             vy_up=passive.vy_up,
+            active=self._active_sensors,
+            x=passive.x,
+            y=passive.y,
+            clearance=self._ballistic_clearance(),
+            debug=drift_debug,
+        )
+        self._ballistic_debug_summary = (
+            f"ball pdx:{float(drift_debug.get('projected_dx', 0.0)):6.1f} "
+            f"tf:{float(drift_debug.get('t_fall', 0.0)):4.1f} "
+            f"src:{'s' if bool(drift_debug.get('sensor_used')) else 'a'}"
         )
         self._last_guidance = guidance
         return guidance
@@ -104,6 +136,10 @@ class DriftBot(StrategyDescentBot):
             vy_up=passive.vy_up,
             ax=passive.ax,
             vx_guidance=vx_sp,
+            active=self._active_sensors,
+            x=passive.x,
+            y=passive.y,
+            clearance=self._ballistic_clearance(),
         )
         return tracker.ax_target
 

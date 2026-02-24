@@ -154,6 +154,24 @@ def test_pick_lod_for_world_step_prefers_closest_resolution() -> None:
     assert terrain.pick_lod_for_world_step(lod_terrain, 35.0) == 3
 
 
+def test_ballistic_fall_time_matches_quadratic_solution() -> None:
+    t = terrain.ballistic_fall_time(altitude=120.0, vy_up=3.0, g=9.8)
+    disc = (3.0 * 3.0) + (2.0 * 9.8 * 120.0)
+    expected = max(0.5, (3.0 + math.sqrt(disc)) / 9.8)
+    assert t == pytest.approx(expected)
+
+
+def test_ballistic_velocity_and_state_helpers_follow_constant_gravity() -> None:
+    vx, vy = terrain.ballistic_velocity(10.0, 8.0, 9.8, 2.0)
+    assert vx == pytest.approx(10.0)
+    assert vy == pytest.approx(-11.6)
+    px, py, svx, svy = terrain.ballistic_state(0.0, 40.0, 10.0, 8.0, 9.8, 2.0)
+    assert px == pytest.approx(20.0)
+    assert py == pytest.approx(36.4)
+    assert svx == pytest.approx(vx)
+    assert svy == pytest.approx(vy)
+
+
 def test_sample_ballistic_trajectory_stops_on_terrain_hit() -> None:
     traj = terrain.sample_ballistic_trajectory(
         lambda _x: 0.0,
@@ -168,6 +186,9 @@ def test_sample_ballistic_trajectory_stops_on_terrain_hit() -> None:
     assert traj.termination == "terrain_hit"
     assert traj.hit_x is not None
     assert traj.hit_y is not None
+    assert traj.hit_vx is not None
+    assert traj.hit_vy_up is not None
+    assert traj.hit_speed is not None
     assert abs(traj.hit_y) <= 0.5
     assert len(traj.points) >= 2
     assert traj.distance > 0.0
@@ -185,6 +206,9 @@ def test_sample_ballistic_trajectory_stops_at_max_distance() -> None:
     )
     assert not traj.hit
     assert traj.termination == "max_distance"
+    assert traj.hit_vx is None
+    assert traj.hit_vy_up is None
+    assert traj.hit_speed is None
     assert traj.distance == pytest.approx(140.0)
     assert len(traj.points) >= 2
 

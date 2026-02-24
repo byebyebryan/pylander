@@ -149,7 +149,7 @@ class MyBot(Bot):
 ```
 
 `PassiveSensors` includes world position (`x`, `y`), terrain-relative clearance (`altitude`), local terrain context (`terrain_y`, `terrain_slope`), kinematics, fuel/state, and radar/proximity contacts.
-`ActiveSensors` provides `raycast(angle, max_range)`, terrain helpers like `terrain_height(x)` and `terrain_profile(x_start, x_end, samples)`, and `ballistic_trajectory(x, y, vx, vy_up, ...)` for engine-off path prediction to terrain/max distance.
+`ActiveSensors` provides `raycast(angle, max_range)`, terrain helpers like `terrain_height(x)` and `terrain_profile(x_start, x_end, samples)`, and `ballistic_trajectory(x, y, vx, vy_up, ...)` for engine-off path prediction to terrain/max distance, including hit point/time plus impact velocity (`hit_vx`, `hit_vy_up`) and speed (`hit_speed`) when a terrain impact is found.
 
 ## Scenario Levels
 

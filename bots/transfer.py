@@ -23,6 +23,7 @@ from bots._drift_core import (
 from bots.drift import DriftBot
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
+from core.terrain import ballistic_fall_time
 
 
 @dataclass(frozen=True)
@@ -57,11 +58,6 @@ class _BallisticProjection:
     t_fall: float
     target_x: float | None
     impact_x: float | None
-
-
-def _ballistic_fall_time(*, alt: float, vy_up: float, g: float = 9.8) -> float:
-    disc = max(0.0, (vy_up * vy_up) + (2.0 * g * max(0.0, alt)))
-    return max(0.5, (vy_up + math.sqrt(disc)) / g)
 
 
 def _predict_response_state(
@@ -135,7 +131,7 @@ def _estimate_ballistic_projection(
     target_x = None
     if x is not None and math.isfinite(_coerce_finite(x, float("nan"))):
         target_x = _coerce_finite(x, 0.0) + safe_dx
-    fallback_t_fall = _ballistic_fall_time(alt=safe_alt, vy_up=safe_vy_up)
+    fallback_t_fall = ballistic_fall_time(altitude=safe_alt, vy_up=safe_vy_up)
     fallback_projected_dx = safe_dx - (safe_vx * fallback_t_fall)
     fallback_impact_x = None
     safe_x_for_fallback = _coerce_finite(x, float("nan"))
@@ -433,6 +429,7 @@ class TransferBot(DriftBot):
         self._handoff_done = False
         self._setup_direction = 0.0
         self._active_sensors = None
+        self._ballistic_debug_summary = ""
         self._debug_projection_summary = ""
         self._handoff_event_summary = ""
         self._last_target_size = None
@@ -452,6 +449,7 @@ class TransferBot(DriftBot):
             self._setup_phase_seen = False
             self._handoff_done = False
             self._setup_direction = 0.0
+            self._ballistic_debug_summary = ""
             self._debug_projection_summary = ""
             self._handoff_event_summary = ""
             self._last_target_size = None
@@ -481,6 +479,7 @@ class TransferBot(DriftBot):
         max_force: float,
         max_throttle: float,
         ramp_up: float,
+        active: ActiveSensors | None = None,
     ) -> GuidanceTargets:
         base_guidance = StrategyDescentBot._guidance(
             self,
@@ -489,6 +488,7 @@ class TransferBot(DriftBot):
             max_force=max_force,
             max_throttle=max_throttle,
             ramp_up=ramp_up,
+            active=active,
         )
         current_guidance = replace(
             base_guidance,
@@ -534,6 +534,10 @@ class TransferBot(DriftBot):
                 self._course_cfg,
                 vx=passive.vx,
                 vy_up=passive.vy_up,
+                active=self._active_sensors,
+                x=passive.x,
+                y=passive.y,
+                clearance=self._ballistic_clearance(),
             )
         elif not self._setup_phase_seen:
             self._setup_phase_seen = True
@@ -568,6 +572,10 @@ class TransferBot(DriftBot):
                 self._course_cfg,
                 vx=passive.vx,
                 vy_up=passive.vy_up,
+                active=self._active_sensors,
+                x=passive.x,
+                y=passive.y,
+                clearance=self._ballistic_clearance(),
             )
         else:
             guidance = setup_guidance

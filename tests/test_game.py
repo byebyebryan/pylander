@@ -3,11 +3,12 @@ from __future__ import annotations
 import argparse
 import math
 from dataclasses import replace
+from types import SimpleNamespace
 
 import main as main_module
 import pytest
 import bots.transfer as transfer_module
-from bots._descent_core import GuidanceTargets
+from bots._descent_core import GuidanceTargets, ballistic_time_to_impact
 from bots._drift_core import (
     DriftCourseConfig,
     apply_drift_guidance,
@@ -95,8 +96,89 @@ def test_active_sensors_ballistic_trajectory_reports_hit_payload() -> None:
     assert traj["termination"] == "terrain_hit"
     assert traj["hit_x"] is not None
     assert traj["hit_y"] is not None
+    assert traj["hit_vx"] == pytest.approx(12.0)
+    assert traj["hit_vy_up"] is not None
+    assert traj["hit_speed"] is not None
     assert abs(float(traj["hit_y"])) <= 0.5
     assert len(traj["points"]) >= 2
+
+
+def test_active_sensors_ballistic_trajectory_caches_repeat_queries(monkeypatch) -> None:
+    call_count = 0
+
+    def _fake_sample(*args, **kwargs):
+        nonlocal call_count
+        _ = args, kwargs
+        call_count += 1
+        return SimpleNamespace(
+            points=[(0.0, 100.0), (10.0, 0.0)],
+            hit=True,
+            hit_x=10.0,
+            hit_y=0.0,
+            hit_time=1.0,
+            hit_vx=10.0,
+            hit_vy_up=-9.8,
+            hit_speed=14.0,
+            distance=100.0,
+            duration=1.0,
+            termination="terrain_hit",
+        )
+
+    monkeypatch.setattr("core.bot.sample_ballistic_trajectory", _fake_sample)
+    sensors = _ActiveSensorImpl(
+        origin_fn=lambda: Vector2(0.0, 0.0),
+        radar_range_fn=lambda: 600.0,
+        engine_adapter=None,
+        terrain_fn=lambda _x: 0.0,
+    )
+    first = sensors.ballistic_trajectory(
+        x=2.0,
+        y=120.0,
+        vx=10.0,
+        vy_up=1.0,
+    )
+    second = sensors.ballistic_trajectory(
+        x=2.0,
+        y=120.0,
+        vx=10.0,
+        vy_up=1.0,
+    )
+    assert call_count == 1
+    assert first == second
+
+
+def test_ballistic_time_to_impact_prefers_sensor_hit_time() -> None:
+    passive = PassiveSensors(
+        x=0.0,
+        y=150.0,
+        altitude=150.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=8.0,
+        vy_up=-1.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {"hit": True, "hit_time": 3.0, "duration": 3.0}
+
+    t_sensor, src_sensor = ballistic_time_to_impact(passive, _FakeActive())
+    t_fallback, src_fallback = ballistic_time_to_impact(passive, None)
+    assert src_sensor == "sensor"
+    assert t_sensor == pytest.approx(3.0)
+    assert src_fallback == "analytic"
+    assert t_fallback > t_sensor
 
 
 def test_descent_bot_engine_profile_fallback_uses_realistic_defaults() -> None:
@@ -155,6 +237,38 @@ def test_descent_speed_behavior_status_prefix_is_distinct() -> None:
     )
     action = bot.update(1.0 / 60.0, passive, active=None)
     assert action.status.startswith("descent_speed:")
+
+
+def test_descent_bot_headless_stats_include_ballistic_summary() -> None:
+    bot = DescentBot()
+    passive = PassiveSensors(
+        x=0.0,
+        y=140.0,
+        altitude=140.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=2.0,
+        vy_up=-1.5,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.1,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {"hit": True, "hit_time": 4.0, "duration": 4.0}
+
+    _ = bot.update(1.0 / 60.0, passive, active=_FakeActive())
+    stats = bot.get_headless_stats()
+    assert "ball tti:" in stats
 
 
 def test_descent_speed_behavior_can_use_overdrive_outside_terminal_mode() -> None:
@@ -235,6 +349,90 @@ def test_apply_drift_guidance_uses_projected_ballistic_error() -> None:
     adjusted_off_target = apply_drift_guidance(guidance, cfg, vx=0.0, vy_up=0.0)
     assert adjusted_off_target.vertical_mode == "coast"
     assert abs(adjusted_off_target.vx_sp) >= cfg.correction_vx_min
+
+
+def test_apply_drift_guidance_prefers_sensor_projection_when_available() -> None:
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.4,
+        vy_sp=-1.2,
+        dx=20.0,
+        alt=100.0,
+        burn_altitude=20.0,
+    )
+    cfg = DriftCourseConfig()
+    baseline = apply_drift_guidance(guidance, cfg, vx=5.0, vy_up=0.0)
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {
+                "hit": True,
+                "hit_x": -140.0,
+                "hit_time": 5.0,
+                "duration": 5.0,
+            }
+
+    sensor_guidance = apply_drift_guidance(
+        guidance,
+        cfg,
+        vx=5.0,
+        vy_up=0.0,
+        active=_FakeActive(),
+        x=0.0,
+        y=160.0,
+    )
+    assert abs(sensor_guidance.vx_sp) > abs(baseline.vx_sp)
+
+
+def test_drift_bot_headless_stats_include_ballistic_projection_summary() -> None:
+    bot = create_bot("drift")
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=180.0,
+        rel_x=-40.0,
+        rel_y=-120.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=40.0,
+        y=120.0,
+        altitude=120.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=-4.0,
+        vy_up=-1.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.3,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {
+                "hit": True,
+                "hit_x": -50.0,
+                "hit_time": 5.0,
+                "duration": 5.0,
+            }
+
+    _ = bot.update(1.0 / 60.0, passive, active=_FakeActive())
+    stats = bot.get_headless_stats()
+    assert "ball pdx:" in stats
 
 
 def test_apply_drift_guidance_forces_thrust_backed_correction_for_high_vx_on_track() -> None:
@@ -596,7 +794,19 @@ def test_transfer_bot_guidance_handoff_uses_drift_guidance_function(monkeypatch)
 
     calls: list[tuple[float | None, float | None]] = []
 
-    def _fake_apply(guidance: GuidanceTargets, _cfg: DriftCourseConfig, *, vx, vy_up):
+    def _fake_apply(
+        guidance: GuidanceTargets,
+        _cfg: DriftCourseConfig,
+        *,
+        vx,
+        vy_up,
+        active=None,
+        x=None,
+        y=None,
+        clearance=0.0,
+        debug=None,
+    ):
+        _ = active, x, y, clearance, debug
         calls.append((vx, vy_up))
         return replace(guidance, phase="drift_handoff")
 

@@ -8,6 +8,7 @@ from typing import Mapping, TypeVar
 
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors, VehicleInfo
 from core.sensor import RadarContact
+from core.terrain import ballistic_fall_time
 
 _BehaviorT = TypeVar("_BehaviorT")
 
@@ -70,6 +71,47 @@ def vehicle_limits(passive: PassiveSensors, max_force: float) -> tuple[float, fl
     mass = max(0.5, passive.mass)
     up_acc_max = max(0.1, (max_force / mass) - 9.8)
     return mass, up_acc_max
+
+
+def ballistic_time_to_impact(
+    passive: PassiveSensors,
+    active: ActiveSensors | None,
+) -> tuple[float, str]:
+    """Estimate time-to-impact using sensor hit-time when available."""
+    alt = max(0.0, finite_altitude(passive))
+    vy_up = passive.vy_up if math.isfinite(passive.vy_up) else 0.0
+    fallback = ballistic_fall_time(altitude=alt, vy_up=vy_up)
+    if active is None:
+        return fallback, "analytic"
+
+    distance_budget = max(
+        900.0,
+        abs(float(passive.vx)) * max(2.0, fallback) + (0.5 * alt) + 500.0,
+    )
+    try:
+        traj = active.ballistic_trajectory(
+            x=passive.x,
+            y=passive.y,
+            vx=passive.vx,
+            vy_up=passive.vy_up,
+            max_distance=min(5000.0, distance_budget),
+            segment_length=20.0,
+            max_points=192,
+            lod=0,
+            clearance=0.0,
+        )
+    except Exception:
+        return fallback, "analytic"
+    if not isinstance(traj, dict) or not bool(traj.get("hit")):
+        return fallback, "analytic"
+
+    hit_time = traj.get("hit_time")
+    if isinstance(hit_time, (int, float)) and math.isfinite(float(hit_time)):
+        return max(0.0, float(hit_time)), "sensor"
+    duration = traj.get("duration")
+    if isinstance(duration, (int, float)) and math.isfinite(float(duration)):
+        return max(0.0, float(duration)), "sensor"
+    return fallback, "analytic"
 
 
 def engine_profile(vehicle_info: VehicleInfo | None) -> tuple[float, float, float, float]:
@@ -160,6 +202,7 @@ class StrategyDescentBot(Bot):
         super().__init__()
         self._policy = policy
         self._prev_angle_cmd = 0.0
+        self._ballistic_debug_summary = ""
 
     def _engine_profile(self) -> tuple[float, float, float, float]:
         return engine_profile(self.vehicle_info)
@@ -189,6 +232,7 @@ class StrategyDescentBot(Bot):
         max_force: float,
         max_throttle: float,
         ramp_up: float,
+        active: ActiveSensors | None = None,
     ) -> GuidanceTargets:
         alt = finite_altitude(passive)
         dx = target.x - passive.x
@@ -217,7 +261,7 @@ class StrategyDescentBot(Bot):
             max_force=max_force,
         )
 
-        time_to_impact = alt / max(0.1, down_speed) if down_speed > 0.1 else float("inf")
+        time_to_impact, impact_source = ballistic_time_to_impact(passive, active)
         time_to_brake = spool_time + (speed_to_kill / max(up_acc_max, 1e-3))
         burn_now = bool(
             down_speed > 0.6
@@ -225,6 +269,11 @@ class StrategyDescentBot(Bot):
                 alt <= burn_altitude
                 or time_to_impact <= (time_to_brake + self._policy.time_to_brake_buffer)
             )
+        )
+        self._ballistic_debug_summary = (
+            f"ball tti:{stable(time_to_impact, 1):4.1f} "
+            f"src:{'s' if impact_source == 'sensor' else 'a'} "
+            f"burn:{int(burn_now)}"
         )
 
         gravity_glide = (
@@ -418,8 +467,8 @@ class StrategyDescentBot(Bot):
         passive: PassiveSensors,
         active: ActiveSensors,
     ) -> BotAction:
-        _ = active
         if passive.state in ("landed", "crashed", "out_of_fuel"):
+            self._ballistic_debug_summary = ""
             action = BotAction(
                 0.0,
                 passive.angle,
@@ -435,6 +484,12 @@ class StrategyDescentBot(Bot):
 
         target = pick_target(passive)
         if target is None:
+            t_impact, impact_source = ballistic_time_to_impact(passive, active)
+            self._ballistic_debug_summary = (
+                f"ball tti:{stable(t_impact, 1):4.1f} "
+                f"src:{'s' if impact_source == 'sensor' else 'a'} "
+                "burn:0"
+            )
             a_x_sp = self._horizontal_controller(passive, vx_sp=0.0)
             a_up_sp = self._vertical_controller(
                 passive,
@@ -462,6 +517,7 @@ class StrategyDescentBot(Bot):
             max_force=max_force,
             max_throttle=max_throttle,
             ramp_up=ramp_up,
+            active=active,
         )
         if guidance.vertical_mode in ("coast", "drift_coast") and abs(
             guidance.dx
@@ -501,6 +557,14 @@ class StrategyDescentBot(Bot):
         self.status = action.status
         return action
 
+    def get_headless_stats(self) -> str:
+        base = super().get_headless_stats()
+        if not self._ballistic_debug_summary:
+            return base
+        if not base:
+            return self._ballistic_debug_summary
+        return f"{base} {self._ballistic_debug_summary}"
+
 
 __all__ = [
     "BALANCED_POLICY",
@@ -510,6 +574,7 @@ __all__ = [
     "SPEED_POLICY",
     "StrategyDescentBot",
     "clamp",
+    "ballistic_time_to_impact",
     "engine_profile",
     "finite_altitude",
     "normalize_behavior_key",

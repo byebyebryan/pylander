@@ -12,6 +12,8 @@ from bots._descent_core import (
     clamp,
     resolve_behavior,
 )
+from core.bot import ActiveSensors
+from core.terrain import ballistic_fall_time
 
 
 @dataclass(frozen=True)
@@ -85,6 +87,100 @@ class DriftBrakeWindow:
     time_to_target: float
 
 
+@dataclass(frozen=True)
+class DriftBallisticProjection:
+    projected_dx: float
+    t_fall: float
+    target_x: float | None
+    impact_x: float | None
+    used_sensor: bool
+
+
+def _coerce_finite(value: float | None, default: float = 0.0) -> float:
+    if value is None:
+        return default
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(numeric):
+        return default
+    return numeric
+
+
+def _estimate_ballistic_projection(
+    *,
+    dx: float,
+    alt: float,
+    vx: float | None,
+    vy_up: float | None,
+    x: float | None,
+    y: float | None,
+    active: ActiveSensors | None,
+    clearance: float,
+) -> DriftBallisticProjection:
+    safe_alt = max(0.0, _coerce_finite(alt, 0.0))
+    safe_vx = _coerce_finite(vx, 0.0)
+    safe_vy = _coerce_finite(vy_up, 0.0)
+    safe_dx = _coerce_finite(dx, 0.0)
+    fallback_t_fall = ballistic_fall_time(altitude=safe_alt, vy_up=safe_vy)
+    fallback_projected_dx = safe_dx - (safe_vx * fallback_t_fall)
+
+    safe_x = _coerce_finite(x, float("nan"))
+    safe_y = _coerce_finite(y, float("nan"))
+    target_x: float | None = None
+    fallback_impact_x: float | None = None
+    if math.isfinite(safe_x):
+        target_x = safe_x + safe_dx
+        fallback_impact_x = safe_x + (safe_vx * fallback_t_fall)
+    fallback = DriftBallisticProjection(
+        projected_dx=fallback_projected_dx,
+        t_fall=fallback_t_fall,
+        target_x=target_x,
+        impact_x=fallback_impact_x,
+        used_sensor=False,
+    )
+    if active is None or not (math.isfinite(safe_x) and math.isfinite(safe_y)):
+        return fallback
+
+    distance_budget = max(
+        600.0,
+        abs(safe_dx) + (abs(safe_vx) * max(2.0, fallback_t_fall)) + 300.0,
+    )
+    try:
+        traj = active.ballistic_trajectory(
+            x=safe_x,
+            y=safe_y,
+            vx=safe_vx,
+            vy_up=safe_vy,
+            max_distance=min(5000.0, distance_budget),
+            segment_length=22.0,
+            max_points=192,
+            lod=0,
+            clearance=max(0.0, float(clearance)),
+        )
+    except Exception:
+        return fallback
+    if not isinstance(traj, dict) or not bool(traj.get("hit")):
+        return fallback
+    hit_x_raw = traj.get("hit_x")
+    if not isinstance(hit_x_raw, (int, float)) or not math.isfinite(float(hit_x_raw)):
+        return fallback
+
+    target_x = safe_x + safe_dx
+    sensor_projected_dx = target_x - float(hit_x_raw)
+    hit_time = traj.get("hit_time")
+    duration = traj.get("duration")
+    sensor_t_fall = _coerce_finite(hit_time, _coerce_finite(duration, fallback_t_fall))
+    return DriftBallisticProjection(
+        projected_dx=sensor_projected_dx,
+        t_fall=max(0.5, sensor_t_fall),
+        target_x=target_x,
+        impact_x=float(hit_x_raw),
+        used_sensor=True,
+    )
+
+
 def cone_dx_limit(alt: float, cfg: DriftCourseConfig) -> float:
     return clamp(
         cfg.cone_dx_base + (cfg.cone_dx_per_alt * alt),
@@ -105,30 +201,6 @@ def fast_descent_vy(alt: float, cfg: DriftCourseConfig) -> float:
         cfg.fast_descent_base,
         cfg.fast_descent_cap,
     )
-
-
-def _ballistic_fall_time(
-    *,
-    alt: float,
-    vy_up: float,
-    g: float = 9.8,
-) -> float:
-    disc = max(0.0, (vy_up * vy_up) + (2.0 * g * max(0.0, alt)))
-    return max(0.5, (vy_up + math.sqrt(disc)) / g)
-
-
-def _projected_ballistic_dx(
-    *,
-    dx: float,
-    alt: float,
-    vx: float | None,
-    vy_up: float | None,
-    g: float = 9.8,
-) -> float:
-    if vx is None or vy_up is None or not (math.isfinite(vx) and math.isfinite(vy_up)):
-        return dx
-    t_fall = _ballistic_fall_time(alt=alt, vy_up=vy_up, g=g)
-    return dx - (vx * t_fall)
 
 
 def coupled_brake_window(
@@ -191,17 +263,27 @@ def apply_drift_guidance(
     *,
     vx: float | None = None,
     vy_up: float | None = None,
+    active: ActiveSensors | None = None,
+    x: float | None = None,
+    y: float | None = None,
+    clearance: float = 0.0,
+    debug: dict[str, object] | None = None,
 ) -> GuidanceTargets:
     if guidance.phase in ("flare", "touchdown"):
         return guidance
 
     alt = max(0.0, guidance.alt)
-    projected_dx = _projected_ballistic_dx(
+    projection = _estimate_ballistic_projection(
         dx=guidance.dx,
         alt=alt,
         vx=vx,
         vy_up=vy_up,
+        x=x,
+        y=y,
+        active=active,
+        clearance=clearance,
     )
+    projected_dx = projection.projected_dx
     abs_projected_dx = abs(projected_dx)
     cone_limit = cone_dx_limit(alt, cfg)
     vx_cap = correction_vx_cap(alt, cfg)
@@ -209,9 +291,7 @@ def apply_drift_guidance(
     vx_needed = 0.0
     vx_need_mag = 0.0
     if guidance.vertical_mode == "terminal_burn":
-        vy_for_fall = float(vy_up) if vy_up is not None and math.isfinite(vy_up) else 0.0
-        t_fall = _ballistic_fall_time(alt=alt, vy_up=vy_for_fall)
-        vx_needed = guidance.dx / t_fall
+        vx_needed = guidance.dx / max(0.5, projection.t_fall)
         vx_need_mag = abs(vx_needed)
         if vx_need_mag > cfg.terminal_track_vx_deadband:
             track_cap = clamp(
@@ -281,6 +361,16 @@ def apply_drift_guidance(
         vy_sp = min(vy_sp, -cfg.drift_coast_descent_floor)
     if vertical_mode == "coast" and alt >= cfg.fast_descent_min_altitude:
         vy_sp = min(vy_sp, fast_descent_vy(alt, cfg))
+    if debug is not None:
+        debug.update(
+            {
+                "projected_dx": projected_dx,
+                "t_fall": projection.t_fall,
+                "impact_x": projection.impact_x,
+                "target_x": projection.target_x,
+                "sensor_used": projection.used_sensor,
+            }
+        )
 
     phase = "drift" if guidance.phase in ("coast", "align") else guidance.phase
     return replace(
@@ -301,11 +391,24 @@ def lateral_tracking_command(
     vy_up: float,
     ax: float,
     vx_guidance: float,
+    active: ActiveSensors | None = None,
+    x: float | None = None,
+    y: float | None = None,
+    clearance: float = 0.0,
 ) -> DriftLateralTracker:
     safe_alt = max(0.0, alt)
-    vy_for_fall = vy_up if math.isfinite(vy_up) else 0.0
+    projection = _estimate_ballistic_projection(
+        dx=dx,
+        alt=safe_alt,
+        vx=vx,
+        vy_up=vy_up,
+        x=x,
+        y=y,
+        active=active,
+        clearance=clearance,
+    )
     t_go = clamp(
-        _ballistic_fall_time(alt=safe_alt, vy_up=vy_for_fall),
+        projection.t_fall,
         cfg.lateral_tgo_min,
         cfg.lateral_tgo_max,
     )

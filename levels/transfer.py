@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 import random
 from dataclasses import dataclass, replace
 
@@ -8,6 +7,7 @@ from core.components import PhysicsState, Transform
 from core.ecs import require_component
 from core.level import Level
 from core.maths import Vector2
+from core.terrain import ballistic_fall_time
 from levels.scenario_common import (
     ScenarioLevel,
     ScenarioLevelSpec,
@@ -87,11 +87,6 @@ _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
 )
 
 
-def _ballistic_fall_time(altitude: float, vy_up: float, g: float = 9.8) -> float:
-    disc = max(0.0, (vy_up * vy_up) + (2.0 * g * max(0.0, altitude)))
-    return max(0.5, (vy_up + math.sqrt(disc)) / g)
-
-
 def _make_spec(scenario: TransferScenario) -> ScenarioLevelSpec:
     return ScenarioLevelSpec(
         name=scenario.name,
@@ -156,7 +151,7 @@ class TransferLevel(ScenarioLevel):
         target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
         dx = float(target_pos.x - trans.pos.x)
         alt = max(0.0, float(trans.pos.y - target_pos.y))
-        t_fall = _ballistic_fall_time(alt, float(scenario.initial_vy_up))
+        t_fall = ballistic_fall_time(altitude=alt, vy_up=float(scenario.initial_vy_up))
         vx_ballistic = dx / t_fall
         initial_vx = vx_ballistic * float(scenario.vx_factor)
         phys.vel = Vector2(initial_vx, float(scenario.initial_vy_up))

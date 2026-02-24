@@ -102,7 +102,13 @@ class ActiveSensors(Protocol):
         lod: int = 0,
         clearance: float = 0.0,
     ) -> dict[str, Any]:
-        """Predict engine-off trajectory against terrain."""
+        """Predict engine-off trajectory against terrain.
+
+        Returns keys:
+        - points, hit, hit_x, hit_y, hit_time
+        - hit_vx, hit_vy_up, hit_speed
+        - distance, duration, termination
+        """
         ...
 
 
@@ -183,6 +189,17 @@ class _ActiveSensorImpl:
         self._engine = engine_adapter
         self._actor_uid = actor_uid
         self._terrain = terrain_fn
+        # _ActiveSensorImpl instances are built once per bot step, so this is
+        # effectively a per-step cache for repeated ballistic queries.
+        self._ballistic_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
+
+    @staticmethod
+    def _copy_ballistic_payload(payload: dict[str, Any]) -> dict[str, Any]:
+        out = dict(payload)
+        points = payload.get("points")
+        if isinstance(points, list):
+            out["points"] = list(points)
+        return out
 
     def raycast(self, dir_angle: float, max_range: float | None = None) -> dict:
         rng = self._range() if max_range is None else max_range
@@ -223,17 +240,36 @@ class _ActiveSensorImpl:
         lod: int = 0,
         clearance: float = 0.0,
     ) -> dict[str, Any]:
+        key = (
+            float(x),
+            float(y),
+            float(vx),
+            float(vy_up),
+            float(max_distance),
+            float(segment_length),
+            int(max_points),
+            int(lod),
+            float(clearance),
+        )
+        cached = self._ballistic_cache.get(key)
+        if cached is not None:
+            return self._copy_ballistic_payload(cached)
         if self._terrain is None:
-            return {
+            payload = {
                 "points": [(float(x), float(y))],
                 "hit": False,
                 "hit_x": None,
                 "hit_y": None,
                 "hit_time": None,
+                "hit_vx": None,
+                "hit_vy_up": None,
+                "hit_speed": None,
                 "distance": 0.0,
                 "duration": 0.0,
                 "termination": "no_terrain",
             }
+            self._ballistic_cache[key] = payload
+            return self._copy_ballistic_payload(payload)
         result = sample_ballistic_trajectory(
             self._terrain,
             x=x,
@@ -246,13 +282,18 @@ class _ActiveSensorImpl:
             lod=lod,
             clearance=clearance,
         )
-        return {
+        payload = {
             "points": result.points,
             "hit": result.hit,
             "hit_x": result.hit_x,
             "hit_y": result.hit_y,
             "hit_time": result.hit_time,
+            "hit_vx": result.hit_vx,
+            "hit_vy_up": result.hit_vy_up,
+            "hit_speed": result.hit_speed,
             "distance": result.distance,
             "duration": result.duration,
             "termination": result.termination,
         }
+        self._ballistic_cache[key] = payload
+        return self._copy_ballistic_payload(payload)

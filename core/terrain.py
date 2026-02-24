@@ -88,6 +88,9 @@ class BallisticTrajectory:
     hit_x: float | None
     hit_y: float | None
     hit_time: float | None
+    hit_vx: float | None
+    hit_vy_up: float | None
+    hit_speed: float | None
     distance: float
     duration: float
     termination: str
@@ -105,6 +108,46 @@ def _ballistic_position(
         x0 + (vx * t),
         y0 + (vy_up * t) - (0.5 * g * t * t),
     )
+
+
+def ballistic_velocity(
+    vx: float,
+    vy_up: float,
+    g: float,
+    t: float,
+) -> tuple[float, float]:
+    """Return ballistic velocity (vx, vy_up) at time t."""
+    return (vx, vy_up - (g * t))
+
+
+def ballistic_state(
+    x0: float,
+    y0: float,
+    vx: float,
+    vy_up: float,
+    g: float,
+    t: float,
+) -> tuple[float, float, float, float]:
+    """Return ballistic position + velocity at time t."""
+    px, py = _ballistic_position(x0, y0, vx, vy_up, g, t)
+    vv_x, vv_y = ballistic_velocity(vx, vy_up, g, t)
+    return px, py, vv_x, vv_y
+
+
+def ballistic_fall_time(
+    altitude: float,
+    vy_up: float,
+    g: float = 9.8,
+    *,
+    min_time: float = 0.5,
+) -> float:
+    """Return analytic engine-off time-to-ground for local altitude."""
+    gravity = abs(float(g))
+    if gravity <= 1e-9:
+        gravity = 9.8
+    disc = max(0.0, (vy_up * vy_up) + (2.0 * gravity * max(0.0, altitude)))
+    t = (vy_up + math.sqrt(disc)) / gravity
+    return max(float(min_time), t)
 
 
 def sample_ballistic_trajectory(
@@ -147,6 +190,9 @@ def sample_ballistic_trajectory(
             hit_x=start_x,
             hit_y=start_y,
             hit_time=0.0,
+            hit_vx=vx,
+            hit_vy_up=vy_up,
+            hit_speed=math.hypot(vx, vy_up),
             distance=0.0,
             duration=0.0,
             termination="terrain_hit",
@@ -158,6 +204,9 @@ def sample_ballistic_trajectory(
             hit_x=None,
             hit_y=None,
             hit_time=None,
+            hit_vx=None,
+            hit_vy_up=None,
+            hit_speed=None,
             distance=0.0,
             duration=0.0,
             termination="max_distance",
@@ -195,6 +244,9 @@ def sample_ballistic_trajectory(
                 hit_x=None,
                 hit_y=None,
                 hit_time=None,
+                hit_vx=None,
+                hit_vy_up=None,
+                hit_speed=None,
                 distance=max_distance,
                 duration=t_end,
                 termination="max_distance",
@@ -214,7 +266,14 @@ def sample_ballistic_trajectory(
                 else:
                     t_hi = t_mid
             t_hit = t_hi
-            x_hit, y_hit = _ballistic_position(start_x, start_y, vx, vy_up, g, t_hit)
+            x_hit, y_hit, v_hit_x, v_hit_y = ballistic_state(
+                start_x,
+                start_y,
+                vx,
+                vy_up,
+                g,
+                t_hit,
+            )
             distance += math.hypot(x_hit - x_prev, y_hit - y_prev)
             points.append((x_hit, y_hit))
             return BallisticTrajectory(
@@ -223,6 +282,9 @@ def sample_ballistic_trajectory(
                 hit_x=x_hit,
                 hit_y=y_hit,
                 hit_time=t_hit,
+                hit_vx=v_hit_x,
+                hit_vy_up=v_hit_y,
+                hit_speed=math.hypot(v_hit_x, v_hit_y),
                 distance=distance,
                 duration=t_hit,
                 termination="terrain_hit",
@@ -241,6 +303,9 @@ def sample_ballistic_trajectory(
                 hit_x=None,
                 hit_y=None,
                 hit_time=None,
+                hit_vx=None,
+                hit_vy_up=None,
+                hit_speed=None,
                 distance=max_distance,
                 duration=t_prev,
                 termination="max_distance",
@@ -252,6 +317,9 @@ def sample_ballistic_trajectory(
         hit_x=None,
         hit_y=None,
         hit_time=None,
+        hit_vx=None,
+        hit_vy_up=None,
+        hit_speed=None,
         distance=distance,
         duration=t_prev,
         termination="point_budget",
