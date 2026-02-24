@@ -33,6 +33,32 @@ class DriftCourseConfig:
     terminal_correction_cone_scale: float = 0.75
 
 
+@dataclass(frozen=True)
+class TransferBurnConfig:
+    """Parameters for the ballistic transfer-burn phase."""
+
+    # Max tilt (radians) during the burn. Higher = more horizontal thrust, less vertical.
+    max_tilt: float = 0.9
+    # Exit transfer when |vx - vx_target| < this (m/s).
+    vx_tolerance: float = 1.0
+    # Skip transfer/coast if starting altitude is below this (m); go straight to terminal.
+    min_coast_altitude: float = 65.0
+    # Cap total delta-vx from initial vx (0 = no cap). Prevents huge reversal burns on vx_away.
+    max_transfer_dvx: float = 0.0
+    # Soft descent-rate cap during coast (negative m/s, 0 = true free fall).
+    # When vy_up drops below this, hold it with gravity compensation only.
+    # Keeps terminal entry speed sane without burning throughout.
+    max_coast_descent_rate: float = 0.0
+    # Allow small mid-course corrections during coast.
+    coast_correction_enabled: bool = False
+    # Trigger correction when predicted-landing error exceeds this (m).
+    coast_correction_threshold: float = 20.0
+    # Correction tilt per unit of predicted landing error (rad/m).
+    coast_correction_angle_scale: float = 0.004
+    # Throttle fraction during coast correction burns.
+    coast_correction_throttle: float = 0.35
+
+
 def cone_dx_limit(alt: float, cfg: DriftCourseConfig) -> float:
     return clamp(
         cfg.cone_dx_base + (cfg.cone_dx_per_alt * alt),
@@ -53,6 +79,36 @@ def fast_descent_vy(alt: float, cfg: DriftCourseConfig) -> float:
         cfg.fast_descent_base,
         cfg.fast_descent_cap,
     )
+
+
+def compute_transfer_plan(
+    h: float,
+    dx: float,
+    vx: float,
+    vy_up: float,
+    g: float = 9.8,
+) -> tuple[float, float]:
+    """Ballistic free-fall time and required horizontal speed to reach the target.
+
+    Returns (vx_needed, t_fall). t_fall is floored at 0.5 s to stay stable
+    when called close to the ground.
+    """
+    disc = max(0.0, vy_up * vy_up + 2.0 * g * max(0.0, h))
+    t_fall = max(0.5, (vy_up + math.sqrt(disc)) / g)
+    return dx / t_fall, t_fall
+
+
+def predict_landing_x(
+    x: float,
+    vx: float,
+    h: float,
+    vy_up: float,
+    g: float = 9.8,
+) -> float:
+    """Where we'd land if we free-fell from the current state (no thrust)."""
+    disc = max(0.0, vy_up * vy_up + 2.0 * g * max(0.0, h))
+    t_fall = max(0.01, (vy_up + math.sqrt(disc)) / g)
+    return x + vx * t_fall
 
 
 def apply_drift_guidance(guidance: GuidanceTargets, cfg: DriftCourseConfig) -> GuidanceTargets:
@@ -203,20 +259,66 @@ DRIFT_ACCURACY_COURSE = replace(
     terminal_correction_cone_scale=0.62,
 )
 
-_DRIFT_BEHAVIORS: dict[str, tuple[DescentPolicy, DriftCourseConfig]] = {
-    "balanced": (DRIFT_BALANCED_POLICY, DRIFT_BALANCED_COURSE),
-    "efficiency": (DRIFT_EFFICIENCY_POLICY, DRIFT_EFFICIENCY_COURSE),
-    "accuracy": (DRIFT_ACCURACY_POLICY, DRIFT_ACCURACY_COURSE),
+# Efficiency: aggressive tilt, pure free-fall coast, no corrections.
+# max_transfer_dvx acts as a fallback threshold: if the required reversal is larger than this
+# (e.g. vx_away scenarios) the bot skips transfer and uses the old continuous approach instead,
+# since large reversals cost more than they save.
+DRIFT_EFFICIENCY_TRANSFER = TransferBurnConfig(
+    max_tilt=1.1,
+    vx_tolerance=1.5,
+    min_coast_altitude=160.0,
+    max_transfer_dvx=25.0,
+    max_coast_descent_rate=0.0,
+    coast_correction_enabled=False,
+    coast_correction_threshold=999.0,
+    coast_correction_angle_scale=0.003,
+    coast_correction_throttle=0.0,
+)
+
+# Accuracy: moderate tilt for precise vx, coast corrections to hold the trajectory.
+# vx_tolerance is tight so the initial pred_err is small (tolerance × t_fall < threshold).
+# Same fallback threshold so vx_away also falls back to the old precise approach.
+DRIFT_ACCURACY_TRANSFER = TransferBurnConfig(
+    max_tilt=0.7,
+    vx_tolerance=0.20,
+    min_coast_altitude=160.0,
+    max_transfer_dvx=25.0,
+    max_coast_descent_rate=0.0,
+    coast_correction_enabled=True,
+    coast_correction_threshold=3.5,
+    coast_correction_angle_scale=0.011,
+    coast_correction_throttle=0.45,
+)
+
+# Balanced: midpoint.
+DRIFT_BALANCED_TRANSFER = TransferBurnConfig(
+    max_tilt=0.9,
+    vx_tolerance=0.9,
+    min_coast_altitude=150.0,
+    max_transfer_dvx=25.0,
+    max_coast_descent_rate=0.0,
+    coast_correction_enabled=True,
+    coast_correction_threshold=10.0,
+    coast_correction_angle_scale=0.007,
+    coast_correction_throttle=0.38,
+)
+
+_DRIFT_BEHAVIORS: dict[str, tuple[DescentPolicy, DriftCourseConfig, TransferBurnConfig]] = {
+    "balanced": (DRIFT_BALANCED_POLICY, DRIFT_BALANCED_COURSE, DRIFT_BALANCED_TRANSFER),
+    "efficiency": (DRIFT_EFFICIENCY_POLICY, DRIFT_EFFICIENCY_COURSE, DRIFT_EFFICIENCY_TRANSFER),
+    "accuracy": (DRIFT_ACCURACY_POLICY, DRIFT_ACCURACY_COURSE, DRIFT_ACCURACY_TRANSFER),
 }
 
 
-def resolve_drift_behavior(behavior: str) -> tuple[str, DescentPolicy, DriftCourseConfig]:
+def resolve_drift_behavior(
+    behavior: str,
+) -> tuple[str, DescentPolicy, DriftCourseConfig, TransferBurnConfig]:
     key = str(behavior).strip().lower().replace("-", "_")
     if key not in _DRIFT_BEHAVIORS:
         known = ", ".join(sorted(_DRIFT_BEHAVIORS))
         raise ValueError(f"Unknown drift behavior '{behavior}'. Expected one of: {known}")
-    policy, cfg = _DRIFT_BEHAVIORS[key]
-    return key, policy, cfg
+    policy, cfg, transfer_cfg = _DRIFT_BEHAVIORS[key]
+    return key, policy, cfg, transfer_cfg
 
 
 def list_drift_behavior_names() -> tuple[str, ...]:
@@ -224,10 +326,16 @@ def list_drift_behavior_names() -> tuple[str, ...]:
 
 
 __all__ = [
+    "DRIFT_ACCURACY_TRANSFER",
     "DRIFT_BALANCED_POLICY",
+    "DRIFT_BALANCED_TRANSFER",
+    "DRIFT_EFFICIENCY_TRANSFER",
     "DriftCourseConfig",
+    "TransferBurnConfig",
     "apply_drift_guidance",
     "cap_low_altitude_angle",
+    "compute_transfer_plan",
     "list_drift_behavior_names",
+    "predict_landing_x",
     "resolve_drift_behavior",
 ]
