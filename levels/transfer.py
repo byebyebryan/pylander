@@ -205,6 +205,14 @@ class TransferLevel(ScenarioLevel):
         self._phase1_handoff_current_target_x = None
         self._phase1_handoff_current_impact_error = None
         self._phase1_handoff_abs_angle_deg = None
+        self._phase1_handoff_x = None
+        self._phase1_handoff_y = None
+        self._phase1_handoff_dx = None
+        self._phase1_handoff_altitude = None
+        self._phase1_handoff_vx = None
+        self._phase1_handoff_vy_up = None
+        self._phase1_handoff_speed = None
+        self._phase1_handoff_horizontal_speed = None
         self._phase1_handoff_on_track = None
         self._phase1_handoff_speed_ready = None
         self._phase1_handoff_not_falling_short = None
@@ -269,6 +277,30 @@ class TransferLevel(ScenarioLevel):
         if angle_rad is None:
             angle_rad = float(trans.rotation)
         self._phase1_handoff_abs_angle_deg = abs(math.degrees(angle_rad))
+        self._phase1_handoff_x = self._to_optional_float(snapshot.get("x"))
+        self._phase1_handoff_y = self._to_optional_float(snapshot.get("y"))
+        self._phase1_handoff_dx = self._to_optional_float(snapshot.get("dx"))
+        self._phase1_handoff_altitude = self._to_optional_float(snapshot.get("altitude"))
+        self._phase1_handoff_vx = self._to_optional_float(snapshot.get("vx"))
+        self._phase1_handoff_vy_up = self._to_optional_float(snapshot.get("vy_up"))
+        self._phase1_handoff_speed = self._to_optional_float(snapshot.get("speed"))
+        self._phase1_handoff_horizontal_speed = self._to_optional_float(
+            snapshot.get("horizontal_speed")
+        )
+        if (
+            self._phase1_handoff_speed is None
+            and self._phase1_handoff_vx is not None
+            and self._phase1_handoff_vy_up is not None
+        ):
+            self._phase1_handoff_speed = math.hypot(
+                self._phase1_handoff_vx,
+                self._phase1_handoff_vy_up,
+            )
+        if (
+            self._phase1_handoff_horizontal_speed is None
+            and self._phase1_handoff_vx is not None
+        ):
+            self._phase1_handoff_horizontal_speed = abs(self._phase1_handoff_vx)
         self._phase1_handoff_on_track = bool(snapshot.get("on_track"))
         self._phase1_handoff_speed_ready = bool(snapshot.get("speed_ready"))
         self._phase1_handoff_not_falling_short = bool(snapshot.get("not_falling_short"))
@@ -376,6 +408,19 @@ class TransferLevel(ScenarioLevel):
         result["transfer_handoff_current_impact_x"] = self._phase1_handoff_current_impact_x
         result["transfer_handoff_current_target_x"] = self._phase1_handoff_current_target_x
         result["transfer_handoff_abs_angle_deg"] = self._phase1_handoff_abs_angle_deg
+        result["transfer_handoff_x"] = self._phase1_handoff_x
+        result["transfer_handoff_y"] = self._phase1_handoff_y
+        result["transfer_handoff_dx"] = self._phase1_handoff_dx
+        result["transfer_handoff_abs_dx"] = (
+            abs(self._phase1_handoff_dx)
+            if self._phase1_handoff_dx is not None
+            else None
+        )
+        result["transfer_handoff_altitude"] = self._phase1_handoff_altitude
+        result["transfer_handoff_vx"] = self._phase1_handoff_vx
+        result["transfer_handoff_vy_up"] = self._phase1_handoff_vy_up
+        result["transfer_handoff_speed"] = self._phase1_handoff_speed
+        result["transfer_handoff_horizontal_speed"] = self._phase1_handoff_horizontal_speed
         result["transfer_handoff_on_track"] = self._phase1_handoff_on_track
         result["transfer_handoff_speed_ready"] = self._phase1_handoff_speed_ready
         result["transfer_handoff_not_falling_short"] = self._phase1_handoff_not_falling_short

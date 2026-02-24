@@ -86,6 +86,13 @@ def _efficiency_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "time",
         "time_to_first_land",
         "transfer_handoff_time",
+        "transfer_handoff_altitude",
+        "transfer_handoff_dx",
+        "transfer_handoff_abs_dx",
+        "transfer_handoff_vx",
+        "transfer_handoff_vy_up",
+        "transfer_handoff_speed",
+        "transfer_handoff_horizontal_speed",
         "transfer_handoff_impact_error",
         "transfer_handoff_planned_impact_error",
         "transfer_handoff_abs_angle_deg",
@@ -152,6 +159,19 @@ def normalize_run_result(
         "eval_phase": result.get("eval_phase"),
         "transfer_handoff_done": _to_optional_bool(result.get("transfer_handoff_done")),
         "transfer_handoff_time": _to_optional_float(result.get("transfer_handoff_time")),
+        "transfer_handoff_x": _to_optional_float(result.get("transfer_handoff_x")),
+        "transfer_handoff_y": _to_optional_float(result.get("transfer_handoff_y")),
+        "transfer_handoff_dx": _to_optional_float(result.get("transfer_handoff_dx")),
+        "transfer_handoff_abs_dx": _to_optional_float(result.get("transfer_handoff_abs_dx")),
+        "transfer_handoff_altitude": _to_optional_float(
+            result.get("transfer_handoff_altitude")
+        ),
+        "transfer_handoff_vx": _to_optional_float(result.get("transfer_handoff_vx")),
+        "transfer_handoff_vy_up": _to_optional_float(result.get("transfer_handoff_vy_up")),
+        "transfer_handoff_speed": _to_optional_float(result.get("transfer_handoff_speed")),
+        "transfer_handoff_horizontal_speed": _to_optional_float(
+            result.get("transfer_handoff_horizontal_speed")
+        ),
         "transfer_handoff_projected_dx": _to_optional_float(
             result.get("transfer_handoff_projected_dx")
         ),

@@ -1864,6 +1864,8 @@ def test_drift_level_lists_expected_scenarios() -> None:
         "flat",
         "flat_correction",
         "flat_stress_correction",
+        "handoff_extreme",
+        "handoff_extreme_fast",
     }
     assert base.issubset(scenarios)
     cargo_variants = {
@@ -1883,7 +1885,11 @@ def test_drift_level_lists_expected_quick_benchmark_scenarios() -> None:
     level = create_level_by_name("drift")
     list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
     assert callable(list_quick_scenarios)
-    assert list_quick_scenarios() == ["glide_mid", "glide_long_stress_correction"]
+    assert list_quick_scenarios() == [
+        "glide_mid",
+        "glide_long_stress_correction",
+        "handoff_extreme",
+    ]
 
 
 def test_drift_scenario_sets_offset_and_horizontal_velocity() -> None:
@@ -1898,6 +1904,20 @@ def test_drift_scenario_sets_offset_and_horizontal_velocity() -> None:
     assert abs(trans.pos.x) > 0.0
     assert abs(phys.vel.x) > 0.0
     assert trans.pos.x * phys.vel.x < 0.0  # toward target from randomized side
+
+
+def test_drift_handoff_scenario_starts_fast_toward_target() -> None:
+    level = create_level_by_name("drift")
+    level.set_eval_scenario("handoff_extreme_fast")
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=9)
+    actor = game.actors[0]
+    trans = actor.get_component(Transform)
+    phys = actor.get_component(PhysicsState)
+    assert trans is not None
+    assert phys is not None
+    assert abs(phys.vel.x) >= 100.0
+    assert phys.vel.y > 0.0
+    assert trans.pos.x * phys.vel.x < 0.0
 
 
 def test_drift_scenario_direction_is_deterministic_for_seed() -> None:
@@ -2783,8 +2803,12 @@ def test_run_batch_quick_benchmark_uses_cross_level_core_suite(monkeypatch) -> N
         }
     )
     assert drop_scenarios == ["alt_400", "speed_high", "upward_low"]
-    assert drift_scenarios == ["glide_long_stress_correction", "glide_mid"]
-    assert len(seen_runs) == 15  # 3 seeds x 5 quick scenarios
+    assert drift_scenarios == [
+        "glide_long_stress_correction",
+        "glide_mid",
+        "handoff_extreme",
+    ]
+    assert len(seen_runs) == 18  # 3 seeds x 6 quick scenarios
 
 
 def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:

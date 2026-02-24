@@ -88,7 +88,7 @@ uv run python main.py flat --lander differential
 
 Batch evaluation (headless, sequential single-bot runs):
 ```bash
-# Fast cross-level benchmark (15 runs = 3 seeds x 5 core scenarios)
+# Fast cross-level benchmark (18 runs = 3 seeds x 6 core scenarios)
 uv run python main.py drop --headless --quick-benchmark
 
 # Scenario-specific batch using level default bot
@@ -117,7 +117,7 @@ By default, generated artifacts (batch JSON/CSV and trajectory plots) are writte
 
 `--quick-benchmark` runs a fixed core suite:
 - `drop`: `alt_400`, `speed_high`, `upward_low`
-- `drift`: `glide_mid`, `glide_long_stress_correction`
+- `drift`: `glide_mid`, `glide_long_stress_correction`, `handoff_extreme`
 
 Use `--batch-scenarios` when you want a narrower or custom scenario slice.
 When comparing benchmark runs, keep `--eval-mode` fixed (focused vs full are different goals).
@@ -194,6 +194,9 @@ Dedicated scenario levels (default bot in parentheses):
     - `flat`
     - `flat_correction`
     - `flat_stress_correction`
+    - `handoff_extreme`
+    - `handoff_extreme_fast`
+      - explicit transfer-handoff mirrors for high horizontal-speed terminal tuning
   - targeted heavy-cargo variants (`*_cargo_high`) exist only for:
     - `glide_mid_correction`
     - `glide_long_correction`

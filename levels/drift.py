@@ -21,6 +21,7 @@ class DriftScenario:
     spawn_clearance: float
     start_x: float
     trajectory_error: float = 0.0
+    initial_vx_toward_target: float | None = None
     initial_vy_up: float = 0.0
     initial_angle: float = 0.0
     cargo_mass: float = 1800.0
@@ -98,6 +99,25 @@ _BASE_CELLS: tuple[_ScenarioCell, ...] = tuple(
     for tier_key in _PROFILE_ERROR_TIERS[profile.name]
 )
 _BASE_SCENARIOS: tuple[DriftScenario, ...] = tuple(cell.scenario for cell in _BASE_CELLS)
+_HANDOFF_SCENARIOS: tuple[DriftScenario, ...] = (
+    # Ferry high-energy setup mirrors (pre-handoff): very large offset and high |vx|.
+    DriftScenario(
+        name="handoff_extreme",
+        spawn_clearance=260.0,
+        start_x=1200.0,
+        initial_vx_toward_target=108.0,
+        initial_vy_up=34.0,
+        cargo_mass=0.0,
+    ),
+    DriftScenario(
+        name="handoff_extreme_fast",
+        spawn_clearance=240.0,
+        start_x=1320.0,
+        initial_vx_toward_target=116.0,
+        initial_vy_up=30.0,
+        cargo_mass=0.0,
+    ),
+)
 _CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
     ("cargo_high", 4500.0),
 )
@@ -110,12 +130,14 @@ _CARGO_VARIANT_BASES: tuple[str, ...] = (
 )
 _SCENARIOS: tuple[DriftScenario, ...] = (
     _BASE_SCENARIOS
+    + _HANDOFF_SCENARIOS
     + tuple(
         DriftScenario(
             name=f"{base.name}_{suffix}",
             spawn_clearance=base.spawn_clearance,
             start_x=base.start_x,
             trajectory_error=base.trajectory_error,
+            initial_vx_toward_target=base.initial_vx_toward_target,
             initial_vy_up=base.initial_vy_up,
             initial_angle=base.initial_angle,
             cargo_mass=cargo_mass,
@@ -131,6 +153,7 @@ _DEFAULT_SCENARIO = "glide_mid"
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
     "glide_mid",
     "glide_long_stress_correction",
+    "handoff_extreme",
 )
 
 _DRIFT_SPAWN_OFFSET_MIN = 70.0
@@ -147,6 +170,9 @@ def _clamp_signed(value: float, magnitude_limit: float) -> float:
 
 
 def _apply_drift_envelope(scenario: DriftScenario) -> DriftScenario:
+    if scenario.initial_vx_toward_target is not None:
+        # Hand-off mirror scenarios intentionally preserve extreme offsets/speeds.
+        return scenario
     alt = max(0.0, float(scenario.spawn_clearance))
     offset_limit = min(
         _DRIFT_SPAWN_OFFSET_MAX,
@@ -230,10 +256,13 @@ class DriftLevel(ScenarioLevel):
         dx = float(target_pos.x - trans.pos.x)
         alt = max(0.0, float(trans.pos.y - target_pos.y))
         t_fall = ballistic_fall_time(altitude=alt, vy_up=float(scenario.initial_vy_up))
-        vx_ballistic = dx / t_fall
-        error_distance = trajectory_error_sign * abs(float(scenario.trajectory_error))
-        vx_error = error_distance / t_fall
-        initial_vx = vx_ballistic + vx_error
+        if scenario.initial_vx_toward_target is not None:
+            initial_vx = -direction * abs(float(scenario.initial_vx_toward_target))
+        else:
+            vx_ballistic = dx / t_fall
+            error_distance = trajectory_error_sign * abs(float(scenario.trajectory_error))
+            vx_error = error_distance / t_fall
+            initial_vx = vx_ballistic + vx_error
         phys.vel = Vector2(initial_vx, float(scenario.initial_vy_up))
 
         engine = getattr(self, "engine", None)

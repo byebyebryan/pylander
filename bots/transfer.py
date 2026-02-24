@@ -403,6 +403,13 @@ class TransferBot(DriftBot):
         current_impact_error = None
         if current_impact_x is not None and current_target_x is not None:
             current_impact_error = abs(current_impact_x - current_target_x)
+        handoff_x = float(passive.x)
+        handoff_y = float(passive.y)
+        handoff_vx = float(passive.vx)
+        handoff_vy_up = float(passive.vy_up)
+        handoff_dx = None
+        if target_x is not None:
+            handoff_dx = target_x - handoff_x
         return {
             "kind": "transfer",
             "handoff_done": True,
@@ -420,6 +427,13 @@ class TransferBot(DriftBot):
             "speed_ready": bool(handoff_debug.get("speed_ready")),
             "angle_rad": float(passive.angle),
             "altitude": float(passive.altitude),
+            "x": handoff_x,
+            "y": handoff_y,
+            "dx": handoff_dx,
+            "vx": handoff_vx,
+            "vy_up": handoff_vy_up,
+            "speed": math.hypot(handoff_vx, handoff_vy_up),
+            "horizontal_speed": abs(handoff_vx),
         }
 
     def _guidance(
