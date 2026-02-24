@@ -501,6 +501,11 @@ def _run_once(
                 f"Bot '{run_bot_name}' does not support --bot-behavior"
             )
         set_behavior(config.bot_behavior)
+    if bot is not None and run_bot_name is not None:
+        setattr(bot, "_bot_name", run_bot_name)
+        behavior = getattr(bot, "behavior", None)
+        if isinstance(behavior, str):
+            setattr(bot, "_bot_behavior", behavior)
     game = LanderGame(seed=seed, bot=bot, headless=config.headless, level=level)
     result = game.run(
         print_freq=config.print_freq,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from bots._descent_core import GuidanceTargets, StrategyDescentBot
 from bots._drift_core import (
     DRIFT_BALANCED_POLICY,
@@ -56,9 +58,27 @@ class DriftBot(StrategyDescentBot):
         vx_sp: float,
     ) -> float:
         vx_err = vx_sp - passive.vx
-        high_speed = abs(vx_sp) > 2.4
-        gain = 0.9 if high_speed else 0.7
-        accel_damping = 0.06 if high_speed else 0.1
+        abs_vx_sp = abs(vx_sp)
+        alt = passive.altitude if math.isfinite(passive.altitude) else 0.0
+        if self._behavior == "efficiency":
+            if alt >= 95.0 and abs_vx_sp >= 2.8:
+                gain = 1.35
+                accel_damping = 0.02
+            elif abs_vx_sp > 2.2:
+                gain = 1.12
+                accel_damping = 0.04
+            else:
+                gain = 0.78
+                accel_damping = 0.085
+        elif alt >= 120.0 and abs_vx_sp >= 3.0:
+            gain = 1.1
+            accel_damping = 0.035
+        elif abs_vx_sp > 2.4:
+            gain = 0.95
+            accel_damping = 0.055
+        else:
+            gain = 0.72
+            accel_damping = 0.1
         return (gain * vx_err) - (accel_damping * passive.ax)
 
     def _allocate_controls(

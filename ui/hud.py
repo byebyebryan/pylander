@@ -53,7 +53,6 @@ class HudOverlay:
         return specs
 
     def _build_info_lines(self, level, actor, bot=None) -> list[str]:
-        _ = bot
         wallet = actor.get_component(Wallet)
         if wallet is None:
             raise RuntimeError("Lander missing Wallet component")
@@ -124,6 +123,16 @@ class HudOverlay:
         )
 
         lines: list[str] = [f"STATE: {ls.state.upper()}    CREDITS: {wallet.credits:.0f}"]
+        if bot is not None:
+            bot_name = getattr(bot, "_bot_name", None)
+            if not isinstance(bot_name, str) or not bot_name:
+                bot_name = bot.__class__.__module__.split(".")[-1]
+            behavior = getattr(bot, "_bot_behavior", None)
+            if not isinstance(behavior, str) or not behavior:
+                prop_behavior = getattr(bot, "behavior", None)
+                behavior = prop_behavior if isinstance(prop_behavior, str) else ""
+            bot_label = f"{bot_name}:{behavior}" if behavior else bot_name
+            lines.append(f"BOT: {bot_label}")
         lines.append("")
         lines.append(f"FUEL: {fuel_pct:.1f}% ({tank.fuel:.1f}/{tank.max_fuel:.1f})")
         if abs(target_thrust_pct - thrust_pct) < 1e-3:

@@ -134,12 +134,13 @@ DRIFT_BALANCED_POLICY = replace(
 DRIFT_EFFICIENCY_POLICY = replace(
     DRIFT_BALANCED_POLICY,
     status_prefix="drift_efficiency",
-    descent_rate_scale=1.12,
-    burn_margin_scale=0.9,
-    time_to_brake_buffer=0.04,
-    coast_horiz_deadband=5.5,
-    terminal_brake_gain_high_alt=1.05,
-    terminal_brake_gain_low_alt=0.94,
+    lateral_gain=1.24,
+    descent_rate_scale=1.24,
+    burn_margin_scale=0.78,
+    time_to_brake_buffer=0.0,
+    coast_horiz_deadband=7.0,
+    terminal_brake_gain_high_alt=1.12,
+    terminal_brake_gain_low_alt=1.02,
 )
 
 DRIFT_ACCURACY_POLICY = replace(
@@ -153,26 +154,33 @@ DRIFT_ACCURACY_POLICY = replace(
     terminal_brake_gain_low_alt=0.82,
 )
 
-DRIFT_BALANCED_COURSE = DriftCourseConfig()
+DRIFT_BALANCED_COURSE = replace(
+    DriftCourseConfig(),
+    correction_vx_min=2.2,
+    correction_vx_per_excess=0.072,
+    correction_vx_per_alt=0.0095,
+    correction_vx_high_alt_cap=8.4,
+    correction_vx_low_alt_cap=3.3,
+)
 DRIFT_EFFICIENCY_COURSE = replace(
     DRIFT_BALANCED_COURSE,
-    cone_dx_base=14.0,
-    cone_dx_per_alt=0.22,
-    cone_dx_max=170.0,
-    correction_vx_min=2.6,
-    correction_vx_per_excess=0.09,
-    correction_vx_per_alt=0.011,
-    correction_vx_high_alt_cap=8.8,
-    correction_vx_low_alt_cap=3.8,
-    correction_vx_low_alt_threshold=26.0,
-    terminal_burn_correction_vx_floor=5.0,
-    low_altitude_angle_limit_alt=12.0,
-    low_altitude_angle_limit_dx=20.0,
-    low_altitude_angle_cap=0.2,
-    drift_coast_enter_scale=1.25,
-    drift_coast_min_altitude=18.0,
-    drift_coast_descent_floor=2.8,
-    terminal_correction_cone_scale=0.9,
+    cone_dx_base=20.0,
+    cone_dx_per_alt=0.28,
+    cone_dx_max=220.0,
+    correction_vx_min=3.8,
+    correction_vx_per_excess=0.14,
+    correction_vx_per_alt=0.015,
+    correction_vx_high_alt_cap=11.5,
+    correction_vx_low_alt_cap=4.8,
+    correction_vx_low_alt_threshold=24.0,
+    terminal_burn_correction_vx_floor=6.4,
+    low_altitude_angle_limit_alt=11.0,
+    low_altitude_angle_limit_dx=18.0,
+    low_altitude_angle_cap=0.24,
+    drift_coast_enter_scale=0.82,
+    drift_coast_min_altitude=22.0,
+    drift_coast_descent_floor=3.4,
+    terminal_correction_cone_scale=1.0,
 )
 DRIFT_ACCURACY_COURSE = replace(
     DRIFT_BALANCED_COURSE,
@@ -190,6 +198,7 @@ DRIFT_ACCURACY_COURSE = replace(
     low_altitude_angle_limit_dx=30.0,
     low_altitude_angle_cap=0.12,
     drift_coast_enter_scale=0.72,
+    drift_coast_min_altitude=0.0,
     drift_coast_descent_floor=1.4,
     terminal_correction_cone_scale=0.62,
 )
