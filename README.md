@@ -158,7 +158,7 @@ Dedicated scenario levels (default bot in parentheses):
 - `drift` (`drift`) - correction-focused horizontal-control benchmark:
   - base scenarios (curated 6) span two dimensions:
     - trajectory flatness (`flat_low|mid|high`) -> more flat means more lateral speed to kill
-    - trajectory error (no suffix vs `_correction`) -> `_correction` scenarios need re-centering work
+    - trajectory error (no suffix vs `_correction`) -> `_correction` scenarios inject seeded random bias direction, so runs need re-centering work either way
   - scenario names:
     - `flat_low`
     - `flat_low_correction`
@@ -166,10 +166,12 @@ Dedicated scenario levels (default bot in parentheses):
     - `flat_mid_correction`
     - `flat_high`
     - `flat_high_correction`
+    - `flat_high_stress_correction`
   - targeted heavy-cargo variants (`*_cargo_high`) exist only for:
     - `flat_mid`
     - `flat_mid_correction`
     - `flat_high_correction`
+    - `flat_high_stress_correction`
 
 ## Command Line Options
 

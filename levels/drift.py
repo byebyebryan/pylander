@@ -63,6 +63,12 @@ _BASE_SCENARIOS: tuple[DriftScenario, ...] = (
         start_x=800.0,
         trajectory_error=20.0,
     ),
+    DriftScenario(
+        name="flat_high_stress_correction",
+        spawn_clearance=900.0,
+        start_x=900.0,
+        trajectory_error=28.0,
+    ),
 )
 _CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
     ("cargo_high", 4500.0),
@@ -71,6 +77,7 @@ _CARGO_VARIANT_BASES: tuple[str, ...] = (
     "flat_mid",
     "flat_mid_correction",
     "flat_high_correction",
+    "flat_high_stress_correction",
 )
 _SCENARIOS: tuple[DriftScenario, ...] = (
     _BASE_SCENARIOS
@@ -171,8 +178,11 @@ class DriftLevel(ScenarioLevel):
 
     def setup(self, game, seed: int) -> None:
         scenario_base = _apply_drift_envelope(_SCENARIO_BY_NAME[self._eval_scenario_name])
-        dir_rng = random.Random(seed ^ (sum(ord(ch) for ch in scenario_base.name) << 1))
+        scenario_name_hash = sum(ord(ch) for ch in scenario_base.name)
+        dir_rng = random.Random(seed ^ (scenario_name_hash << 1))
+        err_rng = random.Random(seed ^ (scenario_name_hash << 2))
         direction = -1.0 if dir_rng.random() < 0.5 else 1.0
+        trajectory_error_sign = -1.0 if err_rng.random() < 0.5 else 1.0
         scenario = replace(
             scenario_base,
             start_x=float(scenario_base.start_x) * direction,
@@ -197,8 +207,7 @@ class DriftLevel(ScenarioLevel):
         alt = max(0.0, float(trans.pos.y - target_pos.y))
         t_fall = _ballistic_fall_time(alt, float(scenario.initial_vy_up))
         vx_ballistic = dx / t_fall
-        error_sign = 1.0 if trans.pos.x >= 0.0 else -1.0
-        error_distance = error_sign * abs(float(scenario.trajectory_error))
+        error_distance = trajectory_error_sign * abs(float(scenario.trajectory_error))
         vx_error = error_distance / t_fall
         initial_vx = vx_ballistic + vx_error
         phys.vel = Vector2(initial_vx, float(scenario.initial_vy_up))

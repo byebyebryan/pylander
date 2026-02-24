@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import argparse
+import math
 
 import main as main_module
 import pytest
 from bots._descent_core import GuidanceTargets
-from bots._drift_core import DriftCourseConfig, apply_drift_guidance, cap_low_altitude_angle
+from bots._drift_core import (
+    DriftCourseConfig,
+    apply_drift_guidance,
+    cap_low_altitude_angle,
+    resolve_drift_behavior,
+)
 from bots import create_bot, list_available_bots
 from bots.descent import DescentBot
 from core.eval import aggregate_eval_records, normalize_run_result
@@ -147,7 +153,7 @@ def test_apply_drift_guidance_pushes_large_offset_into_correction_mode() -> None
         alt=60.0,
         burn_altitude=20.0,
     )
-    adjusted = apply_drift_guidance(guidance, cfg)
+    adjusted = apply_drift_guidance(guidance, cfg, vx=0.0, vy_up=0.0)
     assert adjusted.phase == "drift"
     assert adjusted.vertical_mode == "drift_coast"
     assert abs(adjusted.vx_sp) >= cfg.correction_vx_min
@@ -168,6 +174,118 @@ def test_apply_drift_guidance_accelerates_coast_descent_at_high_altitude() -> No
     assert adjusted.phase == "drift"
     assert adjusted.vertical_mode == "coast"
     assert adjusted.vy_sp < guidance.vy_sp
+
+
+def test_apply_drift_guidance_uses_projected_ballistic_error() -> None:
+    cfg = DriftCourseConfig()
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.4,
+        vy_sp=-1.2,
+        dx=120.0,
+        alt=60.0,
+        burn_altitude=20.0,
+    )
+    t_fall = max(0.5, math.sqrt((2.0 * 9.8 * guidance.alt)) / 9.8)
+    on_target_vx = guidance.dx / t_fall
+    adjusted_on_target = apply_drift_guidance(guidance, cfg, vx=on_target_vx, vy_up=0.0)
+    assert adjusted_on_target.vertical_mode == "coast"
+    assert adjusted_on_target.vx_sp == pytest.approx(guidance.vx_sp)
+
+    adjusted_off_target = apply_drift_guidance(guidance, cfg, vx=0.0, vy_up=0.0)
+    assert adjusted_off_target.vertical_mode == "drift_coast"
+    assert abs(adjusted_off_target.vx_sp) >= cfg.correction_vx_min
+
+
+def test_apply_drift_guidance_efficiency_correction_is_delayed_to_low_altitude() -> None:
+    _, _, cfg = resolve_drift_behavior("efficiency")
+    guidance_high = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.6,
+        vy_sp=-1.4,
+        dx=400.0,
+        alt=600.0,
+        burn_altitude=20.0,
+    )
+    t_fall = max(0.5, math.sqrt((2.0 * 9.8 * guidance_high.alt)) / 9.8)
+    adjusted_high = apply_drift_guidance(
+        guidance_high,
+        cfg,
+        vx=guidance_high.dx / t_fall,
+        vy_up=0.0,
+    )
+    assert adjusted_high.vertical_mode == "coast"
+    assert adjusted_high.vx_sp == pytest.approx(guidance_high.vx_sp)
+
+    adjusted_high_off_target = apply_drift_guidance(guidance_high, cfg, vx=0.0, vy_up=0.0)
+    assert abs(adjusted_high_off_target.vx_sp) > abs(guidance_high.vx_sp)
+
+    guidance_low = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.6,
+        vy_sp=-1.4,
+        dx=120.0,
+        alt=60.0,
+        burn_altitude=20.0,
+    )
+    adjusted_low = apply_drift_guidance(guidance_low, cfg, vx=0.0, vy_up=0.0)
+    assert adjusted_low.vertical_mode == "coast"
+    assert abs(adjusted_low.vx_sp) > abs(guidance_low.vx_sp)
+
+
+def test_apply_drift_guidance_behavior_profiles_diverge_in_terminal_mode() -> None:
+    _, _, efficiency_cfg = resolve_drift_behavior("efficiency")
+    _, _, balanced_cfg = resolve_drift_behavior("balanced")
+    _, _, accuracy_cfg = resolve_drift_behavior("accuracy")
+    guidance = GuidanceTargets(
+        phase="terminal_burn",
+        vertical_mode="terminal_burn",
+        vx_sp=0.2,
+        vy_sp=-1.2,
+        dx=120.0,
+        alt=60.0,
+        burn_altitude=20.0,
+    )
+    eff = apply_drift_guidance(guidance, efficiency_cfg, vx=0.0, vy_up=-1.2)
+    bal = apply_drift_guidance(guidance, balanced_cfg, vx=0.0, vy_up=-1.2)
+    acc = apply_drift_guidance(guidance, accuracy_cfg, vx=0.0, vy_up=-1.2)
+    magnitudes = [abs(eff.vx_sp), abs(bal.vx_sp), abs(acc.vx_sp)]
+    assert max(magnitudes) - min(magnitudes) >= 1.0
+
+
+def test_apply_drift_guidance_terminal_keeps_enough_vx_to_reach_target() -> None:
+    _, _, cfg = resolve_drift_behavior("balanced")
+    guidance = GuidanceTargets(
+        phase="terminal_burn",
+        vertical_mode="terminal_burn",
+        vx_sp=0.6,
+        vy_sp=-1.2,
+        dx=110.0,
+        alt=55.0,
+        burn_altitude=20.0,
+    )
+    t_fall = max(0.5, math.sqrt((2.0 * 9.8 * guidance.alt)) / 9.8)
+    on_track_vx = guidance.dx / t_fall
+    adjusted = apply_drift_guidance(guidance, cfg, vx=on_track_vx, vy_up=0.0)
+    assert abs(adjusted.vx_sp) > abs(guidance.vx_sp)
+
+
+def test_apply_drift_guidance_terminal_can_exceed_low_altitude_vx_cap_when_needed() -> None:
+    _, _, cfg = resolve_drift_behavior("efficiency")
+    guidance = GuidanceTargets(
+        phase="terminal_burn",
+        vertical_mode="terminal_burn",
+        vx_sp=0.6,
+        vy_sp=-1.2,
+        dx=60.0,
+        alt=18.0,
+        burn_altitude=10.0,
+    )
+    adjusted = apply_drift_guidance(guidance, cfg, vx=0.0, vy_up=0.0)
+    assert abs(adjusted.vx_sp) > cfg.correction_vx_low_alt_cap
 
 
 def test_cap_low_altitude_angle_only_applies_inside_touchdown_window() -> None:
@@ -742,12 +860,14 @@ def test_drift_level_lists_expected_scenarios() -> None:
         "flat_mid_correction",
         "flat_high",
         "flat_high_correction",
+        "flat_high_stress_correction",
     }
     assert base.issubset(scenarios)
     cargo_variants = {
         "flat_mid",
         "flat_mid_correction",
         "flat_high_correction",
+        "flat_high_stress_correction",
     }
     for name in cargo_variants:
         assert f"{name}_cargo_high" in scenarios
@@ -792,6 +912,48 @@ def test_drift_scenario_direction_is_deterministic_for_seed() -> None:
     assert trans_b is not None
 
     assert trans_a.pos.x == pytest.approx(trans_b.pos.x)
+
+
+def test_drift_correction_scenario_velocity_is_deterministic_for_seed() -> None:
+    level_a = create_level_by_name("drift")
+    level_a.set_eval_scenario("flat_mid_correction")
+    game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=23)
+    phys_a = game_a.actors[0].get_component(PhysicsState)
+    assert phys_a is not None
+
+    level_b = create_level_by_name("drift")
+    level_b.set_eval_scenario("flat_mid_correction")
+    game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=23)
+    phys_b = game_b.actors[0].get_component(PhysicsState)
+    assert phys_b is not None
+
+    assert phys_a.vel.x == pytest.approx(phys_b.vel.x)
+
+
+def test_drift_correction_scenario_randomizes_error_direction_across_seeds() -> None:
+    signs = set()
+    for seed in range(40):
+        level = create_level_by_name("drift")
+        level.set_eval_scenario("flat_mid_correction")
+        game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=seed)
+        actor = game.actors[0]
+        trans = actor.get_component(Transform)
+        phys = actor.get_component(PhysicsState)
+        assert trans is not None
+        assert phys is not None
+
+        target_pos = getattr(level, "eval_target_pos", Vector2(0.0, 0.0))
+        alt = max(0.0, float(trans.pos.y - target_pos.y))
+        disc = max(0.0, (phys.vel.y * phys.vel.y) + (2.0 * 9.8 * alt))
+        t_fall = max(0.5, (phys.vel.y + math.sqrt(disc)) / 9.8)
+        ballistic_vx = (float(target_pos.x) - float(trans.pos.x)) / t_fall
+        vx_error = phys.vel.x - ballistic_vx
+        if vx_error > 1e-6:
+            signs.add(1.0)
+        elif vx_error < -1e-6:
+            signs.add(-1.0)
+
+    assert signs == {-1.0, 1.0}
 
 
 def test_drift_cargo_scenario_applies_heavy_cargo_mass() -> None:

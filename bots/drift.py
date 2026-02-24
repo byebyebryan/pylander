@@ -53,7 +53,12 @@ class DriftBot(StrategyDescentBot):
             max_throttle=max_throttle,
             ramp_up=ramp_up,
         )
-        return apply_drift_guidance(base_guidance, self._course_cfg)
+        return apply_drift_guidance(
+            base_guidance,
+            self._course_cfg,
+            vx=passive.vx,
+            vy_up=passive.vy_up,
+        )
 
     def _horizontal_controller(
         self,
@@ -64,21 +69,28 @@ class DriftBot(StrategyDescentBot):
         abs_vx_sp = abs(vx_sp)
         alt = passive.altitude if math.isfinite(passive.altitude) else 0.0
         if self._behavior == "efficiency":
-            if alt >= 95.0 and abs_vx_sp >= 2.8:
-                gain = 1.35
-                accel_damping = 0.02
-            elif abs_vx_sp > 2.2:
-                gain = 1.12
-                accel_damping = 0.04
+            if alt >= 120.0 and abs_vx_sp >= 3.6:
+                gain = 1.15
+                accel_damping = 0.015
+            elif abs_vx_sp > 2.6:
+                gain = 0.95
+                accel_damping = 0.03
             else:
-                gain = 0.78
-                accel_damping = 0.085
+                gain = 0.65
+                accel_damping = 0.07
+        elif self._behavior == "accuracy":
+            if abs_vx_sp >= 2.0:
+                gain = 1.28
+                accel_damping = 0.08
+            else:
+                gain = 0.96
+                accel_damping = 0.13
         elif alt >= 120.0 and abs_vx_sp >= 3.0:
-            gain = 1.1
-            accel_damping = 0.035
+            gain = 1.02
+            accel_damping = 0.04
         elif abs_vx_sp > 2.4:
-            gain = 0.95
-            accel_damping = 0.055
+            gain = 0.9
+            accel_damping = 0.06
         else:
             gain = 0.72
             accel_damping = 0.1

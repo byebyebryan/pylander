@@ -296,6 +296,12 @@ class StrategyDescentBot(Bot):
             return 0.0
         if vertical_mode == "speed_dive":
             return 0.0
+        if vertical_mode == "drift_coast":
+            vy_err = vy_sp - passive.vy_up
+            # Keep correction burns thrust-backed without drifting into hover.
+            a_up_cmd = 7.2 + (0.2 * vy_err)
+            max_up_cmd = 9.8 if alt < 14.0 else 9.25
+            return clamp(a_up_cmd, 4.8, max_up_cmd)
         if vertical_mode == "terminal_burn":
             brake_gain = (
                 self._policy.terminal_brake_gain_high_alt
@@ -436,7 +442,9 @@ class StrategyDescentBot(Bot):
             max_throttle=max_throttle,
             ramp_up=ramp_up,
         )
-        if guidance.vertical_mode == "coast" and abs(guidance.dx) <= self._policy.coast_horiz_deadband:
+        if guidance.vertical_mode in ("coast", "drift_coast") and abs(
+            guidance.dx
+        ) <= self._policy.coast_horiz_deadband:
             a_x_sp = 0.0
         else:
             a_x_sp = self._horizontal_controller(passive, guidance.vx_sp)
