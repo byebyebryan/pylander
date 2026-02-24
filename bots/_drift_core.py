@@ -53,20 +53,36 @@ class DriftCourseConfig:
     lateral_soft_zone_dx: float = 14.0
     lateral_soft_zone_scale: float = 0.55
     lateral_stop_accel_estimate: float = 5.0
-    lateral_stop_distance_scale: float = 0.88
-    force_drift_coast_vx: float = 20.0
-    force_drift_coast_dx_min: float = 30.0
     lateral_stop_vx_margin: float = 0.92
     lateral_zero_vx_dx: float = 55.0
+    lateral_zero_vx_alt: float = 40.0
     lateral_zero_vx_cap: float = 1.6
     lateral_terminal_zero_vx_dx: float = 24.0
+    lateral_terminal_zero_vx_alt: float = 18.0
     lateral_terminal_zero_vx_cap: float = 1.0
+    coupled_vertical_reserve_up_acc: float = 1.6
+    coupled_lateral_efficiency: float = 0.86
+    coupled_lateral_min_speed: float = 2.5
+    coupled_brake_margin_scale: float = 1.08
+    coupled_brake_margin_time: float = 0.25
+    coupled_lateral_alt_margin: float = 5.0
+    drift_coast_max_alt: float = 220.0
+    drift_coast_min_entry_vx: float = 9.0
 
 
 @dataclass(frozen=True)
 class DriftLateralTracker:
     vx_target: float
     ax_target: float
+
+
+@dataclass(frozen=True)
+class DriftBrakeWindow:
+    vertical_brake_alt: float
+    lateral_brake_alt: float
+    combined_brake_alt: float
+    lateral_time_to_stop: float
+    time_to_target: float
 
 
 def cone_dx_limit(alt: float, cfg: DriftCourseConfig) -> float:
@@ -115,6 +131,60 @@ def _projected_ballistic_dx(
     return dx - (vx * t_fall)
 
 
+def coupled_brake_window(
+    cfg: DriftCourseConfig,
+    *,
+    alt: float,
+    dx: float,
+    vx: float,
+    vy_up: float,
+    mass: float,
+    max_force: float,
+    max_tilt: float,
+    spool_time: float,
+    vertical_brake_alt: float,
+) -> DriftBrakeWindow:
+    abs_dx = abs(dx)
+    abs_vx = abs(vx)
+    moving_toward_target = (abs_dx > 1e-3) and ((dx * vx) > 0.0)
+    safe_mass = max(0.5, mass)
+    total_accel = max_force / safe_mass
+    lateral_accel_tilt = max(0.0, total_accel * abs(math.sin(max_tilt)))
+    reserve_up_acc = 9.8 + cfg.coupled_vertical_reserve_up_acc
+    lateral_accel_coupled = math.sqrt(max(0.0, (total_accel * total_accel) - (reserve_up_acc * reserve_up_acc)))
+    lateral_budget = max(
+        0.25,
+        min(lateral_accel_tilt, lateral_accel_coupled) * cfg.coupled_lateral_efficiency,
+    )
+    time_to_stop = abs_vx / lateral_budget
+    time_to_target = abs_dx / max(abs_vx, 1e-3) if moving_toward_target else float("inf")
+    lateral_brake_time = (
+        spool_time
+        + cfg.coupled_brake_margin_time
+        + (cfg.coupled_brake_margin_scale * time_to_stop)
+    )
+    down_speed = max(0.0, -vy_up)
+    lateral_brake_alt = 0.0
+    if (
+        moving_toward_target
+        and abs_vx >= cfg.coupled_lateral_min_speed
+        and time_to_target <= lateral_brake_time
+    ):
+        lateral_brake_alt = (
+            (down_speed * lateral_brake_time)
+            + (4.9 * lateral_brake_time * lateral_brake_time)
+            + cfg.coupled_lateral_alt_margin
+        )
+    combined_brake_alt = max(vertical_brake_alt, lateral_brake_alt)
+    return DriftBrakeWindow(
+        vertical_brake_alt=vertical_brake_alt,
+        lateral_brake_alt=lateral_brake_alt,
+        combined_brake_alt=combined_brake_alt,
+        lateral_time_to_stop=time_to_stop,
+        time_to_target=time_to_target,
+    )
+
+
 def apply_drift_guidance(
     guidance: GuidanceTargets,
     cfg: DriftCourseConfig,
@@ -136,19 +206,6 @@ def apply_drift_guidance(
     cone_limit = cone_dx_limit(alt, cfg)
     vx_cap = correction_vx_cap(alt, cfg)
     current_vx = float(vx) if vx is not None and math.isfinite(vx) else 0.0
-    abs_dx = abs(guidance.dx)
-    moving_toward_target = (abs_dx > 1e-3) and ((guidance.dx * current_vx) > 0.0)
-    stop_distance = (
-        (current_vx * current_vx) / (2.0 * max(0.1, cfg.lateral_stop_accel_estimate))
-        if abs(current_vx) > 1e-6
-        else 0.0
-    )
-    stop_brake_urgent = moving_toward_target and (
-        stop_distance > (cfg.lateral_stop_distance_scale * abs_dx)
-    )
-    force_drift_coast = moving_toward_target and (
-        abs(current_vx) >= cfg.force_drift_coast_vx and abs_dx >= cfg.force_drift_coast_dx_min
-    )
     vx_needed = 0.0
     vx_need_mag = 0.0
     if guidance.vertical_mode == "terminal_burn":
@@ -182,9 +239,6 @@ def apply_drift_guidance(
         )
         vx_sp = math.copysign(max(abs(vx_sp), correction_vx), projected_dx)
         correction_active = True
-    if stop_brake_urgent:
-        correction_active = True
-
     if guidance.vertical_mode == "terminal_burn":
         if vx_need_mag > cfg.terminal_track_vx_deadband:
             blend = clamp(
@@ -199,7 +253,10 @@ def apply_drift_guidance(
                 vx_cap,
             )
             vx_sp = math.copysign(max(abs(vx_sp), abs(terminal_vx_floor)), terminal_vx_floor)
-        if abs(guidance.dx) <= cfg.lateral_terminal_zero_vx_dx:
+        if (
+            abs(guidance.dx) <= cfg.lateral_terminal_zero_vx_dx
+            and alt <= cfg.lateral_terminal_zero_vx_alt
+        ):
             # In late terminal near target, prioritize low lateral speed over centering speed.
             vx_sp = clamp(
                 vx_sp,
@@ -213,11 +270,10 @@ def apply_drift_guidance(
     if (
         vertical_mode == "coast"
         and alt >= cfg.drift_coast_min_altitude
-        and (
-            (abs_projected_dx > drift_coast_limit and correction_active)
-            or force_drift_coast
-            or stop_brake_urgent
-        )
+        and alt <= cfg.drift_coast_max_alt
+        and abs(current_vx) >= cfg.drift_coast_min_entry_vx
+        and abs_projected_dx > drift_coast_limit
+        and correction_active
     ):
         # Keep drift runs thrust-backed during correction, not ballistic.
         vertical_mode = "drift_coast"
@@ -268,7 +324,7 @@ def lateral_tracking_command(
         vx_stop_cap = math.sqrt(max(0.0, 2.0 * cfg.lateral_stop_accel_estimate * abs_dx))
         vx_stop_cap *= cfg.lateral_stop_vx_margin
         vx_target = math.copysign(min(abs(vx_target), vx_stop_cap), dx)
-    if abs_dx <= cfg.lateral_zero_vx_dx:
+    if abs_dx <= cfg.lateral_zero_vx_dx and safe_alt <= cfg.lateral_zero_vx_alt:
         vx_cap_near = cfg.lateral_zero_vx_cap
         vx_target = clamp(vx_target, -vx_cap_near, vx_cap_near)
     vx_err = vx_target - vx
@@ -344,14 +400,21 @@ DRIFT_COURSE = replace(
     lateral_soft_zone_dx=12.0,
     lateral_soft_zone_scale=0.5,
     lateral_stop_accel_estimate=5.4,
-    lateral_stop_distance_scale=0.84,
-    force_drift_coast_vx=18.0,
-    force_drift_coast_dx_min=40.0,
     lateral_stop_vx_margin=0.9,
-    lateral_zero_vx_dx=60.0,
-    lateral_zero_vx_cap=1.5,
+    lateral_zero_vx_dx=28.0,
+    lateral_zero_vx_alt=34.0,
+    lateral_zero_vx_cap=1.8,
     lateral_terminal_zero_vx_dx=24.0,
+    lateral_terminal_zero_vx_alt=14.0,
     lateral_terminal_zero_vx_cap=0.9,
+    coupled_vertical_reserve_up_acc=1.8,
+    coupled_lateral_efficiency=0.84,
+    coupled_lateral_min_speed=3.0,
+    coupled_brake_margin_scale=1.12,
+    coupled_brake_margin_time=0.3,
+    coupled_lateral_alt_margin=6.0,
+    drift_coast_max_alt=200.0,
+    drift_coast_min_entry_vx=10.0,
 )
 
 _DRIFT_BEHAVIORS: dict[str, tuple[DescentPolicy, DriftCourseConfig]] = {
@@ -378,9 +441,11 @@ def list_drift_behavior_names() -> tuple[str, ...]:
 __all__ = [
     "DRIFT_POLICY",
     "DriftCourseConfig",
+    "DriftBrakeWindow",
     "DriftLateralTracker",
     "apply_drift_guidance",
     "cap_low_altitude_angle",
+    "coupled_brake_window",
     "lateral_tracking_command",
     "list_drift_behavior_names",
     "resolve_drift_behavior",

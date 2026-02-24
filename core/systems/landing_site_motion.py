@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from core.components import KinematicMotion, LandingSite, PhysicsState, SiteAttachment, Transform
+from core.components import KinematicMotion, LandingSite, SiteAttachment, Transform
 from core.ecs import System
 from core.maths import Vector2
 

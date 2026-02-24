@@ -168,6 +168,19 @@ class StrategyDescentBot(Bot):
         max_fuel = max(1e-6, float(passive.max_fuel))
         return clamp(float(passive.fuel) / max_fuel, 0.0, 1.0)
 
+    def _terminal_brake_altitude(
+        self,
+        passive: PassiveSensors,
+        *,
+        alt: float,
+        dx: float,
+        burn_altitude: float,
+        spool_time: float,
+        max_force: float,
+    ) -> float:
+        _ = passive, alt, dx, spool_time, max_force
+        return burn_altitude
+
     def _guidance(
         self,
         passive: PassiveSensors,
@@ -195,6 +208,14 @@ class StrategyDescentBot(Bot):
         stop_distance = (speed_to_kill * speed_to_kill) / (2.0 * max(up_acc_max, 1e-3))
         burn_margin = (2.1 + (0.12 * max(0.0, abs_dx - align_band))) * self._policy.burn_margin_scale
         burn_altitude = stop_distance + spool_distance + burn_margin
+        burn_altitude = self._terminal_brake_altitude(
+            passive,
+            alt=alt,
+            dx=dx,
+            burn_altitude=burn_altitude,
+            spool_time=spool_time,
+            max_force=max_force,
+        )
 
         time_to_impact = alt / max(0.1, down_speed) if down_speed > 0.1 else float("inf")
         time_to_brake = spool_time + (speed_to_kill / max(up_acc_max, 1e-3))

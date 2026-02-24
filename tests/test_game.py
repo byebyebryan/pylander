@@ -10,6 +10,7 @@ from bots._drift_core import (
     DriftCourseConfig,
     apply_drift_guidance,
     cap_low_altitude_angle,
+    coupled_brake_window,
     lateral_tracking_command,
     resolve_drift_behavior,
 )
@@ -156,7 +157,7 @@ def test_apply_drift_guidance_pushes_large_offset_into_correction_mode() -> None
     )
     adjusted = apply_drift_guidance(guidance, cfg, vx=0.0, vy_up=0.0)
     assert adjusted.phase == "drift"
-    assert adjusted.vertical_mode == "drift_coast"
+    assert adjusted.vertical_mode == "coast"
     assert abs(adjusted.vx_sp) >= cfg.correction_vx_min
 
 
@@ -195,7 +196,7 @@ def test_apply_drift_guidance_uses_projected_ballistic_error() -> None:
     assert adjusted_on_target.vx_sp == pytest.approx(guidance.vx_sp)
 
     adjusted_off_target = apply_drift_guidance(guidance, cfg, vx=0.0, vy_up=0.0)
-    assert adjusted_off_target.vertical_mode == "drift_coast"
+    assert adjusted_off_target.vertical_mode == "coast"
     assert abs(adjusted_off_target.vx_sp) >= cfg.correction_vx_min
 
 
@@ -206,8 +207,8 @@ def test_apply_drift_guidance_forces_thrust_backed_correction_for_high_vx_on_tra
         vertical_mode="coast",
         vx_sp=0.8,
         vy_sp=-1.4,
-        dx=400.0,
-        alt=600.0,
+        dx=220.0,
+        alt=160.0,
         burn_altitude=20.0,
     )
     t_fall = max(0.5, math.sqrt((2.0 * 9.8 * guidance.alt)) / 9.8)
@@ -218,7 +219,58 @@ def test_apply_drift_guidance_forces_thrust_backed_correction_for_high_vx_on_tra
         vx=on_track_high_vx,
         vy_up=0.0,
     )
+    assert adjusted.vertical_mode == "coast"
+
+
+def test_apply_drift_guidance_enters_drift_coast_when_fast_and_far_off_track() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.6,
+        vy_sp=-1.3,
+        dx=140.0,
+        alt=80.0,
+        burn_altitude=20.0,
+    )
+    adjusted = apply_drift_guidance(guidance, cfg, vx=12.0, vy_up=0.0)
     assert adjusted.vertical_mode == "drift_coast"
+
+
+def test_coupled_brake_window_prefers_earlier_lateral_brake() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    window = coupled_brake_window(
+        cfg,
+        alt=180.0,
+        dx=90.0,
+        vx=32.0,
+        vy_up=-12.0,
+        mass=12000.0,
+        max_force=230000.0 * 1.6,
+        max_tilt=0.56,
+        spool_time=0.35,
+        vertical_brake_alt=40.0,
+    )
+    assert window.lateral_brake_alt > window.vertical_brake_alt
+    assert window.combined_brake_alt == pytest.approx(window.lateral_brake_alt)
+
+
+def test_coupled_brake_window_preserves_vertical_when_lateral_not_urgent() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    window = coupled_brake_window(
+        cfg,
+        alt=160.0,
+        dx=220.0,
+        vx=3.0,
+        vy_up=-14.0,
+        mass=12000.0,
+        max_force=230000.0 * 1.6,
+        max_tilt=0.56,
+        spool_time=0.35,
+        vertical_brake_alt=52.0,
+    )
+    assert window.lateral_brake_alt == pytest.approx(0.0)
+    assert window.combined_brake_alt == pytest.approx(window.vertical_brake_alt)
 
 
 def test_resolve_drift_behavior_exposes_single_unified_profile() -> None:
@@ -318,6 +370,21 @@ def test_apply_drift_guidance_terminal_enforces_minimum_tracking_speed() -> None
     )
     adjusted = apply_drift_guidance(guidance, cfg, vx=0.0, vy_up=-1.2)
     assert abs(adjusted.vx_sp) >= cfg.terminal_burn_correction_vx_floor
+
+
+def test_apply_drift_guidance_terminal_zero_vx_clamp_only_near_ground() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    guidance = GuidanceTargets(
+        phase="terminal_burn",
+        vertical_mode="terminal_burn",
+        vx_sp=4.0,
+        vy_sp=-1.2,
+        dx=10.0,
+        alt=40.0,
+        burn_altitude=20.0,
+    )
+    adjusted = apply_drift_guidance(guidance, cfg, vx=0.0, vy_up=-3.0)
+    assert abs(adjusted.vx_sp) > cfg.lateral_terminal_zero_vx_cap
 
 
 def test_apply_drift_guidance_terminal_keeps_enough_vx_to_reach_target() -> None:

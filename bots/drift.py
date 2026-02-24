@@ -11,6 +11,7 @@ from bots._drift_core import (
     DriftCourseConfig,
     apply_drift_guidance,
     cap_low_altitude_angle,
+    coupled_brake_window,
     lateral_tracking_command,
     list_drift_behavior_names,
     resolve_drift_behavior,
@@ -61,6 +62,31 @@ class DriftBot(StrategyDescentBot):
         )
         self._last_guidance = guidance
         return guidance
+
+    def _terminal_brake_altitude(
+        self,
+        passive: PassiveSensors,
+        *,
+        alt: float,
+        dx: float,
+        burn_altitude: float,
+        spool_time: float,
+        max_force: float,
+    ) -> float:
+        max_tilt = 0.18 if alt < 20.0 else 0.56
+        window = coupled_brake_window(
+            self._course_cfg,
+            alt=alt,
+            dx=dx,
+            vx=passive.vx,
+            vy_up=passive.vy_up,
+            mass=passive.mass,
+            max_force=max_force,
+            max_tilt=max_tilt,
+            spool_time=spool_time,
+            vertical_brake_alt=burn_altitude,
+        )
+        return window.combined_brake_alt
 
     def _horizontal_controller(
         self,
