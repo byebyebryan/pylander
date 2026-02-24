@@ -172,6 +172,10 @@ class Bot(ABC):
         s = self.get_status() if hasattr(self, "get_status") else ""
         return f"bot:{s}" if s else ""
 
+    def get_evaluation_snapshot(self) -> dict[str, Any] | None:
+        """Return optional structured evaluation state for the current frame."""
+        return None
+
 
 class _ActiveSensorImpl:
     """Concrete ActiveSensors implementation backed by an engine adapter."""

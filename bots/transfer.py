@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, replace
+from typing import Any
 
 from bots._descent_core import (
     DescentPolicy,
@@ -482,6 +483,7 @@ class TransferBot(DriftBot):
         self._debug_projection_summary = ""
         self._handoff_event_summary = ""
         self._last_target_size: float | None = None
+        self._handoff_snapshot: dict[str, Any] | None = None
 
     def set_behavior(self, behavior: str) -> None:
         key, policy, cfg, setup_cfg = resolve_transfer_behavior(behavior)
@@ -497,6 +499,7 @@ class TransferBot(DriftBot):
         self._debug_projection_summary = ""
         self._handoff_event_summary = ""
         self._last_target_size = None
+        self._handoff_snapshot = None
 
     def _ballistic_clearance(self) -> float:
         if self.vehicle_info is None:
@@ -517,6 +520,7 @@ class TransferBot(DriftBot):
             self._debug_projection_summary = ""
             self._handoff_event_summary = ""
             self._last_target_size = None
+            self._handoff_snapshot = None
         self._active_sensors = active
         try:
             return super().update(dt, passive, active)
@@ -534,6 +538,49 @@ class TransferBot(DriftBot):
         if not math.isfinite(numeric):
             return "na"
         return f"{numeric:.1f}"
+
+    @staticmethod
+    def _snapshot_float(value: object) -> float | None:
+        if not isinstance(value, (int, float)):
+            return None
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            return None
+        return numeric
+
+    def _build_handoff_snapshot(
+        self,
+        handoff_debug: dict[str, object],
+        passive: PassiveSensors,
+    ) -> dict[str, Any]:
+        impact_x = self._snapshot_float(handoff_debug.get("impact_x"))
+        target_x = self._snapshot_float(handoff_debug.get("target_x"))
+        impact_error = None
+        if impact_x is not None and target_x is not None:
+            impact_error = abs(impact_x - target_x)
+        current_impact_x = self._snapshot_float(handoff_debug.get("current_impact_x"))
+        current_target_x = self._snapshot_float(handoff_debug.get("current_target_x"))
+        current_impact_error = None
+        if current_impact_x is not None and current_target_x is not None:
+            current_impact_error = abs(current_impact_x - current_target_x)
+        return {
+            "kind": "transfer",
+            "handoff_done": True,
+            "projected_dx": self._snapshot_float(handoff_debug.get("projected_dx")),
+            "impact_x": impact_x,
+            "target_x": target_x,
+            "impact_error": impact_error,
+            "current_impact_x": current_impact_x,
+            "current_target_x": current_target_x,
+            "current_impact_error": current_impact_error,
+            "on_track": bool(handoff_debug.get("on_track")),
+            "centered": bool(handoff_debug.get("centered")),
+            "inside_target": bool(handoff_debug.get("inside_target")),
+            "not_falling_short": bool(handoff_debug.get("not_falling_short")),
+            "speed_ready": bool(handoff_debug.get("speed_ready")),
+            "angle_rad": float(passive.angle),
+            "altitude": float(passive.altitude),
+        }
 
     def _guidance(
         self,
@@ -620,6 +667,7 @@ class TransferBot(DriftBot):
             debug=handoff_debug,
         ):
             self._handoff_done = True
+            self._handoff_snapshot = self._build_handoff_snapshot(handoff_debug, passive)
             self._handoff_event_summary = (
                 "handoff_evt "
                 f"pdx:{self._fmt_debug_float(handoff_debug.get('projected_dx'))} "
@@ -665,6 +713,11 @@ class TransferBot(DriftBot):
             )
         self._last_guidance = guidance
         return guidance
+
+    def get_evaluation_snapshot(self) -> dict[str, Any] | None:
+        if self._handoff_snapshot is None:
+            return {"kind": "transfer", "handoff_done": bool(self._handoff_done)}
+        return dict(self._handoff_snapshot)
 
     def get_headless_stats(self) -> str:
         base = super().get_headless_stats()

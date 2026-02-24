@@ -46,6 +46,7 @@ class RunConfig:
     batch_csv: str | None
     quick_benchmark: bool
     batch_workers: int
+    eval_mode: str = "auto"
     scenario_name: str | None = None
     batch_scenarios: str | None = None
 
@@ -152,6 +153,15 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Terminate after first landing",
     )
+    parser.add_argument(
+        "--eval-mode",
+        choices=("auto", "focused", "full"),
+        default="auto",
+        help=(
+            "Evaluation mode for levels that support staged scoring "
+            "(auto, focused, full)"
+        ),
+    )
     parser.add_argument("--seed", type=int, default=None, help="Random seed")
     parser.add_argument(
         "--scenario",
@@ -246,6 +256,7 @@ def _parse_args(args: argparse.Namespace) -> RunConfig:
         batch_csv=args.batch_csv,
         quick_benchmark=args.quick_benchmark,
         batch_workers=max(1, int(args.batch_workers)),
+        eval_mode=str(getattr(args, "eval_mode", "auto") or "auto"),
     )
 
 
@@ -277,6 +288,8 @@ def _announce_config(config: RunConfig, args: argparse.Namespace) -> None:
         print("Stop on out-of-fuel: enabled")
     if config.stop_on_first_land:
         print("Stop on first land: enabled")
+    if config.eval_mode != "auto":
+        print(f"Eval mode: {config.eval_mode}")
 
     if config.seed is not None:
         print(f"Using seed: {config.seed}")
@@ -305,6 +318,8 @@ def _print_headless_results(result: dict) -> None:
     for key in (
         "time",
         "state",
+        "eval_mode",
+        "eval_phase",
         "landing_count",
         "crash_count",
         "credits",
@@ -317,6 +332,16 @@ def _print_headless_results(result: dict) -> None:
         "fuel_per_distance",
         "spawn_to_target_distance",
         "path_efficiency",
+        "transfer_handoff_done",
+        "transfer_handoff_time",
+        "transfer_handoff_projected_dx",
+        "transfer_handoff_impact_error",
+        "transfer_handoff_planned_impact_error",
+        "transfer_handoff_abs_angle_deg",
+        "transfer_setup_distance",
+        "transfer_setup_fuel_consumed",
+        "transfer_setup_fuel_per_distance",
+        "transfer_setup_path_efficiency",
     ):
         if key in result:
             val = result[key]
@@ -488,6 +513,14 @@ def _configure_level(level, config: RunConfig) -> None:
     level.stop_on_crash = stop_on_crash
     level.stop_on_out_of_fuel = stop_on_out_of_fuel
     level.stop_on_first_land = stop_on_first_land
+    set_eval_mode = getattr(level, "set_eval_mode", None)
+    if callable(set_eval_mode):
+        set_eval_mode(config.eval_mode)
+    elif config.eval_mode != "auto":
+        level_type_name = type(level).__name__
+        raise ValueError(
+            f"Level '{level_type_name}' does not support --eval-mode {config.eval_mode!r}"
+        )
     level.plot_mode = config.plot_mode
     level.max_time = config.max_time
     if config.lander_name:
@@ -614,6 +647,14 @@ def _print_batch_summary(
             "path_efficiency",
             "time",
             "time_to_first_land",
+            "transfer_handoff_time",
+            "transfer_handoff_impact_error",
+            "transfer_handoff_planned_impact_error",
+            "transfer_handoff_abs_angle_deg",
+            "transfer_setup_distance",
+            "transfer_setup_fuel_consumed",
+            "transfer_setup_fuel_per_distance",
+            "transfer_setup_path_efficiency",
         )
         printed = 0
         for metric in metric_order:
@@ -638,6 +679,8 @@ def _print_batch_summary(
     print("BATCH RESULTS")
     print("=" * 60)
     print(f"Runs:              {summary['runs']}")
+    if "successes" in summary:
+        print(f"Successes:         {summary['successes']}")
     print(f"Landed:            {summary['landed']}")
     print(f"Crashed:           {summary['crashed']}")
     print(f"Out_of_fuel:       {summary['out_of_fuel']}")

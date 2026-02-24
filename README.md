@@ -50,6 +50,9 @@ uv run python main.py transfer
 # Pick a specific transfer scenario
 uv run python main.py transfer --scenario air_mid_reverse
 
+# Run transfer end-to-end (handoff + drift + terminal)
+uv run python main.py transfer --eval-mode full
+
 # Use descent bot on other levels if desired
 uv run python main.py flat --bot descent
 ```
@@ -74,6 +77,7 @@ uv run python main.py drop --headless --seed 123
 uv run python main.py drop --headless --scenario speed_high --seed 123
 uv run python main.py drift --headless --scenario flat_correction --seed 123
 uv run python main.py transfer --headless --scenario air_mid_reverse --seed 123
+uv run python main.py transfer --headless --scenario air_mid_reverse --eval-mode full --seed 123
 uv run python main.py flat --lander differential
 ```
 
@@ -111,6 +115,7 @@ By default, generated artifacts (batch JSON/CSV and trajectory plots) are writte
 - `drift`: `glide_mid`, `glide_long_stress_correction`
 
 Use `--batch-scenarios` when you want a narrower or custom scenario slice.
+When comparing benchmark runs, keep `--eval-mode` fixed (focused vs full are different goals).
 
 Stats output format:
 ```
@@ -187,6 +192,8 @@ Dedicated scenario levels (default bot in parentheses):
   - base scenarios are proportional profile steps:
     - `air_mid`: medium offset with medium clearance
     - `air_long`: longer offset with proportionally higher clearance
+  - default eval mode is **full**: run continues through drift/terminal to landing/crash
+  - use `--eval-mode focused` for transfer-only handoff evaluation
   - transfer setup emphasizes a hard side-burn to establish a ballistic path early, then hands off to drift/terminal phases
   - stress variants:
     - opposite horizontal speed with extra room: `air_mid_reverse`
@@ -213,6 +220,7 @@ uv run python main.py [level_name] [options]
 - `--time S` - Limit simulation to S seconds (headless, default 300)
 - `--plot none|speed|thrust|all` - Save trajectory plot (headless)
 - `--stop-on-crash`, `--stop-on-out-of-fuel`, `--stop-on-first-land` - End conditions
+- `--eval-mode auto|focused|full` - Evaluation mode for staged levels (`transfer` defaults to full when auto)
 - `--seed N` - Random seed
 - `--scenario NAME` - Select a level scenario (if supported)
 - `--lander NAME` - Lander variant (classic, differential, simple)

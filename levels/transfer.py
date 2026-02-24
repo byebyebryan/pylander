@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass, replace
+from typing import Any
 
-from core.components import PhysicsState, Transform
+from core.components import FuelTank, PhysicsState, Transform
 from core.ecs import require_component
 from core.level import Level
 from core.maths import Vector2
@@ -101,6 +103,8 @@ _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
     "air_mid_reverse",
     "air_long_heavy",
 )
+_TRANSFER_EVAL_MODES: tuple[str, ...] = ("auto", "focused", "full")
+_TRANSFER_DEFAULT_EVAL_MODE = "full"
 
 
 def _make_spec(scenario: TransferScenario) -> ScenarioLevelSpec:
@@ -123,7 +127,10 @@ class TransferLevel(ScenarioLevel):
     def __init__(self) -> None:
         super().__init__()
         self._eval_scenario_name = _DEFAULT_SCENARIO
+        self._eval_mode_name = "auto"
+        self._resolved_eval_mode = _TRANSFER_DEFAULT_EVAL_MODE
         self.scenario = _make_spec(_SCENARIO_BY_NAME[self._eval_scenario_name])
+        self._reset_phase_eval_metrics()
 
     @staticmethod
     def list_batch_scenarios() -> list[str]:
@@ -140,7 +147,137 @@ class TransferLevel(ScenarioLevel):
             raise ValueError(f"Unknown transfer scenario '{name}'. Expected one of: {known}")
         self._eval_scenario_name = key
 
+    def set_eval_mode(self, name: str) -> None:
+        key = str(name).strip().lower()
+        if key not in _TRANSFER_EVAL_MODES:
+            known = ", ".join(_TRANSFER_EVAL_MODES)
+            raise ValueError(f"Unknown transfer eval mode '{name}'. Expected one of: {known}")
+        self._eval_mode_name = key
+
+    @staticmethod
+    def _to_optional_float(value: Any) -> float | None:
+        if value is None:
+            return None
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return None
+        if not math.isfinite(numeric):
+            return None
+        return numeric
+
+    @staticmethod
+    def _resolve_transfer_snapshot(game) -> dict[str, Any] | None:
+        actor_bots = getattr(game, "actor_bots", {})
+        if not isinstance(actor_bots, dict):
+            return None
+        for bot in actor_bots.values():
+            get_snapshot = getattr(bot, "get_evaluation_snapshot", None)
+            if not callable(get_snapshot):
+                continue
+            try:
+                snapshot = get_snapshot()
+            except Exception:
+                continue
+            if not isinstance(snapshot, dict):
+                continue
+            if snapshot.get("kind") == "transfer" or "handoff_done" in snapshot:
+                return snapshot
+        return None
+
+    def _mode_for_run(self) -> str:
+        if self._eval_mode_name == "auto":
+            return _TRANSFER_DEFAULT_EVAL_MODE
+        return self._eval_mode_name
+
+    def _reset_phase_eval_metrics(self) -> None:
+        self._phase1_handoff_done = False
+        self._phase1_handoff_time = None
+        self._phase1_setup_distance = 0.0
+        self._phase1_setup_fuel_consumed = 0.0
+        self._phase1_prev_pos: Vector2 | None = None
+        self._phase1_prev_fuel: float | None = None
+        self._phase1_handoff_projected_dx = None
+        self._phase1_handoff_impact_x = None
+        self._phase1_handoff_target_x = None
+        self._phase1_handoff_impact_error = None
+        self._phase1_handoff_current_impact_x = None
+        self._phase1_handoff_current_target_x = None
+        self._phase1_handoff_current_impact_error = None
+        self._phase1_handoff_abs_angle_deg = None
+        self._phase1_handoff_on_track = None
+        self._phase1_handoff_speed_ready = None
+        self._phase1_handoff_not_falling_short = None
+        self._phase1_handoff_centered = None
+        self._phase1_handoff_inside_target = None
+
+    def _update_phase_metrics(self) -> None:
+        if self._phase1_handoff_done:
+            return
+        actor = self.world.actors[0]
+        trans = require_component(actor, Transform)
+        tank = require_component(actor, FuelTank)
+        cur_pos = Vector2(trans.pos)
+        cur_fuel = float(tank.fuel)
+        if self._phase1_prev_pos is not None:
+            self._phase1_setup_distance += math.hypot(
+                cur_pos.x - self._phase1_prev_pos.x,
+                cur_pos.y - self._phase1_prev_pos.y,
+            )
+        if self._phase1_prev_fuel is not None:
+            self._phase1_setup_fuel_consumed += max(0.0, self._phase1_prev_fuel - cur_fuel)
+        self._phase1_prev_pos = cur_pos
+        self._phase1_prev_fuel = cur_fuel
+
+    def _capture_handoff(self, game, snapshot: dict[str, Any]) -> None:
+        if self._phase1_handoff_done:
+            return
+        actor = self.world.actors[0]
+        trans = require_component(actor, Transform)
+        self._phase1_handoff_done = True
+        self._phase1_handoff_time = float(getattr(game, "_elapsed_time", 0.0))
+        self._phase1_handoff_projected_dx = self._to_optional_float(snapshot.get("projected_dx"))
+        self._phase1_handoff_impact_x = self._to_optional_float(snapshot.get("impact_x"))
+        self._phase1_handoff_target_x = self._to_optional_float(snapshot.get("target_x"))
+        self._phase1_handoff_impact_error = self._to_optional_float(snapshot.get("impact_error"))
+        self._phase1_handoff_current_impact_x = self._to_optional_float(
+            snapshot.get("current_impact_x")
+        )
+        self._phase1_handoff_current_target_x = self._to_optional_float(
+            snapshot.get("current_target_x")
+        )
+        self._phase1_handoff_current_impact_error = self._to_optional_float(
+            snapshot.get("current_impact_error")
+        )
+        if (
+            self._phase1_handoff_impact_error is None
+            and self._phase1_handoff_impact_x is not None
+            and self._phase1_handoff_target_x is not None
+        ):
+            self._phase1_handoff_impact_error = abs(
+                self._phase1_handoff_impact_x - self._phase1_handoff_target_x
+            )
+        if (
+            self._phase1_handoff_current_impact_error is None
+            and self._phase1_handoff_current_impact_x is not None
+            and self._phase1_handoff_current_target_x is not None
+        ):
+            self._phase1_handoff_current_impact_error = abs(
+                self._phase1_handoff_current_impact_x - self._phase1_handoff_current_target_x
+            )
+        angle_rad = self._to_optional_float(snapshot.get("angle_rad"))
+        if angle_rad is None:
+            angle_rad = float(trans.rotation)
+        self._phase1_handoff_abs_angle_deg = abs(math.degrees(angle_rad))
+        self._phase1_handoff_on_track = bool(snapshot.get("on_track"))
+        self._phase1_handoff_speed_ready = bool(snapshot.get("speed_ready"))
+        self._phase1_handoff_not_falling_short = bool(snapshot.get("not_falling_short"))
+        self._phase1_handoff_centered = bool(snapshot.get("centered"))
+        self._phase1_handoff_inside_target = bool(snapshot.get("inside_target"))
+
     def setup(self, game, seed: int) -> None:
+        self._resolved_eval_mode = self._mode_for_run()
+        self._reset_phase_eval_metrics()
         scenario_base = _SCENARIO_BY_NAME[self._eval_scenario_name]
         scenario_name_hash = sum(ord(ch) for ch in scenario_base.name)
         dir_rng = random.Random(seed ^ (scenario_name_hash << 1))
@@ -187,7 +324,75 @@ class TransferLevel(ScenarioLevel):
                     uid=actor.uid,
                 )
 
+        self._phase1_prev_pos = Vector2(trans.pos)
+        tank = require_component(actor, FuelTank)
+        self._phase1_prev_fuel = float(tank.fuel)
         setattr(self, "scenario_name", scenario_base.name)
+
+    def update(self, game, dt: float) -> None:
+        _ = dt
+        self._update_phase_metrics()
+        if self._phase1_handoff_done:
+            return
+        snapshot = self._resolve_transfer_snapshot(game)
+        if not isinstance(snapshot, dict):
+            return
+        if bool(snapshot.get("handoff_done")):
+            self._capture_handoff(game, snapshot)
+
+    def should_end(self, game) -> bool:
+        if self._resolved_eval_mode == "focused" and self._phase1_handoff_done:
+            return True
+        return super().should_end(game)
+
+    def end(self, game):
+        result = super().end(game)
+        setup_distance = self._phase1_setup_distance
+        setup_fuel = self._phase1_setup_fuel_consumed
+        fuel_per_distance = (setup_fuel / setup_distance) if setup_distance > 1e-9 else 0.0
+        setup_path_efficiency = None
+        actor = self.world.actors[0]
+        trans = require_component(actor, Transform)
+        start_pos = getattr(actor, "start_pos", None)
+        target_pos = getattr(self, "eval_target_pos", None)
+        if isinstance(start_pos, Vector2) and isinstance(target_pos, Vector2) and setup_distance > 1e-9:
+            straight_line = math.hypot(target_pos.x - start_pos.x, target_pos.y - start_pos.y)
+            setup_path_efficiency = min(1.0, straight_line / setup_distance)
+        if self._phase1_handoff_abs_angle_deg is None:
+            self._phase1_handoff_abs_angle_deg = abs(math.degrees(float(trans.rotation)))
+
+        result["eval_mode"] = self._resolved_eval_mode
+        result["transfer_handoff_done"] = self._phase1_handoff_done
+        result["transfer_handoff_time"] = self._phase1_handoff_time
+        result["transfer_handoff_projected_dx"] = self._phase1_handoff_projected_dx
+        result["transfer_handoff_impact_x"] = self._phase1_handoff_impact_x
+        result["transfer_handoff_target_x"] = self._phase1_handoff_target_x
+        result["transfer_handoff_impact_error"] = (
+            self._phase1_handoff_current_impact_error
+            if self._phase1_handoff_current_impact_error is not None
+            else self._phase1_handoff_impact_error
+        )
+        result["transfer_handoff_planned_impact_error"] = self._phase1_handoff_impact_error
+        result["transfer_handoff_current_impact_x"] = self._phase1_handoff_current_impact_x
+        result["transfer_handoff_current_target_x"] = self._phase1_handoff_current_target_x
+        result["transfer_handoff_abs_angle_deg"] = self._phase1_handoff_abs_angle_deg
+        result["transfer_handoff_on_track"] = self._phase1_handoff_on_track
+        result["transfer_handoff_speed_ready"] = self._phase1_handoff_speed_ready
+        result["transfer_handoff_not_falling_short"] = self._phase1_handoff_not_falling_short
+        result["transfer_handoff_centered"] = self._phase1_handoff_centered
+        result["transfer_handoff_inside_target"] = self._phase1_handoff_inside_target
+        result["transfer_setup_distance"] = setup_distance
+        result["transfer_setup_fuel_consumed"] = setup_fuel
+        result["transfer_setup_fuel_per_distance"] = fuel_per_distance
+        result["transfer_setup_path_efficiency"] = setup_path_efficiency
+
+        if self._resolved_eval_mode == "focused":
+            state = str(result.get("state", "unknown"))
+            success = bool(self._phase1_handoff_done)
+            result["eval_phase"] = "transfer_setup"
+            result["success"] = success
+            result["failure_mode"] = "none" if success else state
+        return result
 
 
 def create_level() -> Level:

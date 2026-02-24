@@ -744,7 +744,7 @@ def test_should_handoff_to_drift_requires_low_projected_error() -> None:
         vertical_mode="coast",
         vx_sp=0.0,
         vy_sp=-1.8,
-        dx=14.0,
+        dx=8.0,
         alt=120.0,
         burn_altitude=26.0,
     )
@@ -2148,6 +2148,35 @@ def test_eval_aggregate_summary_shape() -> None:
     assert "alt_100" in summary["by_scenario"]
 
 
+def test_eval_aggregate_uses_explicit_success_for_non_landing_stage() -> None:
+    records = [
+        normalize_run_result(
+            bot_name="transfer",
+            level_name="transfer",
+            scenario="air_mid",
+            seed=3,
+            result={
+                "state": "flying",
+                "time": 6.0,
+                "success": True,
+                "failure_mode": "none",
+                "eval_mode": "focused",
+                "eval_phase": "transfer_setup",
+                "transfer_handoff_time": 6.0,
+                "transfer_handoff_impact_error": 4.0,
+                "transfer_setup_distance": 180.0,
+                "transfer_setup_fuel_consumed": 12.0,
+            },
+        )
+    ]
+    summary = aggregate_eval_records(records)
+    assert summary["runs"] == 1
+    assert summary["successes"] == 1
+    assert summary["landed"] == 0
+    assert summary["success_rate"] == pytest.approx(1.0)
+    assert summary["by_scenario"]["air_mid"]["success_rate"] == pytest.approx(1.0)
+
+
 def test_print_batch_summary_includes_per_scenario_efficiency_means(capsys) -> None:
     summary = {
         "runs": 1,
@@ -2239,6 +2268,120 @@ def test_parse_args_accepts_scenario_options() -> None:
     assert config.scenario_name == "alt_400"
     assert config.batch_scenarios == "alt_400,speed_high"
     assert config.bot_behavior == "speed"
+
+
+def test_parse_args_accepts_eval_mode() -> None:
+    args = argparse.Namespace(
+        level_name="transfer",
+        bot="transfer",
+        bot_behavior=None,
+        headless=True,
+        batch=False,
+        freq=None,
+        steps=None,
+        time=None,
+        plot=None,
+        stop_on_crash=False,
+        stop_on_out_of_fuel=False,
+        stop_on_first_land=False,
+        eval_mode="full",
+        seed=None,
+        scenario=None,
+        lander=None,
+        batch_seeds=None,
+        batch_levels=None,
+        batch_scenarios=None,
+        batch_json=None,
+        batch_csv=None,
+        quick_benchmark=False,
+        batch_workers=1,
+    )
+    config = _parse_args(args)
+    assert config.eval_mode == "full"
+
+
+def test_configure_level_rejects_explicit_eval_mode_for_unsupported_level() -> None:
+    level = create_level_flat()
+    config = RunConfig(
+        level_name="flat",
+        bot_name="descent",
+        bot_behavior=None,
+        headless=True,
+        batch=False,
+        print_freq=0,
+        max_time=300.0,
+        max_steps=200,
+        plot_mode="none",
+        stop_on_crash=True,
+        stop_on_out_of_fuel=True,
+        stop_on_first_land=True,
+        seed=0,
+        lander_name=None,
+        batch_seeds=None,
+        batch_levels=None,
+        batch_json=None,
+        batch_csv=None,
+        quick_benchmark=False,
+        batch_workers=1,
+        eval_mode="focused",
+    )
+    with pytest.raises(ValueError, match="does not support --eval-mode"):
+        main_module._configure_level(level, config)
+
+
+def test_transfer_focused_eval_stops_on_handoff_and_marks_success(monkeypatch) -> None:
+    def _handoff_snapshot(_game):
+        return {
+            "kind": "transfer",
+            "handoff_done": True,
+            "projected_dx": 2.0,
+            "impact_x": 7.0,
+            "target_x": 3.0,
+            "impact_error": 4.0,
+            "current_impact_x": 3.4,
+            "current_target_x": 3.0,
+            "current_impact_error": 0.4,
+            "on_track": True,
+            "speed_ready": True,
+            "not_falling_short": True,
+            "centered": True,
+            "inside_target": True,
+        }
+
+    level = create_level_by_name("transfer")
+    level.set_eval_mode("focused")
+    monkeypatch.setattr(
+        level.__class__,
+        "_resolve_transfer_snapshot",
+        staticmethod(_handoff_snapshot),
+    )
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=19)
+    result = game.run(print_freq=0, max_steps=60)
+    assert result["eval_mode"] == "focused"
+    assert result["eval_phase"] == "transfer_setup"
+    assert result["success"] is True
+    assert result["failure_mode"] == "none"
+    assert result["transfer_handoff_done"] is True
+    assert result["transfer_handoff_impact_error"] == pytest.approx(0.4)
+    assert result["transfer_handoff_planned_impact_error"] == pytest.approx(4.0)
+    assert "transfer_handoff_current_impact_error" not in result
+    assert result["state"] == "flying"
+
+
+def test_transfer_full_eval_does_not_end_on_handoff(monkeypatch) -> None:
+    def _handoff_snapshot(_game):
+        return {"kind": "transfer", "handoff_done": True}
+
+    level = create_level_by_name("transfer")
+    level.set_eval_mode("full")
+    monkeypatch.setattr(
+        level.__class__,
+        "_resolve_transfer_snapshot",
+        staticmethod(_handoff_snapshot),
+    )
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=23)
+    level.update(game, 1.0 / 60.0)
+    assert level.should_end(game) is False
 
 
 def test_hud_altitude_matches_passive_sensor_clearance_convention() -> None:

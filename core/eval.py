@@ -25,6 +25,22 @@ def _to_optional_float(value: Any) -> float | None:
         return None
 
 
+def _to_optional_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "y"}:
+            return True
+        if lowered in {"0", "false", "no", "n"}:
+            return False
+    return None
+
+
 def _percentile(sorted_values: list[float], p: float) -> float:
     if not sorted_values:
         return 0.0
@@ -69,6 +85,14 @@ def _efficiency_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "path_efficiency",
         "time",
         "time_to_first_land",
+        "transfer_handoff_time",
+        "transfer_handoff_impact_error",
+        "transfer_handoff_planned_impact_error",
+        "transfer_handoff_abs_angle_deg",
+        "transfer_setup_distance",
+        "transfer_setup_fuel_consumed",
+        "transfer_setup_fuel_per_distance",
+        "transfer_setup_path_efficiency",
     )
     return {field: _metric_summary(records, field) for field in fields}
 
@@ -84,6 +108,18 @@ def normalize_run_result(
     state = str(result.get("state", "unknown"))
     landing_count = int(result.get("landing_count", 0) or 0)
     crash_count = int(result.get("crash_count", 0) or 0)
+    success_raw = result.get("success")
+    if isinstance(success_raw, bool):
+        success = success_raw
+    elif isinstance(success_raw, (int, float)):
+        success = bool(success_raw)
+    else:
+        success = state == "landed"
+    failure_mode_raw = result.get("failure_mode")
+    if isinstance(failure_mode_raw, str) and failure_mode_raw.strip():
+        failure_mode = failure_mode_raw.strip()
+    else:
+        failure_mode = "none" if success else state
     record = {
         "bot": bot_name,
         "level": level_name,
@@ -110,8 +146,61 @@ def normalize_run_result(
         "spawn_to_target_distance": _to_optional_float(
             result.get("spawn_to_target_distance")
         ),
-        "success": state == "landed",
-        "failure_mode": "none" if state == "landed" else state,
+        "success": success,
+        "failure_mode": failure_mode,
+        "eval_mode": result.get("eval_mode"),
+        "eval_phase": result.get("eval_phase"),
+        "transfer_handoff_done": _to_optional_bool(result.get("transfer_handoff_done")),
+        "transfer_handoff_time": _to_optional_float(result.get("transfer_handoff_time")),
+        "transfer_handoff_projected_dx": _to_optional_float(
+            result.get("transfer_handoff_projected_dx")
+        ),
+        "transfer_handoff_impact_x": _to_optional_float(
+            result.get("transfer_handoff_impact_x")
+        ),
+        "transfer_handoff_target_x": _to_optional_float(
+            result.get("transfer_handoff_target_x")
+        ),
+        "transfer_handoff_impact_error": _to_optional_float(
+            result.get("transfer_handoff_impact_error")
+        ),
+        "transfer_handoff_planned_impact_error": _to_optional_float(
+            result.get("transfer_handoff_planned_impact_error")
+        ),
+        "transfer_handoff_current_impact_x": _to_optional_float(
+            result.get("transfer_handoff_current_impact_x")
+        ),
+        "transfer_handoff_current_target_x": _to_optional_float(
+            result.get("transfer_handoff_current_target_x")
+        ),
+        "transfer_handoff_abs_angle_deg": _to_optional_float(
+            result.get("transfer_handoff_abs_angle_deg")
+        ),
+        "transfer_handoff_on_track": _to_optional_bool(
+            result.get("transfer_handoff_on_track")
+        ),
+        "transfer_handoff_speed_ready": _to_optional_bool(
+            result.get("transfer_handoff_speed_ready")
+        ),
+        "transfer_handoff_not_falling_short": _to_optional_bool(
+            result.get("transfer_handoff_not_falling_short")
+        ),
+        "transfer_handoff_centered": _to_optional_bool(
+            result.get("transfer_handoff_centered")
+        ),
+        "transfer_handoff_inside_target": _to_optional_bool(
+            result.get("transfer_handoff_inside_target")
+        ),
+        "transfer_setup_distance": _to_optional_float(result.get("transfer_setup_distance")),
+        "transfer_setup_fuel_consumed": _to_optional_float(
+            result.get("transfer_setup_fuel_consumed")
+        ),
+        "transfer_setup_fuel_per_distance": _to_optional_float(
+            result.get("transfer_setup_fuel_per_distance")
+        ),
+        "transfer_setup_path_efficiency": _to_optional_float(
+            result.get("transfer_setup_path_efficiency")
+        ),
     }
     if "plot_path" in result:
         record["plot_path"] = result.get("plot_path")
@@ -122,12 +211,13 @@ def normalize_run_result(
 
 def aggregate_eval_records(records: list[dict[str, Any]]) -> dict[str, Any]:
     total = len(records)
+    successes = sum(1 for r in records if bool(r.get("success", False)))
     landed = sum(1 for r in records if r.get("state") == "landed")
     crashes = sum(1 for r in records if r.get("state") == "crashed")
     out_of_fuel = sum(1 for r in records if r.get("state") == "out_of_fuel")
     flying = sum(1 for r in records if r.get("state") == "flying")
     other = total - landed - crashes - out_of_fuel - flying
-    success_rate = (landed / total) if total > 0 else 0.0
+    success_rate = (successes / total) if total > 0 else 0.0
 
     by_scenario: dict[str, dict[str, Any]] = {}
     for record in records:
@@ -136,6 +226,7 @@ def aggregate_eval_records(records: list[dict[str, Any]]) -> dict[str, Any]:
             key,
             {
                 "runs": 0,
+                "successes": 0,
                 "landed": 0,
                 "crashed": 0,
                 "out_of_fuel": 0,
@@ -146,6 +237,8 @@ def aggregate_eval_records(records: list[dict[str, Any]]) -> dict[str, Any]:
             },
         )
         item["runs"] += 1
+        if bool(record.get("success", False)):
+            item["successes"] += 1
         item["_records"].append(record)
         state = record.get("state")
         if state in ("landed", "crashed", "out_of_fuel", "flying"):
@@ -156,7 +249,7 @@ def aggregate_eval_records(records: list[dict[str, Any]]) -> dict[str, Any]:
     successful_records = [record for record in records if record.get("success", False)]
     for item in by_scenario.values():
         runs = int(item["runs"])
-        item["success_rate"] = (item["landed"] / runs) if runs > 0 else 0.0
+        item["success_rate"] = (item["successes"] / runs) if runs > 0 else 0.0
         item_records = item.pop("_records")
         item_success = [record for record in item_records if record.get("success", False)]
         item["efficiency_success"] = _efficiency_summary(item_success)
@@ -164,6 +257,7 @@ def aggregate_eval_records(records: list[dict[str, Any]]) -> dict[str, Any]:
 
     return {
         "runs": total,
+        "successes": successes,
         "landed": landed,
         "crashed": crashes,
         "out_of_fuel": out_of_fuel,
