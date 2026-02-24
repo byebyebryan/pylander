@@ -131,6 +131,7 @@ t=  1.00s | x:  105.4 alt: 106.1 | vx:  5.74 vy: -2.88 | ang:   6.0° thr: 30% |
 - **A/LEFT**: Rotate left (discrete steps, auto-snaps to 45° intervals)
 - **D/RIGHT**: Rotate right (discrete steps, auto-snaps to 45° intervals)
 - **F**: Refuel (when landed, costs 10 pts/fuel unit)
+- **T**: Toggle ballistic trajectory overlay
 - **R**: Reset game
 - **Q/ESC**: Quit
 
@@ -148,7 +149,7 @@ class MyBot(Bot):
 ```
 
 `PassiveSensors` includes world position (`x`, `y`), terrain-relative clearance (`altitude`), local terrain context (`terrain_y`, `terrain_slope`), kinematics, fuel/state, and radar/proximity contacts.
-`ActiveSensors` provides `raycast(angle, max_range)` plus terrain helpers like `terrain_height(x)` and `terrain_profile(x_start, x_end, samples)`.
+`ActiveSensors` provides `raycast(angle, max_range)`, terrain helpers like `terrain_height(x)` and `terrain_profile(x_start, x_end, samples)`, and `ballistic_trajectory(x, y, vx, vy_up, ...)` for engine-off path prediction to terrain/max distance.
 
 ## Scenario Levels
 

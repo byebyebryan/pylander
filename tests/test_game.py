@@ -26,7 +26,7 @@ from bots.transfer import (
     should_handoff_to_drift,
 )
 from core.eval import aggregate_eval_records, normalize_run_result
-from core.bot import Bot, BotAction, PassiveSensors
+from core.bot import Bot, BotAction, PassiveSensors, _ActiveSensorImpl
 from core.components import (
     ActorControlRole,
     CargoHold,
@@ -73,6 +73,30 @@ def test_bot_registry_exposes_expected_bots() -> None:
     assert descent_bot.__class__.__name__ == "DescentBot"
     assert drift_bot.__class__.__name__ == "DriftBot"
     assert transfer_bot.__class__.__name__ == "TransferBot"
+
+
+def test_active_sensors_ballistic_trajectory_reports_hit_payload() -> None:
+    sensors = _ActiveSensorImpl(
+        origin_fn=lambda: Vector2(0.0, 0.0),
+        radar_range_fn=lambda: 600.0,
+        engine_adapter=None,
+        terrain_fn=lambda _x: 0.0,
+    )
+    traj = sensors.ballistic_trajectory(
+        x=0.0,
+        y=140.0,
+        vx=12.0,
+        vy_up=0.0,
+        max_distance=1800.0,
+        segment_length=20.0,
+        max_points=180,
+    )
+    assert traj["hit"]
+    assert traj["termination"] == "terrain_hit"
+    assert traj["hit_x"] is not None
+    assert traj["hit_y"] is not None
+    assert abs(float(traj["hit_y"])) <= 0.5
+    assert len(traj["points"]) >= 2
 
 
 def test_descent_bot_engine_profile_fallback_uses_realistic_defaults() -> None:

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 import numpy as np
 from opensimplex import OpenSimplex
 
+from core.config import GRAVITY
 from core.maths import Vector2
 
 
@@ -75,6 +77,185 @@ def anchored_profile(
         out.append((xx, sample_terrain_height(height_func, xx, lod=lod)))
         xx += step
     return out
+
+
+@dataclass(frozen=True)
+class BallisticTrajectory:
+    """Engine-off ballistic trajectory sampled against terrain."""
+
+    points: list[tuple[float, float]]
+    hit: bool
+    hit_x: float | None
+    hit_y: float | None
+    hit_time: float | None
+    distance: float
+    duration: float
+    termination: str
+
+
+def _ballistic_position(
+    x0: float,
+    y0: float,
+    vx: float,
+    vy_up: float,
+    g: float,
+    t: float,
+) -> tuple[float, float]:
+    return (
+        x0 + (vx * t),
+        y0 + (vy_up * t) - (0.5 * g * t * t),
+    )
+
+
+def sample_ballistic_trajectory(
+    height_func: Any,
+    *,
+    x: float,
+    y: float,
+    vx: float,
+    vy_up: float,
+    max_distance: float = 3000.0,
+    segment_length: float = 24.0,
+    max_points: int = 256,
+    lod: int = 0,
+    clearance: float = 0.0,
+    gravity: float | None = None,
+) -> BallisticTrajectory:
+    """Sample engine-off trajectory until terrain hit or max distance.
+
+    Uses analytic kinematics with constant gravity and a distance-guided timestep,
+    then refines terrain impact time with short bisection for stable hit points.
+    """
+    start_x = float(x)
+    start_y = float(y)
+    vx = float(vx)
+    vy_up = float(vy_up)
+    max_distance = max(0.0, float(max_distance))
+    segment_length = max(0.5, float(segment_length))
+    max_points = max(2, int(max_points))
+    clearance = max(0.0, float(clearance))
+    g = abs(float(GRAVITY if gravity is None else gravity))
+    if g <= 1e-9:
+        g = abs(float(GRAVITY))
+
+    points: list[tuple[float, float]] = [(start_x, start_y)]
+    terrain_start = sample_terrain_height(height_func, start_x, lod=lod)
+    if start_y <= (terrain_start + clearance):
+        return BallisticTrajectory(
+            points=points,
+            hit=True,
+            hit_x=start_x,
+            hit_y=start_y,
+            hit_time=0.0,
+            distance=0.0,
+            duration=0.0,
+            termination="terrain_hit",
+        )
+    if max_distance <= 0.0:
+        return BallisticTrajectory(
+            points=points,
+            hit=False,
+            hit_x=None,
+            hit_y=None,
+            hit_time=None,
+            distance=0.0,
+            duration=0.0,
+            termination="max_distance",
+        )
+
+    t_prev = 0.0
+    x_prev = start_x
+    y_prev = start_y
+    distance = 0.0
+
+    while len(points) < max_points:
+        vy_now = vy_up - (g * t_prev)
+        speed_now = max(1.0, math.hypot(vx, vy_now))
+        dt = segment_length / speed_now
+        t_next = t_prev + dt
+        x_next, y_next = _ballistic_position(start_x, start_y, vx, vy_up, g, t_next)
+
+        seg_dist = math.hypot(x_next - x_prev, y_next - y_prev)
+        if seg_dist <= 1e-9:
+            break
+
+        remaining = max_distance - distance
+        if remaining <= 1e-9:
+            break
+
+        if seg_dist > remaining:
+            ratio = remaining / seg_dist
+            t_end = t_prev + (dt * ratio)
+            x_end = x_prev + ((x_next - x_prev) * ratio)
+            y_end = y_prev + ((y_next - y_prev) * ratio)
+            points.append((x_end, y_end))
+            return BallisticTrajectory(
+                points=points,
+                hit=False,
+                hit_x=None,
+                hit_y=None,
+                hit_time=None,
+                distance=max_distance,
+                duration=t_end,
+                termination="max_distance",
+            )
+
+        terrain_y = sample_terrain_height(height_func, x_next, lod=lod)
+        if y_next <= (terrain_y + clearance):
+            # Refine impact point to avoid large penetration when using coarse steps.
+            t_lo = t_prev
+            t_hi = t_next
+            for _ in range(12):
+                t_mid = 0.5 * (t_lo + t_hi)
+                x_mid, y_mid = _ballistic_position(start_x, start_y, vx, vy_up, g, t_mid)
+                terrain_mid = sample_terrain_height(height_func, x_mid, lod=lod)
+                if y_mid > (terrain_mid + clearance):
+                    t_lo = t_mid
+                else:
+                    t_hi = t_mid
+            t_hit = t_hi
+            x_hit, y_hit = _ballistic_position(start_x, start_y, vx, vy_up, g, t_hit)
+            distance += math.hypot(x_hit - x_prev, y_hit - y_prev)
+            points.append((x_hit, y_hit))
+            return BallisticTrajectory(
+                points=points,
+                hit=True,
+                hit_x=x_hit,
+                hit_y=y_hit,
+                hit_time=t_hit,
+                distance=distance,
+                duration=t_hit,
+                termination="terrain_hit",
+            )
+
+        distance += seg_dist
+        points.append((x_next, y_next))
+        t_prev = t_next
+        x_prev = x_next
+        y_prev = y_next
+
+        if distance >= max_distance:
+            return BallisticTrajectory(
+                points=points,
+                hit=False,
+                hit_x=None,
+                hit_y=None,
+                hit_time=None,
+                distance=max_distance,
+                duration=t_prev,
+                termination="max_distance",
+            )
+
+    return BallisticTrajectory(
+        points=points,
+        hit=False,
+        hit_x=None,
+        hit_y=None,
+        hit_time=None,
+        distance=distance,
+        duration=t_prev,
+        termination="point_budget",
+    )
 
 
 class SimplexNoiseGenerator:

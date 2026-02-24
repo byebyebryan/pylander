@@ -43,6 +43,7 @@ class Minimap:
         self.border_color = (200, 200, 200)
         self.terrain_color = (255, 255, 255)
         self.viewport_color = (128, 128, 128)
+        self.ballistic_color = (110, 170, 255)
 
         # Fixed world span shown on the minimap (independent of main camera zoom)
         # Horizontal span in world units
@@ -55,6 +56,7 @@ class Minimap:
         height_scale: float,
         contacts=None,
         sites=None,
+        trajectory_points: list[tuple[float, float]] | None = None,
     ):
         """Draw minimap showing terrain overview and viewport indicator.
 
@@ -139,6 +141,14 @@ class Minimap:
         # Draw terrain
         if len(minimap_points) >= 2:
             pygame.draw.aalines(screen, self.terrain_color, False, minimap_points)
+        if trajectory_points:
+            mapped_path: list[tuple[float, float]] = []
+            for wx, wy in trajectory_points:
+                pt = oc.world_to_screen(Vector2(wx, wy * height_scale))
+                pt = self.rect.clamp_point(pt)
+                mapped_path.append((pt.x, pt.y))
+            if len(mapped_path) >= 2:
+                pygame.draw.aalines(screen, self.ballistic_color, False, mapped_path)
 
         # Draw viewport indicator using minimap camera
         # Convert main camera bounds to minimap screen coordinates

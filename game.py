@@ -633,6 +633,10 @@ class LanderGame:
             cam = self.renderer.main_camera
             if hasattr(cam, "handle_input"):
                 cam.handle_input(input_events, frame_dt)
+            if input_events.get("toggle_ballistic"):
+                toggle_ballistic = getattr(self.renderer, "toggle_ballistic_overlay", None)
+                if callable(toggle_ballistic):
+                    toggle_ballistic()
 
         return user_controls, input_events
 

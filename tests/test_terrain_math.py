@@ -152,3 +152,73 @@ def test_pick_lod_for_world_step_prefers_closest_resolution() -> None:
     assert terrain.pick_lod_for_world_step(lod_terrain, 5.0) == 0
     assert terrain.pick_lod_for_world_step(lod_terrain, 9.0) == 1
     assert terrain.pick_lod_for_world_step(lod_terrain, 35.0) == 3
+
+
+def test_sample_ballistic_trajectory_stops_on_terrain_hit() -> None:
+    traj = terrain.sample_ballistic_trajectory(
+        lambda _x: 0.0,
+        x=0.0,
+        y=120.0,
+        vx=15.0,
+        vy_up=0.0,
+        max_distance=2000.0,
+        segment_length=14.0,
+    )
+    assert traj.hit
+    assert traj.termination == "terrain_hit"
+    assert traj.hit_x is not None
+    assert traj.hit_y is not None
+    assert abs(traj.hit_y) <= 0.5
+    assert len(traj.points) >= 2
+    assert traj.distance > 0.0
+
+
+def test_sample_ballistic_trajectory_stops_at_max_distance() -> None:
+    traj = terrain.sample_ballistic_trajectory(
+        lambda _x: -1e9,
+        x=0.0,
+        y=120.0,
+        vx=10.0,
+        vy_up=0.0,
+        max_distance=140.0,
+        segment_length=18.0,
+    )
+    assert not traj.hit
+    assert traj.termination == "max_distance"
+    assert traj.distance == pytest.approx(140.0)
+    assert len(traj.points) >= 2
+
+
+def test_sample_ballistic_trajectory_handles_low_horizontal_speed() -> None:
+    traj = terrain.sample_ballistic_trajectory(
+        lambda _x: -1e9,
+        x=0.0,
+        y=10.0,
+        vx=0.01,
+        vy_up=20.0,
+        max_distance=200.0,
+        segment_length=8.0,
+    )
+    assert len(traj.points) >= 3
+    assert all(math.isfinite(px) and math.isfinite(py) for px, py in traj.points)
+    assert traj.distance > 0.0
+
+
+def test_sample_ballistic_trajectory_refines_impact_point() -> None:
+    def terrain_line(xx: float) -> float:
+        return 0.2 * xx
+
+    traj = terrain.sample_ballistic_trajectory(
+        terrain_line,
+        x=0.0,
+        y=80.0,
+        vx=22.0,
+        vy_up=0.0,
+        max_distance=2000.0,
+        segment_length=60.0,
+    )
+    assert traj.hit
+    assert traj.hit_x is not None
+    assert traj.hit_y is not None
+    terrain_y = terrain_line(traj.hit_x)
+    assert abs(traj.hit_y - terrain_y) <= 0.75

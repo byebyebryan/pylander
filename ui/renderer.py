@@ -17,13 +17,18 @@ from core.components import (
     FuelTank,
     LanderGeometry,
     LanderState,
+    PhysicsState,
     SensorReadings,
     Transform,
 )
 from core.ecs import require_component
 from core.lander_visuals import Thrust
 from core.maths import RigidTransform2, Vector2
-from core.terrain import pick_lod_for_world_step, terrain_resolution
+from core.terrain import (
+    pick_lod_for_world_step,
+    sample_ballistic_trajectory,
+    terrain_resolution,
+)
 
 if TYPE_CHECKING:
     from core.level import Level
@@ -150,6 +155,14 @@ class Renderer:
             self.height_scale,
         )
         self.fps_overlay = FpsOverlay(self.font, self.screen, self.clock)
+        self.show_ballistic_trajectory = True
+        self.ballistic_color = (110, 170, 255)
+        self.ballistic_target_segment_px = 10.0
+        self.ballistic_min_segment_world = 4.0
+        self.ballistic_max_segment_world = 72.0
+        self.ballistic_min_distance = 1000.0
+        self.ballistic_max_distance = 12000.0
+        self.ballistic_max_points = 240
 
     def tick(self, target_fps: int) -> float:
         """Tick internal clock and return frame dt in seconds."""
@@ -180,6 +193,10 @@ class Renderer:
             pygame.quit()
         except Exception:
             pass
+
+    def toggle_ballistic_overlay(self) -> bool:
+        self.show_ballistic_trajectory = not self.show_ballistic_trajectory
+        return self.show_ballistic_trajectory
 
     def draw_terrain(self):
         """Draw terrain as a polyline sampled on a stable world grid to reduce shimmer."""
@@ -348,6 +365,56 @@ class Renderer:
         """Draw UI text: credits and focused-actor flight stats."""
         self.hud.draw(self.level, self.bot)
 
+    def _ballistic_segment_world(self) -> float:
+        zoom = max(0.02, float(self.main_camera.zoom))
+        world_step = self.ballistic_target_segment_px / zoom
+        return max(
+            self.ballistic_min_segment_world,
+            min(self.ballistic_max_segment_world, world_step),
+        )
+
+    def _ballistic_distance_limit(self) -> float:
+        visible = self.main_camera.get_visible_world_rect()
+        dist = visible.width * 1.6
+        return max(
+            self.ballistic_min_distance,
+            min(self.ballistic_max_distance, dist),
+        )
+
+    def _build_ballistic_points(self) -> list[tuple[float, float]]:
+        if not self.show_ballistic_trajectory:
+            return []
+        lander = self.level.lander
+        if lander is None:
+            return []
+        trans = lander.get_component(Transform)
+        phys = lander.get_component(PhysicsState)
+        geo = lander.get_component(LanderGeometry)
+        if None in (trans, phys, geo):
+            return []
+        traj = sample_ballistic_trajectory(
+            self.level.terrain,
+            x=trans.pos.x,
+            y=trans.pos.y,
+            vx=phys.vel.x,
+            vy_up=phys.vel.y,
+            max_distance=self._ballistic_distance_limit(),
+            segment_length=self._ballistic_segment_world(),
+            max_points=self.ballistic_max_points,
+            clearance=geo.height * 0.5,
+        )
+        return traj.points
+
+    def _draw_ballistic_path(self, camera, points: list[tuple[float, float]]) -> None:
+        if len(points) < 2:
+            return
+        screen_points = [
+            camera.world_to_screen(Vector2(wx, wy * self.height_scale))
+            for wx, wy in points
+        ]
+        if len(screen_points) >= 2:
+            pygame.draw.aalines(self.screen, self.ballistic_color, False, screen_points)
+
     def draw(self):
         """Render the complete scene."""
         # Clear background
@@ -370,6 +437,8 @@ class Renderer:
             self.main_camera,
             contacts,
         )
+        trajectory_points = self._build_ballistic_points()
+        self._draw_ballistic_path(self.main_camera, trajectory_points)
 
         # Draw actors and thrust flames
         for actor in self._get_actor_entities():
@@ -383,6 +452,7 @@ class Renderer:
             self.height_scale,
             contacts=contacts,
             sites=self.level.sites,
+            trajectory_points=trajectory_points,
         )
 
         # Draw center orientation inset when zoomed far out
@@ -390,7 +460,7 @@ class Renderer:
             self.level.lander
             and self.main_camera.zoom <= self.orientation_inset_trigger_zoom
         ):
-            self.draw_lander_orientation_inset()
+            self.draw_lander_orientation_inset(trajectory_points=trajectory_points)
 
         # Draw UI overlay
         self.draw_ui()
@@ -438,7 +508,10 @@ class Renderer:
 
     # draw_fps moved to FpsOverlay
 
-    def draw_lander_orientation_inset(self):
+    def draw_lander_orientation_inset(
+        self,
+        trajectory_points: list[tuple[float, float]] | None = None,
+    ):
         """Draw a fixed-zoom lander view in a rectangle at the bottom-right.
 
         The rectangle matches the minimap size and is placed at the bottom-right
@@ -475,6 +548,8 @@ class Renderer:
         prev_clip = self.screen.get_clip()
         try:
             self.screen.set_clip(rect.inflate(-2, -2))
+            if trajectory_points:
+                self._draw_ballistic_path(inset_cam, trajectory_points)
             # Reuse standard draw paths with the inset camera
             self.draw_actor(lander, inset_cam)
             self.draw_thrusts(self._get_thrusts(lander), inset_cam)

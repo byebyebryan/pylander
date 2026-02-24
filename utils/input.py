@@ -18,11 +18,12 @@ class InputHandler:
         Signals include:
           - quit: bool
           - reset: bool
+          - toggle_ballistic: bool
           - zoom_in, zoom_out (keyboard-based)
           - thrust_up, thrust_down, rot_left, rot_right, refuel
           - pan_left, pan_right, pan_up, pan_down
         """
-        signals: dict = {"quit": False, "reset": False}
+        signals: dict = {"quit": False, "reset": False, "toggle_ballistic": False}
         # No mouse-based camera control; only handle quit/reset keys here
 
         for event in pygame.event.get():
@@ -35,6 +36,8 @@ class InputHandler:
                     signals["reset"] = True
                 elif event.key == pygame.K_TAB:
                     signals["switch_actor"] = True
+                elif event.key == pygame.K_t:
+                    signals["toggle_ballistic"] = True
         # Keyboard-based zoom flags
         ks = pygame.key.get_pressed()
         signals["zoom_in"] = bool(ks[pygame.K_EQUALS] or ks[pygame.K_PAGEUP])
@@ -54,5 +57,6 @@ class InputHandler:
             }
         )
         signals.setdefault("switch_actor", False)
+        signals.setdefault("toggle_ballistic", False)
 
         return signals

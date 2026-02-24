@@ -177,6 +177,7 @@ class HudOverlay:
             "D/RIGHT: Rotate right",
             "F: Refuel (when landed)",
             "TAB: Switch actor",
+            "T: Toggle ballistic path",
             "R: Reset",
             "Q/ESC: Quit",
         ]

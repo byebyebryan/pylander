@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Protocol, Any, Callable
 from core.sensor import RadarContact, ProximityContact
+from core.terrain import sample_ballistic_trajectory
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,22 @@ class ActiveSensors(Protocol):
         self, x_start: float, x_end: float, samples: int = 16, lod: int = 0
     ) -> list[tuple[float, float]]:
         """Sample terrain between two x-coordinates."""
+        ...
+
+    def ballistic_trajectory(
+        self,
+        x: float,
+        y: float,
+        vx: float,
+        vy_up: float,
+        *,
+        max_distance: float = 3000.0,
+        segment_length: float = 24.0,
+        max_points: int = 256,
+        lod: int = 0,
+        clearance: float = 0.0,
+    ) -> dict[str, Any]:
+        """Predict engine-off trajectory against terrain."""
         ...
 
 
@@ -192,3 +209,50 @@ class _ActiveSensorImpl:
             xx = x_start + span * t
             out.append((xx, self.terrain_height(xx, lod=lod)))
         return out
+
+    def ballistic_trajectory(
+        self,
+        x: float,
+        y: float,
+        vx: float,
+        vy_up: float,
+        *,
+        max_distance: float = 3000.0,
+        segment_length: float = 24.0,
+        max_points: int = 256,
+        lod: int = 0,
+        clearance: float = 0.0,
+    ) -> dict[str, Any]:
+        if self._terrain is None:
+            return {
+                "points": [(float(x), float(y))],
+                "hit": False,
+                "hit_x": None,
+                "hit_y": None,
+                "hit_time": None,
+                "distance": 0.0,
+                "duration": 0.0,
+                "termination": "no_terrain",
+            }
+        result = sample_ballistic_trajectory(
+            self._terrain,
+            x=x,
+            y=y,
+            vx=vx,
+            vy_up=vy_up,
+            max_distance=max_distance,
+            segment_length=segment_length,
+            max_points=max_points,
+            lod=lod,
+            clearance=clearance,
+        )
+        return {
+            "points": result.points,
+            "hit": result.hit,
+            "hit_x": result.hit_x,
+            "hit_y": result.hit_y,
+            "hit_time": result.hit_time,
+            "distance": result.distance,
+            "duration": result.duration,
+            "termination": result.termination,
+        }
