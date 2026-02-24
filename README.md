@@ -65,7 +65,7 @@ uv run python main.py drop --headless --freq 0 --steps 10000
 # Use different seed or lander
 uv run python main.py drop --headless --seed 123
 uv run python main.py drop --headless --scenario speed_high --seed 123
-uv run python main.py drift --headless --scenario climb_correction --seed 123
+uv run python main.py drift --headless --scenario flat_correction --seed 123
 uv run python main.py flat --lander differential
 ```
 
@@ -157,7 +157,7 @@ Dedicated scenario levels (default bot in parentheses):
     - `*_cargo_high`
 - `drift` (`drift`) - correction-focused horizontal-control benchmark:
   - base scenarios span two dimensions:
-    - ballistic profile (`glide_short|mid|long|climb`) -> `climb` starts with positive vertical speed for prolonged lateral correction windows
+    - ballistic profile (`glide_short|mid|long|flat`) -> `flat` includes a mild positive initial vertical speed to validate upward-pointing ballistic starts
     - trajectory error (no suffix vs `_correction` vs `_stress_correction`) -> correction tiers inject seeded random bias direction, so runs need re-centering work in either direction
   - scenario names:
     - `glide_short`
@@ -167,9 +167,9 @@ Dedicated scenario levels (default bot in parentheses):
     - `glide_long`
     - `glide_long_correction`
     - `glide_long_stress_correction`
-    - `climb`
-    - `climb_correction`
-    - `climb_stress_correction`
+    - `flat`
+    - `flat_correction`
+    - `flat_stress_correction`
   - targeted heavy-cargo variants (`*_cargo_high`) exist only for:
     - `glide_mid_correction`
     - `glide_long_correction`

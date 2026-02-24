@@ -992,9 +992,9 @@ def test_drift_level_lists_expected_scenarios() -> None:
         "glide_long",
         "glide_long_correction",
         "glide_long_stress_correction",
-        "climb",
-        "climb_correction",
-        "climb_stress_correction",
+        "flat",
+        "flat_correction",
+        "flat_stress_correction",
     }
     assert base.issubset(scenarios)
     cargo_variants = {
@@ -1067,7 +1067,7 @@ def test_drift_correction_scenario_randomizes_error_direction_across_seeds() -> 
     signs = set()
     for seed in range(40):
         level = create_level_by_name("drift")
-        level.set_eval_scenario("climb_correction")
+        level.set_eval_scenario("flat_correction")
         game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=seed)
         actor = game.actors[0]
         trans = actor.get_component(Transform)
@@ -1089,9 +1089,9 @@ def test_drift_correction_scenario_randomizes_error_direction_across_seeds() -> 
     assert signs == {-1.0, 1.0}
 
 
-def test_drift_climb_scenario_starts_with_positive_vertical_velocity() -> None:
+def test_drift_flat_scenario_starts_with_positive_vertical_velocity() -> None:
     level = create_level_by_name("drift")
-    level.set_eval_scenario("climb")
+    level.set_eval_scenario("flat")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=11)
     actor = game.actors[0]
     trans = actor.get_component(Transform)
@@ -1102,15 +1102,15 @@ def test_drift_climb_scenario_starts_with_positive_vertical_velocity() -> None:
     assert trans.pos.x * phys.vel.x < 0.0
 
 
-def test_drift_climb_correction_velocity_is_deterministic_for_seed() -> None:
+def test_drift_flat_correction_velocity_is_deterministic_for_seed() -> None:
     level_a = create_level_by_name("drift")
-    level_a.set_eval_scenario("climb_correction")
+    level_a.set_eval_scenario("flat_correction")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=37)
     phys_a = game_a.actors[0].get_component(PhysicsState)
     assert phys_a is not None
 
     level_b = create_level_by_name("drift")
-    level_b.set_eval_scenario("climb_correction")
+    level_b.set_eval_scenario("flat_correction")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=37)
     phys_b = game_b.actors[0].get_component(PhysicsState)
     assert phys_b is not None

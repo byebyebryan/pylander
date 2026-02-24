@@ -52,7 +52,7 @@ _BALLISTIC_PROFILES: tuple[_BallisticProfile, ...] = (
     _BallisticProfile(name="glide_mid", spawn_clearance=420.0, start_x=320.0),
     _BallisticProfile(name="glide_long", spawn_clearance=900.0, start_x=900.0),
     _BallisticProfile(
-        name="climb",
+        name="flat",
         spawn_clearance=650.0,
         start_x=760.0,
         initial_vy_up=10.0,
@@ -67,7 +67,7 @@ _PROFILE_ERROR_TIERS: dict[str, tuple[str, ...]] = {
     "glide_short": ("none", "normal"),
     "glide_mid": ("none", "normal"),
     "glide_long": ("none", "normal", "stress"),
-    "climb": ("none", "normal", "stress"),
+    "flat": ("none", "normal", "stress"),
 }
 _ERROR_TIER_BY_KEY = {tier.key: tier for tier in _ERROR_TIERS}
 
