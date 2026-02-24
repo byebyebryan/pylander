@@ -41,7 +41,7 @@ uv run python main.py drop --scenario alt_400
 uv run python main.py drift
 
 # Pick a specific drift scenario
-uv run python main.py drift --scenario flat_high_correction
+uv run python main.py drift --scenario glide_long_stress_correction
 
 # Use descent bot on other levels if desired
 uv run python main.py flat --bot descent
@@ -65,7 +65,7 @@ uv run python main.py drop --headless --freq 0 --steps 10000
 # Use different seed or lander
 uv run python main.py drop --headless --seed 123
 uv run python main.py drop --headless --scenario speed_high --seed 123
-uv run python main.py drift --headless --scenario flat_mid_correction --seed 123
+uv run python main.py drift --headless --scenario climb_correction --seed 123
 uv run python main.py flat --lander differential
 ```
 
@@ -91,7 +91,7 @@ uv run python main.py drop --headless --batch \
 # Drift-focused horizontal-control batch
 uv run python main.py drift --headless --batch \
   --batch-seeds 0-19 \
-  --batch-scenarios flat_mid,flat_high_correction \
+  --batch-scenarios glide_mid,glide_long_stress_correction \
   --batch-json auto \
   --batch-csv auto
 ```
@@ -100,7 +100,7 @@ By default, generated artifacts (batch JSON/CSV and trajectory plots) are writte
 
 `--quick-benchmark` runs a fixed core suite:
 - `drop`: `alt_400`, `speed_high`, `upward_low`
-- `drift`: `flat_mid`, `flat_high_correction`
+- `drift`: `glide_mid`, `glide_long_stress_correction`
 
 Use `--batch-scenarios` when you want a narrower or custom scenario slice.
 
@@ -156,22 +156,24 @@ Dedicated scenario levels (default bot in parentheses):
     - `*_cargo_low`
     - `*_cargo_high`
 - `drift` (`drift`) - correction-focused horizontal-control benchmark:
-  - base scenarios (curated 6) span two dimensions:
-    - trajectory flatness (`flat_low|mid|high`) -> more flat means more lateral speed to kill
-    - trajectory error (no suffix vs `_correction`) -> `_correction` scenarios inject seeded random bias direction, so runs need re-centering work either way
+  - base scenarios span two dimensions:
+    - ballistic profile (`glide_short|mid|long|climb`) -> `climb` starts with positive vertical speed for prolonged lateral correction windows
+    - trajectory error (no suffix vs `_correction` vs `_stress_correction`) -> correction tiers inject seeded random bias direction, so runs need re-centering work in either direction
   - scenario names:
-    - `flat_low`
-    - `flat_low_correction`
-    - `flat_mid`
-    - `flat_mid_correction`
-    - `flat_high`
-    - `flat_high_correction`
-    - `flat_high_stress_correction`
+    - `glide_short`
+    - `glide_short_correction`
+    - `glide_mid`
+    - `glide_mid_correction`
+    - `glide_long`
+    - `glide_long_correction`
+    - `glide_long_stress_correction`
+    - `climb`
+    - `climb_correction`
+    - `climb_stress_correction`
   - targeted heavy-cargo variants (`*_cargo_high`) exist only for:
-    - `flat_mid`
-    - `flat_mid_correction`
-    - `flat_high_correction`
-    - `flat_high_stress_correction`
+    - `glide_mid_correction`
+    - `glide_long_correction`
+    - `glide_long_stress_correction`
 
 ## Command Line Options
 

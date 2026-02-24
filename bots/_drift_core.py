@@ -40,6 +40,33 @@ class DriftCourseConfig:
     terminal_track_vx_deadband: float = 0.8
     terminal_track_vx_scale: float = 0.9
     terminal_track_vx_cap_max: float = 8.0
+    lateral_velocity_gain: float = 0.95
+    lateral_accel_damping: float = 0.08
+    lateral_position_gain: float = 0.45
+    lateral_position_term_cap: float = 3.5
+    lateral_accel_cap: float = 8.5
+    lateral_tgo_min: float = 1.0
+    lateral_tgo_max: float = 11.0
+    lateral_track_min_weight: float = 0.35
+    lateral_track_dx_full: float = 60.0
+    lateral_soft_zone_alt: float = 16.0
+    lateral_soft_zone_dx: float = 14.0
+    lateral_soft_zone_scale: float = 0.55
+    lateral_stop_accel_estimate: float = 5.0
+    lateral_stop_distance_scale: float = 0.88
+    force_drift_coast_vx: float = 20.0
+    force_drift_coast_dx_min: float = 30.0
+    lateral_stop_vx_margin: float = 0.92
+    lateral_zero_vx_dx: float = 55.0
+    lateral_zero_vx_cap: float = 1.6
+    lateral_terminal_zero_vx_dx: float = 24.0
+    lateral_terminal_zero_vx_cap: float = 1.0
+
+
+@dataclass(frozen=True)
+class DriftLateralTracker:
+    vx_target: float
+    ax_target: float
 
 
 def cone_dx_limit(alt: float, cfg: DriftCourseConfig) -> float:
@@ -108,6 +135,20 @@ def apply_drift_guidance(
     abs_projected_dx = abs(projected_dx)
     cone_limit = cone_dx_limit(alt, cfg)
     vx_cap = correction_vx_cap(alt, cfg)
+    current_vx = float(vx) if vx is not None and math.isfinite(vx) else 0.0
+    abs_dx = abs(guidance.dx)
+    moving_toward_target = (abs_dx > 1e-3) and ((guidance.dx * current_vx) > 0.0)
+    stop_distance = (
+        (current_vx * current_vx) / (2.0 * max(0.1, cfg.lateral_stop_accel_estimate))
+        if abs(current_vx) > 1e-6
+        else 0.0
+    )
+    stop_brake_urgent = moving_toward_target and (
+        stop_distance > (cfg.lateral_stop_distance_scale * abs_dx)
+    )
+    force_drift_coast = moving_toward_target and (
+        abs(current_vx) >= cfg.force_drift_coast_vx and abs_dx >= cfg.force_drift_coast_dx_min
+    )
     vx_needed = 0.0
     vx_need_mag = 0.0
     if guidance.vertical_mode == "terminal_burn":
@@ -141,6 +182,8 @@ def apply_drift_guidance(
         )
         vx_sp = math.copysign(max(abs(vx_sp), correction_vx), projected_dx)
         correction_active = True
+    if stop_brake_urgent:
+        correction_active = True
 
     if guidance.vertical_mode == "terminal_burn":
         if vx_need_mag > cfg.terminal_track_vx_deadband:
@@ -156,6 +199,13 @@ def apply_drift_guidance(
                 vx_cap,
             )
             vx_sp = math.copysign(max(abs(vx_sp), abs(terminal_vx_floor)), terminal_vx_floor)
+        if abs(guidance.dx) <= cfg.lateral_terminal_zero_vx_dx:
+            # In late terminal near target, prioritize low lateral speed over centering speed.
+            vx_sp = clamp(
+                vx_sp,
+                -cfg.lateral_terminal_zero_vx_cap,
+                cfg.lateral_terminal_zero_vx_cap,
+            )
 
     vy_sp = guidance.vy_sp
     vertical_mode = guidance.vertical_mode
@@ -163,8 +213,11 @@ def apply_drift_guidance(
     if (
         vertical_mode == "coast"
         and alt >= cfg.drift_coast_min_altitude
-        and abs_projected_dx > drift_coast_limit
-        and correction_active
+        and (
+            (abs_projected_dx > drift_coast_limit and correction_active)
+            or force_drift_coast
+            or stop_brake_urgent
+        )
     ):
         # Keep drift runs thrust-backed during correction, not ballistic.
         vertical_mode = "drift_coast"
@@ -183,6 +236,58 @@ def apply_drift_guidance(
     )
 
 
+def lateral_tracking_command(
+    cfg: DriftCourseConfig,
+    *,
+    dx: float,
+    alt: float,
+    vx: float,
+    vy_up: float,
+    ax: float,
+    vx_guidance: float,
+) -> DriftLateralTracker:
+    safe_alt = max(0.0, alt)
+    vy_for_fall = vy_up if math.isfinite(vy_up) else 0.0
+    t_go = clamp(
+        _ballistic_fall_time(alt=safe_alt, vy_up=vy_for_fall),
+        cfg.lateral_tgo_min,
+        cfg.lateral_tgo_max,
+    )
+    vx_cap = correction_vx_cap(safe_alt, cfg)
+    vx_track = clamp(dx / max(0.5, t_go), -vx_cap, vx_cap)
+    track_weight = clamp(
+        abs(dx) / max(1e-3, cfg.lateral_track_dx_full),
+        cfg.lateral_track_min_weight,
+        1.0,
+    )
+    vx_target = ((1.0 - track_weight) * vx_guidance) + (track_weight * vx_track)
+    abs_dx = abs(dx)
+    moving_toward_target = (abs_dx > 1e-3) and ((dx * vx) > 0.0)
+    if moving_toward_target:
+        # Keep lateral speed within what can be stopped by remaining offset.
+        vx_stop_cap = math.sqrt(max(0.0, 2.0 * cfg.lateral_stop_accel_estimate * abs_dx))
+        vx_stop_cap *= cfg.lateral_stop_vx_margin
+        vx_target = math.copysign(min(abs(vx_target), vx_stop_cap), dx)
+    if abs_dx <= cfg.lateral_zero_vx_dx:
+        vx_cap_near = cfg.lateral_zero_vx_cap
+        vx_target = clamp(vx_target, -vx_cap_near, vx_cap_near)
+    vx_err = vx_target - vx
+    pos_term = clamp(
+        dx / max(1e-3, t_go * t_go),
+        -cfg.lateral_position_term_cap,
+        cfg.lateral_position_term_cap,
+    )
+    ax_target = (
+        (cfg.lateral_velocity_gain * vx_err)
+        + (cfg.lateral_position_gain * pos_term)
+        - (cfg.lateral_accel_damping * ax)
+    )
+    if safe_alt <= cfg.lateral_soft_zone_alt and abs(dx) <= cfg.lateral_soft_zone_dx:
+        ax_target *= cfg.lateral_soft_zone_scale
+    ax_target = clamp(ax_target, -cfg.lateral_accel_cap, cfg.lateral_accel_cap)
+    return DriftLateralTracker(vx_target=vx_target, ax_target=ax_target)
+
+
 def cap_low_altitude_angle(
     target_angle: float,
     *,
@@ -196,7 +301,7 @@ def cap_low_altitude_angle(
     return target_angle
 
 
-DRIFT_BALANCED_POLICY = replace(
+DRIFT_POLICY = replace(
     BALANCED_POLICY,
     status_prefix="drift",
     lateral_gain=1.12,
@@ -207,32 +312,7 @@ DRIFT_BALANCED_POLICY = replace(
     terminal_brake_gain_high_alt=0.98,
     terminal_brake_gain_low_alt=0.86,
 )
-
-DRIFT_EFFICIENCY_POLICY = replace(
-    DRIFT_BALANCED_POLICY,
-    status_prefix="drift_efficiency",
-    lateral_gain=1.0,
-    descent_rate_scale=1.26,
-    burn_margin_scale=0.74,
-    time_to_brake_buffer=0.04,
-    coast_horiz_deadband=8.5,
-    terminal_brake_gain_high_alt=1.2,
-    terminal_brake_gain_low_alt=1.08,
-)
-
-DRIFT_ACCURACY_POLICY = replace(
-    DRIFT_BALANCED_POLICY,
-    status_prefix="drift_accuracy",
-    lateral_gain=1.34,
-    descent_rate_scale=0.82,
-    burn_margin_scale=1.26,
-    time_to_brake_buffer=0.36,
-    coast_horiz_deadband=2.0,
-    terminal_brake_gain_high_alt=0.92,
-    terminal_brake_gain_low_alt=0.78,
-)
-
-DRIFT_BALANCED_COURSE = replace(
+DRIFT_COURSE = replace(
     DriftCourseConfig(),
     cone_dx_base=18.0,
     cone_dx_per_alt=0.24,
@@ -251,66 +331,31 @@ DRIFT_BALANCED_COURSE = replace(
     terminal_track_vx_deadband=0.75,
     terminal_track_vx_scale=0.92,
     terminal_track_vx_cap_max=8.0,
-)
-DRIFT_EFFICIENCY_COURSE = replace(
-    DRIFT_BALANCED_COURSE,
-    cone_dx_base=32.0,
-    cone_dx_per_alt=0.38,
-    cone_dx_max=300.0,
-    correction_vx_min=1.0,
-    correction_vx_per_excess=0.05,
-    correction_vx_per_alt=0.005,
-    correction_vx_high_alt_cap=6.0,
-    correction_vx_low_alt_cap=3.0,
-    correction_vx_low_alt_threshold=24.0,
-    terminal_burn_correction_vx_floor=4.4,
-    fast_descent_min_altitude=18.0,
-    fast_descent_base=2.4,
-    fast_descent_sqrt_gain=0.34,
-    fast_descent_cap=8.2,
-    low_altitude_angle_limit_alt=11.0,
-    low_altitude_angle_limit_dx=18.0,
-    low_altitude_angle_cap=0.22,
-    drift_coast_enter_scale=1.6,
-    drift_coast_min_altitude=260.0,
-    drift_coast_descent_floor=0.0,
-    terminal_correction_cone_scale=0.95,
-    terminal_track_vx_deadband=0.35,
-    terminal_track_vx_scale=1.08,
-    terminal_track_vx_cap_max=10.0,
-)
-DRIFT_ACCURACY_COURSE = replace(
-    DRIFT_BALANCED_COURSE,
-    cone_dx_base=4.0,
-    cone_dx_per_alt=0.08,
-    cone_dx_max=68.0,
-    correction_vx_min=2.9,
-    correction_vx_per_excess=0.16,
-    correction_vx_per_alt=0.015,
-    correction_vx_high_alt_cap=9.8,
-    correction_vx_low_alt_cap=4.2,
-    correction_vx_low_alt_threshold=42.0,
-    terminal_burn_correction_vx_floor=6.8,
-    fast_descent_min_altitude=34.0,
-    fast_descent_base=1.4,
-    fast_descent_sqrt_gain=0.22,
-    fast_descent_cap=4.8,
-    low_altitude_angle_limit_alt=20.0,
-    low_altitude_angle_limit_dx=30.0,
-    low_altitude_angle_cap=0.10,
-    drift_coast_enter_scale=0.55,
-    drift_coast_min_altitude=8.0,
-    drift_coast_descent_floor=1.4,
-    terminal_correction_cone_scale=0.45,
-    terminal_track_vx_deadband=0.95,
-    terminal_track_vx_scale=0.78,
-    terminal_track_vx_cap_max=7.0,
+    lateral_velocity_gain=0.98,
+    lateral_accel_damping=0.07,
+    lateral_position_gain=0.52,
+    lateral_position_term_cap=3.8,
+    lateral_accel_cap=8.2,
+    lateral_tgo_min=1.0,
+    lateral_tgo_max=10.5,
+    lateral_track_min_weight=0.0,
+    lateral_track_dx_full=56.0,
+    lateral_soft_zone_alt=14.0,
+    lateral_soft_zone_dx=12.0,
+    lateral_soft_zone_scale=0.5,
+    lateral_stop_accel_estimate=5.4,
+    lateral_stop_distance_scale=0.84,
+    force_drift_coast_vx=18.0,
+    force_drift_coast_dx_min=40.0,
+    lateral_stop_vx_margin=0.9,
+    lateral_zero_vx_dx=60.0,
+    lateral_zero_vx_cap=1.5,
+    lateral_terminal_zero_vx_dx=24.0,
+    lateral_terminal_zero_vx_cap=0.9,
 )
 
 _DRIFT_BEHAVIORS: dict[str, tuple[DescentPolicy, DriftCourseConfig]] = {
-    "balanced": (DRIFT_BALANCED_POLICY, DRIFT_BALANCED_COURSE),
-    "efficiency": (DRIFT_EFFICIENCY_POLICY, DRIFT_EFFICIENCY_COURSE),
-    "accuracy": (DRIFT_ACCURACY_POLICY, DRIFT_ACCURACY_COURSE),
+    "drift": (DRIFT_POLICY, DRIFT_COURSE),
 }
 
 
@@ -331,10 +376,12 @@ def list_drift_behavior_names() -> tuple[str, ...]:
 
 
 __all__ = [
-    "DRIFT_BALANCED_POLICY",
+    "DRIFT_POLICY",
     "DriftCourseConfig",
+    "DriftLateralTracker",
     "apply_drift_guidance",
     "cap_low_altitude_angle",
+    "lateral_tracking_command",
     "list_drift_behavior_names",
     "resolve_drift_behavior",
 ]

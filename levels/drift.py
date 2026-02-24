@@ -26,58 +26,87 @@ class DriftScenario:
     cargo_mass: float = 1800.0
 
 
-_BASE_SCENARIOS: tuple[DriftScenario, ...] = (
-    DriftScenario(
-        name="flat_low",
-        spawn_clearance=200.0,
-        start_x=100.0,
-        trajectory_error=0.0,
-    ),
-    DriftScenario(
-        name="flat_low_correction",
-        spawn_clearance=200.0,
-        start_x=100.0,
-        trajectory_error=20.0,
-    ),
-    DriftScenario(
-        name="flat_mid",
-        spawn_clearance=400.0,
-        start_x=280.0,
-        trajectory_error=0.0,
-    ),
-    DriftScenario(
-        name="flat_mid_correction",
-        spawn_clearance=400.0,
-        start_x=280.0,
-        trajectory_error=20.0,
-    ),
-    DriftScenario(
-        name="flat_high",
-        spawn_clearance=800.0,
-        start_x=800.0,
-        trajectory_error=0.0,
-    ),
-    DriftScenario(
-        name="flat_high_correction",
-        spawn_clearance=800.0,
-        start_x=800.0,
-        trajectory_error=20.0,
-    ),
-    DriftScenario(
-        name="flat_high_stress_correction",
-        spawn_clearance=900.0,
-        start_x=900.0,
-        trajectory_error=28.0,
+@dataclass(frozen=True)
+class _BallisticProfile:
+    name: str
+    spawn_clearance: float
+    start_x: float
+    initial_vy_up: float = 0.0
+
+
+@dataclass(frozen=True)
+class _TrajectoryErrorTier:
+    key: str
+    trajectory_error: float
+
+
+@dataclass(frozen=True)
+class _ScenarioCell:
+    profile: str
+    error_tier: str
+    scenario: DriftScenario
+
+
+_BALLISTIC_PROFILES: tuple[_BallisticProfile, ...] = (
+    _BallisticProfile(name="glide_short", spawn_clearance=220.0, start_x=120.0),
+    _BallisticProfile(name="glide_mid", spawn_clearance=420.0, start_x=320.0),
+    _BallisticProfile(name="glide_long", spawn_clearance=900.0, start_x=900.0),
+    _BallisticProfile(
+        name="climb",
+        spawn_clearance=650.0,
+        start_x=760.0,
+        initial_vy_up=10.0,
     ),
 )
+_ERROR_TIERS: tuple[_TrajectoryErrorTier, ...] = (
+    _TrajectoryErrorTier(key="none", trajectory_error=0.0),
+    _TrajectoryErrorTier(key="normal", trajectory_error=20.0),
+    _TrajectoryErrorTier(key="stress", trajectory_error=28.0),
+)
+_PROFILE_ERROR_TIERS: dict[str, tuple[str, ...]] = {
+    "glide_short": ("none", "normal"),
+    "glide_mid": ("none", "normal"),
+    "glide_long": ("none", "normal", "stress"),
+    "climb": ("none", "normal", "stress"),
+}
+_ERROR_TIER_BY_KEY = {tier.key: tier for tier in _ERROR_TIERS}
+
+
+def _scenario_name(profile: str, error_tier: str) -> str:
+    if error_tier == "none":
+        return profile
+    if error_tier == "normal":
+        return f"{profile}_correction"
+    if error_tier == "stress":
+        return f"{profile}_stress_correction"
+    raise ValueError(f"Unknown drift error tier '{error_tier}'")
+
+
+_BASE_CELLS: tuple[_ScenarioCell, ...] = tuple(
+    _ScenarioCell(
+        profile=profile.name,
+        error_tier=tier_key,
+        scenario=DriftScenario(
+            name=_scenario_name(profile.name, tier_key),
+            spawn_clearance=profile.spawn_clearance,
+            start_x=profile.start_x,
+            trajectory_error=_ERROR_TIER_BY_KEY[tier_key].trajectory_error,
+            initial_vy_up=profile.initial_vy_up,
+        ),
+    )
+    for profile in _BALLISTIC_PROFILES
+    for tier_key in _PROFILE_ERROR_TIERS[profile.name]
+)
+_BASE_SCENARIOS: tuple[DriftScenario, ...] = tuple(cell.scenario for cell in _BASE_CELLS)
 _CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
     ("cargo_high", 4500.0),
 )
 _CARGO_VARIANT_BASES: tuple[str, ...] = (
-    "flat_mid",
-    "flat_mid_correction",
-    "flat_high_correction",
-    "flat_high_stress_correction",
+    tuple(
+        cell.scenario.name
+        for cell in _BASE_CELLS
+        if cell.profile in {"glide_mid", "glide_long"} and cell.error_tier in {"normal", "stress"}
+    )
 )
 _SCENARIOS: tuple[DriftScenario, ...] = (
     _BASE_SCENARIOS
@@ -98,10 +127,10 @@ _SCENARIOS: tuple[DriftScenario, ...] = (
 )
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "flat_mid"
+_DEFAULT_SCENARIO = "glide_mid"
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    "flat_mid",
-    "flat_high_correction",
+    "glide_mid",
+    "glide_long_stress_correction",
 )
 
 _DRIFT_SPAWN_OFFSET_MIN = 70.0

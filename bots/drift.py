@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-import math
-
 from bots._descent_core import (
     GuidanceTargets,
     StrategyDescentBot,
 )
 from bots._drift_core import (
-    DRIFT_BALANCED_POLICY,
+    DRIFT_POLICY,
     DriftCourseConfig,
     apply_drift_guidance,
     cap_low_altitude_angle,
+    lateral_tracking_command,
     list_drift_behavior_names,
     resolve_drift_behavior,
 )
@@ -21,10 +20,11 @@ from core.sensor import RadarContact
 
 
 class DriftBot(StrategyDescentBot):
-    def __init__(self, behavior: str = "balanced") -> None:
-        super().__init__(DRIFT_BALANCED_POLICY)
+    def __init__(self, behavior: str = "drift") -> None:
+        super().__init__(DRIFT_POLICY)
         self._course_cfg = DriftCourseConfig()
-        self._behavior = "balanced"
+        self._behavior = "drift"
+        self._last_guidance: GuidanceTargets | None = None
         self.set_behavior(behavior)
 
     def set_behavior(self, behavior: str) -> None:
@@ -53,48 +53,33 @@ class DriftBot(StrategyDescentBot):
             max_throttle=max_throttle,
             ramp_up=ramp_up,
         )
-        return apply_drift_guidance(
+        guidance = apply_drift_guidance(
             base_guidance,
             self._course_cfg,
             vx=passive.vx,
             vy_up=passive.vy_up,
         )
+        self._last_guidance = guidance
+        return guidance
 
     def _horizontal_controller(
         self,
         passive: PassiveSensors,
         vx_sp: float,
     ) -> float:
-        vx_err = vx_sp - passive.vx
-        abs_vx_sp = abs(vx_sp)
-        alt = passive.altitude if math.isfinite(passive.altitude) else 0.0
-        if self._behavior == "efficiency":
-            if alt >= 120.0 and abs_vx_sp >= 3.6:
-                gain = 1.15
-                accel_damping = 0.015
-            elif abs_vx_sp > 2.6:
-                gain = 0.95
-                accel_damping = 0.03
-            else:
-                gain = 0.65
-                accel_damping = 0.07
-        elif self._behavior == "accuracy":
-            if abs_vx_sp >= 2.0:
-                gain = 1.28
-                accel_damping = 0.08
-            else:
-                gain = 0.96
-                accel_damping = 0.13
-        elif alt >= 120.0 and abs_vx_sp >= 3.0:
-            gain = 1.02
-            accel_damping = 0.04
-        elif abs_vx_sp > 2.4:
-            gain = 0.9
-            accel_damping = 0.06
-        else:
-            gain = 0.72
-            accel_damping = 0.1
-        return (gain * vx_err) - (accel_damping * passive.ax)
+        guidance = self._last_guidance
+        if guidance is None or not passive.radar_contacts:
+            return (0.65 * (vx_sp - passive.vx)) - (0.08 * passive.ax)
+        tracker = lateral_tracking_command(
+            self._course_cfg,
+            dx=guidance.dx,
+            alt=guidance.alt,
+            vx=passive.vx,
+            vy_up=passive.vy_up,
+            ax=passive.ax,
+            vx_guidance=vx_sp,
+        )
+        return tracker.ax_target
 
     def _allocate_controls(
         self,

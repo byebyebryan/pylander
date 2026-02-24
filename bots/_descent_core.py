@@ -445,7 +445,13 @@ class StrategyDescentBot(Bot):
         if guidance.vertical_mode in ("coast", "drift_coast") and abs(
             guidance.dx
         ) <= self._policy.coast_horiz_deadband:
-            a_x_sp = 0.0
+            if self._policy.status_prefix == "drift":
+                deadband = max(1e-3, self._policy.coast_horiz_deadband)
+                deadband_ratio = clamp(abs(guidance.dx) / deadband, 0.0, 1.0)
+                softened_vx_sp = guidance.vx_sp * deadband_ratio
+                a_x_sp = self._horizontal_controller(passive, softened_vx_sp)
+            else:
+                a_x_sp = 0.0
         else:
             a_x_sp = self._horizontal_controller(passive, guidance.vx_sp)
         a_up_sp = self._vertical_controller(
