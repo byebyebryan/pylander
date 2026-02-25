@@ -23,11 +23,13 @@ class FlareScenario:
     start_dx: float
     start_dy: float
     initial_vx_toward_target: float
+    initial_vy_up: float
     initial_angle: float = 0.0
     cargo_mass: float = 2250.0
 
 
 _SPAWN_RADIUS = 800.0
+_TARGET_FLIGHT_TIME_S = 12.0
 _ANGLE_PROFILES: tuple[tuple[str, float], ...] = (
     ("shallower", 15.0),
     ("shallow", 30.0),
@@ -42,14 +44,18 @@ def _build_angle_scenario(name: str, angle_deg: float) -> FlareScenario:
     start_dx = _SPAWN_RADIUS * math.cos(angle_rad)
     start_dy = _SPAWN_RADIUS * math.sin(angle_rad)
     gravity = abs(float(GRAVITY))
-    time_to_target = math.sqrt((2.0 * start_dy) / gravity)
+    time_to_target = _TARGET_FLIGHT_TIME_S
     vx_toward_target = start_dx / max(1e-6, time_to_target)
+    vy_up = (
+        (0.5 * gravity * time_to_target * time_to_target) - start_dy
+    ) / max(1e-6, time_to_target)
     return FlareScenario(
         name=name,
         angle_deg=float(angle_deg),
         start_dx=float(start_dx),
         start_dy=float(start_dy),
         initial_vx_toward_target=float(vx_toward_target),
+        initial_vy_up=float(vy_up),
     )
 
 
@@ -128,7 +134,7 @@ class FlareLevel(ScenarioLevel):
         actor.start_pos = Vector2(start_pos)
         toward_speed = abs(float(scenario.initial_vx_toward_target))
         initial_vx = -direction * toward_speed
-        initial_vy_up = 0.0
+        initial_vy_up = float(scenario.initial_vy_up)
         validate_scenario_recoverability(
             actor,
             scenario_name=scenario.name,

@@ -194,7 +194,7 @@ Dedicated scenario levels (default bot in parentheses):
     - half cargo (`2250`)
     - start lies on an upper hemisphere arc of radius `800` around target center
     - angle is measured from horizon (`15°`, `30°`, `45°`, `60°`, `75°`)
-    - initial `vy` is fixed at `0`, with `vx` solved to preserve center-hit ballistic path
+    - initial `vx`/`vy` are solved together to target a `~12s` center-hit ballistic path
   - 1D angle sweep (seeded random side):
     - `shallower` (`15°`)
     - `shallow` (`30°`)

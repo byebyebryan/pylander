@@ -1,22 +1,650 @@
-"""Dedicated flare bot built on coast guidance primitives."""
+"""Dedicated flare bot with coupled 2D terminal control."""
 
 from __future__ import annotations
 
-from bots.coast import CoastBot
-from core.bot import Bot
+import math
+from dataclasses import dataclass, replace
+
+from bots._coast_core import COAST_POLICY, CoastCourseConfig, cap_low_altitude_angle
+from bots._launch_core import LaunchSetupConfig, resolve_sideburn_target_angle
+from bots._plunge_core import (
+    GuidanceTargets,
+    StrategyDropBot,
+    ballistic_time_to_impact,
+    clamp,
+    estimate_ballistic_projection,
+    finite_altitude,
+    rate_limit_angle_command,
+    vehicle_limits,
+)
+from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
+from core.sensor import RadarContact
 
 
-class FlareBot(CoastBot):
+@dataclass(frozen=True)
+class FlareControlConfig:
+    sideburn_enter_dx: float = 44.0
+    sideburn_enter_vx: float = 6.0
+    sideburn_entry_alt_max: float = 680.0
+    sideburn_force_low_alt: float = 260.0
+    sideburn_force_vx: float = 34.0
+    sideburn_min_dx_alt_ratio: float = 1.45
+    sideburn_entry_alt_min: float = 50.0
+    sideburn_exit_dx: float = 14.0
+    sideburn_exit_vx: float = 1.7
+    sideburn_release_frames: int = 5
+    sideburn_max_frames: int = 420
+    sideburn_exit_vx_relaxed: float = 4.2
+    sideburn_exit_dx_relaxed: float = 70.0
+    sideburn_min_altitude: float = 14.0
+    sideburn_vx_floor: float = 5.4
+    sideburn_vx_floor_per_alt: float = 0.022
+    sideburn_vx_cap: float = 120.0
+    sideburn_ax_floor: float = 1.2
+    sideburn_ax_cap: float = 8.8
+    sideburn_vx_gain: float = 1.02
+    sideburn_pos_gain: float = 0.022
+    sideburn_switch_dx: float = 13.0
+    sideburn_switch_vx: float = 1.4
+    sideburn_force_dx: float = 24.0
+    sideburn_descent_base: float = 1.1
+    sideburn_descent_gain: float = 0.17
+    sideburn_descent_min: float = 1.0
+    sideburn_descent_max: float = 3.4
+    sideburn_hover_penalty: float = 0.52
+    sideburn_abort_climb_vy: float = 1.2
+    sideburn_reentry_cooldown_frames: int = 72
+    sideburn_exit_burn_hold_frames: int = 700
+    sideburn_entry_vy_max: float = 1.0
+    sideburn_emergency_alt: float = 240.0
+    sideburn_angle_rate: float = 3.2
+    coupled_tgo_min: float = 0.8
+    coupled_tgo_max: float = 12.0
+    coupled_vx_track_weight: float = 0.68
+    coupled_vx_cap: float = 16.0
+    coupled_near_dx: float = 20.0
+    coupled_near_alt: float = 18.0
+    coupled_near_vx_cap: float = 2.0
+    coupled_descent_base: float = 0.95
+    coupled_descent_gain: float = 0.45
+    coupled_descent_min: float = 1.0
+    coupled_descent_max: float = 14.0
+    coupled_ax_pos_gain: float = 0.82
+    coupled_ax_vel_gain: float = 0.98
+    coupled_ax_damping: float = 0.07
+    coupled_ax_cap: float = 8.8
+    coupled_soft_alt: float = 15.0
+    coupled_soft_dx: float = 12.0
+    coupled_soft_scale: float = 0.56
+    coupled_ay_pos_gain: float = 1.45
+    coupled_ay_vel_gain: float = 0.88
+    coupled_ay_damping: float = 0.05
+    coupled_angle_rate: float = 2.2
+    coupled_max_tilt: float = 0.62
+    coupled_low_alt_tilt: float = 0.18
+    coupled_low_alt_tilt_far: float = 0.34
+    coupled_low_alt_tilt_dx: float = 12.0
+    coupled_low_alt_tilt_vx: float = 2.4
+    coupled_low_alt_vx_cap_alt: float = 60.0
+    coupled_low_alt_vx_cap_gain: float = 0.7
+    coupled_low_alt_vx_cap_min: float = 2.2
+    coupled_low_alt_vx_cap_max: float = 7.0
+    coupled_low_alt_ax_alt: float = 22.0
+    coupled_low_alt_ax_cap: float = 4.4
+    coupled_misaligned_alt: float = 14.0
+    coupled_misaligned_vy_min: float = 1.25
+    eco_glide_lateral_hold_alt: float = 80.0
+    anti_hover_alt: float = 24.0
+    anti_hover_dx: float = 24.0
+    anti_hover_vy_floor: float = 0.8
+    anti_hover_down_acc: float = 0.42
+    emergency_vy: float = 6.0
+    emergency_brake_gain: float = 0.24
+    burn_enter_time_margin: float = 0.65
+    burn_hold_frames: int = 8
+    touchdown_altitude: float = 4.0
+    touchdown_descent_base: float = 0.35
+    touchdown_descent_gain: float = 0.07
+    touchdown_descent_min: float = 0.35
+    touchdown_descent_max: float = 0.85
+    touchdown_entry_dx: float = 8.0
+    touchdown_entry_vx: float = 2.0
+    touchdown_zero_alt: float = 2.4
+    touchdown_zero_dx: float = 7.0
+    touchdown_zero_vx: float = 0.55
+    touchdown_zero_vy: float = 0.9
+
+
+class FlareBot(StrategyDropBot):
     def __init__(self, behavior: str = "flare") -> None:
-        super().__init__(behavior="coast")
+        super().__init__(replace(COAST_POLICY, status_prefix="flare"))
+        self._control_cfg = FlareControlConfig()
+        self._course_cfg = replace(
+            CoastCourseConfig(),
+            low_altitude_angle_limit_alt=10.0,
+            low_altitude_angle_limit_dx=8.0,
+            low_altitude_angle_cap=0.14,
+        )
+        self._sideburn_cfg = replace(
+            LaunchSetupConfig(),
+            setup_sideburn_angle_rad=1.18,
+            setup_sideburn_angle_min_rad=0.95,
+            setup_sideburn_angle_max_rad=1.35,
+            setup_sideburn_upward_vy_target=1.4,
+            setup_sideburn_upward_angle_gain=0.45,
+            setup_sideburn_lateral_accel_floor=self._control_cfg.sideburn_ax_floor,
+            setup_sideburn_lateral_accel_cap=self._control_cfg.sideburn_ax_cap,
+            setup_sideburn_min_thrust=0.35,
+            setup_sideburn_max_thrust=1.6,
+        )
+        self._active_sensors: ActiveSensors | None = None
+        self._behavior = "flare"
+        self._last_guidance: GuidanceTargets | None = None
+        self._last_projected_dx = 0.0
+        self._last_t_go = 1.0
+        self._projection_summary = ""
+        self._sideburn_active = False
+        self._sideburn_direction = 0.0
+        self._sideburn_release_counter = 0
+        self._sideburn_frame_count = 0
+        self._sideburn_switch_hold = 0
+        self._sideburn_reentry_cooldown = 0
+        self._terminal_burn_hold = 0
         self.set_behavior(behavior)
 
     def set_behavior(self, behavior: str) -> None:
         key = str(behavior).strip().lower()
-        if key not in {"flare", "coast"}:
+        if key != "flare":
             raise ValueError(f"Unknown flare behavior '{behavior}'. Expected one of: flare")
-        super().set_behavior("coast")
         self._behavior = "flare"
+        self._ballistic_debug_summary = ""
+        self._projection_summary = ""
+        self._last_guidance = None
+        self._last_projected_dx = 0.0
+        self._last_t_go = 1.0
+        self._sideburn_active = False
+        self._sideburn_direction = 0.0
+        self._sideburn_release_counter = 0
+        self._sideburn_frame_count = 0
+        self._sideburn_switch_hold = 0
+        self._sideburn_reentry_cooldown = 0
+        self._terminal_burn_hold = 0
+
+    @property
+    def behavior(self) -> str:
+        return self._behavior
+
+    def _ballistic_clearance(self) -> float:
+        if self.vehicle_info is None:
+            return 0.0
+        return max(0.0, 0.5 * float(self.vehicle_info.height))
+
+    def _resolve_sideburn_direction(self, projected_dx: float, dx: float, vx: float) -> float:
+        if self._sideburn_switch_hold > 0:
+            self._sideburn_switch_hold -= 1
+        if (
+            self._sideburn_direction != 0.0
+            and self._sideburn_switch_hold == 0
+            and (self._sideburn_direction * vx) > (1.5 * self._control_cfg.sideburn_switch_vx)
+        ):
+            self._sideburn_direction = -self._sideburn_direction
+            self._sideburn_switch_hold = 24
+            return self._sideburn_direction
+
+        if abs(projected_dx) > 1e-3:
+            candidate = math.copysign(1.0, projected_dx)
+        elif abs(vx) > self._control_cfg.sideburn_switch_vx:
+            candidate = -math.copysign(1.0, vx)
+        elif abs(dx) > 1e-3:
+            candidate = math.copysign(1.0, dx)
+        elif abs(vx) > 1e-3:
+            candidate = -math.copysign(1.0, vx)
+        else:
+            candidate = self._sideburn_direction if self._sideburn_direction != 0.0 else 1.0
+
+        if self._sideburn_direction == 0.0:
+            self._sideburn_direction = candidate
+        elif candidate != self._sideburn_direction:
+            if (
+                self._sideburn_switch_hold == 0
+                and
+                abs(projected_dx) <= self._control_cfg.sideburn_switch_dx
+                and abs(vx) <= self._control_cfg.sideburn_switch_vx
+            ):
+                self._sideburn_direction = candidate
+                self._sideburn_switch_hold = 18
+        return self._sideburn_direction
+
+    def update(
+        self,
+        dt: float,
+        passive: PassiveSensors,
+        active: ActiveSensors,
+    ) -> BotAction:
+        if passive.state != "flying":
+            self._sideburn_active = False
+            self._sideburn_direction = 0.0
+            self._sideburn_release_counter = 0
+            self._sideburn_frame_count = 0
+            self._sideburn_switch_hold = 0
+            self._sideburn_reentry_cooldown = 0
+            self._terminal_burn_hold = 0
+            self._last_guidance = None
+            self._projection_summary = ""
+        self._active_sensors = active
+        try:
+            return super().update(dt, passive, active)
+        finally:
+            self._active_sensors = None
+
+    def _guidance(
+        self,
+        passive: PassiveSensors,
+        target: RadarContact,
+        *,
+        max_force: float,
+        max_throttle: float,
+        ramp_up: float,
+        active: ActiveSensors | None = None,
+    ) -> GuidanceTargets:
+        _ = max_throttle, ramp_up
+        cfg = self._control_cfg
+        alt = finite_altitude(passive)
+        dx = float(target.x) - float(passive.x)
+        projection = estimate_ballistic_projection(
+            dx=dx,
+            alt=alt,
+            vx=passive.vx,
+            vy_up=passive.vy_up,
+            x=passive.x,
+            y=passive.y,
+            active=active,
+            clearance=self._ballistic_clearance(),
+            segment_length=20.0,
+            max_points=192,
+        )
+        track_dx = projection.projected_dx
+        t_go = clamp(projection.t_fall, cfg.coupled_tgo_min, cfg.coupled_tgo_max)
+        self._last_projected_dx = float(track_dx)
+        self._last_t_go = float(t_go)
+
+        abs_track_dx = abs(track_dx)
+        abs_vx = abs(float(passive.vx))
+        dx_alt_ratio = abs(dx) / max(1.0, alt)
+        if self._sideburn_reentry_cooldown > 0:
+            self._sideburn_reentry_cooldown -= 1
+        if self._sideburn_active:
+            self._sideburn_frame_count += 1
+            sideburn_clear = (
+                abs_track_dx <= cfg.sideburn_exit_dx and abs_vx <= cfg.sideburn_exit_vx
+            )
+            relaxed_clear = (
+                abs_track_dx <= cfg.sideburn_exit_dx_relaxed
+                and abs_vx <= cfg.sideburn_exit_vx_relaxed
+            )
+            if sideburn_clear:
+                self._sideburn_release_counter += 1
+            elif relaxed_clear:
+                self._sideburn_release_counter += 1
+            else:
+                self._sideburn_release_counter = 0
+            if (
+                self._sideburn_release_counter >= cfg.sideburn_release_frames
+                or self._sideburn_frame_count >= cfg.sideburn_max_frames
+                or alt <= cfg.sideburn_min_altitude
+                or float(passive.vy_up) >= cfg.sideburn_abort_climb_vy
+            ):
+                self._sideburn_active = False
+                self._sideburn_release_counter = 0
+                self._sideburn_frame_count = 0
+                self._sideburn_direction = 0.0
+                self._sideburn_switch_hold = 0
+                self._sideburn_reentry_cooldown = max(
+                    self._sideburn_reentry_cooldown,
+                    int(cfg.sideburn_reentry_cooldown_frames),
+                )
+                self._terminal_burn_hold = max(
+                    self._terminal_burn_hold,
+                    int(cfg.sideburn_exit_burn_hold_frames),
+                )
+        elif (
+            self._sideburn_reentry_cooldown <= 0
+            and
+            cfg.sideburn_min_altitude < alt <= cfg.sideburn_entry_alt_max
+            and alt >= cfg.sideburn_entry_alt_min
+            and dx_alt_ratio >= cfg.sideburn_min_dx_alt_ratio
+            and float(passive.vy_up) <= cfg.sideburn_entry_vy_max
+            and (
+                abs_track_dx >= cfg.sideburn_enter_dx
+                or (alt <= cfg.sideburn_force_low_alt and abs_vx >= cfg.sideburn_force_vx)
+            )
+        ):
+            self._sideburn_active = True
+            self._sideburn_release_counter = 0
+            self._sideburn_frame_count = 0
+            self._sideburn_switch_hold = 0
+
+        touchdown_ready = (
+            alt <= cfg.touchdown_altitude
+            and abs_track_dx <= cfg.touchdown_entry_dx
+            and abs(float(passive.vx)) <= cfg.touchdown_entry_vx
+        )
+        if touchdown_ready:
+            phase = "touchdown"
+            vertical_mode = "flare"
+        elif self._sideburn_active:
+            phase = "sideburn"
+            vertical_mode = "coast_hold"
+        else:
+            phase = "coupled_terminal"
+            vertical_mode = "terminal_burn"
+
+        if phase == "sideburn":
+            vx_sp = clamp(dx / max(0.5, t_go), -cfg.sideburn_vx_cap, cfg.sideburn_vx_cap)
+            _ = self._resolve_sideburn_direction(vx_sp - float(passive.vx), dx, passive.vx)
+            vy_sp = -clamp(
+                cfg.sideburn_descent_base + (cfg.sideburn_descent_gain * math.sqrt(max(0.0, alt))),
+                cfg.sideburn_descent_min,
+                cfg.sideburn_descent_max,
+            )
+        elif phase == "touchdown":
+            vx_sp = clamp(-float(passive.vx), -cfg.coupled_near_vx_cap, cfg.coupled_near_vx_cap)
+            vy_sp = -clamp(
+                cfg.touchdown_descent_base + (cfg.touchdown_descent_gain * alt),
+                cfg.touchdown_descent_min,
+                cfg.touchdown_descent_max,
+            )
+        else:
+            vx_track = track_dx / max(0.5, t_go)
+            vx_stop = -float(passive.vx)
+            vx_sp = (
+                (cfg.coupled_vx_track_weight * vx_track)
+                + ((1.0 - cfg.coupled_vx_track_weight) * vx_stop)
+            )
+            vx_sp = clamp(vx_sp, -cfg.coupled_vx_cap, cfg.coupled_vx_cap)
+            if alt <= cfg.coupled_low_alt_vx_cap_alt:
+                low_alt_vx_cap = clamp(
+                    cfg.coupled_low_alt_vx_cap_min
+                    + (cfg.coupled_low_alt_vx_cap_gain * math.sqrt(max(0.0, alt))),
+                    cfg.coupled_low_alt_vx_cap_min,
+                    cfg.coupled_low_alt_vx_cap_max,
+                )
+                vx_sp = clamp(vx_sp, -low_alt_vx_cap, low_alt_vx_cap)
+            if abs_track_dx <= cfg.coupled_near_dx and alt <= cfg.coupled_near_alt:
+                vx_sp = clamp(vx_sp, -cfg.coupled_near_vx_cap, cfg.coupled_near_vx_cap)
+            vy_sp = -clamp(
+                cfg.coupled_descent_base + (cfg.coupled_descent_gain * math.sqrt(max(0.0, alt))),
+                cfg.coupled_descent_min,
+                cfg.coupled_descent_max,
+            )
+            if (
+                alt <= cfg.coupled_misaligned_alt
+                and (
+                    abs_track_dx > cfg.touchdown_entry_dx
+                    or abs(float(passive.vx)) > cfg.touchdown_entry_vx
+                )
+            ):
+                vy_sp = min(vy_sp, -cfg.coupled_misaligned_vy_min)
+
+        _, up_acc_max = vehicle_limits(passive, max_force)
+        down_speed = max(0.0, -float(passive.vy_up))
+        nominal_throttle = min(1.0, max_throttle)
+        spool_time = max(0.0, nominal_throttle - max(0.0, float(passive.thrust_level))) / max(
+            1e-3,
+            ramp_up,
+        )
+        spool_distance = (down_speed * spool_time) + (4.9 * spool_time * spool_time)
+        flare_speed = clamp(0.45 + (0.11 * alt), 0.7, 2.5)
+        speed_to_kill = max(0.0, down_speed - flare_speed)
+        stop_distance = (speed_to_kill * speed_to_kill) / (2.0 * max(1e-3, up_acc_max))
+        burn_margin = 2.1 + (0.12 * max(0.0, abs_track_dx - 8.0))
+        burn_altitude = stop_distance + spool_distance + burn_margin
+        burn_altitude = self._terminal_brake_altitude(
+            passive,
+            alt=alt,
+            dx=track_dx,
+            burn_altitude=burn_altitude,
+            spool_time=spool_time,
+            max_force=max_force,
+        )
+        time_to_impact, impact_source = ballistic_time_to_impact(passive, active)
+        time_to_brake = spool_time + (speed_to_kill / max(1e-3, up_acc_max))
+        raw_burn_now = bool(
+            down_speed > 0.6
+            and (
+                alt <= burn_altitude
+                or time_to_impact <= (time_to_brake + cfg.burn_enter_time_margin)
+            )
+        )
+        if raw_burn_now:
+            self._terminal_burn_hold = max(self._terminal_burn_hold, int(cfg.burn_hold_frames))
+        elif self._terminal_burn_hold > 0:
+            self._terminal_burn_hold -= 1
+        hold_burn = (self._terminal_burn_hold > 0) and (not raw_burn_now)
+        burn_now = raw_burn_now or hold_burn
+        if phase == "coupled_terminal":
+            if raw_burn_now:
+                vertical_mode = "terminal_burn"
+            elif hold_burn:
+                vertical_mode = "flare"
+            else:
+                vertical_mode = "eco_glide"
+        guidance = GuidanceTargets(
+            phase=phase,
+            vertical_mode=vertical_mode,
+            vx_sp=vx_sp,
+            vy_sp=vy_sp,
+            dx=dx,
+            alt=alt,
+            burn_altitude=burn_altitude,
+        )
+        self._last_guidance = guidance
+        self._projection_summary = (
+            f"proj pdx:{track_dx:6.1f} tf:{projection.t_fall:4.1f} "
+            f"src:{'s' if projection.used_sensor else 'a'} "
+            f"sb:{int(self._sideburn_active)} burn:{int(burn_now)} "
+            f"tti:{time_to_impact:4.1f}{impact_source[:1]}"
+        )
+        return guidance
+
+    def _horizontal_controller(
+        self,
+        passive: PassiveSensors,
+        vx_sp: float,
+    ) -> float:
+        cfg = self._control_cfg
+        guidance = self._last_guidance
+        if guidance is None:
+            return (0.6 * (vx_sp - passive.vx)) - (0.09 * passive.ax)
+
+        if guidance.phase == "sideburn":
+            t_go = max(0.5, self._last_t_go)
+            vx_err = vx_sp - float(passive.vx)
+            pos_term = guidance.dx / max(1e-3, t_go * t_go)
+            raw_ax = (1.05 * vx_err) + (0.28 * pos_term) - (0.06 * float(passive.ax))
+            direction = self._resolve_sideburn_direction(raw_ax, guidance.dx, passive.vx)
+            ax_mag = abs(raw_ax)
+            if abs(self._last_projected_dx) > cfg.sideburn_force_dx or abs(vx_err) > 1.0:
+                ax_mag = max(ax_mag, cfg.sideburn_ax_floor)
+            return direction * clamp(ax_mag, 0.0, cfg.sideburn_ax_cap)
+
+        if (
+            guidance.vertical_mode == "eco_glide"
+            and guidance.alt >= cfg.eco_glide_lateral_hold_alt
+        ):
+            return 0.0
+
+        t_go = clamp(self._last_t_go, cfg.coupled_tgo_min, cfg.coupled_tgo_max)
+        vx_err = vx_sp - float(passive.vx)
+        pos_term = self._last_projected_dx / max(1e-3, t_go * t_go)
+        vel_term = vx_err / max(1e-3, t_go)
+        ax_target = (
+            (cfg.coupled_ax_pos_gain * pos_term)
+            + (cfg.coupled_ax_vel_gain * vel_term)
+            - (cfg.coupled_ax_damping * float(passive.ax))
+        )
+        if guidance.alt <= cfg.coupled_soft_alt and abs(self._last_projected_dx) <= cfg.coupled_soft_dx:
+            ax_target *= cfg.coupled_soft_scale
+        ax_cap = cfg.coupled_ax_cap
+        if guidance.alt <= cfg.coupled_low_alt_ax_alt:
+            ax_cap = min(ax_cap, cfg.coupled_low_alt_ax_cap)
+        return clamp(ax_target, -ax_cap, ax_cap)
+
+    def _vertical_controller(
+        self,
+        passive: PassiveSensors,
+        vy_sp: float,
+        alt: float,
+        vertical_mode: str,
+        up_acc_max: float,
+    ) -> float:
+        cfg = self._control_cfg
+        if vertical_mode == "coast_hold":
+            vy_err = vy_sp - float(passive.vy_up)
+            a_up_cmd = 6.7 + (0.16 * vy_err)
+            if float(passive.vy_up) > -cfg.anti_hover_vy_floor:
+                a_up_cmd -= cfg.sideburn_hover_penalty * (
+                    float(passive.vy_up) + cfg.anti_hover_vy_floor
+                )
+            max_up_cmd = 9.2 if alt < 14.0 else 8.85
+            a_up_cmd = clamp(a_up_cmd, 4.4, max_up_cmd)
+            if (
+                alt <= cfg.sideburn_emergency_alt
+                and float(passive.vy_up) < -cfg.emergency_vy
+            ):
+                a_up_cmd = max(a_up_cmd, 9.8 + (cfg.emergency_brake_gain * up_acc_max))
+            return clamp(a_up_cmd, 0.0, 9.8 + (0.55 * up_acc_max))
+        return super()._vertical_controller(passive, vy_sp, alt, vertical_mode, up_acc_max)
+
+    def _allocate_sideburn_controls(
+        self,
+        dt: float,
+        passive: PassiveSensors,
+        *,
+        a_x_sp: float,
+        a_up_sp: float,
+    ) -> BotAction:
+        max_power, min_throttle, max_throttle, _ = self._engine_profile()
+        mass = max(0.5, float(passive.mass))
+        direction = self._sideburn_direction if self._sideburn_direction != 0.0 else 1.0
+        cone_limit = max(8.0, 2.0 * self._control_cfg.sideburn_switch_dx)
+        target_angle = direction * resolve_sideburn_target_angle(
+            self._sideburn_cfg,
+            projected_dx=self._last_projected_dx,
+            cone_limit=cone_limit,
+            vy_up=float(passive.vy_up),
+        )
+        angle_cmd = rate_limit_angle_command(
+            target_angle,
+            self._prev_angle_cmd,
+            dt,
+            max_rate=self._control_cfg.sideburn_angle_rate,
+        )
+        self._prev_angle_cmd = angle_cmd
+
+        along_track_ax = direction * float(a_x_sp)
+        ax_mag = max(0.0, along_track_ax)
+        if abs(self._last_projected_dx) > self._control_cfg.sideburn_force_dx:
+            ax_mag = max(ax_mag, self._control_cfg.sideburn_ax_floor)
+        if (
+            ax_mag <= 0.12
+            and abs(self._last_projected_dx) <= self._control_cfg.sideburn_exit_dx
+            and abs(float(passive.vx)) <= self._control_cfg.sideburn_exit_vx
+        ):
+            return BotAction(target_thrust=0.0, target_angle=angle_cmd, refuel=False)
+
+        sin_term = max(0.2, abs(math.sin(angle_cmd)))
+        cos_term = max(0.2, abs(math.cos(angle_cmd)))
+        thrust_from_ax = (mass * ax_mag) / max(max_power * sin_term, 1e-3)
+        thrust_from_up = (mass * max(0.0, float(a_up_sp))) / max(max_power * cos_term, 1e-3)
+        thrust = max(thrust_from_ax, thrust_from_up)
+        thrust = clamp(
+            thrust,
+            self._sideburn_cfg.setup_sideburn_min_thrust,
+            min(max_throttle, self._sideburn_cfg.setup_sideburn_max_thrust),
+        )
+        if thrust > 0.0:
+            thrust = max(min_throttle, thrust)
+        return BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)
+
+    def _allocate_controls(
+        self,
+        dt: float,
+        passive: PassiveSensors,
+        *,
+        a_x_sp: float,
+        a_up_sp: float,
+        alt: float,
+        dx: float,
+        vertical_mode: str,
+    ) -> BotAction:
+        if vertical_mode == "coast_hold":
+            return self._allocate_sideburn_controls(
+                dt,
+                passive,
+                a_x_sp=a_x_sp,
+                a_up_sp=a_up_sp,
+            )
+
+        max_power, min_throttle, max_throttle, _ = self._engine_profile()
+        max_force = max_power * max_throttle
+        mass, _ = vehicle_limits(passive, max_force)
+        up_component = max(0.0, float(a_up_sp))
+        target_angle = math.atan2(float(a_x_sp), max(0.2, up_component))
+        max_tilt = self._control_cfg.coupled_max_tilt
+        if alt < 20.0:
+            if (
+                abs(dx) <= self._control_cfg.coupled_low_alt_tilt_dx
+                and abs(float(passive.vx)) <= self._control_cfg.coupled_low_alt_tilt_vx
+            ):
+                max_tilt = self._control_cfg.coupled_low_alt_tilt
+            else:
+                max_tilt = self._control_cfg.coupled_low_alt_tilt_far
+        target_angle = clamp(target_angle, -max_tilt, max_tilt)
+        angle_cmd = rate_limit_angle_command(
+            target_angle,
+            self._prev_angle_cmd,
+            dt,
+            max_rate=self._control_cfg.coupled_angle_rate,
+        )
+        self._prev_angle_cmd = angle_cmd
+        angle_cmd = cap_low_altitude_angle(
+            angle_cmd,
+            alt=alt,
+            dx=dx,
+            cfg=self._course_cfg,
+        )
+
+        thrust_acc = math.hypot(float(a_x_sp), up_component)
+        thrust = (mass * thrust_acc) / max(max_power, 1e-3)
+        if (
+            alt < self._control_cfg.touchdown_zero_alt
+            and abs(dx) <= self._control_cfg.touchdown_zero_dx
+            and abs(float(passive.vx)) <= self._control_cfg.touchdown_zero_vx
+            and abs(float(passive.vy_up)) <= self._control_cfg.touchdown_zero_vy
+        ):
+            thrust = 0.0
+            angle_cmd = 0.0
+
+        soft_cap = min(self._policy.overdrive_soft_cap, max_throttle)
+        if thrust > soft_cap and not self._can_use_overdrive(
+            passive,
+            vertical_mode=vertical_mode,
+            alt=alt,
+        ):
+            thrust = soft_cap
+        thrust = clamp(thrust, 0.0, max_throttle)
+        if thrust > 0.0:
+            thrust = max(min_throttle, thrust)
+        return BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)
+
+    def get_headless_stats(self) -> str:
+        base = super().get_headless_stats()
+        if not self._projection_summary:
+            return base
+        if not base:
+            return self._projection_summary
+        return f"{base} {self._projection_summary}"
 
 
 def create_bot() -> Bot:

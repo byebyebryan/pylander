@@ -16,10 +16,12 @@ from bots._coast_core import (
     coupled_brake_window,
     lateral_tracking_command,
     resolve_coast_behavior,
+    should_handoff_to_flare,
 )
 from bots._launch_core import LaunchSetupConfig
 from bots._plunge_core import GuidanceTargets, ballistic_time_to_impact
 from bots import create_bot, list_available_bots
+from bots.flare import FlareBot
 from bots.plunge import PlungeBot
 from bots.launch import (
     LaunchBot,
@@ -1134,6 +1136,72 @@ def test_transfer_sideburn_allocation_keeps_thrust_when_inside_cone_outside_targ
     assert action.target_thrust >= bot._setup_cfg.setup_sideburn_min_thrust
 
 
+def test_coast_handoff_to_flare_requires_consecutive_pass_frames() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.0,
+        vy_sp=-2.0,
+        dx=-10.0,
+        alt=120.0,
+        burn_altitude=30.0,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {
+                "hit": True,
+                "hit_x": 0.0,
+                "hit_time": 4.0,
+                "duration": 4.0,
+            }
+
+    debug: dict[str, object] = {}
+    first_ready = should_handoff_to_flare(
+        guidance,
+        cfg,
+        vx=-3.0,
+        vy_up=-1.0,
+        active=_FakeActive(),
+        x=10.0,
+        y=120.0,
+        target_size=110.0,
+        consecutive_passes=0,
+        required_passes=3,
+        debug=debug,
+    )
+    assert not first_ready
+    assert bool(debug.get("raw_ready"))
+    assert int(debug.get("pass_count_after_sample", -1)) == 1
+    assert int(debug.get("required_passes", -1)) == 3
+
+    second_ready = should_handoff_to_flare(
+        guidance,
+        cfg,
+        vx=-3.0,
+        vy_up=-1.0,
+        active=_FakeActive(),
+        x=10.0,
+        y=120.0,
+        target_size=110.0,
+        consecutive_passes=2,
+        required_passes=3,
+    )
+    assert second_ready
+
+
+def test_flare_sideburn_direction_lock_avoids_early_flip() -> None:
+    bot = FlareBot()
+    first = bot._resolve_sideburn_direction(projected_dx=60.0, dx=60.0, vx=-10.0)
+    second = bot._resolve_sideburn_direction(projected_dx=-55.0, dx=-55.0, vx=-10.0)
+    assert first == pytest.approx(1.0)
+    assert second == pytest.approx(1.0)
+    third = bot._resolve_sideburn_direction(projected_dx=-3.0, dx=-3.0, vx=-0.5)
+    assert third == pytest.approx(-1.0)
+
+
 def test_lateral_tracking_command_increases_vx_target_for_large_offset() -> None:
     _, _, cfg = resolve_drift_behavior("drift")
     cmd = lateral_tracking_command(
@@ -1933,10 +2001,11 @@ def test_flare_matrix_scenario_starts_on_center_hit_ballistic_path() -> None:
     assert trans is not None
     assert phys is not None
     assert abs(phys.vel.x) > 1e-6
-    assert phys.vel.y == pytest.approx(0.0)
+    assert phys.vel.y > 0.0
     target_pos = getattr(level, "eval_target_pos", Vector2(0.0, 0.0))
     assert trans.pos.x * phys.vel.x < 0.0  # Always moving toward target center.
     t_to_center = abs((target_pos.x - trans.pos.x) / phys.vel.x)
+    assert t_to_center == pytest.approx(12.0)
     y_at_center = trans.pos.y + (phys.vel.y * t_to_center) - (
         0.5 * abs(GRAVITY) * t_to_center * t_to_center
     )

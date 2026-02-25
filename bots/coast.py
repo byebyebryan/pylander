@@ -31,6 +31,7 @@ class CoastBot(StrategyDropBot):
         self._last_guidance: GuidanceTargets | None = None
         self._active_sensors: ActiveSensors | None = None
         self._handoff_done = False
+        self._handoff_pass_frames = 0
         self._handoff_snapshot: dict[str, float | bool | str | None] | None = None
         self._handoff_event_summary = ""
         self._last_target_size: float | None = None
@@ -48,6 +49,7 @@ class CoastBot(StrategyDropBot):
         self._behavior = "coast"
         self._ballistic_debug_summary = ""
         self._handoff_done = False
+        self._handoff_pass_frames = 0
         self._handoff_snapshot = None
         self._handoff_event_summary = ""
         self._last_target_size = None
@@ -69,6 +71,7 @@ class CoastBot(StrategyDropBot):
     ) -> BotAction:
         if passive.state != "flying":
             self._handoff_done = False
+            self._handoff_pass_frames = 0
             self._handoff_snapshot = None
             self._handoff_event_summary = ""
             self._last_target_size = None
@@ -172,9 +175,12 @@ class CoastBot(StrategyDropBot):
             y=passive.y,
             target_size=target_size,
             clearance=self._ballistic_clearance(),
+            consecutive_passes=self._handoff_pass_frames,
+            required_passes=self._course_cfg.flare_handoff_consecutive_pass_frames,
             debug=handoff_debug,
         ):
             self._handoff_done = True
+            self._handoff_pass_frames = int(handoff_debug.get("pass_count_after_sample", 0))
             self._handoff_snapshot = self._build_handoff_snapshot(handoff_debug, passive)
             self._handoff_event_summary = (
                 "handoff_evt "
@@ -182,8 +188,15 @@ class CoastBot(StrategyDropBot):
                 f"on:{int(bool(handoff_debug.get('centered')))} "
                 f"in:{int(bool(handoff_debug.get('inside_target')))} "
                 f"spd:{int(bool(handoff_debug.get('speed_ready')))} "
-                f"des:{int(bool(handoff_debug.get('descending')))}"
+                f"des:{int(bool(handoff_debug.get('descending')))} "
+                f"pass:{int(handoff_debug.get('pass_count_after_sample', 0))}/"
+                f"{int(handoff_debug.get('required_passes', 1))}"
             )
+        elif not self._handoff_done:
+            if bool(handoff_debug.get("raw_ready")):
+                self._handoff_pass_frames += 1
+            else:
+                self._handoff_pass_frames = 0
         self._ballistic_debug_summary = (
             f"ball pdx:{float(coast_debug.get('projected_dx', 0.0)):6.1f} "
             f"tf:{float(coast_debug.get('t_fall', 0.0)):4.1f} "

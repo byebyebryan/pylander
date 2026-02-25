@@ -53,7 +53,7 @@ The main chain is:
 
 **Start assumptions**
 - Half-cargo start (`2250`) on a radius-`800` upper-arc around target center (seeded random side).
-- Angle-to-horizon scenarios fix `vy=0` and solve `vx` for exact center-hit ballistic entry.
+- Angle-to-horizon scenarios keep radius-`800` starts and solve both `vx`/`vy` for a `~12s` center-hit ballistic entry.
 
 **Primary outcomes to optimize**
 - Burn-start timing under diverse entry angles and speeds.

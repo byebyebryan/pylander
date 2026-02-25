@@ -80,6 +80,7 @@ class CoastCourseConfig:
     flare_handoff_target_edge_margin: float = 8.0
     flare_handoff_vx_err_cap: float = 5.5
     flare_handoff_descending_vy_max: float = 2.0
+    flare_handoff_consecutive_pass_frames: int = 3
 
 
 @dataclass(frozen=True)
@@ -433,6 +434,8 @@ def should_handoff_to_flare(
     y: float | None = None,
     target_size: float | None = None,
     clearance: float = 0.0,
+    consecutive_passes: int = 0,
+    required_passes: int | None = None,
     debug: dict[str, object] | None = None,
 ) -> bool:
     alt = max(0.0, float(guidance.alt))
@@ -464,7 +467,16 @@ def should_handoff_to_flare(
     descending = safe_vy_up <= cfg.flare_handoff_descending_vy_max
     alt_ready = alt <= cfg.flare_handoff_altitude_max
     t_fall_ready = projection.t_fall <= 9.5
-    handoff_ready = centered and inside_target and speed_ready and descending and alt_ready and t_fall_ready
+    raw_ready = centered and inside_target and speed_ready and descending and alt_ready and t_fall_ready
+    required = (
+        cfg.flare_handoff_consecutive_pass_frames
+        if required_passes is None
+        else int(required_passes)
+    )
+    required = max(1, int(required))
+    pass_count = max(0, int(consecutive_passes))
+    pass_count_after_sample = (pass_count + 1) if raw_ready else 0
+    handoff_ready = raw_ready and (pass_count_after_sample >= required)
     if debug is not None:
         debug.update(
             {
@@ -483,6 +495,10 @@ def should_handoff_to_flare(
                 "vx_err": vx_err,
                 "handoff_cone": handoff_cone,
                 "target_half": target_half,
+                "raw_ready": raw_ready,
+                "consecutive_passes": pass_count,
+                "pass_count_after_sample": pass_count_after_sample,
+                "required_passes": required,
             }
         )
     return handoff_ready
