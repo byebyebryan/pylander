@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass, replace
 
+from core.config import GRAVITY
 from core.components import PhysicsState, Transform
 from core.ecs import require_component
 from core.level import Level
 from core.maths import Vector2
-from core.terrain import ballistic_fall_time
 from levels.scenario_common import (
     ScenarioLevel,
     ScenarioLevelSpec,
@@ -18,81 +19,58 @@ from levels.scenario_common import (
 @dataclass(frozen=True)
 class FlareScenario:
     name: str
-    spawn_clearance: float
-    start_x: float
-    trajectory_error: float = 0.0
-    initial_vx_toward_target: float | None = None
-    initial_vy_up: float = 0.0
+    angle_deg: float
+    start_dx: float
+    start_dy: float
+    initial_vx_toward_target: float
     initial_angle: float = 0.0
-    cargo_mass: float = 0.0
+    cargo_mass: float = 2250.0
 
 
-_SCENARIOS: tuple[FlareScenario, ...] = (
-    FlareScenario(
-        name="shallow_fast_undershoot",
-        spawn_clearance=260.0,
-        start_x=620.0,
-        trajectory_error=-26.0,
-        initial_vy_up=-4.0,
-    ),
-    FlareScenario(
-        name="shallow_fast_centered",
-        spawn_clearance=260.0,
-        start_x=620.0,
-        trajectory_error=0.0,
-        initial_vy_up=-4.0,
-    ),
-    FlareScenario(
-        name="shallow_fast_overshoot",
-        spawn_clearance=260.0,
-        start_x=620.0,
-        trajectory_error=26.0,
-        initial_vy_up=-4.0,
-    ),
-    FlareScenario(
-        name="steep_offset_undershoot",
-        spawn_clearance=220.0,
-        start_x=170.0,
-        trajectory_error=-12.0,
-        initial_vy_up=-12.0,
-    ),
-    FlareScenario(
-        name="steep_offset_centered",
-        spawn_clearance=220.0,
-        start_x=170.0,
-        trajectory_error=0.0,
-        initial_vy_up=-12.0,
-    ),
-    FlareScenario(
-        name="steep_offset_overshoot",
-        spawn_clearance=220.0,
-        start_x=170.0,
-        trajectory_error=12.0,
-        initial_vy_up=-12.0,
-    ),
-    FlareScenario(
-        name="handoff_high_speed",
-        spawn_clearance=250.0,
-        start_x=1100.0,
-        initial_vx_toward_target=108.0,
-        initial_vy_up=28.0,
-    ),
+_SPAWN_RADIUS = 800.0
+_ANGLE_PROFILES: tuple[tuple[str, float], ...] = (
+    ("shallower", 15.0),
+    ("shallow", 30.0),
+    ("mid", 45.0),
+    ("steep", 60.0),
+    ("steeper", 75.0),
+)
+
+
+def _build_angle_scenario(name: str, angle_deg: float) -> FlareScenario:
+    angle_rad = math.radians(float(angle_deg))
+    start_dx = _SPAWN_RADIUS * math.cos(angle_rad)
+    start_dy = _SPAWN_RADIUS * math.sin(angle_rad)
+    gravity = abs(float(GRAVITY))
+    time_to_target = math.sqrt((2.0 * start_dy) / gravity)
+    vx_toward_target = start_dx / max(1e-6, time_to_target)
+    return FlareScenario(
+        name=name,
+        angle_deg=float(angle_deg),
+        start_dx=float(start_dx),
+        start_dy=float(start_dy),
+        initial_vx_toward_target=float(vx_toward_target),
+    )
+
+
+_SCENARIOS: tuple[FlareScenario, ...] = tuple(
+    _build_angle_scenario(name, angle_deg) for name, angle_deg in _ANGLE_PROFILES
 )
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "shallow_fast_centered"
+_DEFAULT_SCENARIO = "mid"
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    "shallow_fast_centered",
-    "steep_offset_centered",
-    "handoff_high_speed",
+    "shallower",
+    "mid",
+    "steeper",
 )
 
 
 def _make_spec(scenario: FlareScenario) -> ScenarioLevelSpec:
     return ScenarioLevelSpec(
         name=scenario.name,
-        start_x=scenario.start_x,
+        start_x=scenario.start_dx,
         target_x=0.0,
-        spawn_clearance=scenario.spawn_clearance,
+        spawn_clearance=scenario.start_dy,
         terrain_kind="flat",
         target_mode="flush_flatten",
         target_offset_y=0.0,
@@ -131,34 +109,33 @@ class FlareLevel(ScenarioLevel):
         direction = -1.0 if dir_rng.random() < 0.5 else 1.0
         scenario = replace(
             scenario_base,
-            start_x=float(scenario_base.start_x) * direction,
+            start_dx=float(scenario_base.start_dx) * direction,
         )
         self.scenario = _make_spec(scenario)
         super().setup(game, seed)
 
         actor = self.world.actors[0]
-        validate_scenario_recoverability(
-            actor,
-            scenario_name=scenario.name,
-            spawn_clearance=scenario.spawn_clearance,
-            initial_vy_up=scenario.initial_vy_up,
-        )
-
         trans = require_component(actor, Transform)
         phys = require_component(actor, PhysicsState)
         trans.rotation = float(scenario.initial_angle)
 
         target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
-        dx = float(target_pos.x - trans.pos.x)
-        alt = max(0.0, float(trans.pos.y - target_pos.y))
-        t_fall = ballistic_fall_time(altitude=alt, vy_up=float(scenario.initial_vy_up))
-        if scenario.initial_vx_toward_target is not None:
-            initial_vx = -direction * abs(float(scenario.initial_vx_toward_target))
-        else:
-            vx_ballistic = dx / t_fall
-            vx_error = float(scenario.trajectory_error) / t_fall
-            initial_vx = vx_ballistic + vx_error
-        phys.vel = Vector2(initial_vx, float(scenario.initial_vy_up))
+        start_pos = Vector2(
+            float(target_pos.x) + (direction * float(scenario_base.start_dx)),
+            float(target_pos.y) + float(scenario_base.start_dy),
+        )
+        trans.pos = Vector2(start_pos)
+        actor.start_pos = Vector2(start_pos)
+        toward_speed = abs(float(scenario.initial_vx_toward_target))
+        initial_vx = -direction * toward_speed
+        initial_vy_up = 0.0
+        validate_scenario_recoverability(
+            actor,
+            scenario_name=scenario.name,
+            spawn_clearance=scenario.start_dy,
+            initial_vy_up=initial_vy_up,
+        )
+        phys.vel = Vector2(initial_vx, initial_vy_up)
 
         engine = getattr(self, "engine", None)
         if engine is not None:
@@ -171,7 +148,7 @@ class FlareLevel(ScenarioLevel):
                 )
             if hasattr(engine, "set_lander_velocity"):
                 engine.set_lander_velocity(
-                    Vector2(initial_vx, float(scenario.initial_vy_up)),
+                    Vector2(initial_vx, initial_vy_up),
                     uid=actor.uid,
                 )
 

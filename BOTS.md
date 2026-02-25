@@ -52,8 +52,8 @@ The main chain is:
 - Tune terminal 2-axis burn behavior once the vehicle is already close to a ballistic solution.
 
 **Start assumptions**
-- Entry trajectories are pre-shaped to represent realistic handoff states.
-- Variants include undershoot/centered/overshoot and shallow/steep profiles.
+- Half-cargo start (`2250`) on a radius-`800` upper-arc around target center (seeded random side).
+- Angle-to-horizon scenarios fix `vy=0` and solve `vx` for exact center-hit ballistic entry.
 
 **Primary outcomes to optimize**
 - Burn-start timing under diverse entry angles and speeds.
@@ -61,15 +61,13 @@ The main chain is:
 - Touchdown quality without oscillation or prolonged hover.
 
 **Scenarios**
-- `shallow_fast_undershoot`
-- `shallow_fast_centered`
-- `shallow_fast_overshoot`
-- `steep_offset_undershoot`
-- `steep_offset_centered`
-- `steep_offset_overshoot`
-- `handoff_high_speed`
+- `shallower` (15deg)
+- `shallow` (30deg)
+- `mid` (45deg)
+- `steep` (60deg)
+- `steeper` (75deg)
 - Quick benchmark subset:
-  - `shallow_fast_centered`, `steep_offset_centered`, `handoff_high_speed`
+  - `shallower`, `mid`, `steeper`
 
 **Evaluation**
 - Uses normal landing outcome metrics.

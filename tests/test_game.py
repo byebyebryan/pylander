@@ -27,6 +27,7 @@ from bots.launch import (
     resolve_launch_behavior,
     should_handoff_to_coast,
 )
+from core.config import GRAVITY
 from core.eval import aggregate_eval_records, normalize_run_result
 from core.bot import Bot, BotAction, PassiveSensors, _ActiveSensorImpl
 from core.components import (
@@ -1871,13 +1872,11 @@ def test_flare_level_lists_expected_scenarios() -> None:
     list_scenarios = getattr(level, "list_batch_scenarios", None)
     assert callable(list_scenarios)
     assert set(list_scenarios()) == {
-        "shallow_fast_undershoot",
-        "shallow_fast_centered",
-        "shallow_fast_overshoot",
-        "steep_offset_undershoot",
-        "steep_offset_centered",
-        "steep_offset_overshoot",
-        "handoff_high_speed",
+        "shallower",
+        "shallow",
+        "mid",
+        "steep",
+        "steeper",
     }
 
 
@@ -1886,15 +1885,15 @@ def test_flare_level_lists_expected_quick_benchmark_scenarios() -> None:
     list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
     assert callable(list_quick_scenarios)
     assert list_quick_scenarios() == [
-        "shallow_fast_centered",
-        "steep_offset_centered",
-        "handoff_high_speed",
+        "shallower",
+        "mid",
+        "steeper",
     ]
 
 
 def test_flare_scenario_direction_is_deterministic_for_seed() -> None:
     level_a = create_level_by_name("flare")
-    level_a.set_eval_scenario("shallow_fast_centered")
+    level_a.set_eval_scenario("mid")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=41)
     trans_a = game_a.actors[0].get_component(Transform)
     phys_a = game_a.actors[0].get_component(PhysicsState)
@@ -1902,7 +1901,7 @@ def test_flare_scenario_direction_is_deterministic_for_seed() -> None:
     assert phys_a is not None
 
     level_b = create_level_by_name("flare")
-    level_b.set_eval_scenario("shallow_fast_centered")
+    level_b.set_eval_scenario("mid")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=41)
     trans_b = game_b.actors[0].get_component(Transform)
     phys_b = game_b.actors[0].get_component(PhysicsState)
@@ -1912,6 +1911,36 @@ def test_flare_scenario_direction_is_deterministic_for_seed() -> None:
     assert trans_a.pos.x == pytest.approx(trans_b.pos.x)
     assert phys_a.vel.x == pytest.approx(phys_b.vel.x)
     assert phys_a.vel.y == pytest.approx(phys_b.vel.y)
+
+
+def test_flare_scenario_applies_half_cargo_mass() -> None:
+    level = create_level_by_name("flare")
+    level.set_eval_scenario("mid")
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
+    actor = game.actors[0]
+    cargo = actor.get_component(CargoHold)
+    assert cargo is not None
+    assert cargo.cargo_mass == pytest.approx(2250.0)
+
+
+def test_flare_matrix_scenario_starts_on_center_hit_ballistic_path() -> None:
+    level = create_level_by_name("flare")
+    level.set_eval_scenario("steep")
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=11)
+    actor = game.actors[0]
+    trans = actor.get_component(Transform)
+    phys = actor.get_component(PhysicsState)
+    assert trans is not None
+    assert phys is not None
+    assert abs(phys.vel.x) > 1e-6
+    assert phys.vel.y == pytest.approx(0.0)
+    target_pos = getattr(level, "eval_target_pos", Vector2(0.0, 0.0))
+    assert trans.pos.x * phys.vel.x < 0.0  # Always moving toward target center.
+    t_to_center = abs((target_pos.x - trans.pos.x) / phys.vel.x)
+    y_at_center = trans.pos.y + (phys.vel.y * t_to_center) - (
+        0.5 * abs(GRAVITY) * t_to_center * t_to_center
+    )
+    assert y_at_center == pytest.approx(target_pos.y)
 
 
 def test_drift_level_lists_expected_scenarios() -> None:
@@ -2959,9 +2988,9 @@ def test_run_batch_quick_benchmark_uses_cross_level_core_suite(monkeypatch) -> N
         "mid_normal",
     ]
     assert flare_scenarios == [
-        "handoff_high_speed",
-        "shallow_fast_centered",
-        "steep_offset_centered",
+        "mid",
+        "shallower",
+        "steeper",
     ]
     assert coast_scenarios == [
         "glide_long_stress_correction",

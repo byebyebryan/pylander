@@ -43,7 +43,7 @@ uv run python main.py plunge --scenario mid_normal
 uv run python main.py flare
 
 # Pick a specific flare scenario
-uv run python main.py flare --scenario shallow_fast_centered
+uv run python main.py flare --scenario mid
 
 # Horizontal-control benchmark level + bot
 uv run python main.py coast
@@ -82,7 +82,7 @@ uv run python main.py plunge --headless --freq 0 --steps 10000
 # Use different seed or lander
 uv run python main.py plunge --headless --seed 123
 uv run python main.py plunge --headless --scenario high_heavy --seed 123
-uv run python main.py flare --headless --scenario shallow_fast_centered --seed 123
+uv run python main.py flare --headless --scenario mid --seed 123
 uv run python main.py coast --headless --scenario flat_correction --seed 123
 uv run python main.py launch --headless --scenario air_mid_reverse --seed 123
 uv run python main.py launch --headless --scenario air_mid_reverse --eval-mode full --seed 123
@@ -120,7 +120,7 @@ By default, generated artifacts (batch JSON/CSV and trajectory plots) are writte
 
 `--quick-benchmark` runs a fixed core suite:
 - `plunge`: `low_normal`, `mid_normal`, `high_normal`
-- `flare`: `shallow_fast_centered`, `steep_offset_centered`, `handoff_high_speed`
+- `flare`: `shallower`, `mid`, `steeper`
 - `coast`: `glide_mid`, `glide_long_stress_correction`, `handoff_extreme`
 - `launch`: `air_mid`, `air_long`, `air_mid_reverse`, `air_long_heavy`
 
@@ -189,14 +189,24 @@ Dedicated scenario levels (default bot in parentheses):
     - `high_light`
     - `high_normal`
     - `high_heavy`
-- `flare` (`flare`) - terminal 2-axis landing benchmark from near-ballistic entry:
-  - `shallow_fast_undershoot`
-  - `shallow_fast_centered`
-  - `shallow_fast_overshoot`
-  - `steep_offset_undershoot`
-  - `steep_offset_centered`
-  - `steep_offset_overshoot`
-  - `handoff_high_speed`
+- `flare` (`flare`) - terminal 2-axis landing benchmark from center-hit ballistic entry:
+  - fixed setup:
+    - half cargo (`2250`)
+    - start lies on an upper hemisphere arc of radius `800` around target center
+    - angle is measured from horizon (`15°`, `30°`, `45°`, `60°`, `75°`)
+    - initial `vy` is fixed at `0`, with `vx` solved to preserve center-hit ballistic path
+  - 1D angle sweep (seeded random side):
+    - `shallower` (`15°`)
+    - `shallow` (`30°`)
+    - `mid` (`45°`)
+    - `steep` (`60°`)
+    - `steeper` (`75°`)
+  - scenario names:
+    - `shallower`
+    - `shallow`
+    - `mid`
+    - `steep`
+    - `steeper`
 - `coast` (`coast`) - correction-focused horizontal-control benchmark:
   - base scenarios span two dimensions:
     - ballistic profile (`glide_short|mid|long|flat`) -> `flat` includes a mild positive initial vertical speed to validate upward-pointing ballistic starts
