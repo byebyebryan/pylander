@@ -34,19 +34,13 @@ The main chain is:
 - Strong vertical speed management near target.
 
 **Scenarios**
-- Base:
-  - `alt_100`
-  - `alt_400`
-  - `alt_1600`
-  - `speed_low`
-  - `speed_high`
-  - `upward_low`
-- Cargo variants (only on selected bases):
-  - `alt_400_cargo_low`, `alt_400_cargo_high`
-  - `speed_high_cargo_low`, `speed_high_cargo_high`
-  - `upward_low_cargo_low`, `upward_low_cargo_high`
+- 3x3 altitude x weight matrix:
+  - altitude tiers: `alt_low` (100), `alt_mid` (400), `alt_high` (1600)
+  - weight tiers: `weight_light` (no cargo), `weight_normal` (half cargo), `weight_heavy` (full cargo)
+  - scenario naming: `<alt_tier>_<weight_tier>`
+  - examples: `low_light`, `mid_normal`, `high_heavy`
 - Quick benchmark subset:
-  - `alt_400`, `speed_high`, `upward_low`
+  - `low_normal`, `mid_normal`, `high_normal`
 
 **Evaluation**
 - Uses normal landing outcome metrics (`state`, `landing_offset`, `fuel_consumed`, `path_efficiency`, etc.).

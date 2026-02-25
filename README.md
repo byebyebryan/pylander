@@ -37,7 +37,7 @@ Watch an AI bot play using the sensor/action API:
 uv run python main.py plunge
 
 # Pick a specific plunge scenario
-uv run python main.py plunge --scenario alt_400
+uv run python main.py plunge --scenario mid_normal
 
 # Terminal flare benchmark level + bot
 uv run python main.py flare
@@ -81,7 +81,7 @@ uv run python main.py plunge --headless --freq 0 --steps 10000
 
 # Use different seed or lander
 uv run python main.py plunge --headless --seed 123
-uv run python main.py plunge --headless --scenario speed_high --seed 123
+uv run python main.py plunge --headless --scenario high_heavy --seed 123
 uv run python main.py flare --headless --scenario shallow_fast_centered --seed 123
 uv run python main.py coast --headless --scenario flat_correction --seed 123
 uv run python main.py launch --headless --scenario air_mid_reverse --seed 123
@@ -104,7 +104,7 @@ uv run python main.py plunge --headless --batch \
 uv run python main.py plunge --headless --batch \
   --batch-seeds 0-19 \
   --batch-levels plunge \
-  --batch-scenarios alt_400,speed_high \
+  --batch-scenarios mid_normal,high_heavy \
   --batch-json auto \
   --batch-csv auto
 
@@ -119,7 +119,7 @@ uv run python main.py coast --headless --batch \
 By default, generated artifacts (batch JSON/CSV and trajectory plots) are written under `outputs/`.
 
 `--quick-benchmark` runs a fixed core suite:
-- `plunge`: `alt_400`, `speed_high`, `upward_low`
+- `plunge`: `low_normal`, `mid_normal`, `high_normal`
 - `flare`: `shallow_fast_centered`, `steep_offset_centered`, `handoff_high_speed`
 - `coast`: `glide_mid`, `glide_long_stress_correction`, `handoff_extreme`
 - `launch`: `air_mid`, `air_long`, `air_mid_reverse`, `air_long_heavy`
@@ -176,15 +176,19 @@ class MyBot(Bot):
 
 Dedicated scenario levels (default bot in parentheses):
 - `plunge` (`plunge`) - vertical-only benchmark focused on coast->terminal burn timing and decisive touchdown:
-  - `alt_100`
-  - `alt_400`
-  - `alt_1600`
-  - `speed_low`
-  - `speed_high`
-  - `upward_low`
-  - cargo variants for `alt_400`, `speed_high`, and `upward_low`:
-    - `*_cargo_low`
-    - `*_cargo_high`
+  - 3x3 altitude x weight matrix:
+    - altitude tiers: `alt_low` (100), `alt_mid` (400), `alt_high` (1600)
+    - weight tiers: `weight_light` (no cargo), `weight_normal` (half cargo), `weight_heavy` (full cargo)
+  - scenario names:
+    - `low_light`
+    - `low_normal`
+    - `low_heavy`
+    - `mid_light`
+    - `mid_normal`
+    - `mid_heavy`
+    - `high_light`
+    - `high_normal`
+    - `high_heavy`
 - `flare` (`flare`) - terminal 2-axis landing benchmark from near-ballistic entry:
   - `shallow_fast_undershoot`
   - `shallow_fast_centered`
@@ -271,7 +275,7 @@ Current checks (manual gate until automated):
 - Home scenario success rate >= 95% on seeds `0-9`
 - No `out_of_fuel` failures on seeds `0-9`
 - Suggested command:
-  - `uv run python main.py plunge --headless --batch --batch-seeds 0-9 --batch-scenarios alt_400,speed_high,upward_low`
+  - `uv run python main.py plunge --headless --batch --batch-seeds 0-9 --batch-scenarios low_normal,mid_normal,high_normal`
 
 ## Game Mechanics
 

@@ -1784,7 +1784,7 @@ def test_scenario_levels_reject_unknown_scenario_name() -> None:
 
 def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
     level_a = create_level_by_name("plunge")
-    level_a.set_eval_scenario("alt_400")
+    level_a.set_eval_scenario("mid_normal")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=77)
     actor_a = game_a.actors[0]
     trans_a = actor_a.get_component(Transform)
@@ -1793,7 +1793,7 @@ def test_eval_level_is_deterministic_for_seed_and_scenario() -> None:
     assert site_a is not None
 
     level_b = create_level_by_name("plunge")
-    level_b.set_eval_scenario("alt_400")
+    level_b.set_eval_scenario("mid_normal")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=77)
     actor_b = game_b.actors[0]
     trans_b = actor_b.get_component(Transform)
@@ -1811,36 +1811,33 @@ def test_plunge_level_lists_expected_scenarios() -> None:
     level = create_level_by_name("plunge")
     list_scenarios = getattr(level, "list_batch_scenarios", None)
     assert callable(list_scenarios)
-    scenarios = set(list_scenarios())
-    base = {
-        "alt_100",
-        "alt_400",
-        "alt_1600",
-        "speed_low",
-        "speed_high",
-        "upward_low",
+    assert set(list_scenarios()) == {
+        "low_light",
+        "low_normal",
+        "low_heavy",
+        "mid_light",
+        "mid_normal",
+        "mid_heavy",
+        "high_light",
+        "high_normal",
+        "high_heavy",
     }
-    assert base.issubset(scenarios)
-    cargo_variants = {"alt_400", "speed_high", "upward_low"}
-    for name in cargo_variants:
-        assert f"{name}_cargo_low" in scenarios
-        assert f"{name}_cargo_high" in scenarios
-    for name in (base - cargo_variants):
-        assert f"{name}_cargo_low" not in scenarios
-        assert f"{name}_cargo_high" not in scenarios
-    assert len(scenarios) == len(base) + (len(cargo_variants) * 2)
 
 
 def test_plunge_level_lists_expected_quick_benchmark_scenarios() -> None:
     level = create_level_by_name("plunge")
     list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
     assert callable(list_quick_scenarios)
-    assert list_quick_scenarios() == ["alt_400", "speed_high", "upward_low"]
+    assert list_quick_scenarios() == [
+        "low_normal",
+        "mid_normal",
+        "high_normal",
+    ]
 
 
 def test_plunge_cargo_scenario_applies_heavy_cargo_mass() -> None:
     level = create_level_by_name("plunge")
-    level.set_eval_scenario("alt_400_cargo_high")
+    level.set_eval_scenario("mid_heavy")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
     cargo = actor.get_component(CargoHold)
@@ -1848,37 +1845,25 @@ def test_plunge_cargo_scenario_applies_heavy_cargo_mass() -> None:
     assert cargo.cargo_mass == pytest.approx(4500.0)
 
 
-def test_plunge_upward_scenario_starts_with_positive_vertical_velocity() -> None:
+def test_plunge_normal_weight_scenario_applies_half_cargo_mass() -> None:
     level = create_level_by_name("plunge")
-    level.set_eval_scenario("upward_low")
+    level.set_eval_scenario("mid_normal")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
-    phys = actor.get_component(PhysicsState)
-    assert phys is not None
-    assert phys.vel.y > 0.0
-
-
-def test_plunge_speed_high_scenario_sets_recoverable_initial_velocity() -> None:
-    level = create_level_by_name("plunge")
-    level.set_eval_scenario("speed_high")
-    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
-    actor = game.actors[0]
-    phys = actor.get_component(PhysicsState)
-    tank = actor.get_component(FuelTank)
     cargo = actor.get_component(CargoHold)
-    engine = actor.get_component(Engine)
-    assert phys is not None
-    assert tank is not None
     assert cargo is not None
-    assert engine is not None
-    assert phys.vel.y < 0.0
+    assert cargo.cargo_mass == pytest.approx(2250.0)
 
-    cargo_mass = max(0.0, min(cargo.cargo_mass, cargo.max_cargo_mass))
-    total_mass = max(0.5, phys.mass + tank.fuel * tank.density + cargo_mass)
-    max_up_acc = ((engine.max_power * engine.max_thrust) / total_mass) - 9.8
-    assert max_up_acc > 0.0
-    stop_distance = (abs(phys.vel.y) ** 2) / (2.0 * max_up_acc)
-    assert stop_distance < 320.0 * 0.82
+
+def test_plunge_matrix_scenario_starts_with_zero_initial_velocity() -> None:
+    level = create_level_by_name("plunge")
+    level.set_eval_scenario("high_light")
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
+    actor = game.actors[0]
+    phys = actor.get_component(PhysicsState)
+    assert phys is not None
+    assert phys.vel.x == pytest.approx(0.0)
+    assert phys.vel.y == pytest.approx(0.0)
 
 
 def test_flare_level_lists_expected_scenarios() -> None:
@@ -2416,19 +2401,19 @@ def test_parse_args_accepts_scenario_options() -> None:
         stop_on_out_of_fuel=False,
         stop_on_first_land=False,
         seed=None,
-        scenario="alt_400",
+        scenario="mid_normal",
         lander=None,
         batch_seeds=None,
         batch_levels=None,
-        batch_scenarios="alt_400,speed_high",
+        batch_scenarios="mid_normal,high_heavy",
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
         batch_workers=1,
     )
     config = _parse_args(args)
-    assert config.scenario_name == "alt_400"
-    assert config.batch_scenarios == "alt_400,speed_high"
+    assert config.scenario_name == "mid_normal"
+    assert config.batch_scenarios == "mid_normal,high_heavy"
     assert config.bot_behavior == "speed"
 
 
@@ -2888,7 +2873,7 @@ def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
         lander_name=None,
         batch_seeds="0",
         batch_levels="plunge",
-        batch_scenarios="alt_400,speed_high",
+        batch_scenarios="mid_normal,high_heavy",
         batch_json=None,
         batch_csv=None,
         quick_benchmark=False,
@@ -2896,7 +2881,7 @@ def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
     )
     exit_code = _run_batch(config)
     assert exit_code == 0
-    assert seen_scenarios == ["alt_400", "speed_high"]
+    assert seen_scenarios == ["mid_normal", "high_heavy"]
 
 
 def test_run_batch_quick_benchmark_uses_cross_level_core_suite(monkeypatch) -> None:
@@ -2968,7 +2953,11 @@ def test_run_batch_quick_benchmark_uses_cross_level_core_suite(monkeypatch) -> N
             if level_name == "launch" and scenario is not None
         }
     )
-    assert plunge_scenarios == ["alt_400", "speed_high", "upward_low"]
+    assert plunge_scenarios == [
+        "high_normal",
+        "low_normal",
+        "mid_normal",
+    ]
     assert flare_scenarios == [
         "handoff_high_speed",
         "shallow_fast_centered",

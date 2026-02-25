@@ -20,49 +20,43 @@ class PlungeScenario:
     initial_vx: float = 0.0
     initial_vy_up: float = 0.0
     initial_angle: float = 0.0
-    cargo_mass: float = 1800.0
+    cargo_mass: float = 2250.0
 
 
-_BASE_SCENARIOS: tuple[PlungeScenario, ...] = (
-    PlungeScenario(name="alt_100", spawn_clearance=100.0),
-    PlungeScenario(name="alt_400", spawn_clearance=400.0),
-    PlungeScenario(name="alt_1600", spawn_clearance=1600.0),
-    PlungeScenario(name="speed_low", spawn_clearance=220.0, initial_vy_up=-12.0),
-    PlungeScenario(name="speed_high", spawn_clearance=320.0, initial_vy_up=-24.0),
-    PlungeScenario(name="upward_low", spawn_clearance=260.0, initial_vy_up=8.0),
+_ALTITUDE_TIERS: tuple[tuple[str, float], ...] = (
+    ("low", 100.0),
+    ("mid", 400.0),
+    ("high", 1600.0),
 )
-_CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
-    ("cargo_low", 0.0),
-    ("cargo_high", 4500.0),
+_WEIGHT_TIERS: tuple[tuple[str, float], ...] = (
+    ("light", 0.0),
+    ("normal", 2250.0),
+    ("heavy", 4500.0),
 )
-_CARGO_VARIANT_BASES: tuple[str, ...] = (
-    "alt_400",
-    "speed_high",
-    "upward_low",
-)
+
+
+def _scenario_name(alt_tier: str, weight_tier: str) -> str:
+    return f"{alt_tier}_{weight_tier}"
+
+
 _SCENARIOS: tuple[PlungeScenario, ...] = (
-    _BASE_SCENARIOS
-    + tuple(
+    tuple(
         PlungeScenario(
-            name=f"{base.name}_{suffix}",
-            spawn_clearance=base.spawn_clearance,
-            initial_vx=base.initial_vx,
-            initial_vy_up=base.initial_vy_up,
-            initial_angle=base.initial_angle,
+            name=_scenario_name(alt_tier, weight_tier),
+            spawn_clearance=spawn_clearance,
             cargo_mass=cargo_mass,
         )
-        for base in _BASE_SCENARIOS
-        if base.name in _CARGO_VARIANT_BASES
-        for suffix, cargo_mass in _CARGO_VARIANTS
+        for alt_tier, spawn_clearance in _ALTITUDE_TIERS
+        for weight_tier, cargo_mass in _WEIGHT_TIERS
     )
 )
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "alt_400"
+_DEFAULT_SCENARIO = _scenario_name("mid", "normal")
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    "alt_400",
-    "speed_high",
-    "upward_low",
+    _scenario_name("low", "normal"),
+    _scenario_name("mid", "normal"),
+    _scenario_name("high", "normal"),
 )
 
 
