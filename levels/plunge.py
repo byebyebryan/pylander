@@ -14,7 +14,7 @@ from levels.scenario_common import (
 
 
 @dataclass(frozen=True)
-class DropScenario:
+class PlungeScenario:
     name: str
     spawn_clearance: float
     initial_vx: float = 0.0
@@ -23,13 +23,13 @@ class DropScenario:
     cargo_mass: float = 1800.0
 
 
-_BASE_SCENARIOS: tuple[DropScenario, ...] = (
-    DropScenario(name="alt_100", spawn_clearance=100.0),
-    DropScenario(name="alt_400", spawn_clearance=400.0),
-    DropScenario(name="alt_1600", spawn_clearance=1600.0),
-    DropScenario(name="speed_low", spawn_clearance=220.0, initial_vy_up=-12.0),
-    DropScenario(name="speed_high", spawn_clearance=320.0, initial_vy_up=-24.0),
-    DropScenario(name="upward_low", spawn_clearance=260.0, initial_vy_up=8.0),
+_BASE_SCENARIOS: tuple[PlungeScenario, ...] = (
+    PlungeScenario(name="alt_100", spawn_clearance=100.0),
+    PlungeScenario(name="alt_400", spawn_clearance=400.0),
+    PlungeScenario(name="alt_1600", spawn_clearance=1600.0),
+    PlungeScenario(name="speed_low", spawn_clearance=220.0, initial_vy_up=-12.0),
+    PlungeScenario(name="speed_high", spawn_clearance=320.0, initial_vy_up=-24.0),
+    PlungeScenario(name="upward_low", spawn_clearance=260.0, initial_vy_up=8.0),
 )
 _CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
     ("cargo_low", 0.0),
@@ -40,10 +40,10 @@ _CARGO_VARIANT_BASES: tuple[str, ...] = (
     "speed_high",
     "upward_low",
 )
-_SCENARIOS: tuple[DropScenario, ...] = (
+_SCENARIOS: tuple[PlungeScenario, ...] = (
     _BASE_SCENARIOS
     + tuple(
-        DropScenario(
+        PlungeScenario(
             name=f"{base.name}_{suffix}",
             spawn_clearance=base.spawn_clearance,
             initial_vx=base.initial_vx,
@@ -66,7 +66,7 @@ _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
 )
 
 
-def _make_spec(scenario: DropScenario) -> ScenarioLevelSpec:
+def _make_spec(scenario: PlungeScenario) -> ScenarioLevelSpec:
     return ScenarioLevelSpec(
         name=scenario.name,
         start_x=0.0,
@@ -80,8 +80,8 @@ def _make_spec(scenario: DropScenario) -> ScenarioLevelSpec:
     )
 
 
-class DropLevel(ScenarioLevel):
-    default_bot_name = "drop"
+class PlungeLevel(ScenarioLevel):
+    default_bot_name = "plunge"
 
     def __init__(self) -> None:
         super().__init__()
@@ -100,10 +100,11 @@ class DropLevel(ScenarioLevel):
         key = str(name).strip().lower()
         if key not in _SCENARIO_BY_NAME:
             known = ", ".join(sorted(_SCENARIO_BY_NAME))
-            raise ValueError(f"Unknown drop scenario '{name}'. Expected one of: {known}")
+            raise ValueError(f"Unknown plunge scenario '{name}'. Expected one of: {known}")
         self._eval_scenario_name = key
 
     def setup(self, game, seed: int) -> None:
+        _ = seed
         scenario = _SCENARIO_BY_NAME[self._eval_scenario_name]
         self.scenario = _make_spec(scenario)
         super().setup(game, seed)
@@ -140,4 +141,4 @@ class DropLevel(ScenarioLevel):
 
 
 def create_level() -> Level:
-    return DropLevel()
+    return PlungeLevel()

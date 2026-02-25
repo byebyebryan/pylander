@@ -1,11 +1,11 @@
-"""Shared drift guidance/control core for drift strategy variants."""
+"""Shared coast guidance/control core for coast strategy variants."""
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass, replace
 
-from bots._drop_core import (
+from bots._plunge_core import (
     BALANCED_POLICY,
     BallisticProjection,
     DropPolicy,
@@ -18,7 +18,7 @@ from core.bot import ActiveSensors
 
 
 @dataclass(frozen=True)
-class DriftCourseConfig:
+class CoastCourseConfig:
     cone_dx_base: float = 10.0
     cone_dx_per_alt: float = 0.18
     cone_dx_max: float = 130.0
@@ -36,9 +36,9 @@ class DriftCourseConfig:
     low_altitude_angle_limit_alt: float = 14.0
     low_altitude_angle_limit_dx: float = 24.0
     low_altitude_angle_cap: float = 0.16
-    drift_coast_enter_scale: float = 1.0
-    drift_coast_min_altitude: float = 0.0
-    drift_coast_descent_floor: float = 0.0
+    coast_enter_scale: float = 1.0
+    coast_min_altitude: float = 0.0
+    coast_descent_floor: float = 0.0
     terminal_correction_cone_scale: float = 0.75
     terminal_track_vx_deadband: float = 0.8
     terminal_track_vx_scale: float = 0.9
@@ -72,18 +72,24 @@ class DriftCourseConfig:
     coupled_brake_margin_scale: float = 1.08
     coupled_brake_margin_time: float = 0.25
     coupled_lateral_alt_margin: float = 5.0
-    drift_coast_max_alt: float = 220.0
-    drift_coast_min_entry_vx: float = 9.0
+    coast_max_alt: float = 220.0
+    coast_min_entry_vx: float = 9.0
+    flare_handoff_altitude_max: float = 240.0
+    flare_handoff_cone_scale: float = 0.45
+    flare_handoff_center_tolerance: float = 7.0
+    flare_handoff_target_edge_margin: float = 8.0
+    flare_handoff_vx_err_cap: float = 5.5
+    flare_handoff_descending_vy_max: float = 2.0
 
 
 @dataclass(frozen=True)
-class DriftLateralTracker:
+class CoastLateralTracker:
     vx_target: float
     ax_target: float
 
 
 @dataclass(frozen=True)
-class DriftBrakeWindow:
+class CoastBrakeWindow:
     vertical_brake_alt: float
     lateral_brake_alt: float
     combined_brake_alt: float
@@ -114,7 +120,7 @@ def _estimate_ballistic_projection(
     )
 
 
-def cone_dx_limit(alt: float, cfg: DriftCourseConfig) -> float:
+def cone_dx_limit(alt: float, cfg: CoastCourseConfig) -> float:
     return clamp(
         cfg.cone_dx_base + (cfg.cone_dx_per_alt * alt),
         cfg.cone_dx_base,
@@ -122,13 +128,13 @@ def cone_dx_limit(alt: float, cfg: DriftCourseConfig) -> float:
     )
 
 
-def correction_vx_cap(alt: float, cfg: DriftCourseConfig) -> float:
+def correction_vx_cap(alt: float, cfg: CoastCourseConfig) -> float:
     if alt <= cfg.correction_vx_low_alt_threshold:
         return cfg.correction_vx_low_alt_cap
     return cfg.correction_vx_high_alt_cap
 
 
-def fast_descent_vy(alt: float, cfg: DriftCourseConfig) -> float:
+def fast_descent_vy(alt: float, cfg: CoastCourseConfig) -> float:
     return -clamp(
         cfg.fast_descent_base + (cfg.fast_descent_sqrt_gain * math.sqrt(alt)),
         cfg.fast_descent_base,
@@ -137,7 +143,7 @@ def fast_descent_vy(alt: float, cfg: DriftCourseConfig) -> float:
 
 
 def coupled_brake_window(
-    cfg: DriftCourseConfig,
+    cfg: CoastCourseConfig,
     *,
     alt: float,
     dx: float,
@@ -148,7 +154,7 @@ def coupled_brake_window(
     max_tilt: float,
     spool_time: float,
     vertical_brake_alt: float,
-) -> DriftBrakeWindow:
+) -> CoastBrakeWindow:
     abs_dx = abs(dx)
     abs_vx = abs(vx)
     moving_toward_target = (abs_dx > 1e-3) and ((dx * vx) > 0.0)
@@ -181,7 +187,7 @@ def coupled_brake_window(
             + cfg.coupled_lateral_alt_margin
         )
     combined_brake_alt = max(vertical_brake_alt, lateral_brake_alt)
-    return DriftBrakeWindow(
+    return CoastBrakeWindow(
         vertical_brake_alt=vertical_brake_alt,
         lateral_brake_alt=lateral_brake_alt,
         combined_brake_alt=combined_brake_alt,
@@ -190,9 +196,9 @@ def coupled_brake_window(
     )
 
 
-def apply_drift_guidance(
+def apply_coast_guidance(
     guidance: GuidanceTargets,
-    cfg: DriftCourseConfig,
+    cfg: CoastCourseConfig,
     *,
     vx: float | None = None,
     vy_up: float | None = None,
@@ -279,19 +285,19 @@ def apply_drift_guidance(
 
     vy_sp = guidance.vy_sp
     vertical_mode = guidance.vertical_mode
-    drift_coast_limit = cone_limit * max(0.1, cfg.drift_coast_enter_scale)
+    coast_limit = cone_limit * max(0.1, cfg.coast_enter_scale)
     if (
         vertical_mode == "coast"
-        and alt >= cfg.drift_coast_min_altitude
-        and alt <= cfg.drift_coast_max_alt
-        and abs(current_vx) >= cfg.drift_coast_min_entry_vx
-        and abs_projected_dx > drift_coast_limit
+        and alt >= cfg.coast_min_altitude
+        and alt <= cfg.coast_max_alt
+        and abs(current_vx) >= cfg.coast_min_entry_vx
+        and abs_projected_dx > coast_limit
         and correction_active
     ):
-        # Keep drift runs thrust-backed during correction, not ballistic.
-        vertical_mode = "drift_coast"
-    if vertical_mode == "drift_coast" and cfg.drift_coast_descent_floor > 0.0:
-        vy_sp = min(vy_sp, -cfg.drift_coast_descent_floor)
+        # Keep coast runs thrust-backed during correction, not ballistic.
+        vertical_mode = "coast_hold"
+    if vertical_mode == "coast_hold" and cfg.coast_descent_floor > 0.0:
+        vy_sp = min(vy_sp, -cfg.coast_descent_floor)
     if vertical_mode == "coast" and alt >= cfg.fast_descent_min_altitude:
         vy_sp = min(vy_sp, fast_descent_vy(alt, cfg))
     if debug is not None:
@@ -305,7 +311,7 @@ def apply_drift_guidance(
             }
         )
 
-    phase = "drift" if guidance.phase in ("coast", "align") else guidance.phase
+    phase = "coast" if guidance.phase in ("coast", "align") else guidance.phase
     return replace(
         guidance,
         phase=phase,
@@ -316,7 +322,7 @@ def apply_drift_guidance(
 
 
 def lateral_tracking_command(
-    cfg: DriftCourseConfig,
+    cfg: CoastCourseConfig,
     *,
     dx: float,
     alt: float,
@@ -328,7 +334,7 @@ def lateral_tracking_command(
     x: float | None = None,
     y: float | None = None,
     clearance: float = 0.0,
-) -> DriftLateralTracker:
+) -> CoastLateralTracker:
     safe_alt = max(0.0, alt)
     projection = _estimate_ballistic_projection(
         dx=dx,
@@ -388,7 +394,7 @@ def lateral_tracking_command(
     if safe_alt <= cfg.lateral_soft_zone_alt and abs(dx) <= cfg.lateral_soft_zone_dx:
         ax_target *= cfg.lateral_soft_zone_scale
     ax_target = clamp(ax_target, -cfg.lateral_accel_cap, cfg.lateral_accel_cap)
-    return DriftLateralTracker(vx_target=vx_target, ax_target=ax_target)
+    return CoastLateralTracker(vx_target=vx_target, ax_target=ax_target)
 
 
 def cap_low_altitude_angle(
@@ -396,7 +402,7 @@ def cap_low_altitude_angle(
     *,
     alt: float,
     dx: float,
-    cfg: DriftCourseConfig,
+    cfg: CoastCourseConfig,
 ) -> float:
     if alt <= cfg.low_altitude_angle_limit_alt and abs(dx) <= cfg.low_altitude_angle_limit_dx:
         cap = cfg.low_altitude_angle_cap
@@ -404,9 +410,87 @@ def cap_low_altitude_angle(
     return target_angle
 
 
-DRIFT_POLICY = replace(
+def _target_half_width(target_size: float | None) -> float:
+    if target_size is None:
+        return 55.0
+    try:
+        numeric = abs(float(target_size))
+    except (TypeError, ValueError):
+        return 55.0
+    if not math.isfinite(numeric):
+        return 55.0
+    return max(6.0, 0.5 * numeric)
+
+
+def should_handoff_to_flare(
+    guidance: GuidanceTargets,
+    cfg: CoastCourseConfig,
+    *,
+    vx: float | None,
+    vy_up: float | None,
+    active: ActiveSensors | None = None,
+    x: float | None = None,
+    y: float | None = None,
+    target_size: float | None = None,
+    clearance: float = 0.0,
+    debug: dict[str, object] | None = None,
+) -> bool:
+    alt = max(0.0, float(guidance.alt))
+    safe_vx = float(vx) if vx is not None and math.isfinite(vx) else 0.0
+    safe_vy_up = float(vy_up) if vy_up is not None and math.isfinite(vy_up) else 0.0
+    projection = _estimate_ballistic_projection(
+        dx=guidance.dx,
+        alt=alt,
+        vx=safe_vx,
+        vy_up=safe_vy_up,
+        x=x,
+        y=y,
+        active=active,
+        clearance=clearance,
+    )
+    projected_dx = projection.projected_dx
+    cone_limit = cone_dx_limit(alt, cfg)
+    handoff_cone = max(4.0, cfg.flare_handoff_cone_scale * cone_limit)
+    target_half = _target_half_width(target_size)
+    center_tol = min(
+        max(0.5, target_half - cfg.flare_handoff_target_edge_margin),
+        max(0.5, cfg.flare_handoff_center_tolerance),
+    )
+    inside_target = abs(projected_dx) <= target_half
+    centered = abs(projected_dx) <= min(handoff_cone, center_tol)
+    vx_needed = safe_vx + (projected_dx / max(0.5, projection.t_fall))
+    vx_err = abs(vx_needed - safe_vx)
+    speed_ready = vx_err <= cfg.flare_handoff_vx_err_cap
+    descending = safe_vy_up <= cfg.flare_handoff_descending_vy_max
+    alt_ready = alt <= cfg.flare_handoff_altitude_max
+    t_fall_ready = projection.t_fall <= 9.5
+    handoff_ready = centered and inside_target and speed_ready and descending and alt_ready and t_fall_ready
+    if debug is not None:
+        debug.update(
+            {
+                "projected_dx": projected_dx,
+                "impact_x": projection.impact_x,
+                "target_x": projection.target_x,
+                "sensor_used": projection.used_sensor,
+                "centered": centered,
+                "inside_target": inside_target,
+                "speed_ready": speed_ready,
+                "descending": descending,
+                "alt_ready": alt_ready,
+                "t_fall": projection.t_fall,
+                "t_fall_ready": t_fall_ready,
+                "vx_needed": vx_needed,
+                "vx_err": vx_err,
+                "handoff_cone": handoff_cone,
+                "target_half": target_half,
+            }
+        )
+    return handoff_ready
+
+
+COAST_POLICY = replace(
     BALANCED_POLICY,
-    status_prefix="drift",
+    status_prefix="coast",
     use_projected_lateral_error=False,
     lateral_gain=1.12,
     descent_rate_scale=1.0,
@@ -416,8 +500,8 @@ DRIFT_POLICY = replace(
     terminal_brake_gain_high_alt=0.98,
     terminal_brake_gain_low_alt=0.86,
 )
-DRIFT_COURSE = replace(
-    DriftCourseConfig(),
+COAST_COURSE = replace(
+    CoastCourseConfig(),
     cone_dx_base=18.0,
     cone_dx_per_alt=0.24,
     cone_dx_max=190.0,
@@ -428,9 +512,9 @@ DRIFT_COURSE = replace(
     correction_vx_low_alt_cap=3.2,
     correction_vx_low_alt_threshold=33.0,
     terminal_burn_correction_vx_floor=4.8,
-    drift_coast_enter_scale=1.1,
-    drift_coast_min_altitude=18.0,
-    drift_coast_descent_floor=1.2,
+    coast_enter_scale=1.1,
+    coast_min_altitude=18.0,
+    coast_descent_floor=1.2,
     terminal_correction_cone_scale=0.7,
     terminal_track_vx_deadband=0.75,
     terminal_track_vx_scale=0.92,
@@ -464,40 +548,41 @@ DRIFT_COURSE = replace(
     coupled_brake_margin_scale=1.12,
     coupled_brake_margin_time=0.3,
     coupled_lateral_alt_margin=6.0,
-    drift_coast_max_alt=200.0,
-    drift_coast_min_entry_vx=10.0,
+    coast_max_alt=200.0,
+    coast_min_entry_vx=10.0,
 )
 
-_DRIFT_BEHAVIORS: dict[str, tuple[DropPolicy, DriftCourseConfig]] = {
-    "drift": (DRIFT_POLICY, DRIFT_COURSE),
+_COAST_BEHAVIORS: dict[str, tuple[DropPolicy, CoastCourseConfig]] = {
+    "coast": (COAST_POLICY, COAST_COURSE),
 }
 
 
-def resolve_drift_behavior(
+def resolve_coast_behavior(
     behavior: str,
-) -> tuple[str, DropPolicy, DriftCourseConfig]:
+) -> tuple[str, DropPolicy, CoastCourseConfig]:
     key, value = resolve_behavior(
         behavior,
-        _DRIFT_BEHAVIORS,
-        context="drift",
+        _COAST_BEHAVIORS,
+        context="coast",
     )
     policy, cfg = value
     return key, policy, cfg
 
 
-def list_drift_behavior_names() -> tuple[str, ...]:
-    return tuple(sorted(_DRIFT_BEHAVIORS))
+def list_coast_behavior_names() -> tuple[str, ...]:
+    return tuple(sorted(_COAST_BEHAVIORS))
 
 
 __all__ = [
-    "DRIFT_POLICY",
-    "DriftCourseConfig",
-    "DriftBrakeWindow",
-    "DriftLateralTracker",
-    "apply_drift_guidance",
+    "COAST_POLICY",
+    "CoastCourseConfig",
+    "CoastBrakeWindow",
+    "CoastLateralTracker",
+    "apply_coast_guidance",
     "cap_low_altitude_angle",
     "coupled_brake_window",
     "lateral_tracking_command",
-    "list_drift_behavior_names",
-    "resolve_drift_behavior",
+    "list_coast_behavior_names",
+    "resolve_coast_behavior",
+    "should_handoff_to_flare",
 ]

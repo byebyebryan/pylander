@@ -26,8 +26,9 @@ def list_available_bots() -> List[str]:
     modules: List[str] = []
     for mod in pkgutil.iter_modules([_package_path()]):
         name = mod.name
-        if not name.startswith("_"):
-            modules.append(name)
+        if name.startswith("_"):
+            continue
+        modules.append(name)
     modules.sort()
     return modules
 

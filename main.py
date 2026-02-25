@@ -17,9 +17,10 @@ from core.eval import (
 )
 from game import LanderGame
 from bots import create_bot, list_available_bots
-from bots.drop import list_behavior_names as list_drop_behaviors
-from bots.drift import list_behavior_names as list_drift_behaviors
-from bots.transfer import list_behavior_names as list_transfer_behaviors
+from bots.coast import list_behavior_names as list_coast_behaviors
+from bots.flare import list_behavior_names as list_flare_behaviors
+from bots.launch import list_behavior_names as list_launch_behaviors
+from bots.plunge import list_behavior_names as list_plunge_behaviors
 from levels import create_level, list_available_levels
 from landers import list_available_landers
 
@@ -64,9 +65,10 @@ def _build_parser() -> argparse.ArgumentParser:
     behavior_names = tuple(
         sorted(
             {
-                *list_drop_behaviors(),
-                *list_drift_behaviors(),
-                *list_transfer_behaviors(),
+                *list_plunge_behaviors(),
+                *list_flare_behaviors(),
+                *list_coast_behaviors(),
+                *list_launch_behaviors(),
             }
         )
     )
@@ -332,23 +334,39 @@ def _print_headless_results(result: dict) -> None:
         "fuel_per_distance",
         "spawn_to_target_distance",
         "path_efficiency",
-        "transfer_handoff_done",
-        "transfer_handoff_time",
-        "transfer_handoff_altitude",
-        "transfer_handoff_dx",
-        "transfer_handoff_abs_dx",
-        "transfer_handoff_vx",
-        "transfer_handoff_vy_up",
-        "transfer_handoff_speed",
-        "transfer_handoff_horizontal_speed",
-        "transfer_handoff_projected_dx",
-        "transfer_handoff_impact_error",
-        "transfer_handoff_planned_impact_error",
-        "transfer_handoff_abs_angle_deg",
-        "transfer_setup_distance",
-        "transfer_setup_fuel_consumed",
-        "transfer_setup_fuel_per_distance",
-        "transfer_setup_path_efficiency",
+        "coast_handoff_done",
+        "coast_handoff_time",
+        "coast_handoff_altitude",
+        "coast_handoff_dx",
+        "coast_handoff_abs_dx",
+        "coast_handoff_vx",
+        "coast_handoff_vy_up",
+        "coast_handoff_speed",
+        "coast_handoff_horizontal_speed",
+        "coast_handoff_vx_err",
+        "coast_handoff_t_fall",
+        "coast_handoff_abs_angle_deg",
+        "coast_setup_distance",
+        "coast_setup_fuel_consumed",
+        "coast_setup_fuel_per_distance",
+        "coast_setup_path_efficiency",
+        "launch_handoff_done",
+        "launch_handoff_time",
+        "launch_handoff_altitude",
+        "launch_handoff_dx",
+        "launch_handoff_abs_dx",
+        "launch_handoff_vx",
+        "launch_handoff_vy_up",
+        "launch_handoff_speed",
+        "launch_handoff_horizontal_speed",
+        "launch_handoff_projected_dx",
+        "launch_handoff_impact_error",
+        "launch_handoff_planned_impact_error",
+        "launch_handoff_abs_angle_deg",
+        "launch_setup_distance",
+        "launch_setup_fuel_consumed",
+        "launch_setup_fuel_per_distance",
+        "launch_setup_path_efficiency",
     ):
         if key in result:
             val = result[key]
@@ -412,7 +430,7 @@ def _parse_name_csv(spec: str) -> list[str]:
 
 
 def _list_quick_benchmark_levels() -> list[str]:
-    preferred = ["drop", "drift"]
+    preferred = ["plunge", "flare", "coast", "launch"]
     available = set(list_available_levels())
     return [name for name in preferred if name in available]
 
@@ -654,21 +672,36 @@ def _print_batch_summary(
             "path_efficiency",
             "time",
             "time_to_first_land",
-            "transfer_handoff_time",
-            "transfer_handoff_altitude",
-            "transfer_handoff_dx",
-            "transfer_handoff_abs_dx",
-            "transfer_handoff_vx",
-            "transfer_handoff_vy_up",
-            "transfer_handoff_speed",
-            "transfer_handoff_horizontal_speed",
-            "transfer_handoff_impact_error",
-            "transfer_handoff_planned_impact_error",
-            "transfer_handoff_abs_angle_deg",
-            "transfer_setup_distance",
-            "transfer_setup_fuel_consumed",
-            "transfer_setup_fuel_per_distance",
-            "transfer_setup_path_efficiency",
+            "coast_handoff_time",
+            "coast_handoff_altitude",
+            "coast_handoff_dx",
+            "coast_handoff_abs_dx",
+            "coast_handoff_vx",
+            "coast_handoff_vy_up",
+            "coast_handoff_speed",
+            "coast_handoff_horizontal_speed",
+            "coast_handoff_vx_err",
+            "coast_handoff_t_fall",
+            "coast_handoff_abs_angle_deg",
+            "coast_setup_distance",
+            "coast_setup_fuel_consumed",
+            "coast_setup_fuel_per_distance",
+            "coast_setup_path_efficiency",
+            "launch_handoff_time",
+            "launch_handoff_altitude",
+            "launch_handoff_dx",
+            "launch_handoff_abs_dx",
+            "launch_handoff_vx",
+            "launch_handoff_vy_up",
+            "launch_handoff_speed",
+            "launch_handoff_horizontal_speed",
+            "launch_handoff_impact_error",
+            "launch_handoff_planned_impact_error",
+            "launch_handoff_abs_angle_deg",
+            "launch_setup_distance",
+            "launch_setup_fuel_consumed",
+            "launch_setup_fuel_per_distance",
+            "launch_setup_path_efficiency",
         )
         printed = 0
         for metric in metric_order:

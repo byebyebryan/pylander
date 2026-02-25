@@ -85,21 +85,36 @@ def _efficiency_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "path_efficiency",
         "time",
         "time_to_first_land",
-        "transfer_handoff_time",
-        "transfer_handoff_altitude",
-        "transfer_handoff_dx",
-        "transfer_handoff_abs_dx",
-        "transfer_handoff_vx",
-        "transfer_handoff_vy_up",
-        "transfer_handoff_speed",
-        "transfer_handoff_horizontal_speed",
-        "transfer_handoff_impact_error",
-        "transfer_handoff_planned_impact_error",
-        "transfer_handoff_abs_angle_deg",
-        "transfer_setup_distance",
-        "transfer_setup_fuel_consumed",
-        "transfer_setup_fuel_per_distance",
-        "transfer_setup_path_efficiency",
+        "coast_handoff_time",
+        "coast_handoff_altitude",
+        "coast_handoff_dx",
+        "coast_handoff_abs_dx",
+        "coast_handoff_vx",
+        "coast_handoff_vy_up",
+        "coast_handoff_speed",
+        "coast_handoff_horizontal_speed",
+        "coast_handoff_vx_err",
+        "coast_handoff_t_fall",
+        "coast_handoff_abs_angle_deg",
+        "coast_setup_distance",
+        "coast_setup_fuel_consumed",
+        "coast_setup_fuel_per_distance",
+        "coast_setup_path_efficiency",
+        "launch_handoff_time",
+        "launch_handoff_altitude",
+        "launch_handoff_dx",
+        "launch_handoff_abs_dx",
+        "launch_handoff_vx",
+        "launch_handoff_vy_up",
+        "launch_handoff_speed",
+        "launch_handoff_horizontal_speed",
+        "launch_handoff_impact_error",
+        "launch_handoff_planned_impact_error",
+        "launch_handoff_abs_angle_deg",
+        "launch_setup_distance",
+        "launch_setup_fuel_consumed",
+        "launch_setup_fuel_per_distance",
+        "launch_setup_path_efficiency",
     )
     return {field: _metric_summary(records, field) for field in fields}
 
@@ -157,69 +172,108 @@ def normalize_run_result(
         "failure_mode": failure_mode,
         "eval_mode": result.get("eval_mode"),
         "eval_phase": result.get("eval_phase"),
-        "transfer_handoff_done": _to_optional_bool(result.get("transfer_handoff_done")),
-        "transfer_handoff_time": _to_optional_float(result.get("transfer_handoff_time")),
-        "transfer_handoff_x": _to_optional_float(result.get("transfer_handoff_x")),
-        "transfer_handoff_y": _to_optional_float(result.get("transfer_handoff_y")),
-        "transfer_handoff_dx": _to_optional_float(result.get("transfer_handoff_dx")),
-        "transfer_handoff_abs_dx": _to_optional_float(result.get("transfer_handoff_abs_dx")),
-        "transfer_handoff_altitude": _to_optional_float(
-            result.get("transfer_handoff_altitude")
+        "coast_handoff_done": _to_optional_bool(result.get("coast_handoff_done")),
+        "coast_handoff_time": _to_optional_float(result.get("coast_handoff_time")),
+        "coast_handoff_x": _to_optional_float(result.get("coast_handoff_x")),
+        "coast_handoff_y": _to_optional_float(result.get("coast_handoff_y")),
+        "coast_handoff_dx": _to_optional_float(result.get("coast_handoff_dx")),
+        "coast_handoff_abs_dx": _to_optional_float(result.get("coast_handoff_abs_dx")),
+        "coast_handoff_altitude": _to_optional_float(result.get("coast_handoff_altitude")),
+        "coast_handoff_vx": _to_optional_float(result.get("coast_handoff_vx")),
+        "coast_handoff_vy_up": _to_optional_float(result.get("coast_handoff_vy_up")),
+        "coast_handoff_speed": _to_optional_float(result.get("coast_handoff_speed")),
+        "coast_handoff_horizontal_speed": _to_optional_float(
+            result.get("coast_handoff_horizontal_speed")
         ),
-        "transfer_handoff_vx": _to_optional_float(result.get("transfer_handoff_vx")),
-        "transfer_handoff_vy_up": _to_optional_float(result.get("transfer_handoff_vy_up")),
-        "transfer_handoff_speed": _to_optional_float(result.get("transfer_handoff_speed")),
-        "transfer_handoff_horizontal_speed": _to_optional_float(
-            result.get("transfer_handoff_horizontal_speed")
+        "coast_handoff_projected_dx": _to_optional_float(result.get("coast_handoff_projected_dx")),
+        "coast_handoff_impact_x": _to_optional_float(result.get("coast_handoff_impact_x")),
+        "coast_handoff_target_x": _to_optional_float(result.get("coast_handoff_target_x")),
+        "coast_handoff_abs_angle_deg": _to_optional_float(result.get("coast_handoff_abs_angle_deg")),
+        "coast_handoff_on_track": _to_optional_bool(result.get("coast_handoff_on_track")),
+        "coast_handoff_inside_target": _to_optional_bool(
+            result.get("coast_handoff_inside_target")
         ),
-        "transfer_handoff_projected_dx": _to_optional_float(
-            result.get("transfer_handoff_projected_dx")
+        "coast_handoff_speed_ready": _to_optional_bool(
+            result.get("coast_handoff_speed_ready")
         ),
-        "transfer_handoff_impact_x": _to_optional_float(
-            result.get("transfer_handoff_impact_x")
+        "coast_handoff_descending": _to_optional_bool(result.get("coast_handoff_descending")),
+        "coast_handoff_t_fall_ready": _to_optional_bool(
+            result.get("coast_handoff_t_fall_ready")
         ),
-        "transfer_handoff_target_x": _to_optional_float(
-            result.get("transfer_handoff_target_x")
+        "coast_handoff_sensor_used": _to_optional_bool(result.get("coast_handoff_sensor_used")),
+        "coast_handoff_vx_err": _to_optional_float(result.get("coast_handoff_vx_err")),
+        "coast_handoff_t_fall": _to_optional_float(result.get("coast_handoff_t_fall")),
+        "coast_setup_distance": _to_optional_float(result.get("coast_setup_distance")),
+        "coast_setup_fuel_consumed": _to_optional_float(result.get("coast_setup_fuel_consumed")),
+        "coast_setup_fuel_per_distance": _to_optional_float(
+            result.get("coast_setup_fuel_per_distance")
         ),
-        "transfer_handoff_impact_error": _to_optional_float(
-            result.get("transfer_handoff_impact_error")
+        "coast_setup_path_efficiency": _to_optional_float(
+            result.get("coast_setup_path_efficiency")
         ),
-        "transfer_handoff_planned_impact_error": _to_optional_float(
-            result.get("transfer_handoff_planned_impact_error")
+        "launch_handoff_done": _to_optional_bool(result.get("launch_handoff_done")),
+        "launch_handoff_time": _to_optional_float(result.get("launch_handoff_time")),
+        "launch_handoff_x": _to_optional_float(result.get("launch_handoff_x")),
+        "launch_handoff_y": _to_optional_float(result.get("launch_handoff_y")),
+        "launch_handoff_dx": _to_optional_float(result.get("launch_handoff_dx")),
+        "launch_handoff_abs_dx": _to_optional_float(result.get("launch_handoff_abs_dx")),
+        "launch_handoff_altitude": _to_optional_float(
+            result.get("launch_handoff_altitude")
         ),
-        "transfer_handoff_current_impact_x": _to_optional_float(
-            result.get("transfer_handoff_current_impact_x")
+        "launch_handoff_vx": _to_optional_float(result.get("launch_handoff_vx")),
+        "launch_handoff_vy_up": _to_optional_float(result.get("launch_handoff_vy_up")),
+        "launch_handoff_speed": _to_optional_float(result.get("launch_handoff_speed")),
+        "launch_handoff_horizontal_speed": _to_optional_float(
+            result.get("launch_handoff_horizontal_speed")
         ),
-        "transfer_handoff_current_target_x": _to_optional_float(
-            result.get("transfer_handoff_current_target_x")
+        "launch_handoff_projected_dx": _to_optional_float(
+            result.get("launch_handoff_projected_dx")
         ),
-        "transfer_handoff_abs_angle_deg": _to_optional_float(
-            result.get("transfer_handoff_abs_angle_deg")
+        "launch_handoff_impact_x": _to_optional_float(
+            result.get("launch_handoff_impact_x")
         ),
-        "transfer_handoff_on_track": _to_optional_bool(
-            result.get("transfer_handoff_on_track")
+        "launch_handoff_target_x": _to_optional_float(
+            result.get("launch_handoff_target_x")
         ),
-        "transfer_handoff_speed_ready": _to_optional_bool(
-            result.get("transfer_handoff_speed_ready")
+        "launch_handoff_impact_error": _to_optional_float(
+            result.get("launch_handoff_impact_error")
         ),
-        "transfer_handoff_not_falling_short": _to_optional_bool(
-            result.get("transfer_handoff_not_falling_short")
+        "launch_handoff_planned_impact_error": _to_optional_float(
+            result.get("launch_handoff_planned_impact_error")
         ),
-        "transfer_handoff_centered": _to_optional_bool(
-            result.get("transfer_handoff_centered")
+        "launch_handoff_current_impact_x": _to_optional_float(
+            result.get("launch_handoff_current_impact_x")
         ),
-        "transfer_handoff_inside_target": _to_optional_bool(
-            result.get("transfer_handoff_inside_target")
+        "launch_handoff_current_target_x": _to_optional_float(
+            result.get("launch_handoff_current_target_x")
         ),
-        "transfer_setup_distance": _to_optional_float(result.get("transfer_setup_distance")),
-        "transfer_setup_fuel_consumed": _to_optional_float(
-            result.get("transfer_setup_fuel_consumed")
+        "launch_handoff_abs_angle_deg": _to_optional_float(
+            result.get("launch_handoff_abs_angle_deg")
         ),
-        "transfer_setup_fuel_per_distance": _to_optional_float(
-            result.get("transfer_setup_fuel_per_distance")
+        "launch_handoff_on_track": _to_optional_bool(
+            result.get("launch_handoff_on_track")
         ),
-        "transfer_setup_path_efficiency": _to_optional_float(
-            result.get("transfer_setup_path_efficiency")
+        "launch_handoff_speed_ready": _to_optional_bool(
+            result.get("launch_handoff_speed_ready")
+        ),
+        "launch_handoff_not_falling_short": _to_optional_bool(
+            result.get("launch_handoff_not_falling_short")
+        ),
+        "launch_handoff_centered": _to_optional_bool(
+            result.get("launch_handoff_centered")
+        ),
+        "launch_handoff_inside_target": _to_optional_bool(
+            result.get("launch_handoff_inside_target")
+        ),
+        "launch_setup_distance": _to_optional_float(result.get("launch_setup_distance")),
+        "launch_setup_fuel_consumed": _to_optional_float(
+            result.get("launch_setup_fuel_consumed")
+        ),
+        "launch_setup_fuel_per_distance": _to_optional_float(
+            result.get("launch_setup_fuel_per_distance")
+        ),
+        "launch_setup_path_efficiency": _to_optional_float(
+            result.get("launch_setup_path_efficiency")
         ),
     }
     if "plot_path" in result:

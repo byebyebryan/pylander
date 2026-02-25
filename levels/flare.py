@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import random
-from dataclasses import replace
+from dataclasses import dataclass, replace
 
-from core.components import FuelTank, PhysicsState, Transform
+from core.components import PhysicsState, Transform
 from core.ecs import require_component
 from core.level import Level
 from core.maths import Vector2
@@ -13,27 +13,81 @@ from levels.scenario_common import (
     ScenarioLevelSpec,
     validate_scenario_recoverability,
 )
-from levels.transfer import TransferLevel, TransferScenario
 
 
-_SCENARIOS: tuple[TransferScenario, ...] = (
-    TransferScenario(
-        name="air_low_long_climb",
-        spawn_clearance=100.0,
-        start_x=1600.0,
-        vx_factor=0.0,
-        initial_vy_up=0.0,
-        cargo_mass=0.0,
+@dataclass(frozen=True)
+class FlareScenario:
+    name: str
+    spawn_clearance: float
+    start_x: float
+    trajectory_error: float = 0.0
+    initial_vx_toward_target: float | None = None
+    initial_vy_up: float = 0.0
+    initial_angle: float = 0.0
+    cargo_mass: float = 0.0
+
+
+_SCENARIOS: tuple[FlareScenario, ...] = (
+    FlareScenario(
+        name="shallow_fast_undershoot",
+        spawn_clearance=260.0,
+        start_x=620.0,
+        trajectory_error=-26.0,
+        initial_vy_up=-4.0,
+    ),
+    FlareScenario(
+        name="shallow_fast_centered",
+        spawn_clearance=260.0,
+        start_x=620.0,
+        trajectory_error=0.0,
+        initial_vy_up=-4.0,
+    ),
+    FlareScenario(
+        name="shallow_fast_overshoot",
+        spawn_clearance=260.0,
+        start_x=620.0,
+        trajectory_error=26.0,
+        initial_vy_up=-4.0,
+    ),
+    FlareScenario(
+        name="steep_offset_undershoot",
+        spawn_clearance=220.0,
+        start_x=170.0,
+        trajectory_error=-12.0,
+        initial_vy_up=-12.0,
+    ),
+    FlareScenario(
+        name="steep_offset_centered",
+        spawn_clearance=220.0,
+        start_x=170.0,
+        trajectory_error=0.0,
+        initial_vy_up=-12.0,
+    ),
+    FlareScenario(
+        name="steep_offset_overshoot",
+        spawn_clearance=220.0,
+        start_x=170.0,
+        trajectory_error=12.0,
+        initial_vy_up=-12.0,
+    ),
+    FlareScenario(
+        name="handoff_high_speed",
+        spawn_clearance=250.0,
+        start_x=1100.0,
+        initial_vx_toward_target=108.0,
+        initial_vy_up=28.0,
     ),
 )
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "air_low_long_climb"
+_DEFAULT_SCENARIO = "shallow_fast_centered"
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    "air_low_long_climb",
+    "shallow_fast_centered",
+    "steep_offset_centered",
+    "handoff_high_speed",
 )
 
 
-def _make_spec(scenario: TransferScenario) -> ScenarioLevelSpec:
+def _make_spec(scenario: FlareScenario) -> ScenarioLevelSpec:
     return ScenarioLevelSpec(
         name=scenario.name,
         start_x=scenario.start_x,
@@ -47,14 +101,13 @@ def _make_spec(scenario: TransferScenario) -> ScenarioLevelSpec:
     )
 
 
-class FerryLevel(TransferLevel):
-    default_bot_name = "ferry"
+class FlareLevel(ScenarioLevel):
+    default_bot_name = "flare"
 
     def __init__(self) -> None:
         super().__init__()
         self._eval_scenario_name = _DEFAULT_SCENARIO
         self.scenario = _make_spec(_SCENARIO_BY_NAME[self._eval_scenario_name])
-        self._reset_phase_eval_metrics()
 
     @staticmethod
     def list_batch_scenarios() -> list[str]:
@@ -68,12 +121,10 @@ class FerryLevel(TransferLevel):
         key = str(name).strip().lower()
         if key not in _SCENARIO_BY_NAME:
             known = ", ".join(sorted(_SCENARIO_BY_NAME))
-            raise ValueError(f"Unknown ferry scenario '{name}'. Expected one of: {known}")
+            raise ValueError(f"Unknown flare scenario '{name}'. Expected one of: {known}")
         self._eval_scenario_name = key
 
     def setup(self, game, seed: int) -> None:
-        self._resolved_eval_mode = self._mode_for_run()
-        self._reset_phase_eval_metrics()
         scenario_base = _SCENARIO_BY_NAME[self._eval_scenario_name]
         scenario_name_hash = sum(ord(ch) for ch in scenario_base.name)
         dir_rng = random.Random(seed ^ (scenario_name_hash << 1))
@@ -83,7 +134,7 @@ class FerryLevel(TransferLevel):
             start_x=float(scenario_base.start_x) * direction,
         )
         self.scenario = _make_spec(scenario)
-        ScenarioLevel.setup(self, game, seed)
+        super().setup(game, seed)
 
         actor = self.world.actors[0]
         validate_scenario_recoverability(
@@ -101,8 +152,12 @@ class FerryLevel(TransferLevel):
         dx = float(target_pos.x - trans.pos.x)
         alt = max(0.0, float(trans.pos.y - target_pos.y))
         t_fall = ballistic_fall_time(altitude=alt, vy_up=float(scenario.initial_vy_up))
-        vx_ballistic = dx / t_fall
-        initial_vx = vx_ballistic * float(scenario.vx_factor)
+        if scenario.initial_vx_toward_target is not None:
+            initial_vx = -direction * abs(float(scenario.initial_vx_toward_target))
+        else:
+            vx_ballistic = dx / t_fall
+            vx_error = float(scenario.trajectory_error) / t_fall
+            initial_vx = vx_ballistic + vx_error
         phys.vel = Vector2(initial_vx, float(scenario.initial_vy_up))
 
         engine = getattr(self, "engine", None)
@@ -120,11 +175,8 @@ class FerryLevel(TransferLevel):
                     uid=actor.uid,
                 )
 
-        self._phase1_prev_pos = Vector2(trans.pos)
-        tank = require_component(actor, FuelTank)
-        self._phase1_prev_fuel = float(tank.fuel)
         setattr(self, "scenario_name", scenario_base.name)
 
 
 def create_level() -> Level:
-    return FerryLevel()
+    return FlareLevel()

@@ -46,18 +46,18 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 ## Bot development and evaluation
 - Treat bot build/eval/optimization as first-class (not a side quest).
 - Scenario-first: solve focused scenarios, then generalize and extract reusable control components.
-- Phase-first when available: tune and validate one phase at a time (e.g. `transfer` focused handoff before full run).
+- Phase-first when available: tune and validate one phase at a time (e.g. `launch` focused handoff before full run).
 - Define measurable outcomes per phase (success criteria + efficiency metrics), not just end-of-run state.
 - Use meaningful metrics (success rate, landing quality, fuel use, stability, consistency across seeds).
 - Require reproducible evals (seed + scenario + bot + config).
 - Use benchmarks/evals to guide decisions and catch regressions.
 - Use metric gates for bot changes: require measurable improvement or document explicit tradeoffs.
-- Validate downstream impact after phase tuning with a cross-level check (`drop`/`drift`/`transfer`) before merge.
+- Validate downstream impact after phase tuning with a cross-level check (`plunge`/`flare`/`coast`/`launch`) before merge.
 
 ## Change acceptance checklist (definition of done)
 - `uv run pytest`
 - `uv run ruff check .`
 - If behavior changed: run a relevant headless eval and compare metrics to a baseline
-  - Example smoke test: `uv run python main.py drop --headless --quick-benchmark`
+ - Example smoke test: `uv run python main.py plunge --headless --quick-benchmark`
 - If CLI/defaults/workflows changed: update `README.md`
 - Don’t check in artifacts (`outputs/` stays local/ignored)

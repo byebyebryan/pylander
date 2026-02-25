@@ -278,9 +278,9 @@ class DropPolicy:
     speed_dive_target_vy: float = -9.0
 
 
-BALANCED_POLICY = DropPolicy(status_prefix="drop")
+BALANCED_POLICY = DropPolicy(status_prefix="plunge")
 SPEED_POLICY = DropPolicy(
-    status_prefix="drop_speed",
+    status_prefix="plunge_speed",
     lateral_gain=1.0,
     descent_rate_scale=1.28,
     burn_margin_scale=0.82,
@@ -297,7 +297,7 @@ SPEED_POLICY = DropPolicy(
     speed_dive_target_vy=-11.0,
 )
 ECON_POLICY = DropPolicy(
-    status_prefix="drop_econ",
+    status_prefix="plunge_econ",
     lateral_gain=1.0,
     descent_rate_scale=0.78,
     burn_margin_scale=1.35,
@@ -541,7 +541,7 @@ class StrategyDropBot(Bot):
             return 0.0
         if vertical_mode == "speed_dive":
             return 0.0
-        if vertical_mode == "drift_coast":
+        if vertical_mode == "coast_hold":
             vy_err = vy_sp - passive.vy_up
             # Keep correction burns thrust-backed without drifting into hover.
             a_up_cmd = 7.2 + (0.2 * vy_err)
@@ -694,10 +694,10 @@ class StrategyDropBot(Bot):
             ramp_up=ramp_up,
             active=active,
         )
-        if guidance.vertical_mode in ("coast", "drift_coast") and abs(
+        if guidance.vertical_mode in ("coast", "coast_hold") and abs(
             guidance.dx
         ) <= self._policy.coast_horiz_deadband:
-            if self._policy.status_prefix == "drift":
+            if self._policy.status_prefix == "coast":
                 deadband = max(1e-3, self._policy.coast_horiz_deadband)
                 deadband_ratio = clamp(abs(guidance.dx) / deadband, 0.0, 1.0)
                 softened_vx_sp = guidance.vx_sp * deadband_ratio

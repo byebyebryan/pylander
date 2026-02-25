@@ -1,4 +1,4 @@
-"""Transfer setup bot: hard side-burn setup, then hand off to drift."""
+"""Launch setup bot: hard side-burn setup, then hand off to coast."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import math
 from dataclasses import replace
 from typing import Any
 
-from bots._drop_core import (
+from bots._plunge_core import (
     DropPolicy,
     GuidanceTargets,
     StrategyDropBot,
@@ -15,15 +15,15 @@ from bots._drop_core import (
     rate_limit_angle_command,
     resolve_behavior,
 )
-from bots._drift_core import (
-    DRIFT_COURSE,
-    DRIFT_POLICY,
-    DriftCourseConfig,
-    apply_drift_guidance,
+from bots._coast_core import (
+    COAST_COURSE,
+    COAST_POLICY,
+    CoastCourseConfig,
+    apply_coast_guidance,
     cone_dx_limit,
 )
-from bots._transfer_core import (
-    TransferSetupConfig,
+from bots._launch_core import (
+    LaunchSetupConfig,
     _ballistic_reference_vy,
     _estimate_ballistic_projection,
     _handoff_alignment,
@@ -32,14 +32,14 @@ from bots._transfer_core import (
     resolve_sideburn_target_angle,
     setup_fuel_reserve_threshold,
 )
-from bots.drift import DriftBot
+from bots.coast import CoastBot
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
 
-def should_handoff_to_drift(
+def should_handoff_to_coast(
     guidance: GuidanceTargets,
-    course_cfg: DriftCourseConfig,
-    setup_cfg: TransferSetupConfig,
+    course_cfg: CoastCourseConfig,
+    setup_cfg: LaunchSetupConfig,
     *,
     vx: float | None,
     vy_up: float | None,
@@ -160,15 +160,15 @@ def should_handoff_to_drift(
                 "current_target_x": current_projection.target_x,
             }
         )
-    if alt_pred <= setup_cfg.handoff_force_drift_altitude:
+    if alt_pred <= setup_cfg.handoff_force_coast_altitude:
         return track_ready and not_falling_short
     return track_ready and speed_ready and not_falling_short
 
 
-def apply_transfer_setup_guidance(
+def apply_launch_setup_guidance(
     guidance: GuidanceTargets,
-    course_cfg: DriftCourseConfig,
-    setup_cfg: TransferSetupConfig,
+    course_cfg: CoastCourseConfig,
+    setup_cfg: LaunchSetupConfig,
     *,
     vx: float | None,
     vy_up: float | None,
@@ -221,21 +221,21 @@ def apply_transfer_setup_guidance(
         vx_sp = math.copysign(max(abs(vx_sp), setup_cfg.setup_vx_floor), vx_needed)
     return replace(
         guidance,
-        phase="transfer_setup_sideburn",
-        vertical_mode="transfer_sideburn",
+        phase="launch_setup_sideburn",
+        vertical_mode="launch_sideburn",
         vx_sp=vx_sp,
         vy_sp=max(float(guidance.vy_sp), setup_cfg.setup_descent_vy_target),
     )
 
 
-TRANSFER_POLICY = replace(
-    DRIFT_POLICY,
-    status_prefix="transfer",
+LAUNCH_POLICY = replace(
+    COAST_POLICY,
+    status_prefix="launch",
     use_projected_lateral_error=True,
 )
-TRANSFER_COURSE = replace(
-    DRIFT_COURSE,
-    # Transfer handoff often carries high lateral speed; start braking earlier.
+LAUNCH_COURSE = replace(
+    COAST_COURSE,
+    # Launch handoff often carries high lateral speed; start braking earlier.
     correction_vx_per_excess=0.11,
     correction_vx_per_alt=0.011,
     correction_vx_high_alt_cap=28.0,
@@ -253,68 +253,29 @@ TRANSFER_COURSE = replace(
     lateral_terminal_zero_vx_alt=16.0,
     lateral_terminal_zero_vx_cap=1.2,
 )
-FERRY_POLICY = replace(
-    TRANSFER_POLICY,
-    status_prefix="ferry",
-)
-FERRY_COURSE = replace(
-    TRANSFER_COURSE,
-    # Ferry scenarios stay in setup longer and tolerate broader miss while climbing.
-    cone_dx_base=16.0,
-    cone_dx_per_alt=0.24,
-    cone_dx_max=220.0,
-    correction_vx_per_excess=0.13,
-    correction_vx_per_alt=0.013,
-    correction_vx_high_alt_cap=32.0,
-    correction_vx_low_alt_cap=10.0,
-    correction_vx_low_alt_threshold=70.0,
-    terminal_track_vx_cap_max=13.5,
-)
-_TRANSFER_BEHAVIORS: dict[str, tuple[DropPolicy, DriftCourseConfig, TransferSetupConfig]] = {
-    "transfer": (TRANSFER_POLICY, TRANSFER_COURSE, TransferSetupConfig()),
-    "ferry": (
-        FERRY_POLICY,
-        FERRY_COURSE,
-        TransferSetupConfig(
-            handoff_projected_dx_ratio=0.75,
-            setup_vx_cap=108.0,
-            setup_vx_floor=7.0,
-            setup_descent_vy_target=-1.8,
-            setup_response_delay_s=0.72,
-            setup_sideburn_angle_rad=0.95,
-            setup_sideburn_angle_min_rad=0.62,
-            setup_sideburn_angle_max_rad=1.28,
-            setup_sideburn_upward_vy_target=30.0,
-            setup_sideburn_upward_angle_gain=0.42,
-            handoff_force_drift_altitude=180.0,
-            setup_sideburn_lateral_accel_floor=0.6,
-            setup_sideburn_lateral_accel_cap=9.5,
-            setup_sideburn_boost_thrust=1.35,
-            setup_fuel_reserve_ratio=0.24,
-            setup_fuel_reserve_floor=20.0,
-        ),
-    ),
+_LAUNCH_BEHAVIORS: dict[str, tuple[DropPolicy, CoastCourseConfig, LaunchSetupConfig]] = {
+    "launch": (LAUNCH_POLICY, LAUNCH_COURSE, LaunchSetupConfig()),
 }
 
 
-def resolve_transfer_behavior(
+def resolve_launch_behavior(
     behavior: str,
-) -> tuple[str, DropPolicy, DriftCourseConfig, TransferSetupConfig]:
+) -> tuple[str, DropPolicy, CoastCourseConfig, LaunchSetupConfig]:
     key, value = resolve_behavior(
         behavior,
-        _TRANSFER_BEHAVIORS,
-        context="transfer",
+        _LAUNCH_BEHAVIORS,
+        context="launch",
     )
     policy, course_cfg, setup_cfg = value
     return key, policy, course_cfg, setup_cfg
 
 
-def list_transfer_behavior_names() -> tuple[str, ...]:
-    return tuple(sorted(_TRANSFER_BEHAVIORS))
+def list_launch_behavior_names() -> tuple[str, ...]:
+    return tuple(sorted(_LAUNCH_BEHAVIORS))
 
 
-class TransferBot(DriftBot):
-    def __init__(self, behavior: str = "transfer") -> None:
+class LaunchBot(CoastBot):
+    def __init__(self, behavior: str = "launch") -> None:
         super().__init__(behavior=behavior)
         self._setup_phase_seen = False
         self._handoff_done = False
@@ -326,7 +287,7 @@ class TransferBot(DriftBot):
         self._handoff_snapshot: dict[str, Any] | None = None
 
     def set_behavior(self, behavior: str) -> None:
-        key, policy, cfg, setup_cfg = resolve_transfer_behavior(behavior)
+        key, policy, cfg, setup_cfg = resolve_launch_behavior(behavior)
         self._policy = policy
         self._course_cfg = cfg
         self._setup_cfg = setup_cfg
@@ -411,7 +372,7 @@ class TransferBot(DriftBot):
         if target_x is not None:
             handoff_dx = target_x - handoff_x
         return {
-            "kind": "transfer",
+            "kind": "launch",
             "handoff_done": True,
             "projected_dx": self._snapshot_float(handoff_debug.get("projected_dx")),
             "impact_x": impact_x,
@@ -480,7 +441,7 @@ class TransferBot(DriftBot):
             target_size=target_size,
             setup_cfg=self._setup_cfg,
         )
-        setup_guidance = apply_transfer_setup_guidance(
+        setup_guidance = apply_launch_setup_guidance(
             current_guidance,
             self._course_cfg,
             self._setup_cfg,
@@ -494,7 +455,7 @@ class TransferBot(DriftBot):
         )
         handoff_debug: dict[str, object] = {}
         if self._handoff_done:
-            guidance = apply_drift_guidance(
+            guidance = apply_coast_guidance(
                 current_guidance,
                 self._course_cfg,
                 vx=passive.vx,
@@ -507,7 +468,7 @@ class TransferBot(DriftBot):
         elif not self._setup_phase_seen:
             self._setup_phase_seen = True
             guidance = setup_guidance
-        elif should_handoff_to_drift(
+        elif should_handoff_to_coast(
             current_guidance,
             self._course_cfg,
             self._setup_cfg,
@@ -533,7 +494,7 @@ class TransferBot(DriftBot):
                 f"ns:{int(bool(handoff_debug.get('not_falling_short')))} "
                 f"spd:{int(bool(handoff_debug.get('speed_ready')))}"
             )
-            guidance = apply_drift_guidance(
+            guidance = apply_coast_guidance(
                 current_guidance,
                 self._course_cfg,
                 vx=passive.vx,
@@ -570,7 +531,7 @@ class TransferBot(DriftBot):
 
     def get_evaluation_snapshot(self) -> dict[str, Any] | None:
         if self._handoff_snapshot is None:
-            return {"kind": "transfer", "handoff_done": bool(self._handoff_done)}
+            return {"kind": "launch", "handoff_done": bool(self._handoff_done)}
         return dict(self._handoff_snapshot)
 
     def get_headless_stats(self) -> str:
@@ -592,7 +553,7 @@ class TransferBot(DriftBot):
         guidance = self._last_guidance
         if (
             guidance is not None
-            and guidance.phase == "transfer_setup_sideburn"
+            and guidance.phase == "launch_setup_sideburn"
         ):
             vx_err = vx_sp - passive.vx
             ax_target = (1.1 * vx_err) - (0.04 * passive.ax)
@@ -614,7 +575,7 @@ class TransferBot(DriftBot):
         dx: float,
         vertical_mode: str,
     ) -> BotAction:
-        if vertical_mode != "transfer_sideburn":
+        if vertical_mode != "launch_sideburn":
             return super()._allocate_controls(
                 dt,
                 passive,
@@ -755,20 +716,20 @@ class TransferBot(DriftBot):
 
 
 def create_bot() -> Bot:
-    return TransferBot()
+    return LaunchBot()
 
 
 def list_behavior_names() -> tuple[str, ...]:
-    return list_transfer_behavior_names()
+    return ("launch",)
 
 
 __all__ = [
-    "TransferBot",
-    "TransferSetupConfig",
-    "apply_transfer_setup_guidance",
+    "LaunchBot",
+    "LaunchSetupConfig",
+    "apply_launch_setup_guidance",
     "create_bot",
     "list_behavior_names",
-    "list_transfer_behavior_names",
-    "resolve_transfer_behavior",
-    "should_handoff_to_drift",
+    "list_launch_behavior_names",
+    "resolve_launch_behavior",
+    "should_handoff_to_coast",
 ]

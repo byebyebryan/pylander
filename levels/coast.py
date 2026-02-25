@@ -6,9 +6,9 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from core.components import FuelTank, PhysicsState, Transform
-from core.ecs import require_component
 from core.level import Level
 from core.maths import Vector2
+from core.ecs import require_component
 from core.terrain import ballistic_fall_time
 from levels.scenario_common import (
     ScenarioLevel,
@@ -18,96 +18,182 @@ from levels.scenario_common import (
 
 
 @dataclass(frozen=True)
-class TransferScenario:
+class CoastScenario:
     name: str
     spawn_clearance: float
     start_x: float
-    vx_factor: float = 0.0
+    trajectory_error: float = 0.0
+    initial_vx_toward_target: float | None = None
     initial_vy_up: float = 0.0
     initial_angle: float = 0.0
     cargo_mass: float = 1800.0
 
 
 @dataclass(frozen=True)
-class _TransferProfile:
+class _BallisticProfile:
+    name: str
+    spawn_clearance: float
+    start_x: float
+    initial_vy_up: float = 0.0
+
+
+@dataclass(frozen=True)
+class _TrajectoryErrorTier:
     key: str
-    offset: float
-    vx_factor: float
+    trajectory_error: float
 
 
-_MID_OFFSET = 520.0
-_LONG_OFFSET = 760.0
-_MID_SPAWN_CLEARANCE = 760.0
-_MID_VX_FACTOR = 0.14
-_LONG_VX_FACTOR = 0.05
+@dataclass(frozen=True)
+class _ScenarioCell:
+    profile: str
+    error_tier: str
+    scenario: CoastScenario
 
-_TRANSFER_PROFILES: tuple[_TransferProfile, ...] = (
-    _TransferProfile(key="mid", offset=_MID_OFFSET, vx_factor=_MID_VX_FACTOR),
-    _TransferProfile(key="long", offset=_LONG_OFFSET, vx_factor=_LONG_VX_FACTOR),
+
+_BALLISTIC_PROFILES: tuple[_BallisticProfile, ...] = (
+    _BallisticProfile(name="glide_short", spawn_clearance=220.0, start_x=120.0),
+    _BallisticProfile(name="glide_mid", spawn_clearance=420.0, start_x=320.0),
+    _BallisticProfile(name="glide_long", spawn_clearance=900.0, start_x=900.0),
+    _BallisticProfile(
+        name="flat",
+        spawn_clearance=650.0,
+        start_x=760.0,
+        initial_vy_up=10.0,
+    ),
 )
+_ERROR_TIERS: tuple[_TrajectoryErrorTier, ...] = (
+    _TrajectoryErrorTier(key="none", trajectory_error=0.0),
+    _TrajectoryErrorTier(key="normal", trajectory_error=20.0),
+    _TrajectoryErrorTier(key="stress", trajectory_error=28.0),
+)
+_PROFILE_ERROR_TIERS: dict[str, tuple[str, ...]] = {
+    "glide_short": ("none", "normal"),
+    "glide_mid": ("none", "normal"),
+    "glide_long": ("none", "normal", "stress"),
+    "flat": ("none", "normal", "stress"),
+}
+_ERROR_TIER_BY_KEY = {tier.key: tier for tier in _ERROR_TIERS}
 
 
-def _proportional_clearance(offset: float) -> float:
-    return round((_MID_SPAWN_CLEARANCE * float(offset)) / _MID_OFFSET, 1)
+def _scenario_name(profile: str, error_tier: str) -> str:
+    if error_tier == "none":
+        return profile
+    if error_tier == "normal":
+        return f"{profile}_correction"
+    if error_tier == "stress":
+        return f"{profile}_stress_correction"
+    raise ValueError(f"Unknown coast error tier '{error_tier}'")
 
 
-_BASE_SCENARIOS: tuple[TransferScenario, ...] = tuple(
-    TransferScenario(
-        name=f"air_{profile.key}",
-        spawn_clearance=_proportional_clearance(profile.offset),
-        start_x=profile.offset,
-        vx_factor=profile.vx_factor,
+_BASE_CELLS: tuple[_ScenarioCell, ...] = tuple(
+    _ScenarioCell(
+        profile=profile.name,
+        error_tier=tier_key,
+        scenario=CoastScenario(
+            name=_scenario_name(profile.name, tier_key),
+            spawn_clearance=profile.spawn_clearance,
+            start_x=profile.start_x,
+            trajectory_error=_ERROR_TIER_BY_KEY[tier_key].trajectory_error,
+            initial_vy_up=profile.initial_vy_up,
+        ),
     )
-    for profile in _TRANSFER_PROFILES
+    for profile in _BALLISTIC_PROFILES
+    for tier_key in _PROFILE_ERROR_TIERS[profile.name]
 )
-_STRESS_SCENARIOS: tuple[TransferScenario, ...] = (
-    TransferScenario(
-        name="air_mid_reverse",
-        # Keep extra room for away-velocity correction before drift handoff.
-        spawn_clearance=max(900.0, _proportional_clearance(_MID_OFFSET) + 120.0),
-        start_x=_MID_OFFSET,
-        vx_factor=-0.52,
-        initial_vy_up=0.0,
+_BASE_SCENARIOS: tuple[CoastScenario, ...] = tuple(cell.scenario for cell in _BASE_CELLS)
+_HANDOFF_SCENARIOS: tuple[CoastScenario, ...] = (
+    # Ferry high-energy setup mirrors (pre-handoff): very large offset and high |vx|.
+    CoastScenario(
+        name="handoff_extreme",
+        spawn_clearance=260.0,
+        start_x=1200.0,
+        initial_vx_toward_target=108.0,
+        initial_vy_up=34.0,
+        cargo_mass=0.0,
+    ),
+    CoastScenario(
+        name="handoff_extreme_fast",
+        spawn_clearance=240.0,
+        start_x=1320.0,
+        initial_vx_toward_target=116.0,
+        initial_vy_up=30.0,
+        cargo_mass=0.0,
     ),
 )
 _CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
-    ("heavy", 3200.0),
+    ("cargo_high", 4500.0),
 )
 _CARGO_VARIANT_BASES: tuple[str, ...] = (
-    "air_long",
-    "air_mid_reverse",
+    tuple(
+        cell.scenario.name
+        for cell in _BASE_CELLS
+        if cell.profile in {"glide_mid", "glide_long"} and cell.error_tier in {"normal", "stress"}
+    )
 )
-_CORE_SCENARIOS: tuple[TransferScenario, ...] = _BASE_SCENARIOS + _STRESS_SCENARIOS
-_SCENARIOS: tuple[TransferScenario, ...] = (
-    _CORE_SCENARIOS
+_SCENARIOS: tuple[CoastScenario, ...] = (
+    _BASE_SCENARIOS
+    + _HANDOFF_SCENARIOS
     + tuple(
-        TransferScenario(
+        CoastScenario(
             name=f"{base.name}_{suffix}",
             spawn_clearance=base.spawn_clearance,
             start_x=base.start_x,
-            vx_factor=base.vx_factor,
+            trajectory_error=base.trajectory_error,
+            initial_vx_toward_target=base.initial_vx_toward_target,
             initial_vy_up=base.initial_vy_up,
             initial_angle=base.initial_angle,
             cargo_mass=cargo_mass,
         )
-        for base in _CORE_SCENARIOS
+        for base in _BASE_SCENARIOS
         if base.name in _CARGO_VARIANT_BASES
         for suffix, cargo_mass in _CARGO_VARIANTS
     )
 )
+
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "air_mid"
+_DEFAULT_SCENARIO = "glide_mid"
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    "air_mid",
-    "air_long",
-    "air_mid_reverse",
-    "air_long_heavy",
+    "glide_mid",
+    "glide_long_stress_correction",
+    "handoff_extreme",
 )
-_TRANSFER_EVAL_MODES: tuple[str, ...] = ("auto", "focused", "full")
-_TRANSFER_DEFAULT_EVAL_MODE = "full"
+_COAST_EVAL_MODES: tuple[str, ...] = ("auto", "focused", "full")
+_COAST_DEFAULT_EVAL_MODE = "full"
+
+_COAST_SPAWN_OFFSET_MIN = 70.0
+_COAST_SPAWN_OFFSET_MAX = 900.0
+_COAST_SPAWN_OFFSET_PER_ALT = 1.0
+_COAST_TRAJECTORY_ERROR_MIN = 0.0
+_COAST_TRAJECTORY_ERROR_MAX = 36.0
+_COAST_TRAJECTORY_ERROR_PER_ALT = 0.1
 
 
-def _make_spec(scenario: TransferScenario) -> ScenarioLevelSpec:
+def _clamp_signed(value: float, magnitude_limit: float) -> float:
+    limit = max(0.0, float(magnitude_limit))
+    return max(-limit, min(limit, float(value)))
+
+
+def _apply_coast_envelope(scenario: CoastScenario) -> CoastScenario:
+    if scenario.initial_vx_toward_target is not None:
+        # Hand-off mirror scenarios intentionally preserve extreme offsets/speeds.
+        return scenario
+    alt = max(0.0, float(scenario.spawn_clearance))
+    offset_limit = min(
+        _COAST_SPAWN_OFFSET_MAX,
+        max(_COAST_SPAWN_OFFSET_MIN, _COAST_SPAWN_OFFSET_PER_ALT * alt),
+    )
+    error_limit = min(
+        _COAST_TRAJECTORY_ERROR_MAX,
+        max(_COAST_TRAJECTORY_ERROR_MIN, _COAST_TRAJECTORY_ERROR_PER_ALT * alt),
+    )
+    return replace(
+        scenario,
+        start_x=_clamp_signed(scenario.start_x, offset_limit),
+        trajectory_error=_clamp_signed(scenario.trajectory_error, error_limit),
+    )
+
+
+def _make_spec(scenario: CoastScenario) -> ScenarioLevelSpec:
     return ScenarioLevelSpec(
         name=scenario.name,
         start_x=scenario.start_x,
@@ -121,14 +207,14 @@ def _make_spec(scenario: TransferScenario) -> ScenarioLevelSpec:
     )
 
 
-class TransferLevel(ScenarioLevel):
-    default_bot_name = "transfer"
+class CoastLevel(ScenarioLevel):
+    default_bot_name = "coast"
 
     def __init__(self) -> None:
         super().__init__()
         self._eval_scenario_name = _DEFAULT_SCENARIO
         self._eval_mode_name = "auto"
-        self._resolved_eval_mode = _TRANSFER_DEFAULT_EVAL_MODE
+        self._resolved_eval_mode = _COAST_DEFAULT_EVAL_MODE
         self.scenario = _make_spec(_SCENARIO_BY_NAME[self._eval_scenario_name])
         self._reset_phase_eval_metrics()
 
@@ -144,14 +230,14 @@ class TransferLevel(ScenarioLevel):
         key = str(name).strip().lower()
         if key not in _SCENARIO_BY_NAME:
             known = ", ".join(sorted(_SCENARIO_BY_NAME))
-            raise ValueError(f"Unknown transfer scenario '{name}'. Expected one of: {known}")
+            raise ValueError(f"Unknown coast scenario '{name}'. Expected one of: {known}")
         self._eval_scenario_name = key
 
     def set_eval_mode(self, name: str) -> None:
         key = str(name).strip().lower()
-        if key not in _TRANSFER_EVAL_MODES:
-            known = ", ".join(_TRANSFER_EVAL_MODES)
-            raise ValueError(f"Unknown transfer eval mode '{name}'. Expected one of: {known}")
+        if key not in _COAST_EVAL_MODES:
+            known = ", ".join(_COAST_EVAL_MODES)
+            raise ValueError(f"Unknown coast eval mode '{name}'. Expected one of: {known}")
         self._eval_mode_name = key
 
     @staticmethod
@@ -167,7 +253,7 @@ class TransferLevel(ScenarioLevel):
         return numeric
 
     @staticmethod
-    def _resolve_transfer_snapshot(game) -> dict[str, Any] | None:
+    def _resolve_coast_snapshot(game) -> dict[str, Any] | None:
         actor_bots = getattr(game, "actor_bots", {})
         if not isinstance(actor_bots, dict):
             return None
@@ -181,13 +267,14 @@ class TransferLevel(ScenarioLevel):
                 continue
             if not isinstance(snapshot, dict):
                 continue
-            if snapshot.get("kind") == "transfer" or "handoff_done" in snapshot:
+            kind = snapshot.get("kind")
+            if kind == "coast" or (kind is None and "handoff_done" in snapshot):
                 return snapshot
         return None
 
     def _mode_for_run(self) -> str:
         if self._eval_mode_name == "auto":
-            return _TRANSFER_DEFAULT_EVAL_MODE
+            return _COAST_DEFAULT_EVAL_MODE
         return self._eval_mode_name
 
     def _reset_phase_eval_metrics(self) -> None:
@@ -200,11 +287,6 @@ class TransferLevel(ScenarioLevel):
         self._phase1_handoff_projected_dx = None
         self._phase1_handoff_impact_x = None
         self._phase1_handoff_target_x = None
-        self._phase1_handoff_impact_error = None
-        self._phase1_handoff_current_impact_x = None
-        self._phase1_handoff_current_target_x = None
-        self._phase1_handoff_current_impact_error = None
-        self._phase1_handoff_abs_angle_deg = None
         self._phase1_handoff_x = None
         self._phase1_handoff_y = None
         self._phase1_handoff_dx = None
@@ -213,11 +295,15 @@ class TransferLevel(ScenarioLevel):
         self._phase1_handoff_vy_up = None
         self._phase1_handoff_speed = None
         self._phase1_handoff_horizontal_speed = None
+        self._phase1_handoff_abs_angle_deg = None
         self._phase1_handoff_on_track = None
-        self._phase1_handoff_speed_ready = None
-        self._phase1_handoff_not_falling_short = None
-        self._phase1_handoff_centered = None
         self._phase1_handoff_inside_target = None
+        self._phase1_handoff_speed_ready = None
+        self._phase1_handoff_descending = None
+        self._phase1_handoff_t_fall_ready = None
+        self._phase1_handoff_sensor_used = None
+        self._phase1_handoff_vx_err = None
+        self._phase1_handoff_t_fall = None
 
     def _update_phase_metrics(self) -> None:
         if self._phase1_handoff_done:
@@ -247,36 +333,6 @@ class TransferLevel(ScenarioLevel):
         self._phase1_handoff_projected_dx = self._to_optional_float(snapshot.get("projected_dx"))
         self._phase1_handoff_impact_x = self._to_optional_float(snapshot.get("impact_x"))
         self._phase1_handoff_target_x = self._to_optional_float(snapshot.get("target_x"))
-        self._phase1_handoff_impact_error = self._to_optional_float(snapshot.get("impact_error"))
-        self._phase1_handoff_current_impact_x = self._to_optional_float(
-            snapshot.get("current_impact_x")
-        )
-        self._phase1_handoff_current_target_x = self._to_optional_float(
-            snapshot.get("current_target_x")
-        )
-        self._phase1_handoff_current_impact_error = self._to_optional_float(
-            snapshot.get("current_impact_error")
-        )
-        if (
-            self._phase1_handoff_impact_error is None
-            and self._phase1_handoff_impact_x is not None
-            and self._phase1_handoff_target_x is not None
-        ):
-            self._phase1_handoff_impact_error = abs(
-                self._phase1_handoff_impact_x - self._phase1_handoff_target_x
-            )
-        if (
-            self._phase1_handoff_current_impact_error is None
-            and self._phase1_handoff_current_impact_x is not None
-            and self._phase1_handoff_current_target_x is not None
-        ):
-            self._phase1_handoff_current_impact_error = abs(
-                self._phase1_handoff_current_impact_x - self._phase1_handoff_current_target_x
-            )
-        angle_rad = self._to_optional_float(snapshot.get("angle_rad"))
-        if angle_rad is None:
-            angle_rad = float(trans.rotation)
-        self._phase1_handoff_abs_angle_deg = abs(math.degrees(angle_rad))
         self._phase1_handoff_x = self._to_optional_float(snapshot.get("x"))
         self._phase1_handoff_y = self._to_optional_float(snapshot.get("y"))
         self._phase1_handoff_dx = self._to_optional_float(snapshot.get("dx"))
@@ -301,19 +357,28 @@ class TransferLevel(ScenarioLevel):
             and self._phase1_handoff_vx is not None
         ):
             self._phase1_handoff_horizontal_speed = abs(self._phase1_handoff_vx)
+        angle_rad = self._to_optional_float(snapshot.get("angle_rad"))
+        if angle_rad is None:
+            angle_rad = float(trans.rotation)
+        self._phase1_handoff_abs_angle_deg = abs(math.degrees(angle_rad))
         self._phase1_handoff_on_track = bool(snapshot.get("on_track"))
-        self._phase1_handoff_speed_ready = bool(snapshot.get("speed_ready"))
-        self._phase1_handoff_not_falling_short = bool(snapshot.get("not_falling_short"))
-        self._phase1_handoff_centered = bool(snapshot.get("centered"))
         self._phase1_handoff_inside_target = bool(snapshot.get("inside_target"))
+        self._phase1_handoff_speed_ready = bool(snapshot.get("speed_ready"))
+        self._phase1_handoff_descending = bool(snapshot.get("descending"))
+        self._phase1_handoff_t_fall_ready = bool(snapshot.get("t_fall_ready"))
+        self._phase1_handoff_sensor_used = bool(snapshot.get("sensor_used"))
+        self._phase1_handoff_vx_err = self._to_optional_float(snapshot.get("vx_err"))
+        self._phase1_handoff_t_fall = self._to_optional_float(snapshot.get("t_fall"))
 
     def setup(self, game, seed: int) -> None:
         self._resolved_eval_mode = self._mode_for_run()
         self._reset_phase_eval_metrics()
-        scenario_base = _SCENARIO_BY_NAME[self._eval_scenario_name]
+        scenario_base = _apply_coast_envelope(_SCENARIO_BY_NAME[self._eval_scenario_name])
         scenario_name_hash = sum(ord(ch) for ch in scenario_base.name)
         dir_rng = random.Random(seed ^ (scenario_name_hash << 1))
+        err_rng = random.Random(seed ^ (scenario_name_hash << 2))
         direction = -1.0 if dir_rng.random() < 0.5 else 1.0
+        trajectory_error_sign = -1.0 if err_rng.random() < 0.5 else 1.0
         scenario = replace(
             scenario_base,
             start_x=float(scenario_base.start_x) * direction,
@@ -337,8 +402,13 @@ class TransferLevel(ScenarioLevel):
         dx = float(target_pos.x - trans.pos.x)
         alt = max(0.0, float(trans.pos.y - target_pos.y))
         t_fall = ballistic_fall_time(altitude=alt, vy_up=float(scenario.initial_vy_up))
-        vx_ballistic = dx / t_fall
-        initial_vx = vx_ballistic * float(scenario.vx_factor)
+        if scenario.initial_vx_toward_target is not None:
+            initial_vx = -direction * abs(float(scenario.initial_vx_toward_target))
+        else:
+            vx_ballistic = dx / t_fall
+            error_distance = trajectory_error_sign * abs(float(scenario.trajectory_error))
+            vx_error = error_distance / t_fall
+            initial_vx = vx_ballistic + vx_error
         phys.vel = Vector2(initial_vx, float(scenario.initial_vy_up))
 
         engine = getattr(self, "engine", None)
@@ -366,7 +436,7 @@ class TransferLevel(ScenarioLevel):
         self._update_phase_metrics()
         if self._phase1_handoff_done:
             return
-        snapshot = self._resolve_transfer_snapshot(game)
+        snapshot = self._resolve_coast_snapshot(game)
         if not isinstance(snapshot, dict):
             return
         if bool(snapshot.get("handoff_done")):
@@ -384,61 +454,51 @@ class TransferLevel(ScenarioLevel):
         fuel_per_distance = (setup_fuel / setup_distance) if setup_distance > 1e-9 else 0.0
         setup_path_efficiency = None
         actor = self.world.actors[0]
-        trans = require_component(actor, Transform)
         start_pos = getattr(actor, "start_pos", None)
         target_pos = getattr(self, "eval_target_pos", None)
         if isinstance(start_pos, Vector2) and isinstance(target_pos, Vector2) and setup_distance > 1e-9:
             straight_line = math.hypot(target_pos.x - start_pos.x, target_pos.y - start_pos.y)
             setup_path_efficiency = min(1.0, straight_line / setup_distance)
-        if self._phase1_handoff_done and self._phase1_handoff_abs_angle_deg is None:
-            self._phase1_handoff_abs_angle_deg = abs(math.degrees(float(trans.rotation)))
-
         result["eval_mode"] = self._resolved_eval_mode
-        result["transfer_handoff_done"] = self._phase1_handoff_done
-        result["transfer_handoff_time"] = self._phase1_handoff_time
-        result["transfer_handoff_projected_dx"] = self._phase1_handoff_projected_dx
-        result["transfer_handoff_impact_x"] = self._phase1_handoff_impact_x
-        result["transfer_handoff_target_x"] = self._phase1_handoff_target_x
-        result["transfer_handoff_impact_error"] = (
-            self._phase1_handoff_current_impact_error
-            if self._phase1_handoff_current_impact_error is not None
-            else self._phase1_handoff_impact_error
-        )
-        result["transfer_handoff_planned_impact_error"] = self._phase1_handoff_impact_error
-        result["transfer_handoff_current_impact_x"] = self._phase1_handoff_current_impact_x
-        result["transfer_handoff_current_target_x"] = self._phase1_handoff_current_target_x
-        result["transfer_handoff_abs_angle_deg"] = self._phase1_handoff_abs_angle_deg
-        result["transfer_handoff_x"] = self._phase1_handoff_x
-        result["transfer_handoff_y"] = self._phase1_handoff_y
-        result["transfer_handoff_dx"] = self._phase1_handoff_dx
-        result["transfer_handoff_abs_dx"] = (
+        result["coast_handoff_done"] = self._phase1_handoff_done
+        result["coast_handoff_time"] = self._phase1_handoff_time
+        result["coast_handoff_projected_dx"] = self._phase1_handoff_projected_dx
+        result["coast_handoff_impact_x"] = self._phase1_handoff_impact_x
+        result["coast_handoff_target_x"] = self._phase1_handoff_target_x
+        result["coast_handoff_x"] = self._phase1_handoff_x
+        result["coast_handoff_y"] = self._phase1_handoff_y
+        result["coast_handoff_dx"] = self._phase1_handoff_dx
+        result["coast_handoff_abs_dx"] = (
             abs(self._phase1_handoff_dx)
             if self._phase1_handoff_dx is not None
             else None
         )
-        result["transfer_handoff_altitude"] = self._phase1_handoff_altitude
-        result["transfer_handoff_vx"] = self._phase1_handoff_vx
-        result["transfer_handoff_vy_up"] = self._phase1_handoff_vy_up
-        result["transfer_handoff_speed"] = self._phase1_handoff_speed
-        result["transfer_handoff_horizontal_speed"] = self._phase1_handoff_horizontal_speed
-        result["transfer_handoff_on_track"] = self._phase1_handoff_on_track
-        result["transfer_handoff_speed_ready"] = self._phase1_handoff_speed_ready
-        result["transfer_handoff_not_falling_short"] = self._phase1_handoff_not_falling_short
-        result["transfer_handoff_centered"] = self._phase1_handoff_centered
-        result["transfer_handoff_inside_target"] = self._phase1_handoff_inside_target
-        result["transfer_setup_distance"] = setup_distance
-        result["transfer_setup_fuel_consumed"] = setup_fuel
-        result["transfer_setup_fuel_per_distance"] = fuel_per_distance
-        result["transfer_setup_path_efficiency"] = setup_path_efficiency
-
+        result["coast_handoff_altitude"] = self._phase1_handoff_altitude
+        result["coast_handoff_vx"] = self._phase1_handoff_vx
+        result["coast_handoff_vy_up"] = self._phase1_handoff_vy_up
+        result["coast_handoff_speed"] = self._phase1_handoff_speed
+        result["coast_handoff_horizontal_speed"] = self._phase1_handoff_horizontal_speed
+        result["coast_handoff_abs_angle_deg"] = self._phase1_handoff_abs_angle_deg
+        result["coast_handoff_on_track"] = self._phase1_handoff_on_track
+        result["coast_handoff_inside_target"] = self._phase1_handoff_inside_target
+        result["coast_handoff_speed_ready"] = self._phase1_handoff_speed_ready
+        result["coast_handoff_descending"] = self._phase1_handoff_descending
+        result["coast_handoff_t_fall_ready"] = self._phase1_handoff_t_fall_ready
+        result["coast_handoff_sensor_used"] = self._phase1_handoff_sensor_used
+        result["coast_handoff_vx_err"] = self._phase1_handoff_vx_err
+        result["coast_handoff_t_fall"] = self._phase1_handoff_t_fall
+        result["coast_setup_distance"] = setup_distance
+        result["coast_setup_fuel_consumed"] = setup_fuel
+        result["coast_setup_fuel_per_distance"] = fuel_per_distance
+        result["coast_setup_path_efficiency"] = setup_path_efficiency
         if self._resolved_eval_mode == "focused":
             state = str(result.get("state", "unknown"))
             success = bool(self._phase1_handoff_done)
-            result["eval_phase"] = "transfer_setup"
+            result["eval_phase"] = "coast_setup"
             result["success"] = success
             result["failure_mode"] = "none" if success else state
         return result
 
 
 def create_level() -> Level:
-    return TransferLevel()
+    return CoastLevel()

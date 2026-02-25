@@ -1,11 +1,11 @@
-"""Shared transfer setup math and control helpers."""
+"""Shared launch setup math and control helpers."""
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
 
-from bots._drop_core import (
+from bots._plunge_core import (
     BallisticProjection,
     GuidanceTargets,
     clamp,
@@ -15,14 +15,14 @@ from core.bot import ActiveSensors
 
 
 @dataclass(frozen=True)
-class TransferSetupConfig:
+class LaunchSetupConfig:
     handoff_projected_dx_ratio: float = 0.85
     setup_vx_cap: float = 92.0
     setup_vx_floor: float = 6.0
     setup_descent_vy_target: float = -2.2
     setup_response_delay_s: float = 0.65
     setup_ballistic_vy_blend: float = 0.45
-    handoff_force_drift_altitude: float = 420.0
+    handoff_force_coast_altitude: float = 420.0
     setup_vx_deadband: float = 1.6
     setup_sideburn_angle_rad: float = 1.40
     setup_sideburn_angle_min_rad: float = 1.40
@@ -112,7 +112,7 @@ def _estimate_ballistic_projection(
 
 def _ballistic_reference_vy(
     guidance: GuidanceTargets,
-    setup_cfg: TransferSetupConfig,
+    setup_cfg: LaunchSetupConfig,
     vy_pred: float,
 ) -> float:
     envelope_vy = min(float(guidance.vy_sp), setup_cfg.setup_descent_vy_target)
@@ -138,7 +138,7 @@ def _handoff_alignment(
     projected_dx: float,
     t_fall: float,
     target_size: float | None,
-    setup_cfg: TransferSetupConfig,
+    setup_cfg: LaunchSetupConfig,
 ) -> tuple[bool, bool, bool, float, float]:
     target_half = _target_half_width(target_size)
     dynamic_tol = (
@@ -161,7 +161,7 @@ def _handoff_alignment(
 
 
 def resolve_sideburn_target_angle(
-    setup_cfg: TransferSetupConfig,
+    setup_cfg: LaunchSetupConfig,
     *,
     projected_dx: float,
     cone_limit: float,
@@ -184,7 +184,7 @@ def resolve_sideburn_target_angle(
 
 
 def setup_fuel_reserve_threshold(
-    setup_cfg: TransferSetupConfig,
+    setup_cfg: LaunchSetupConfig,
     *,
     max_fuel: float,
 ) -> float:
@@ -195,7 +195,7 @@ def setup_fuel_reserve_threshold(
 
 
 __all__ = [
-    "TransferSetupConfig",
+    "LaunchSetupConfig",
     "_ballistic_reference_vy",
     "_estimate_ballistic_projection",
     "_handoff_alignment",

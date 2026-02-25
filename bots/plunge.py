@@ -1,8 +1,8 @@
-"""Configurable drop bot with multiple behavior profiles."""
+"""Configurable plunge bot with multiple behavior profiles."""
 
 from __future__ import annotations
 
-from bots._drop_core import (
+from bots._plunge_core import (
     BALANCED_POLICY,
     ECON_POLICY,
     SPEED_POLICY,
@@ -20,7 +20,7 @@ _BEHAVIOR_POLICIES: dict[str, DropPolicy] = {
 }
 
 
-class DropBot(StrategyDropBot):
+class PlungeBot(StrategyDropBot):
     def __init__(self, behavior: str = "balanced") -> None:
         super().__init__(BALANCED_POLICY)
         self._behavior = "balanced"
@@ -30,7 +30,7 @@ class DropBot(StrategyDropBot):
         key, policy = resolve_behavior(
             behavior,
             _BEHAVIOR_POLICIES,
-            context="drop",
+            context="plunge",
         )
         self._policy = policy
         self._behavior = key
@@ -41,11 +41,11 @@ class DropBot(StrategyDropBot):
 
 
 def create_bot() -> Bot:
-    return DropBot()
+    return PlungeBot()
 
 
 def list_behavior_names() -> tuple[str, ...]:
     return tuple(sorted(_BEHAVIOR_POLICIES))
 
 
-__all__ = ["DropBot", "create_bot", "list_behavior_names"]
+__all__ = ["PlungeBot", "create_bot", "list_behavior_names"]
