@@ -91,6 +91,7 @@ def test_bot_registry_exposes_expected_bots() -> None:
     assert "flare" in bots
     assert "coast" in bots
     assert "launch" in bots
+    assert "zem_zev" in bots
     assert "_drop_core" not in bots
     assert "_drift_core" not in bots
     assert "_transfer_core" not in bots
@@ -102,10 +103,102 @@ def test_bot_registry_exposes_expected_bots() -> None:
     flare_bot = create_bot("flare")
     coast_bot = create_bot("coast")
     launch_bot = create_bot("launch")
+    zem_zev_bot = create_bot("zem_zev")
     assert plunge_bot.__class__.__name__ == "PlungeBot"
     assert flare_bot.__class__.__name__ == "FlareBot"
     assert coast_bot.__class__.__name__ == "CoastBot"
     assert launch_bot.__class__.__name__ == "LaunchBot"
+    assert zem_zev_bot.__class__.__name__ == "ZemZevBot"
+
+
+def test_zem_zev_bot_outputs_finite_action_for_flare_like_state() -> None:
+    bot = create_bot("zem_zev")
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=600.0,
+        rel_x=-420.0,
+        rel_y=-430.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=420.0,
+        y=430.0,
+        altitude=430.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=-20.0,
+        vy_up=9.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.3,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {
+                "hit": True,
+                "hit_x": -40.0,
+                "hit_time": 6.0,
+                "duration": 6.0,
+            }
+
+    action = bot.update(1.0 / 60.0, passive, active=_FakeActive())
+    assert math.isfinite(action.target_thrust)
+    assert math.isfinite(action.target_angle)
+    assert 0.0 <= action.target_thrust <= 1.6
+    assert abs(action.target_angle) <= 0.8
+
+
+def test_zem_zev_bot_outputs_finite_action_for_plunge_like_state() -> None:
+    bot = create_bot("zem_zev")
+    passive = PassiveSensors(
+        x=0.0,
+        y=180.0,
+        altitude=180.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.5,
+        vy_up=-8.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {
+                "hit": True,
+                "hit_x": 0.0,
+                "hit_time": 4.0,
+                "duration": 4.0,
+            }
+
+    action = bot.update(1.0 / 60.0, passive, active=_FakeActive())
+    assert math.isfinite(action.target_thrust)
+    assert math.isfinite(action.target_angle)
+    assert 0.0 <= action.target_thrust <= 1.6
+    assert abs(action.target_angle) <= 0.8
 
 
 def test_active_sensors_ballistic_trajectory_reports_hit_payload() -> None:
