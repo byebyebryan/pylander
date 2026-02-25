@@ -2,6 +2,12 @@
 
 A classic Lunar Lander-inspired game with procedurally generated terrain, scoring system, and AI bot support.
 
+## Docs
+
+- Start here: [`docs/README.md`](docs/README.md)
+- Bot dev framework + API: [`docs/overview.md`](docs/overview.md)
+- Phase docs: [`docs/plunge.md`](docs/plunge.md), [`docs/flare.md`](docs/flare.md), [`docs/coast.md`](docs/coast.md), [`docs/launch.md`](docs/launch.md)
+
 ## Features
 
 - Procedural terrain generation with simplex noise
@@ -64,86 +70,46 @@ uv run python main.py launch --eval-mode full
 uv run python main.py flat --bot plunge
 ```
 
-### Headless Mode (Testing/Training)
-Run simulations without graphics for bot development:
+### Headless + batch evaluation
+
+Headless mode runs without graphics (faster, deterministic with a fixed seed):
+
 ```bash
-# Run bot in headless mode (prints stats every second by default)
-uv run python main.py plunge --headless
-
-# Print every frame for detailed debugging
-uv run python main.py plunge --headless --freq 1 --steps 300
-
-# Print every 0.5 seconds
-uv run python main.py plunge --headless --freq 30
-
-# Disable output for fastest execution
-uv run python main.py plunge --headless --freq 0 --steps 10000
-
-# Use different seed or lander
-uv run python main.py plunge --headless --seed 123
-uv run python main.py plunge --headless --scenario high_heavy --seed 123
-uv run python main.py flare --headless --scenario mid --seed 123
-uv run python main.py coast --headless --scenario flat_correction --seed 123
-uv run python main.py launch --headless --scenario air_mid_reverse --seed 123
-uv run python main.py launch --headless --scenario air_mid_reverse --eval-mode full --seed 123
-uv run python main.py flat --lander differential
+# Single run
+uv run python main.py plunge --headless --seed 0
 ```
 
-Batch evaluation (headless, sequential single-bot runs):
+Useful flags:
+
+- `--freq N` stats print frequency (`60` ~ once/sec, `1` every frame, `0` quiet)
+- `--steps N` max simulation steps
+- `--time S` max simulation time seconds (default `300`)
+- `--seed N` deterministic runs
+- `--scenario NAME` pick scenario
+- `--bot NAME` and `--bot-behavior NAME` override defaults
+- `--plot none|speed|thrust|all` save trajectory plot under `outputs/`
+
+Batch mode:
+
 ```bash
-# Fast cross-level benchmark (39 runs = 3 seeds x 13 core scenarios)
+# Example batch
+uv run python main.py plunge --headless --batch \
+  --batch-seeds 0-19 \
+  --batch-json auto \
+  --batch-csv auto
+
+# Fast regression
 uv run python main.py plunge --headless --quick-benchmark
-
-# Scenario-specific batch using level default bot
-uv run python main.py plunge --headless --batch \
-  --batch-seeds 0-19 \
-  --batch-json auto \
-  --batch-csv auto
-
-# Explicit batch list
-uv run python main.py plunge --headless --batch \
-  --batch-seeds 0-19 \
-  --batch-levels plunge \
-  --batch-scenarios mid_normal,high_heavy \
-  --batch-json auto \
-  --batch-csv auto
-
-# Coast-focused horizontal-control batch
-uv run python main.py coast --headless --batch \
-  --batch-seeds 0-19 \
-  --batch-scenarios glide_mid,glide_long_stress_correction \
-  --batch-json auto \
-  --batch-csv auto
 ```
 
-By default, generated artifacts (batch JSON/CSV and trajectory plots) are written under `outputs/`.
+Quick benchmark preset includes:
 
-`--quick-benchmark` runs a fixed core suite:
 - `plunge`: `low_normal`, `mid_normal`, `high_normal`
 - `flare`: `shallower`, `mid`, `steeper`
 - `coast`: `glide_mid`, `glide_long_stress_correction`, `handoff_extreme`
 - `launch`: `air_mid`, `air_long`, `air_mid_reverse`, `air_long_heavy`
 
-Use `--batch-scenarios` when you want a narrower or custom scenario slice.
-When comparing benchmark runs, keep `--eval-mode` fixed (focused vs full are different goals).
-
-Suggested phase-first eval workflow:
-- Tune launch setup in focused mode (`--eval-mode focused`) using handoff metrics.
-- Tune coast correction/handoff in focused mode (`--eval-mode focused`) with `coast_handoff_*` metrics.
-- Tune terminal burn timing and final control on plunge/flare scenarios.
-- Validate full launch completion in full mode (`--eval-mode full`).
-
-Stats output format:
-```
-t=  1.00s | x:  105.4 alt: 106.1 | vx:  5.74 vy: -2.88 | ang:   6.0° thr: 30% | fuel: 99.7%
-```
-- `t`: simulation time in seconds
-- `x`: world x position
-- `alt`: altitude above terrain
-- `vx, vy`: horizontal and vertical velocity (vy negative = falling)
-- `ang`: rotation angle (0° = upright)
-- `thr`: current thrust level percentage
-- `fuel`: remaining fuel percentage
+Staged eval (`--eval-mode focused|full`) is mainly for `coast` and `launch`.
 
 ## Controls (Human Mode)
 
@@ -156,136 +122,49 @@ t=  1.00s | x:  105.4 alt: 106.1 | vx:  5.74 vy: -2.88 | ang:   6.0° thr: 30% |
 - **R**: Reset game
 - **Q/ESC**: Quit
 
-## Bot Interface
+## Bot development
 
-Bots operate on limited sensors and emit explicit actions. Extend `Bot` and implement `update(dt, passive, active)`:
-
-```python
-from core.bot import Bot, PassiveSensors, ActiveSensors, BotAction
-
-class MyBot(Bot):
-    def update(self, dt: float, passive: PassiveSensors, active: ActiveSensors) -> BotAction:
-        self.status = "idle"
-        return BotAction(0.0, passive.angle, False, status="idle")
-```
-
-`PassiveSensors` includes world position (`x`, `y`), terrain-relative clearance (`altitude`), local terrain context (`terrain_y`, `terrain_slope`), kinematics, fuel/state, and radar/proximity contacts.
-`ActiveSensors` provides `raycast(angle, max_range)`, terrain helpers like `terrain_height(x)` and `terrain_profile(x_start, x_end, samples)`, and `ballistic_trajectory(x, y, vx, vy_up, ...)` for engine-off path prediction to terrain/max distance, including hit point/time plus impact velocity (`hit_vx`, `hit_vy_up`) and speed (`hit_speed`) when a terrain impact is found.
+- Bot framework + API: [`docs/overview.md`](docs/overview.md)
+- Phase docs are listed in [`Scenario Levels`](#scenario-levels) below.
 
 ## Scenario Levels
 
-Dedicated scenario levels (default bot in parentheses):
-- `plunge` (`plunge`) - vertical-only benchmark focused on coast->terminal burn timing and decisive touchdown:
-  - 3x3 altitude x weight matrix:
-    - altitude tiers: `alt_low` (100), `alt_mid` (400), `alt_high` (1600)
-    - weight tiers: `weight_light` (no cargo), `weight_normal` (half cargo), `weight_heavy` (full cargo)
-  - scenario names:
-    - `low_light`
-    - `low_normal`
-    - `low_heavy`
-    - `mid_light`
-    - `mid_normal`
-    - `mid_heavy`
-    - `high_light`
-    - `high_normal`
-    - `high_heavy`
-- `flare` (`flare`) - terminal 2-axis landing benchmark from center-hit ballistic entry:
-  - fixed setup:
-    - half cargo (`2250`)
-    - start lies on an upper hemisphere arc of radius `800` around target center
-    - angle is measured from horizon (`15°`, `30°`, `45°`, `60°`, `75°`)
-    - initial `vx`/`vy` are solved together to target a `~12s` center-hit ballistic path
-  - 1D angle sweep (seeded random side):
-    - `shallower` (`15°`)
-    - `shallow` (`30°`)
-    - `mid` (`45°`)
-    - `steep` (`60°`)
-    - `steeper` (`75°`)
-  - scenario names:
-    - `shallower`
-    - `shallow`
-    - `mid`
-    - `steep`
-    - `steeper`
-- `coast` (`coast`) - correction-focused horizontal-control benchmark:
-  - base scenarios span two dimensions:
-    - ballistic profile (`glide_short|mid|long|flat`) -> `flat` includes a mild positive initial vertical speed to validate upward-pointing ballistic starts
-    - trajectory error (no suffix vs `_correction` vs `_stress_correction`) -> correction tiers inject seeded random bias direction, so runs need re-centering work in either direction
-  - scenario names:
-    - `glide_short`
-    - `glide_short_correction`
-    - `glide_mid`
-    - `glide_mid_correction`
-    - `glide_long`
-    - `glide_long_correction`
-    - `glide_long_stress_correction`
-    - `flat`
-    - `flat_correction`
-    - `flat_stress_correction`
-    - `handoff_extreme`
-    - `handoff_extreme_fast`
-      - explicit launch-handoff mirrors for high horizontal-speed terminal tuning
-  - targeted heavy-cargo variants (`*_cargo_high`) exist only for:
-    - `glide_mid_correction`
-    - `glide_long_correction`
-    - `glide_long_stress_correction`
-- `launch` (`launch`) - air-start trajectory-establishment benchmark with coast handoff:
-  - base scenarios are proportional profile steps:
-    - `air_mid`: medium offset with medium clearance
-    - `air_long`: longer offset with proportionally higher clearance
-  - default eval mode is **full**: run continues through coast/terminal to landing/crash
-  - use `--eval-mode focused` for launch-only handoff evaluation
-  - launch setup emphasizes a hard side-burn to establish a ballistic path early, then hands off to coast/terminal phases
-  - stress variants:
-    - opposite horizontal speed with extra room: `air_mid_reverse`
-  - heavy-cargo variants (`*_heavy`) exist for:
-    - `air_long`
-    - `air_mid_reverse`
+Scenario docs:
+
+- `plunge`: [`docs/plunge.md`](docs/plunge.md)
+- `flare` (level locked, bot placeholder): [`docs/flare.md`](docs/flare.md)
+- `coast` (placeholder for now): [`docs/coast.md`](docs/coast.md)
+- `launch` (placeholder for now): [`docs/launch.md`](docs/launch.md)
+
 ## Command Line Options
 
 ```bash
 uv run python main.py [level_name] [options]
 ```
 
-**Levels:** Run `uv run python main.py --help` to list (e.g. `flat`, `mountains`, `plunge`).
+Use `uv run python main.py --help` for the up-to-date full list.
 
-**Bot names:** `plunge`, `flare`, `coast`, `launch` (set via `--bot`; see `--help`).
+Common options:
 
-**Options:**
-- `--bot NAME` - Select bot (`plunge`, `flare`, `coast`, `launch`)
-- `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `plunge` => `balanced|speed|econ`; `flare` => `flare`; `coast` => `coast`; `launch` => `launch`)
-- `--headless` - Run without graphics (requires bot)
-- `--freq N` - Print stats every N frames (60 ≈ 1/s; 0 = off)
-- `--steps N` - Limit simulation to N steps (headless)
-- `--time S` - Limit simulation to S seconds (headless, default 300)
-- `--plot none|speed|thrust|all` - Save trajectory plot (headless)
-- `--stop-on-crash`, `--stop-on-out-of-fuel`, `--stop-on-first-land` - End conditions
-- `--eval-mode auto|focused|full` - Evaluation mode for staged levels (`coast` and `launch` default to full when auto)
-- `--seed N` - Random seed
-- `--scenario NAME` - Select a level scenario (if supported)
-- `--lander NAME` - Lander variant (classic, differential, simple)
-- `--batch` - Enable batch runs (requires `--headless` + bot)
-- `--batch-seeds SPEC` - Seeds like `0-19` or `0,1,2,5`
-- `--batch-levels CSV` - Level names for batch suites
-- `--batch-scenarios CSV` - Scenario names for batch suites
-- `--batch-json PATH|auto` - Write JSON report
-- `--batch-csv PATH|auto` - Write CSV rows
-- `--batch-workers N` - Parallel worker processes for batch runs (`1` = sequential; effective workers are capped by CPU count and run count)
-- `--quick-benchmark` - Built-in cross-level core benchmark preset (`plunge` + `flare` + `coast` + `launch` subsets)
-- `--help`, `-h` - Show help message
-
-Batch mode defaults to `--freq 0` (quiet) for speed; pass `--freq` to enable per-run stats.
-Quiet mode disables per-step stats output, but batch progress lines still print.
-
-Batch/headless eval records include `landing_offset` (absolute horizontal error from target center on landed runs).
+- `--bot NAME` select bot (`plunge`, `flare`, `coast`, `launch`)
+- `--bot-behavior NAME` behavior profile for bots that support it
+- `--headless` run without graphics
+- `--freq N` stats print frequency
+- `--steps N`, `--time S` headless run limits
+- `--plot none|speed|thrust|all` save trajectory plot
+- `--eval-mode auto|focused|full` staged eval mode
+- `--seed N` random seed
+- `--scenario NAME` pick scenario
+- `--lander NAME` choose lander variant
+- `--batch` enable batch runs
+- `--batch-seeds`, `--batch-levels`, `--batch-scenarios` batch selection
+- `--batch-json`, `--batch-csv` output reports
+- `--batch-workers N` parallel worker count
+- `--quick-benchmark` run fixed cross-level benchmark suite
 
 ## Promotion Gates (Plunge Bot)
 
-Current checks (manual gate until automated):
-- Home scenario success rate >= 95% on seeds `0-9`
-- No `out_of_fuel` failures on seeds `0-9`
-- Suggested command:
-  - `uv run python main.py plunge --headless --batch --batch-seeds 0-9 --batch-scenarios low_normal,mid_normal,high_normal`
+Moved to [`docs/plunge.md`](docs/plunge.md).
 
 ## Game Mechanics
 
