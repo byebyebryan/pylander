@@ -24,18 +24,21 @@ from core.sensor import RadarContact
 @dataclass(frozen=True)
 class FlareControlConfig:
     sideburn_enter_dx: float = 44.0
-    sideburn_enter_vx: float = 6.0
+    sideburn_enter_vx: float = 12.0
     sideburn_entry_alt_max: float = 680.0
     sideburn_force_low_alt: float = 260.0
     sideburn_force_vx: float = 34.0
     sideburn_min_dx_alt_ratio: float = 1.45
-    sideburn_entry_alt_min: float = 50.0
+    sideburn_entry_alt_min: float = 95.0
     sideburn_exit_dx: float = 14.0
     sideburn_exit_vx: float = 1.7
     sideburn_release_frames: int = 5
     sideburn_max_frames: int = 420
     sideburn_exit_vx_relaxed: float = 4.2
     sideburn_exit_dx_relaxed: float = 70.0
+    sideburn_exit_to_coupled_vx: float = 18.0
+    sideburn_exit_to_coupled_dx: float = 220.0
+    sideburn_exit_track_vx_ratio: float = 0.72
     sideburn_min_altitude: float = 14.0
     sideburn_vx_floor: float = 5.4
     sideburn_vx_floor_per_alt: float = 0.022
@@ -46,7 +49,10 @@ class FlareControlConfig:
     sideburn_pos_gain: float = 0.022
     sideburn_switch_dx: float = 13.0
     sideburn_switch_vx: float = 1.4
+    sideburn_flip_vx: float = 6.0
     sideburn_force_dx: float = 24.0
+    sideburn_stop_distance_ratio: float = 0.58
+    sideburn_urgent_vx: float = 50.0
     sideburn_descent_base: float = 1.1
     sideburn_descent_gain: float = 0.17
     sideburn_descent_min: float = 1.0
@@ -185,7 +191,7 @@ class FlareBot(StrategyDropBot):
         if (
             self._sideburn_direction != 0.0
             and self._sideburn_switch_hold == 0
-            and (self._sideburn_direction * vx) > (1.5 * self._control_cfg.sideburn_switch_vx)
+            and (self._sideburn_direction * vx) > self._control_cfg.sideburn_flip_vx
         ):
             self._sideburn_direction = -self._sideburn_direction
             self._sideburn_switch_hold = 24
@@ -271,6 +277,12 @@ class FlareBot(StrategyDropBot):
         abs_track_dx = abs(track_dx)
         abs_vx = abs(float(passive.vx))
         dx_alt_ratio = abs(dx) / max(1.0, alt)
+        lateral_stop_distance = (abs_vx * abs_vx) / max(1e-3, 2.0 * cfg.sideburn_ax_cap)
+        sideburn_speed_urgent = (
+            abs_vx >= cfg.sideburn_urgent_vx
+            and lateral_stop_distance >= (cfg.sideburn_stop_distance_ratio * abs(dx))
+        )
+        track_vx_need = abs(dx) / max(0.5, t_go)
         if self._sideburn_reentry_cooldown > 0:
             self._sideburn_reentry_cooldown -= 1
         if self._sideburn_active:
@@ -282,9 +294,19 @@ class FlareBot(StrategyDropBot):
                 abs_track_dx <= cfg.sideburn_exit_dx_relaxed
                 and abs_vx <= cfg.sideburn_exit_vx_relaxed
             )
+            handoff_vx_limit = max(
+                cfg.sideburn_exit_to_coupled_vx,
+                cfg.sideburn_exit_track_vx_ratio * track_vx_need,
+            )
+            handoff_clear = (
+                abs_track_dx <= cfg.sideburn_exit_to_coupled_dx
+                and abs_vx <= handoff_vx_limit
+            )
             if sideburn_clear:
                 self._sideburn_release_counter += 1
             elif relaxed_clear:
+                self._sideburn_release_counter += 1
+            elif handoff_clear:
                 self._sideburn_release_counter += 1
             else:
                 self._sideburn_release_counter = 0
@@ -312,11 +334,19 @@ class FlareBot(StrategyDropBot):
             and
             cfg.sideburn_min_altitude < alt <= cfg.sideburn_entry_alt_max
             and alt >= cfg.sideburn_entry_alt_min
-            and dx_alt_ratio >= cfg.sideburn_min_dx_alt_ratio
             and float(passive.vy_up) <= cfg.sideburn_entry_vy_max
             and (
-                abs_track_dx >= cfg.sideburn_enter_dx
-                or (alt <= cfg.sideburn_force_low_alt and abs_vx >= cfg.sideburn_force_vx)
+                (
+                    dx_alt_ratio >= cfg.sideburn_min_dx_alt_ratio
+                    and (
+                        (
+                            abs_track_dx >= cfg.sideburn_enter_dx
+                            and abs_vx >= cfg.sideburn_enter_vx
+                        )
+                        or (alt <= cfg.sideburn_force_low_alt and abs_vx >= cfg.sideburn_force_vx)
+                    )
+                )
+                or sideburn_speed_urgent
             )
         ):
             self._sideburn_active = True
@@ -340,7 +370,12 @@ class FlareBot(StrategyDropBot):
             vertical_mode = "terminal_burn"
 
         if phase == "sideburn":
-            vx_sp = clamp(dx / max(0.5, t_go), -cfg.sideburn_vx_cap, cfg.sideburn_vx_cap)
+            vx_target_cap = clamp(
+                cfg.sideburn_vx_floor + (cfg.sideburn_vx_floor_per_alt * alt),
+                cfg.sideburn_vx_floor,
+                cfg.sideburn_vx_cap,
+            )
+            vx_sp = clamp(dx / max(0.5, t_go), -vx_target_cap, vx_target_cap)
             _ = self._resolve_sideburn_direction(vx_sp - float(passive.vx), dx, passive.vx)
             vy_sp = -clamp(
                 cfg.sideburn_descent_base + (cfg.sideburn_descent_gain * math.sqrt(max(0.0, alt))),
@@ -428,7 +463,14 @@ class FlareBot(StrategyDropBot):
             elif hold_burn:
                 vertical_mode = "flare"
             else:
-                vertical_mode = "eco_glide"
+                low_alt_misaligned = (
+                    alt <= cfg.anti_hover_alt
+                    and (
+                        abs_track_dx > cfg.anti_hover_dx
+                        or abs(float(passive.vx)) > cfg.touchdown_entry_vx
+                    )
+                )
+                vertical_mode = "flare" if low_alt_misaligned else "eco_glide"
         guidance = GuidanceTargets(
             phase=phase,
             vertical_mode=vertical_mode,
