@@ -390,7 +390,6 @@ class FlareBot(StrategyDropBot):
                     track_vx_need + cfg.sideburn_track_vx_buffer,
                 ),
             )
-            vx_target_mag = min(vx_target_mag, abs_vx)
             if abs(dx) > 1e-3:
                 target_sign = math.copysign(1.0, dx)
             elif abs(float(passive.vx)) > 1e-3:
