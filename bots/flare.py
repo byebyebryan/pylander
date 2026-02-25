@@ -23,7 +23,7 @@ from core.sensor import RadarContact
 
 @dataclass(frozen=True)
 class FlareControlConfig:
-    sideburn_enter_dx: float = 44.0
+    sideburn_enter_dx: float = 60.0
     sideburn_enter_vx: float = 12.0
     sideburn_entry_alt_max: float = 680.0
     sideburn_force_low_alt: float = 260.0
@@ -53,6 +53,8 @@ class FlareControlConfig:
     sideburn_force_dx: float = 24.0
     sideburn_stop_distance_ratio: float = 0.58
     sideburn_urgent_vx: float = 50.0
+    sideburn_urgent_projected_dx_min: float = 24.0
+    sideburn_track_vx_buffer: float = 2.5
     sideburn_descent_base: float = 1.1
     sideburn_descent_gain: float = 0.17
     sideburn_descent_min: float = 1.0
@@ -64,6 +66,7 @@ class FlareControlConfig:
     sideburn_entry_vy_max: float = 1.0
     sideburn_emergency_alt: float = 240.0
     sideburn_angle_rate: float = 3.2
+    sideburn_max_tilt: float = 0.88
     coupled_tgo_min: float = 0.8
     coupled_tgo_max: float = 12.0
     coupled_vx_track_weight: float = 0.68
@@ -278,7 +281,11 @@ class FlareBot(StrategyDropBot):
         abs_vx = abs(float(passive.vx))
         dx_alt_ratio = abs(dx) / max(1.0, alt)
         lateral_stop_distance = (abs_vx * abs_vx) / max(1e-3, 2.0 * cfg.sideburn_ax_cap)
+        projected_overshoot = (dx * track_dx) < 0.0
         sideburn_speed_urgent = (
+            projected_overshoot
+            and abs_track_dx >= cfg.sideburn_urgent_projected_dx_min
+            and
             abs_vx >= cfg.sideburn_urgent_vx
             and lateral_stop_distance >= (cfg.sideburn_stop_distance_ratio * abs(dx))
         )
@@ -337,13 +344,19 @@ class FlareBot(StrategyDropBot):
             and float(passive.vy_up) <= cfg.sideburn_entry_vy_max
             and (
                 (
+                    projected_overshoot
+                    and
                     dx_alt_ratio >= cfg.sideburn_min_dx_alt_ratio
                     and (
                         (
                             abs_track_dx >= cfg.sideburn_enter_dx
                             and abs_vx >= cfg.sideburn_enter_vx
                         )
-                        or (alt <= cfg.sideburn_force_low_alt and abs_vx >= cfg.sideburn_force_vx)
+                        or (
+                            alt <= cfg.sideburn_force_low_alt
+                            and abs_vx >= cfg.sideburn_force_vx
+                            and abs_track_dx >= cfg.sideburn_urgent_projected_dx_min
+                        )
                     )
                 )
                 or sideburn_speed_urgent
@@ -370,13 +383,22 @@ class FlareBot(StrategyDropBot):
             vertical_mode = "terminal_burn"
 
         if phase == "sideburn":
-            vx_target_cap = clamp(
-                cfg.sideburn_vx_floor + (cfg.sideburn_vx_floor_per_alt * alt),
-                cfg.sideburn_vx_floor,
+            vx_target_mag = min(
                 cfg.sideburn_vx_cap,
+                max(
+                    cfg.sideburn_vx_floor + (cfg.sideburn_vx_floor_per_alt * alt),
+                    track_vx_need + cfg.sideburn_track_vx_buffer,
+                ),
             )
-            vx_sp = clamp(dx / max(0.5, t_go), -vx_target_cap, vx_target_cap)
-            _ = self._resolve_sideburn_direction(vx_sp - float(passive.vx), dx, passive.vx)
+            vx_target_mag = min(vx_target_mag, abs_vx)
+            if abs(dx) > 1e-3:
+                target_sign = math.copysign(1.0, dx)
+            elif abs(float(passive.vx)) > 1e-3:
+                target_sign = -math.copysign(1.0, float(passive.vx))
+            else:
+                target_sign = 1.0
+            vx_sp = target_sign * vx_target_mag
+            _ = self._resolve_sideburn_direction(track_dx, dx, passive.vx)
             vy_sp = -clamp(
                 cfg.sideburn_descent_base + (cfg.sideburn_descent_gain * math.sqrt(max(0.0, alt))),
                 cfg.sideburn_descent_min,
@@ -502,11 +524,18 @@ class FlareBot(StrategyDropBot):
         if guidance.phase == "sideburn":
             t_go = max(0.5, self._last_t_go)
             vx_err = vx_sp - float(passive.vx)
-            pos_term = guidance.dx / max(1e-3, t_go * t_go)
+            pos_term = self._last_projected_dx / max(1e-3, t_go * t_go)
             raw_ax = (1.05 * vx_err) + (0.28 * pos_term) - (0.06 * float(passive.ax))
-            direction = self._resolve_sideburn_direction(raw_ax, guidance.dx, passive.vx)
+            direction = self._resolve_sideburn_direction(
+                self._last_projected_dx,
+                guidance.dx,
+                passive.vx,
+            )
             ax_mag = abs(raw_ax)
-            if abs(self._last_projected_dx) > cfg.sideburn_force_dx or abs(vx_err) > 1.0:
+            projected_overshoot = (guidance.dx * self._last_projected_dx) < 0.0
+            if projected_overshoot and (
+                abs(self._last_projected_dx) > cfg.sideburn_force_dx or abs(vx_err) > 1.0
+            ):
                 ax_mag = max(ax_mag, cfg.sideburn_ax_floor)
             return direction * clamp(ax_mag, 0.0, cfg.sideburn_ax_cap)
 
@@ -575,6 +604,11 @@ class FlareBot(StrategyDropBot):
             projected_dx=self._last_projected_dx,
             cone_limit=cone_limit,
             vy_up=float(passive.vy_up),
+        )
+        target_angle = clamp(
+            target_angle,
+            -self._control_cfg.sideburn_max_tilt,
+            self._control_cfg.sideburn_max_tilt,
         )
         angle_cmd = rate_limit_angle_command(
             target_angle,
