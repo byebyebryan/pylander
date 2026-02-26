@@ -6,8 +6,13 @@ import math
 from dataclasses import dataclass
 
 from bots._ballistics import ballistic_time_to_impact, estimate_ballistic_projection
-from bots._bot_math import clamp, engine_profile, finite_altitude, stable
-from bots._drop_control import rate_limit_angle_command
+from bots._bot_math import (
+    clamp,
+    engine_profile,
+    finite_altitude,
+    rate_limit_angle_command,
+    stable,
+)
 from bots._targeting import pick_target
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.config import GRAVITY

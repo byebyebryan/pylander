@@ -5,7 +5,15 @@ from __future__ import annotations
 import math
 
 from bots._ballistics import ballistic_time_to_impact
-from bots._bot_math import coerce_finite, engine_profile, finite_altitude, stable, vehicle_limits
+from bots._bot_math import (
+    clamp,
+    coerce_finite,
+    engine_profile,
+    finite_altitude,
+    rate_limit_angle_command,
+    stable,
+    vehicle_limits,
+)
 from bots._coast_core import (
     COAST_POLICY,
     CoastCourseConfig,
@@ -18,7 +26,6 @@ from bots._coast_core import (
     resolve_coast_behavior,
     should_handoff_to_flare,
 )
-from bots._drop_control import allocate_controls, vertical_controller
 from bots._targeting import pick_target
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
@@ -366,13 +373,56 @@ class CoastBot(Bot):
         vertical_mode: str,
         up_acc_max: float,
     ) -> float:
-        return vertical_controller(
-            self._policy,
-            passive,
-            vy_sp,
-            alt,
-            vertical_mode,
-            up_acc_max,
+        if vertical_mode in ("coast", "eco_glide", "speed_dive"):
+            return 0.0
+        if vertical_mode == "coast_hold":
+            vy_err = vy_sp - passive.vy_up
+            # Keep correction burns thrust-backed without drifting into hover.
+            a_up_cmd = 7.2 + (0.2 * vy_err)
+            max_up_cmd = 9.8 if alt < 14.0 else 9.25
+            return clamp(a_up_cmd, 4.8, max_up_cmd)
+        if vertical_mode == "terminal_burn":
+            brake_gain = (
+                self._policy.terminal_brake_gain_high_alt
+                if alt > 8.0
+                else self._policy.terminal_brake_gain_low_alt
+            )
+            a_up_cmd = 9.8 + (brake_gain * up_acc_max)
+            if passive.vy_up > -0.7:
+                a_up_cmd = min(a_up_cmd, 9.8 + (0.45 * up_acc_max))
+            return a_up_cmd
+
+        vy_err = vy_sp - passive.vy_up
+        a_up_cmd = 9.8 + (0.38 * vy_err)
+        if alt < 7.0:
+            a_up_cmd += 0.08
+        if alt < 3.0 and passive.vy_up > -0.45:
+            a_up_cmd -= 0.12
+        return a_up_cmd
+
+    def _fuel_ratio(self, passive: PassiveSensors) -> float:
+        max_fuel = max(1e-6, float(passive.max_fuel))
+        return clamp(float(passive.fuel) / max_fuel, 0.0, 1.0)
+
+    def _can_use_overdrive(
+        self,
+        passive: PassiveSensors,
+        *,
+        vertical_mode: str,
+        alt: float,
+    ) -> bool:
+        if not self._policy.allow_overdrive:
+            return False
+        if self._fuel_ratio(passive) < self._policy.min_fuel_ratio_for_overdrive:
+            return False
+        if self._policy.overdrive_requires_terminal_burn and vertical_mode != "terminal_burn":
+            return False
+        return (
+            passive.vy_up < self._policy.emergency_vy_threshold
+            or (
+                alt < self._policy.emergency_low_alt
+                and passive.vy_up < self._policy.emergency_low_alt_vy_threshold
+            )
         )
 
     def _allocate_controls(
@@ -389,20 +439,41 @@ class CoastBot(Bot):
         min_throttle: float,
         max_throttle: float,
     ) -> BotAction:
-        action, self._prev_angle_cmd = allocate_controls(
-            self._policy,
+        max_force = max_power * max_throttle
+        mass, _ = vehicle_limits(passive, max_force)
+
+        req = clamp((a_x_sp * mass) / max(max_force, 1e-3), -0.95, 0.95)
+        angle_cmd = math.asin(req)
+        max_tilt = 0.18 if alt < 20.0 else 0.56
+        angle_cmd = clamp(angle_cmd, -max_tilt, max_tilt)
+
+        angle_cmd = rate_limit_angle_command(
+            angle_cmd,
+            self._prev_angle_cmd,
             dt,
-            passive,
-            a_x_sp=a_x_sp,
-            a_up_sp=a_up_sp,
-            alt=alt,
-            dx=dx,
-            vertical_mode=vertical_mode,
-            prev_angle_cmd=self._prev_angle_cmd,
-            max_power=max_power,
-            min_throttle=min_throttle,
-            max_throttle=max_throttle,
         )
+        self._prev_angle_cmd = angle_cmd
+
+        cos_term = max(0.25, abs(math.cos(angle_cmd)))
+        thrust = (mass * a_up_sp) / max(max_power * cos_term, 1e-3)
+        if alt < 9.0 and abs(dx) <= 10.0:
+            angle_cmd = 0.0
+        if alt < 2.5 and abs(dx) <= 7.0 and abs(passive.vx) < 0.6 and abs(passive.vy_up) < 0.9:
+            thrust = 0.0
+            angle_cmd = 0.0
+
+        soft_cap = min(self._policy.overdrive_soft_cap, max_throttle)
+        if thrust > soft_cap and not self._can_use_overdrive(
+            passive,
+            vertical_mode=vertical_mode,
+            alt=alt,
+        ):
+            thrust = soft_cap
+        thrust = clamp(thrust, 0.0, max_throttle)
+        if thrust > 0.0:
+            thrust = max(min_throttle, thrust)
+
+        action = BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)
         action.target_angle = cap_low_altitude_angle(
             action.target_angle,
             alt=alt,

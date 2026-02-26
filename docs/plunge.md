@@ -72,7 +72,7 @@ Shared reusable bot libs are split by concern:
 - [`bots/_ballistics.py`](../bots/_ballistics.py)
 - [`bots/_targeting.py`](../bots/_targeting.py)
 - [`bots/_coast_core.py`](../bots/_coast_core.py)
-- [`bots/_drop_control.py`](../bots/_drop_control.py)
+- [`bots/_bot_math.py`](../bots/_bot_math.py)
 - [`bots/_bot_math.py`](../bots/_bot_math.py)
 
 ## How to run it

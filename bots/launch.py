@@ -6,7 +6,7 @@ import math
 from dataclasses import replace
 from typing import Any
 
-from bots._bot_math import clamp, coerce_finite, resolve_behavior
+from bots._bot_math import clamp, coerce_finite, rate_limit_angle_command, resolve_behavior
 from bots._coast_core import (
     COAST_COURSE,
     COAST_POLICY,
@@ -27,7 +27,6 @@ from bots._launch_core import (
     resolve_sideburn_target_angle,
     setup_fuel_reserve_threshold,
 )
-from bots._drop_control import rate_limit_angle_command
 from bots.coast import CoastBot
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact

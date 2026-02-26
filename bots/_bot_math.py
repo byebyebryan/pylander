@@ -72,3 +72,14 @@ def engine_profile(vehicle_info: VehicleInfo | None) -> tuple[float, float, floa
     ramp_up = max(0.1, float(vehicle_info.thrust_increase_rate))
     return max_power, min_throttle, max_throttle, ramp_up
 
+
+def rate_limit_angle_command(
+    target_angle: float,
+    prev_angle: float,
+    dt: float,
+    *,
+    max_rate: float = 2.2,
+) -> float:
+    max_delta = max_rate * max(dt, 1e-3)
+    return clamp(target_angle, prev_angle - max_delta, prev_angle + max_delta)
+

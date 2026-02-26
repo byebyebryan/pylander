@@ -6,9 +6,15 @@ import math
 from dataclasses import dataclass, replace
 
 from bots._ballistics import ballistic_time_to_impact, estimate_ballistic_projection
-from bots._bot_math import clamp, engine_profile, finite_altitude, stable, vehicle_limits
+from bots._bot_math import (
+    clamp,
+    engine_profile,
+    finite_altitude,
+    rate_limit_angle_command,
+    stable,
+    vehicle_limits,
+)
 from bots._coast_core import COAST_POLICY, CoastCourseConfig, GuidanceTargets, cap_low_altitude_angle
-from bots._drop_control import can_use_overdrive, rate_limit_angle_command, vertical_controller
 from bots._launch_core import LaunchSetupConfig, resolve_sideburn_target_angle
 from bots._targeting import pick_target
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
@@ -341,11 +347,20 @@ class FlareBot(Bot):
         vertical_mode: str,
         alt: float,
     ) -> bool:
-        return can_use_overdrive(
-            self._policy,
-            passive,
-            vertical_mode=vertical_mode,
-            alt=alt,
+        if not self._policy.allow_overdrive:
+            return False
+        max_fuel = max(1e-6, float(passive.max_fuel))
+        fuel_ratio = clamp(float(passive.fuel) / max_fuel, 0.0, 1.0)
+        if fuel_ratio < self._policy.min_fuel_ratio_for_overdrive:
+            return False
+        if self._policy.overdrive_requires_terminal_burn and vertical_mode != "terminal_burn":
+            return False
+        return (
+            passive.vy_up < self._policy.emergency_vy_threshold
+            or (
+                alt < self._policy.emergency_low_alt
+                and passive.vy_up < self._policy.emergency_low_alt_vy_threshold
+            )
         )
 
     def _guidance(
@@ -686,14 +701,32 @@ class FlareBot(Bot):
             ):
                 a_up_cmd = max(a_up_cmd, 9.8 + (cfg.emergency_brake_gain * up_acc_max))
             return clamp(a_up_cmd, 0.0, 9.8 + (0.55 * up_acc_max))
-        return vertical_controller(
-            self._policy,
-            passive,
-            vy_sp,
-            alt,
-            vertical_mode,
-            up_acc_max,
-        )
+        if vertical_mode in ("coast", "eco_glide", "speed_dive"):
+            return 0.0
+        if vertical_mode == "coast_hold":
+            vy_err = vy_sp - passive.vy_up
+            # Keep correction burns thrust-backed without drifting into hover.
+            a_up_cmd = 7.2 + (0.2 * vy_err)
+            max_up_cmd = 9.8 if alt < 14.0 else 9.25
+            return clamp(a_up_cmd, 4.8, max_up_cmd)
+        if vertical_mode == "terminal_burn":
+            brake_gain = (
+                self._policy.terminal_brake_gain_high_alt
+                if alt > 8.0
+                else self._policy.terminal_brake_gain_low_alt
+            )
+            a_up_cmd = 9.8 + (brake_gain * up_acc_max)
+            if passive.vy_up > -0.7:
+                a_up_cmd = min(a_up_cmd, 9.8 + (0.45 * up_acc_max))
+            return a_up_cmd
+
+        vy_err = vy_sp - passive.vy_up
+        a_up_cmd = 9.8 + (0.38 * vy_err)
+        if alt < 7.0:
+            a_up_cmd += 0.08
+        if alt < 3.0 and passive.vy_up > -0.45:
+            a_up_cmd -= 0.12
+        return a_up_cmd
 
     def _allocate_sideburn_controls(
         self,

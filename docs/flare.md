@@ -120,7 +120,7 @@ Useful metrics (summarized in batch mode via [`core/eval.py`](../core/eval.py)):
 
 - Bot code: [`bots/flare.py`](../bots/flare.py)
 - Shared bot API contract: [`core/bot.py`](../core/bot.py)
-- Shared drop guidance primitives: [`bots/_coast_core.py`](../bots/_coast_core.py) + [`bots/_drop_control.py`](../bots/_drop_control.py)
+- Shared drop guidance primitives: [`bots/_coast_core.py`](../bots/_coast_core.py) + [`bots/_bot_math.py`](../bots/_bot_math.py)
 
 Stable expectations only:
 
