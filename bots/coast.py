@@ -4,30 +4,34 @@ from __future__ import annotations
 
 import math
 
-from bots._plunge_core import (
-    GuidanceTargets,
-    StrategyDropBot,
-    coerce_finite,
-)
+from bots._ballistics import ballistic_time_to_impact
+from bots._bot_math import coerce_finite, engine_profile, finite_altitude, stable, vehicle_limits
 from bots._coast_core import (
     COAST_POLICY,
     CoastCourseConfig,
+    GuidanceTargets,
     apply_coast_guidance,
     cap_low_altitude_angle,
+    compute_drop_guidance,
     coupled_brake_window,
     lateral_tracking_command,
     resolve_coast_behavior,
     should_handoff_to_flare,
 )
+from bots._drop_control import allocate_controls, vertical_controller
+from bots._targeting import pick_target
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
 
 
-class CoastBot(StrategyDropBot):
+class CoastBot(Bot):
     def __init__(self, behavior: str = "coast") -> None:
-        super().__init__(COAST_POLICY)
+        super().__init__()
+        self._policy = COAST_POLICY
         self._course_cfg = CoastCourseConfig()
         self._behavior = "coast"
+        self._prev_angle_cmd = 0.0
+        self._ballistic_debug_summary = ""
         self._last_guidance: GuidanceTargets | None = None
         self._active_sensors: ActiveSensors | None = None
         self._handoff_done = False
@@ -75,11 +79,106 @@ class CoastBot(StrategyDropBot):
             self._handoff_snapshot = None
             self._handoff_event_summary = ""
             self._last_target_size = None
+            self._last_guidance = None
+            self._ballistic_debug_summary = ""
         self._active_sensors = active
         try:
-            return super().update(dt, passive, active)
+            if passive.state in ("landed", "crashed", "out_of_fuel"):
+                action = BotAction(
+                    0.0,
+                    passive.angle,
+                    False,
+                    status=f"{self._policy.status_prefix}:{passive.state}",
+                )
+                self.status = action.status
+                return action
+
+            max_power, min_throttle, max_throttle, ramp_up = self._engine_profile()
+            max_force = max_power * max_throttle
+            _, up_acc_max = vehicle_limits(passive, max_force)
+
+            target = pick_target(passive)
+            if target is None:
+                t_impact, impact_source = ballistic_time_to_impact(passive, active)
+                self._ballistic_debug_summary = (
+                    f"ball tti:{stable(t_impact, 1):4.1f} "
+                    f"src:{'s' if impact_source == 'sensor' else 'a'} "
+                    "burn:0"
+                )
+                alt = finite_altitude(passive)
+                a_up_sp = self._vertical_controller(
+                    passive,
+                    vy_sp=-1.0,
+                    alt=alt,
+                    vertical_mode="flare",
+                    up_acc_max=up_acc_max,
+                )
+                action = self._allocate_controls(
+                    dt,
+                    passive,
+                    a_x_sp=0.0,
+                    a_up_sp=a_up_sp,
+                    dx=0.0,
+                    alt=alt,
+                    vertical_mode="flare",
+                    max_power=max_power,
+                    min_throttle=min_throttle,
+                    max_throttle=max_throttle,
+                )
+                action.status = f"{self._policy.status_prefix}:search"
+                self.status = action.status
+                return action
+
+            guidance = self._guidance(
+                passive,
+                target,
+                max_force=max_force,
+                max_throttle=max_throttle,
+                ramp_up=ramp_up,
+                active=active,
+            )
+            if guidance.vertical_mode in ("coast", "coast_hold") and abs(
+                guidance.dx
+            ) <= self._policy.coast_horiz_deadband:
+                deadband = max(1e-3, self._policy.coast_horiz_deadband)
+                deadband_ratio = max(0.0, min(1.0, abs(guidance.dx) / deadband))
+                softened_vx_sp = guidance.vx_sp * deadband_ratio
+                a_x_sp = self._horizontal_controller(passive, softened_vx_sp)
+            else:
+                a_x_sp = self._horizontal_controller(passive, guidance.vx_sp)
+            a_up_sp = self._vertical_controller(
+                passive,
+                guidance.vy_sp,
+                guidance.alt,
+                guidance.vertical_mode,
+                up_acc_max,
+            )
+            action = self._allocate_controls(
+                dt,
+                passive,
+                a_x_sp=a_x_sp,
+                a_up_sp=a_up_sp,
+                dx=guidance.dx,
+                alt=guidance.alt,
+                vertical_mode=guidance.vertical_mode,
+                max_power=max_power,
+                min_throttle=min_throttle,
+                max_throttle=max_throttle,
+            )
+
+            action.status = (
+                f"{self._policy.status_prefix}:{guidance.phase} dx:{stable(guidance.dx, 1):6.1f} "
+                f"vx:{stable(passive.vx, 1):5.1f} vy:{stable(passive.vy_up, 1):5.1f} "
+                f"vys:{stable(guidance.vy_sp, 1):5.1f} "
+                f"balt:{stable(guidance.burn_altitude, 1):5.1f}"
+            )
+            self.status = action.status
+            return action
         finally:
             self._active_sensors = None
+
+    def _engine_profile(self) -> tuple[float, float, float, float]:
+        return engine_profile(self.vehicle_info)
 
     @staticmethod
     def _snapshot_float(value: object) -> float | None:
@@ -140,13 +239,15 @@ class CoastBot(StrategyDropBot):
         ramp_up: float,
         active: ActiveSensors | None = None,
     ) -> GuidanceTargets:
-        base_guidance = super()._guidance(
+        base_guidance, _ = compute_drop_guidance(
+            self._policy,
             passive,
             target,
             max_force=max_force,
             max_throttle=max_throttle,
             ramp_up=ramp_up,
             active=active,
+            terminal_brake_altitude_fn=self._terminal_brake_altitude,
         )
         coast_debug: dict[str, object] = {}
         guidance = apply_coast_guidance(
@@ -213,7 +314,6 @@ class CoastBot(StrategyDropBot):
     def _terminal_brake_altitude(
         self,
         passive: PassiveSensors,
-        *,
         alt: float,
         dx: float,
         burn_altitude: float,
@@ -258,6 +358,23 @@ class CoastBot(StrategyDropBot):
         )
         return tracker.ax_target
 
+    def _vertical_controller(
+        self,
+        passive: PassiveSensors,
+        vy_sp: float,
+        alt: float,
+        vertical_mode: str,
+        up_acc_max: float,
+    ) -> float:
+        return vertical_controller(
+            self._policy,
+            passive,
+            vy_sp,
+            alt,
+            vertical_mode,
+            up_acc_max,
+        )
+
     def _allocate_controls(
         self,
         dt: float,
@@ -268,8 +385,12 @@ class CoastBot(StrategyDropBot):
         alt: float,
         dx: float,
         vertical_mode: str,
+        max_power: float,
+        min_throttle: float,
+        max_throttle: float,
     ) -> BotAction:
-        action = super()._allocate_controls(
+        action, self._prev_angle_cmd = allocate_controls(
+            self._policy,
             dt,
             passive,
             a_x_sp=a_x_sp,
@@ -277,6 +398,10 @@ class CoastBot(StrategyDropBot):
             alt=alt,
             dx=dx,
             vertical_mode=vertical_mode,
+            prev_angle_cmd=self._prev_angle_cmd,
+            max_power=max_power,
+            min_throttle=min_throttle,
+            max_throttle=max_throttle,
         )
         action.target_angle = cap_low_altitude_angle(
             action.target_angle,
@@ -288,6 +413,11 @@ class CoastBot(StrategyDropBot):
 
     def get_headless_stats(self) -> str:
         base = super().get_headless_stats()
+        if self._ballistic_debug_summary:
+            if base:
+                base = f"{base} {self._ballistic_debug_summary}"
+            else:
+                base = self._ballistic_debug_summary
         if not self._handoff_event_summary:
             return base
         if not base:

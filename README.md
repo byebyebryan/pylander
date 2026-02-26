@@ -51,6 +51,9 @@ uv run python main.py flare
 # Pick a specific flare scenario
 uv run python main.py flare --scenario mid
 
+# Run unified ZEM/ZEV bot on flare
+uv run python main.py flare --bot zem_zev --scenario mid
+
 # Horizontal-control benchmark level + bot
 uv run python main.py coast
 
@@ -142,25 +145,37 @@ Scenario docs:
 uv run python main.py [level_name] [options]
 ```
 
-Use `uv run python main.py --help` for the up-to-date full list.
+**Levels:** Run `uv run python main.py --help` to list (e.g. `flat`, `mountains`, `plunge`).
 
-Common options:
+**Bot names:** `plunge`, `flare`, `coast`, `launch`, `zem_zev` (set via `--bot`; see `--help`).
 
-- `--bot NAME` select bot (`plunge`, `flare`, `coast`, `launch`)
-- `--bot-behavior NAME` behavior profile for bots that support it
-- `--headless` run without graphics
-- `--freq N` stats print frequency
-- `--steps N`, `--time S` headless run limits
-- `--plot none|speed|thrust|all` save trajectory plot
-- `--eval-mode auto|focused|full` staged eval mode
-- `--seed N` random seed
-- `--scenario NAME` pick scenario
-- `--lander NAME` choose lander variant
-- `--batch` enable batch runs
-- `--batch-seeds`, `--batch-levels`, `--batch-scenarios` batch selection
-- `--batch-json`, `--batch-csv` output reports
-- `--batch-workers N` parallel worker count
-- `--quick-benchmark` run fixed cross-level benchmark suite
+**Options:**
+- `--bot NAME` - Select bot (`plunge`, `flare`, `coast`, `launch`, `zem_zev`)
+- `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `plunge` => `balanced`; `flare` => `flare`; `coast` => `coast`; `launch` => `launch`)
+- `--headless` - Run without graphics (requires bot)
+- `--freq N` - Print stats every N frames (60 ≈ 1/s; 0 = off)
+- `--steps N` - Limit simulation to N steps (headless)
+- `--time S` - Limit simulation to S seconds (headless, default 300)
+- `--plot none|speed|thrust|all` - Save trajectory plot (headless)
+- `--stop-on-crash`, `--stop-on-out-of-fuel`, `--stop-on-first-land` - End conditions
+- `--eval-mode auto|focused|full` - Evaluation mode for staged levels (`coast` and `launch` default to full when auto)
+- `--seed N` - Random seed
+- `--scenario NAME` - Select a level scenario (if supported)
+- `--lander NAME` - Lander variant (classic, differential, simple)
+- `--batch` - Enable batch runs (requires `--headless` + bot)
+- `--batch-seeds SPEC` - Seeds like `0-19` or `0,1,2,5`
+- `--batch-levels CSV` - Level names for batch suites
+- `--batch-scenarios CSV` - Scenario names for batch suites
+- `--batch-json PATH|auto` - Write JSON report
+- `--batch-csv PATH|auto` - Write CSV rows
+- `--batch-workers N` - Parallel worker processes for batch runs (`1` = sequential; effective workers are capped by CPU count and run count)
+- `--quick-benchmark` - Built-in cross-level core benchmark preset (`plunge` + `flare` + `coast` + `launch` subsets)
+- `--help`, `-h` - Show help message
+
+Batch mode defaults to `--freq 0` (quiet) for speed; pass `--freq` to enable per-run stats.
+Quiet mode disables per-step stats output, but batch progress lines still print.
+
+Batch/headless eval records include `landing_offset` (absolute horizontal error from target center on landed runs).
 
 ## Promotion Gates (Plunge Bot)
 

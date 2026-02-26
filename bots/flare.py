@@ -5,18 +5,12 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, replace
 
-from bots._coast_core import COAST_POLICY, CoastCourseConfig, cap_low_altitude_angle
+from bots._ballistics import ballistic_time_to_impact, estimate_ballistic_projection
+from bots._bot_math import clamp, engine_profile, finite_altitude, stable, vehicle_limits
+from bots._coast_core import COAST_POLICY, CoastCourseConfig, GuidanceTargets, cap_low_altitude_angle
+from bots._drop_control import can_use_overdrive, rate_limit_angle_command, vertical_controller
 from bots._launch_core import LaunchSetupConfig, resolve_sideburn_target_angle
-from bots._plunge_core import (
-    GuidanceTargets,
-    StrategyDropBot,
-    ballistic_time_to_impact,
-    clamp,
-    estimate_ballistic_projection,
-    finite_altitude,
-    rate_limit_angle_command,
-    vehicle_limits,
-)
+from bots._targeting import pick_target
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
 
@@ -124,9 +118,10 @@ class FlareControlConfig:
     touchdown_zero_vy: float = 0.9
 
 
-class FlareBot(StrategyDropBot):
+class FlareBot(Bot):
     def __init__(self, behavior: str = "flare") -> None:
-        super().__init__(replace(COAST_POLICY, status_prefix="flare"))
+        super().__init__()
+        self._policy = replace(COAST_POLICY, status_prefix="flare")
         self._control_cfg = FlareControlConfig()
         self._course_cfg = replace(
             CoastCourseConfig(),
@@ -148,6 +143,8 @@ class FlareBot(StrategyDropBot):
         )
         self._active_sensors: ActiveSensors | None = None
         self._behavior = "flare"
+        self._prev_angle_cmd = 0.0
+        self._ballistic_debug_summary = ""
         self._last_guidance: GuidanceTargets | None = None
         self._last_projected_dx = 0.0
         self._last_t_go = 1.0
@@ -187,6 +184,19 @@ class FlareBot(StrategyDropBot):
         if self.vehicle_info is None:
             return 0.0
         return max(0.0, 0.5 * float(self.vehicle_info.height))
+
+    def _terminal_brake_altitude(
+        self,
+        passive: PassiveSensors,
+        *,
+        alt: float,
+        dx: float,
+        burn_altitude: float,
+        spool_time: float,
+        max_force: float,
+    ) -> float:
+        _ = passive, alt, dx, spool_time, max_force
+        return burn_altitude
 
     def _resolve_sideburn_direction(self, projected_dx: float, dx: float, vx: float) -> float:
         if self._sideburn_switch_hold > 0:
@@ -240,11 +250,103 @@ class FlareBot(StrategyDropBot):
             self._terminal_burn_hold = 0
             self._last_guidance = None
             self._projection_summary = ""
+            self._ballistic_debug_summary = ""
+        if passive.state in ("landed", "crashed", "out_of_fuel"):
+            action = BotAction(
+                0.0,
+                passive.angle,
+                False,
+                status=f"{self._policy.status_prefix}:{passive.state}",
+            )
+            self.status = action.status
+            return action
         self._active_sensors = active
         try:
-            return super().update(dt, passive, active)
+            max_power, min_throttle, max_throttle, ramp_up = self._engine_profile()
+            max_force = max_power * max_throttle
+            _, up_acc_max = vehicle_limits(passive, max_force)
+
+            target = pick_target(passive)
+            if target is None:
+                t_impact, impact_source = ballistic_time_to_impact(passive, active)
+                self._ballistic_debug_summary = (
+                    f"ball tti:{stable(t_impact, 1):4.1f} "
+                    f"src:{'s' if impact_source == 'sensor' else 'a'} "
+                    "burn:0"
+                )
+                alt = finite_altitude(passive)
+                a_up_sp = self._vertical_controller(
+                    passive,
+                    vy_sp=-0.8,
+                    alt=alt,
+                    vertical_mode="flare",
+                    up_acc_max=up_acc_max,
+                )
+                action = self._allocate_controls(
+                    dt,
+                    passive,
+                    a_x_sp=0.0,
+                    a_up_sp=a_up_sp,
+                    dx=0.0,
+                    alt=alt,
+                    vertical_mode="flare",
+                )
+                action.status = f"{self._policy.status_prefix}:search"
+                self.status = action.status
+                return action
+
+            guidance = self._guidance(
+                passive,
+                target,
+                max_force=max_force,
+                max_throttle=max_throttle,
+                ramp_up=ramp_up,
+                active=active,
+            )
+            a_x_sp = self._horizontal_controller(passive, guidance.vx_sp)
+            a_up_sp = self._vertical_controller(
+                passive,
+                guidance.vy_sp,
+                guidance.alt,
+                guidance.vertical_mode,
+                up_acc_max,
+            )
+            action = self._allocate_controls(
+                dt,
+                passive,
+                a_x_sp=a_x_sp,
+                a_up_sp=a_up_sp,
+                dx=guidance.dx,
+                alt=guidance.alt,
+                vertical_mode=guidance.vertical_mode,
+            )
+            action.status = (
+                f"{self._policy.status_prefix}:{guidance.phase} dx:{stable(guidance.dx, 1):6.1f} "
+                f"vx:{stable(passive.vx, 1):5.1f} vy:{stable(passive.vy_up, 1):5.1f} "
+                f"vys:{stable(guidance.vy_sp, 1):5.1f} "
+                f"balt:{stable(guidance.burn_altitude, 1):5.1f}"
+            )
+            self.status = action.status
+            return action
         finally:
             self._active_sensors = None
+
+    def _engine_profile(self) -> tuple[float, float, float, float]:
+        return engine_profile(self.vehicle_info)
+
+    def _can_use_overdrive(
+        self,
+        passive: PassiveSensors,
+        *,
+        vertical_mode: str,
+        alt: float,
+    ) -> bool:
+        return can_use_overdrive(
+            self._policy,
+            passive,
+            vertical_mode=vertical_mode,
+            alt=alt,
+        )
 
     def _guidance(
         self,
@@ -584,7 +686,14 @@ class FlareBot(StrategyDropBot):
             ):
                 a_up_cmd = max(a_up_cmd, 9.8 + (cfg.emergency_brake_gain * up_acc_max))
             return clamp(a_up_cmd, 0.0, 9.8 + (0.55 * up_acc_max))
-        return super()._vertical_controller(passive, vy_sp, alt, vertical_mode, up_acc_max)
+        return vertical_controller(
+            self._policy,
+            passive,
+            vy_sp,
+            alt,
+            vertical_mode,
+            up_acc_max,
+        )
 
     def _allocate_sideburn_controls(
         self,
@@ -715,6 +824,11 @@ class FlareBot(StrategyDropBot):
 
     def get_headless_stats(self) -> str:
         base = super().get_headless_stats()
+        if self._ballistic_debug_summary:
+            if base:
+                base = f"{base} {self._ballistic_debug_summary}"
+            else:
+                base = self._ballistic_debug_summary
         if not self._projection_summary:
             return base
         if not base:

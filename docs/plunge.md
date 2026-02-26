@@ -54,21 +54,26 @@ Useful metrics to watch (batch summaries come from [`core/eval.py`](../core/eval
 
 ## Current bot strategy (what it's doing today)
 
-`PlungeBot` ([`bots/plunge.py`](../bots/plunge.py)) is a thin wrapper around `StrategyDropBot` with a selectable policy:
+`PlungeBot` ([`bots/plunge.py`](../bots/plunge.py)) is now a concrete balanced-only bot.
 
-- `balanced`: baseline
-- `speed`: more aggressive descent and braking (faster runs, higher risk)
-- `econ`: more conservative margins + "save fuel when safe"
+Control loop:
 
-Under the hood (in [`bots/_plunge_core.py`](../bots/_plunge_core.py)), the control loop is roughly:
+- Pick the first radar target (eval levels currently expose a single target).
+- Estimate projected lateral error + time-to-impact (sensor when available, analytic fallback).
+- Run a simple terminal state flow:
+  - `coast`: free-fall while burn is not required yet.
+  - `burn`: start landing burn before the stop window closes.
+  - `flare`: drive descent toward `vy ~= 0` as altitude approaches zero.
+  - `touchdown`: cut engine when low altitude and low velocity tolerances are met.
+- Allocate thrust + angle with rate limits and low-altitude safety caps.
 
-- Pick the nearest radar target
-- Estimate time-to-impact and lateral error (analytic fallback, sensor when available)
-- Choose a `phase` / `vertical_mode` (coast vs terminal burn vs flare vs touchdown, plus optional glide/dive modes depending on policy)
-- Compute desired accelerations:
-  - Horizontal: simple PD on `vx`
-  - Vertical: mode-dependent braking/flare logic
-- Allocate thrust + angle with rate limits and tilt caps
+Shared reusable bot libs are split by concern:
+
+- [`bots/_ballistics.py`](../bots/_ballistics.py)
+- [`bots/_targeting.py`](../bots/_targeting.py)
+- [`bots/_coast_core.py`](../bots/_coast_core.py)
+- [`bots/_drop_control.py`](../bots/_drop_control.py)
+- [`bots/_bot_math.py`](../bots/_bot_math.py)
 
 ## How to run it
 

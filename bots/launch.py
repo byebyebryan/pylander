@@ -6,20 +6,15 @@ import math
 from dataclasses import replace
 from typing import Any
 
-from bots._plunge_core import (
-    DropPolicy,
-    GuidanceTargets,
-    StrategyDropBot,
-    clamp,
-    coerce_finite,
-    rate_limit_angle_command,
-    resolve_behavior,
-)
+from bots._bot_math import clamp, coerce_finite, resolve_behavior
 from bots._coast_core import (
     COAST_COURSE,
     COAST_POLICY,
     CoastCourseConfig,
+    DropPolicy,
+    GuidanceTargets,
     apply_coast_guidance,
+    compute_drop_guidance,
     cone_dx_limit,
 )
 from bots._launch_core import (
@@ -32,6 +27,7 @@ from bots._launch_core import (
     resolve_sideburn_target_angle,
     setup_fuel_reserve_threshold,
 )
+from bots._drop_control import rate_limit_angle_command
 from bots.coast import CoastBot
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
@@ -407,14 +403,15 @@ class LaunchBot(CoastBot):
         ramp_up: float,
         active: ActiveSensors | None = None,
     ) -> GuidanceTargets:
-        base_guidance = StrategyDropBot._guidance(
-            self,
+        base_guidance, _ = compute_drop_guidance(
+            self._policy,
             passive,
             target,
             max_force=max_force,
             max_throttle=max_throttle,
             ramp_up=ramp_up,
             active=active,
+            terminal_brake_altitude_fn=self._terminal_brake_altitude,
         )
         current_guidance = replace(
             base_guidance,
@@ -574,6 +571,9 @@ class LaunchBot(CoastBot):
         alt: float,
         dx: float,
         vertical_mode: str,
+        max_power: float | None = None,
+        min_throttle: float | None = None,
+        max_throttle: float | None = None,
     ) -> BotAction:
         if vertical_mode != "launch_sideburn":
             return super()._allocate_controls(
@@ -584,8 +584,12 @@ class LaunchBot(CoastBot):
                 alt=alt,
                 dx=dx,
                 vertical_mode=vertical_mode,
+                max_power=max_power if max_power is not None else self._engine_profile()[0],
+                min_throttle=min_throttle if min_throttle is not None else self._engine_profile()[1],
+                max_throttle=max_throttle if max_throttle is not None else self._engine_profile()[2],
             )
-        max_power, min_throttle, max_throttle, _ = self._engine_profile()
+        if max_power is None or min_throttle is None or max_throttle is None:
+            max_power, min_throttle, max_throttle, _ = self._engine_profile()
         mass = max(0.5, passive.mass)
         projection_now = _estimate_ballistic_projection(
             dx=float(dx),

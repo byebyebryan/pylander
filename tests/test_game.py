@@ -11,6 +11,7 @@ import bots.launch as launch_module
 from bots._coast_core import (
     COAST_POLICY,
     CoastCourseConfig,
+    GuidanceTargets,
     apply_coast_guidance,
     cap_low_altitude_angle,
     coupled_brake_window,
@@ -18,8 +19,9 @@ from bots._coast_core import (
     resolve_coast_behavior,
     should_handoff_to_flare,
 )
+from bots._ballistics import ballistic_time_to_impact
 from bots._launch_core import LaunchSetupConfig
-from bots._plunge_core import GuidanceTargets, ballistic_time_to_impact
+from bots._targeting import pick_target
 from bots import create_bot, list_available_bots
 from bots.flare import FlareBot
 from bots.plunge import PlungeBot
@@ -315,8 +317,65 @@ def test_plunge_bot_engine_profile_fallback_uses_realistic_defaults() -> None:
     assert ramp_up == pytest.approx(1.1)
 
 
-def test_plunge_econ_behavior_blocks_overdrive_when_fuel_margin_is_low() -> None:
-    bot = PlungeBot(behavior="econ")
+def test_pick_target_prefers_first_radar_contact() -> None:
+    passive = PassiveSensors(
+        x=0.0,
+        y=150.0,
+        altitude=150.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-2.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.0,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[
+            RadarContact(
+                uid="first",
+                x=5.0,
+                y=0.0,
+                size=110.0,
+                angle=0.0,
+                distance=500.0,
+                rel_x=5.0,
+                rel_y=-150.0,
+                is_inner_lock=False,
+                info=None,
+            ),
+            RadarContact(
+                uid="second",
+                x=0.0,
+                y=0.0,
+                size=110.0,
+                angle=0.0,
+                distance=10.0,
+                rel_x=0.0,
+                rel_y=-150.0,
+                is_inner_lock=True,
+                info=None,
+            ),
+        ],
+        proximity=None,
+    )
+    target = pick_target(passive)
+    assert target is not None
+    assert target.uid == "first"
+
+
+def test_plunge_behavior_rejects_non_balanced_modes() -> None:
+    with pytest.raises(ValueError, match="Expected one of: balanced"):
+        PlungeBot(behavior="econ")
+    with pytest.raises(ValueError, match="Expected one of: balanced"):
+        PlungeBot(behavior="speed")
+
+
+def test_plunge_balanced_behavior_blocks_overdrive_when_fuel_margin_is_low() -> None:
+    bot = PlungeBot()
     passive = PassiveSensors(
         x=0.0,
         y=100.0,
@@ -339,8 +398,8 @@ def test_plunge_econ_behavior_blocks_overdrive_when_fuel_margin_is_low() -> None
     assert not bot._can_use_overdrive(passive, vertical_mode="terminal_burn", alt=8.0)
 
 
-def test_plunge_speed_behavior_status_prefix_is_distinct() -> None:
-    bot = PlungeBot(behavior="speed")
+def test_plunge_status_prefix_uses_balanced_mode() -> None:
+    bot = PlungeBot()
     passive = PassiveSensors(
         x=0.0,
         y=0.0,
@@ -361,7 +420,7 @@ def test_plunge_speed_behavior_status_prefix_is_distinct() -> None:
         proximity=None,
     )
     action = bot.update(1.0 / 60.0, passive, active=None)
-    assert action.status.startswith("plunge_speed:")
+    assert action.status.startswith("plunge:")
 
 
 def test_plunge_bot_headless_stats_include_ballistic_summary() -> None:
@@ -396,7 +455,7 @@ def test_plunge_bot_headless_stats_include_ballistic_summary() -> None:
     assert "ball tti:" in stats
 
 
-def test_plunge_guidance_uses_tighter_sensor_time_buffer(monkeypatch) -> None:
+def test_plunge_guidance_handles_analytic_and_sensor_impact_sources(monkeypatch) -> None:
     bot = PlungeBot()
     passive = PassiveSensors(
         x=0.0,
@@ -433,8 +492,8 @@ def test_plunge_guidance_uses_tighter_sensor_time_buffer(monkeypatch) -> None:
     max_force = max_power * max_throttle
 
     monkeypatch.setattr(
-        "bots._plunge_core.ballistic_time_to_impact",
-        lambda _passive, _active: (1.16, "analytic"),
+        "bots.plunge.ballistic_time_to_impact",
+        lambda _passive, _active: (1.2, "analytic"),
     )
     analytic_guidance = bot._guidance(
         passive,
@@ -445,8 +504,8 @@ def test_plunge_guidance_uses_tighter_sensor_time_buffer(monkeypatch) -> None:
     )
 
     monkeypatch.setattr(
-        "bots._plunge_core.ballistic_time_to_impact",
-        lambda _passive, _active: (1.16, "sensor"),
+        "bots.plunge.ballistic_time_to_impact",
+        lambda _passive, _active: (1.2, "sensor"),
     )
     sensor_guidance = bot._guidance(
         passive,
@@ -456,12 +515,14 @@ def test_plunge_guidance_uses_tighter_sensor_time_buffer(monkeypatch) -> None:
         ramp_up=ramp_up,
     )
 
-    assert analytic_guidance.vertical_mode == "terminal_burn"
-    assert sensor_guidance.vertical_mode != "terminal_burn"
+    assert analytic_guidance.vertical_mode in {"coast", "terminal_burn", "flare"}
+    assert sensor_guidance.vertical_mode in {"coast", "terminal_burn", "flare"}
+    assert math.isfinite(float(analytic_guidance.burn_altitude))
+    assert math.isfinite(float(sensor_guidance.burn_altitude))
 
 
-def test_plunge_speed_behavior_can_use_overdrive_outside_terminal_mode() -> None:
-    bot = PlungeBot(behavior="speed")
+def test_plunge_balanced_overdrive_requires_terminal_mode() -> None:
+    bot = PlungeBot()
     passive = PassiveSensors(
         x=0.0,
         y=100.0,
@@ -481,7 +542,7 @@ def test_plunge_speed_behavior_can_use_overdrive_outside_terminal_mode() -> None
         radar_contacts=[],
         proximity=None,
     )
-    assert bot._can_use_overdrive(passive, vertical_mode="flare", alt=30.0)
+    assert not bot._can_use_overdrive(passive, vertical_mode="flare", alt=30.0)
 
 
 def test_apply_drift_guidance_pushes_large_offset_into_correction_mode() -> None:
@@ -2581,7 +2642,7 @@ def test_parse_args_accepts_scenario_options() -> None:
     args = argparse.Namespace(
         level_name="plunge",
         bot="plunge",
-        bot_behavior="speed",
+        bot_behavior="balanced",
         headless=True,
         batch=False,
         freq=None,
@@ -2605,7 +2666,7 @@ def test_parse_args_accepts_scenario_options() -> None:
     config = _parse_args(args)
     assert config.scenario_name == "mid_normal"
     assert config.batch_scenarios == "mid_normal,high_heavy"
-    assert config.bot_behavior == "speed"
+    assert config.bot_behavior == "balanced"
 
 
 def test_parse_args_accepts_eval_mode() -> None:

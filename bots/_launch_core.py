@@ -5,12 +5,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from bots._plunge_core import (
-    BallisticProjection,
-    GuidanceTargets,
-    clamp,
-    estimate_ballistic_projection,
-)
+from bots._ballistics import BallisticProjection, estimate_ballistic_projection
+from bots._bot_math import clamp
+from bots._coast_core import GuidanceTargets
 from core.bot import ActiveSensors
 
 
