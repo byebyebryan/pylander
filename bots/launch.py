@@ -7,15 +7,14 @@ from dataclasses import replace
 from typing import Any
 
 from bots._bot_math import clamp, coerce_finite, rate_limit_angle_command, resolve_behavior
-from bots._coast_core import (
+from bots._coast_tracking import (
     COAST_COURSE,
     COAST_POLICY,
     CoastCourseConfig,
-    DropPolicy,
     apply_coast_guidance,
-    compute_drop_guidance,
     cone_dx_limit,
 )
+from bots._drop_guidance import DropPolicy, compute_drop_guidance
 from bots._guidance_types import GuidanceTargets
 from bots._launch_core import (
     LaunchSetupConfig,

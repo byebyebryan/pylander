@@ -14,12 +14,16 @@ from bots._bot_math import (
     stable,
     vehicle_limits,
 )
-from bots._coast_core import COAST_POLICY, CoastCourseConfig
+from bots._coast_tracking import COAST_POLICY, CoastCourseConfig
 from bots._guidance_limits import cap_low_altitude_angle
 from bots._guidance_types import GuidanceTargets
 from bots._launch_core import LaunchSetupConfig
 from bots._sideburn_control import resolve_sideburn_target_angle
-from bots._terminal_burn import TerminalBurnModel, compute_terminal_burn_estimate
+from bots._terminal_burn import (
+    TerminalBurnModel,
+    compute_terminal_burn_estimate,
+    should_start_terminal_burn,
+)
 from bots._targeting import pick_target
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
@@ -608,12 +612,11 @@ class FlareBot(Bot):
             spool_time=burn.spool_time,
             max_force=max_force,
         )
-        raw_burn_now = bool(
-            burn.raw_burn_now
-            or (
-                burn.down_speed > cfg.burn_activation_down_speed_min
-                and alt <= burn_altitude
-            )
+        raw_burn_now = should_start_terminal_burn(
+            alt=alt,
+            burn_altitude=burn_altitude,
+            burn_activation_down_speed_min=cfg.burn_activation_down_speed_min,
+            estimate=burn,
         )
         if raw_burn_now:
             self._terminal_burn_hold = max(self._terminal_burn_hold, int(cfg.burn_hold_frames))

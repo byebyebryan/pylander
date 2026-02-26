@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 from core.components import FuelTank, PhysicsState, Transform
+from core.ecs import require_component
 from core.level import Level
 from core.maths import Vector2
-from core.ecs import require_component
 from core.terrain import ballistic_fall_time
 from levels.scenario_common import (
     ScenarioLevel,
@@ -20,127 +20,90 @@ from levels.scenario_common import (
 @dataclass(frozen=True)
 class CoastScenario:
     name: str
-    spawn_clearance: float
-    start_x: float
-    trajectory_error: float = 0.0
-    initial_vx_toward_target: float | None = None
-    initial_vy_up: float = 0.0
+    angle_deg: float
+    start_dx: float
+    start_dy: float
+    initial_vx_toward_target: float
+    initial_vy_up: float
+    projected_dx_error: float = 0.0
     initial_angle: float = 0.0
     cargo_mass: float = 1800.0
 
 
 @dataclass(frozen=True)
-class _BallisticProfile:
-    name: str
-    spawn_clearance: float
-    start_x: float
-    initial_vy_up: float = 0.0
-
-
-@dataclass(frozen=True)
-class _TrajectoryErrorTier:
+class _DeviationTier:
     key: str
-    trajectory_error: float
+    projected_dx_error: float
 
 
-@dataclass(frozen=True)
-class _ScenarioCell:
-    profile: str
-    error_tier: str
-    scenario: CoastScenario
-
-
-_BALLISTIC_PROFILES: tuple[_BallisticProfile, ...] = (
-    _BallisticProfile(name="glide_short", spawn_clearance=220.0, start_x=120.0),
-    _BallisticProfile(name="glide_mid", spawn_clearance=420.0, start_x=320.0),
-    _BallisticProfile(name="glide_long", spawn_clearance=900.0, start_x=900.0),
-    _BallisticProfile(
-        name="flat",
-        spawn_clearance=650.0,
-        start_x=760.0,
-        initial_vy_up=10.0,
-    ),
+_SPAWN_RADIUS = 800.0
+_TARGET_FLIGHT_TIME_S = 12.0
+_ANGLE_PROFILES: tuple[tuple[str, float], ...] = (
+    ("entry_shallow", 30.0),
+    ("entry_mid", 45.0),
+    ("entry_steep", 60.0),
 )
-_ERROR_TIERS: tuple[_TrajectoryErrorTier, ...] = (
-    _TrajectoryErrorTier(key="none", trajectory_error=0.0),
-    _TrajectoryErrorTier(key="normal", trajectory_error=20.0),
-    _TrajectoryErrorTier(key="stress", trajectory_error=28.0),
+_DEVIATION_TIERS: tuple[_DeviationTier, ...] = (
+    _DeviationTier(key="nominal", projected_dx_error=0.0),
+    _DeviationTier(key="trim", projected_dx_error=30.0),
+    _DeviationTier(key="energy", projected_dx_error=80.0),
+    _DeviationTier(key="stress", projected_dx_error=90.0),
 )
-_PROFILE_ERROR_TIERS: dict[str, tuple[str, ...]] = {
-    "glide_short": ("none", "normal"),
-    "glide_mid": ("none", "normal"),
-    "glide_long": ("none", "normal", "stress"),
-    "flat": ("none", "normal", "stress"),
+_PROFILE_TIERS: dict[str, tuple[str, ...]] = {
+    "entry_shallow": ("nominal", "trim"),
+    "entry_mid": ("nominal", "trim", "energy"),
+    "entry_steep": ("nominal", "energy", "stress"),
 }
-_ERROR_TIER_BY_KEY = {tier.key: tier for tier in _ERROR_TIERS}
+_TIER_BY_KEY = {tier.key: tier for tier in _DEVIATION_TIERS}
 
 
-def _scenario_name(profile: str, error_tier: str) -> str:
-    if error_tier == "none":
+def _scenario_name(profile: str, tier: str) -> str:
+    if tier == "nominal":
         return profile
-    if error_tier == "normal":
-        return f"{profile}_correction"
-    if error_tier == "stress":
-        return f"{profile}_stress_correction"
-    raise ValueError(f"Unknown coast error tier '{error_tier}'")
+    return f"{profile}_{tier}"
 
 
-_BASE_CELLS: tuple[_ScenarioCell, ...] = tuple(
-    _ScenarioCell(
-        profile=profile.name,
-        error_tier=tier_key,
-        scenario=CoastScenario(
-            name=_scenario_name(profile.name, tier_key),
-            spawn_clearance=profile.spawn_clearance,
-            start_x=profile.start_x,
-            trajectory_error=_ERROR_TIER_BY_KEY[tier_key].trajectory_error,
-            initial_vy_up=profile.initial_vy_up,
-        ),
+def _build_entry(profile_name: str, angle_deg: float, tier: _DeviationTier) -> CoastScenario:
+    angle_rad = math.radians(float(angle_deg))
+    start_dx = _SPAWN_RADIUS * math.cos(angle_rad)
+    start_dy = _SPAWN_RADIUS * math.sin(angle_rad)
+    gravity = 9.8
+    time_to_target = _TARGET_FLIGHT_TIME_S
+    vx_toward_target = start_dx / max(1e-6, time_to_target)
+    vy_up = ((0.5 * gravity * time_to_target * time_to_target) - start_dy) / max(1e-6, time_to_target)
+    return CoastScenario(
+        name=_scenario_name(profile_name, tier.key),
+        angle_deg=float(angle_deg),
+        start_dx=float(start_dx),
+        start_dy=float(start_dy),
+        initial_vx_toward_target=float(vx_toward_target),
+        initial_vy_up=float(vy_up),
+        projected_dx_error=float(tier.projected_dx_error),
     )
-    for profile in _BALLISTIC_PROFILES
-    for tier_key in _PROFILE_ERROR_TIERS[profile.name]
-)
-_BASE_SCENARIOS: tuple[CoastScenario, ...] = tuple(cell.scenario for cell in _BASE_CELLS)
-_HANDOFF_SCENARIOS: tuple[CoastScenario, ...] = (
-    # Ferry high-energy setup mirrors (pre-handoff): very large offset and high |vx|.
-    CoastScenario(
-        name="handoff_extreme",
-        spawn_clearance=260.0,
-        start_x=1200.0,
-        initial_vx_toward_target=108.0,
-        initial_vy_up=34.0,
-        cargo_mass=0.0,
-    ),
-    CoastScenario(
-        name="handoff_extreme_fast",
-        spawn_clearance=240.0,
-        start_x=1320.0,
-        initial_vx_toward_target=116.0,
-        initial_vy_up=30.0,
-        cargo_mass=0.0,
-    ),
+
+
+_BASE_SCENARIOS: tuple[CoastScenario, ...] = tuple(
+    _build_entry(profile_name, angle_deg, _TIER_BY_KEY[tier_key])
+    for profile_name, angle_deg in _ANGLE_PROFILES
+    for tier_key in _PROFILE_TIERS[profile_name]
 )
 _CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
     ("cargo_high", 4500.0),
 )
 _CARGO_VARIANT_BASES: tuple[str, ...] = (
-    tuple(
-        cell.scenario.name
-        for cell in _BASE_CELLS
-        if cell.profile in {"glide_mid", "glide_long"} and cell.error_tier in {"normal", "stress"}
-    )
+    "entry_mid_energy",
+    "entry_steep_stress",
 )
 _SCENARIOS: tuple[CoastScenario, ...] = (
-    _BASE_SCENARIOS
-    + _HANDOFF_SCENARIOS
-    + tuple(
+    _BASE_SCENARIOS + tuple(
         CoastScenario(
             name=f"{base.name}_{suffix}",
-            spawn_clearance=base.spawn_clearance,
-            start_x=base.start_x,
-            trajectory_error=base.trajectory_error,
+            angle_deg=base.angle_deg,
+            start_dx=base.start_dx,
+            start_dy=base.start_dy,
             initial_vx_toward_target=base.initial_vx_toward_target,
             initial_vy_up=base.initial_vy_up,
+            projected_dx_error=base.projected_dx_error,
             initial_angle=base.initial_angle,
             cargo_mass=cargo_mass,
         )
@@ -151,54 +114,22 @@ _SCENARIOS: tuple[CoastScenario, ...] = (
 )
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "glide_mid"
+_DEFAULT_SCENARIO = "entry_mid_trim"
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    "glide_mid",
-    "glide_long_stress_correction",
-    "handoff_extreme",
+    "entry_mid_trim",
+    "entry_mid_energy",
+    "entry_steep_stress",
 )
 _COAST_EVAL_MODES: tuple[str, ...] = ("auto", "focused", "full")
 _COAST_DEFAULT_EVAL_MODE = "full"
-
-_COAST_SPAWN_OFFSET_MIN = 70.0
-_COAST_SPAWN_OFFSET_MAX = 900.0
-_COAST_SPAWN_OFFSET_PER_ALT = 1.0
-_COAST_TRAJECTORY_ERROR_MIN = 0.0
-_COAST_TRAJECTORY_ERROR_MAX = 36.0
-_COAST_TRAJECTORY_ERROR_PER_ALT = 0.1
-
-
-def _clamp_signed(value: float, magnitude_limit: float) -> float:
-    limit = max(0.0, float(magnitude_limit))
-    return max(-limit, min(limit, float(value)))
-
-
-def _apply_coast_envelope(scenario: CoastScenario) -> CoastScenario:
-    if scenario.initial_vx_toward_target is not None:
-        # Hand-off mirror scenarios intentionally preserve extreme offsets/speeds.
-        return scenario
-    alt = max(0.0, float(scenario.spawn_clearance))
-    offset_limit = min(
-        _COAST_SPAWN_OFFSET_MAX,
-        max(_COAST_SPAWN_OFFSET_MIN, _COAST_SPAWN_OFFSET_PER_ALT * alt),
-    )
-    error_limit = min(
-        _COAST_TRAJECTORY_ERROR_MAX,
-        max(_COAST_TRAJECTORY_ERROR_MIN, _COAST_TRAJECTORY_ERROR_PER_ALT * alt),
-    )
-    return replace(
-        scenario,
-        start_x=_clamp_signed(scenario.start_x, offset_limit),
-        trajectory_error=_clamp_signed(scenario.trajectory_error, error_limit),
-    )
-
+_FOCUSED_SUCCESS_PROJECTED_DX_MAX = 30.0
 
 def _make_spec(scenario: CoastScenario) -> ScenarioLevelSpec:
     return ScenarioLevelSpec(
         name=scenario.name,
-        start_x=scenario.start_x,
+        start_x=scenario.start_dx,
         target_x=0.0,
-        spawn_clearance=scenario.spawn_clearance,
+        spawn_clearance=scenario.start_dy,
         terrain_kind="flat",
         target_mode="flush_flatten",
         target_offset_y=0.0,
@@ -373,43 +304,57 @@ class CoastLevel(ScenarioLevel):
     def setup(self, game, seed: int) -> None:
         self._resolved_eval_mode = self._mode_for_run()
         self._reset_phase_eval_metrics()
-        scenario_base = _apply_coast_envelope(_SCENARIO_BY_NAME[self._eval_scenario_name])
+        scenario_base = _SCENARIO_BY_NAME[self._eval_scenario_name]
         scenario_name_hash = sum(ord(ch) for ch in scenario_base.name)
         dir_rng = random.Random(seed ^ (scenario_name_hash << 1))
         err_rng = random.Random(seed ^ (scenario_name_hash << 2))
         direction = -1.0 if dir_rng.random() < 0.5 else 1.0
-        trajectory_error_sign = -1.0 if err_rng.random() < 0.5 else 1.0
-        scenario = replace(
-            scenario_base,
-            start_x=float(scenario_base.start_x) * direction,
+        deviation_sign = -1.0 if err_rng.random() < 0.5 else 1.0
+        scenario = CoastScenario(
+            name=scenario_base.name,
+            angle_deg=scenario_base.angle_deg,
+            start_dx=float(scenario_base.start_dx) * direction,
+            start_dy=float(scenario_base.start_dy),
+            initial_vx_toward_target=float(scenario_base.initial_vx_toward_target),
+            initial_vy_up=float(scenario_base.initial_vy_up),
+            projected_dx_error=float(scenario_base.projected_dx_error),
+            initial_angle=float(scenario_base.initial_angle),
+            cargo_mass=float(scenario_base.cargo_mass),
         )
         self.scenario = _make_spec(scenario)
         super().setup(game, seed)
 
         actor = self.world.actors[0]
+        trans = require_component(actor, Transform)
+        phys = require_component(actor, PhysicsState)
+        target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
+        trans.pos = Vector2(
+            float(target_pos.x) + (direction * float(scenario_base.start_dx)),
+            float(target_pos.y) + float(scenario_base.start_dy),
+        )
+        actor.start_pos = Vector2(trans.pos)
+
+        toward_speed = abs(float(scenario.initial_vx_toward_target))
+        initial_vy_up = float(scenario.initial_vy_up)
+        t_fall = max(
+            0.5,
+            ballistic_fall_time(
+                altitude=float(scenario.start_dy),
+                vy_up=initial_vy_up,
+            ),
+        )
+        projected_dx_error = deviation_sign * abs(float(scenario.projected_dx_error))
+        vx_error = projected_dx_error / t_fall
+        initial_vx = (-direction * toward_speed) + vx_error
+        trans.rotation = float(scenario.initial_angle)
+
         validate_scenario_recoverability(
             actor,
             scenario_name=scenario.name,
-            spawn_clearance=scenario.spawn_clearance,
-            initial_vy_up=scenario.initial_vy_up,
+            spawn_clearance=float(scenario.start_dy),
+            initial_vy_up=initial_vy_up,
         )
-
-        trans = require_component(actor, Transform)
-        phys = require_component(actor, PhysicsState)
-        trans.rotation = float(scenario.initial_angle)
-
-        target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
-        dx = float(target_pos.x - trans.pos.x)
-        alt = max(0.0, float(trans.pos.y - target_pos.y))
-        t_fall = ballistic_fall_time(altitude=alt, vy_up=float(scenario.initial_vy_up))
-        if scenario.initial_vx_toward_target is not None:
-            initial_vx = -direction * abs(float(scenario.initial_vx_toward_target))
-        else:
-            vx_ballistic = dx / t_fall
-            error_distance = trajectory_error_sign * abs(float(scenario.trajectory_error))
-            vx_error = error_distance / t_fall
-            initial_vx = vx_ballistic + vx_error
-        phys.vel = Vector2(initial_vx, float(scenario.initial_vy_up))
+        phys.vel = Vector2(initial_vx, initial_vy_up)
 
         engine = getattr(self, "engine", None)
         if engine is not None:
@@ -422,7 +367,7 @@ class CoastLevel(ScenarioLevel):
                 )
             if hasattr(engine, "set_lander_velocity"):
                 engine.set_lander_velocity(
-                    Vector2(initial_vx, float(scenario.initial_vy_up)),
+                    Vector2(initial_vx, initial_vy_up),
                     uid=actor.uid,
                 )
 
@@ -463,6 +408,11 @@ class CoastLevel(ScenarioLevel):
         result["coast_handoff_done"] = self._phase1_handoff_done
         result["coast_handoff_time"] = self._phase1_handoff_time
         result["coast_handoff_projected_dx"] = self._phase1_handoff_projected_dx
+        result["coast_handoff_abs_projected_dx"] = (
+            abs(self._phase1_handoff_projected_dx)
+            if self._phase1_handoff_projected_dx is not None
+            else None
+        )
         result["coast_handoff_impact_x"] = self._phase1_handoff_impact_x
         result["coast_handoff_target_x"] = self._phase1_handoff_target_x
         result["coast_handoff_x"] = self._phase1_handoff_x
@@ -493,10 +443,19 @@ class CoastLevel(ScenarioLevel):
         result["coast_setup_path_efficiency"] = setup_path_efficiency
         if self._resolved_eval_mode == "focused":
             state = str(result.get("state", "unknown"))
-            success = bool(self._phase1_handoff_done)
+            projected_dx_ok = (
+                self._phase1_handoff_projected_dx is not None
+                and abs(self._phase1_handoff_projected_dx) <= _FOCUSED_SUCCESS_PROJECTED_DX_MAX
+            )
+            success = bool(self._phase1_handoff_done) and bool(projected_dx_ok)
             result["eval_phase"] = "coast_setup"
             result["success"] = success
-            result["failure_mode"] = "none" if success else state
+            result["coast_success_projected_dx_max"] = _FOCUSED_SUCCESS_PROJECTED_DX_MAX
+            result["failure_mode"] = (
+                "none"
+                if success
+                else ("projection_out_of_bounds" if self._phase1_handoff_done else state)
+            )
         return result
 
 

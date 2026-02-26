@@ -15,7 +15,7 @@ from bots._bot_math import (
     stable,
     vehicle_limits,
 )
-from bots._coast_core import GuidanceTargets
+from bots._guidance_types import GuidanceTargets
 from bots._targeting import pick_target
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact

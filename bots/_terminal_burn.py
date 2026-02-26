@@ -34,6 +34,47 @@ class TerminalBurnEstimate:
     raw_burn_now: bool
 
 
+def should_start_terminal_burn(
+    *,
+    alt: float,
+    burn_altitude: float,
+    burn_activation_down_speed_min: float,
+    estimate: TerminalBurnEstimate,
+) -> bool:
+    return bool(
+        estimate.raw_burn_now
+        or (
+            estimate.down_speed > float(burn_activation_down_speed_min)
+            and float(alt) <= float(burn_altitude)
+        )
+    )
+
+
+def is_terminal_burn_imminent(
+    *,
+    alt: float,
+    burn_altitude: float,
+    burn_activation_down_speed_min: float,
+    estimate: TerminalBurnEstimate,
+    time_to_impact: float,
+    altitude_margin: float,
+    time_margin: float,
+) -> bool:
+    if should_start_terminal_burn(
+        alt=alt,
+        burn_altitude=burn_altitude,
+        burn_activation_down_speed_min=burn_activation_down_speed_min,
+        estimate=estimate,
+    ):
+        return True
+    if estimate.down_speed <= float(burn_activation_down_speed_min):
+        return False
+    return bool(
+        float(alt) <= (float(burn_altitude) + max(0.0, float(altitude_margin)))
+        or float(time_to_impact) <= (float(estimate.time_to_brake) + max(0.0, float(time_margin)))
+    )
+
+
 def compute_terminal_burn_estimate(
     *,
     alt: float,
@@ -91,4 +132,10 @@ def compute_terminal_burn_estimate(
     )
 
 
-__all__ = ["TerminalBurnEstimate", "TerminalBurnModel", "compute_terminal_burn_estimate"]
+__all__ = [
+    "TerminalBurnEstimate",
+    "TerminalBurnModel",
+    "compute_terminal_burn_estimate",
+    "is_terminal_burn_imminent",
+    "should_start_terminal_burn",
+]

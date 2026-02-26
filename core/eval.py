@@ -89,6 +89,8 @@ def _efficiency_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "coast_handoff_altitude",
         "coast_handoff_dx",
         "coast_handoff_abs_dx",
+        "coast_handoff_projected_dx",
+        "coast_handoff_abs_projected_dx",
         "coast_handoff_vx",
         "coast_handoff_vy_up",
         "coast_handoff_speed",
@@ -178,6 +180,10 @@ def normalize_run_result(
         "coast_handoff_y": _to_optional_float(result.get("coast_handoff_y")),
         "coast_handoff_dx": _to_optional_float(result.get("coast_handoff_dx")),
         "coast_handoff_abs_dx": _to_optional_float(result.get("coast_handoff_abs_dx")),
+        "coast_handoff_projected_dx": _to_optional_float(result.get("coast_handoff_projected_dx")),
+        "coast_handoff_abs_projected_dx": _to_optional_float(
+            result.get("coast_handoff_abs_projected_dx")
+        ),
         "coast_handoff_altitude": _to_optional_float(result.get("coast_handoff_altitude")),
         "coast_handoff_vx": _to_optional_float(result.get("coast_handoff_vx")),
         "coast_handoff_vy_up": _to_optional_float(result.get("coast_handoff_vy_up")),
@@ -185,7 +191,6 @@ def normalize_run_result(
         "coast_handoff_horizontal_speed": _to_optional_float(
             result.get("coast_handoff_horizontal_speed")
         ),
-        "coast_handoff_projected_dx": _to_optional_float(result.get("coast_handoff_projected_dx")),
         "coast_handoff_impact_x": _to_optional_float(result.get("coast_handoff_impact_x")),
         "coast_handoff_target_x": _to_optional_float(result.get("coast_handoff_target_x")),
         "coast_handoff_abs_angle_deg": _to_optional_float(result.get("coast_handoff_abs_angle_deg")),

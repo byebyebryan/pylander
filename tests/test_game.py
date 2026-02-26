@@ -8,21 +8,21 @@ from types import SimpleNamespace
 import main as main_module
 import pytest
 import bots.launch as launch_module
-from bots._coast_core import (
+from bots._coast_tracking import (
     COAST_POLICY,
     CoastCourseConfig,
-    GuidanceTargets,
     apply_coast_guidance,
-    cap_low_altitude_angle,
     coupled_brake_window,
     lateral_tracking_command,
     resolve_coast_behavior,
-    should_handoff_to_flare,
 )
+from bots._guidance_limits import cap_low_altitude_angle
+from bots._guidance_types import GuidanceTargets
 from bots._ballistics import ballistic_time_to_impact
 from bots._launch_core import LaunchSetupConfig
 from bots._targeting import pick_target
 from bots import create_bot, list_available_bots
+from bots.coast import should_handoff_to_flare
 from bots.flare import FlareBot
 from bots.plunge import PlungeBot
 from bots.launch import (
@@ -594,7 +594,7 @@ def test_apply_drift_guidance_uses_projected_ballistic_error() -> None:
     on_target_vx = guidance.dx / t_fall
     adjusted_on_target = apply_drift_guidance(guidance, cfg, vx=on_target_vx, vy_up=0.0)
     assert adjusted_on_target.vertical_mode == "coast"
-    assert adjusted_on_target.vx_sp == pytest.approx(guidance.vx_sp)
+    assert adjusted_on_target.vx_sp == pytest.approx(on_target_vx)
 
     adjusted_off_target = apply_drift_guidance(guidance, cfg, vx=0.0, vy_up=0.0)
     assert adjusted_off_target.vertical_mode == "coast"
@@ -718,7 +718,7 @@ def test_apply_drift_guidance_enters_drift_coast_when_fast_and_far_off_track() -
         alt=80.0,
         burn_altitude=20.0,
     )
-    adjusted = apply_drift_guidance(guidance, cfg, vx=12.0, vy_up=0.0)
+    adjusted = apply_drift_guidance(guidance, cfg, vx=12.0, vy_up=-1.2)
     assert adjusted.vertical_mode == "coast_hold"
 
 
@@ -1413,7 +1413,7 @@ def test_lateral_tracking_command_increases_vx_target_for_large_offset() -> None
     assert cmd.ax_target > 0.0
 
 
-def test_lateral_tracking_command_uses_sensor_short_tgo_for_faster_correction() -> None:
+def test_lateral_tracking_command_uses_sensor_projection_to_reduce_correction() -> None:
     _, _, cfg = resolve_drift_behavior("drift")
     baseline = lateral_tracking_command(
         cfg,
@@ -1447,7 +1447,7 @@ def test_lateral_tracking_command_uses_sensor_short_tgo_for_faster_correction() 
         x=0.0,
         y=80.0,
     )
-    assert sensor.vx_target > baseline.vx_target
+    assert sensor.vx_target < baseline.vx_target
     assert sensor.ax_target > baseline.ax_target
 
 
@@ -1555,8 +1555,8 @@ def test_apply_drift_guidance_terminal_keeps_enough_vx_to_reach_target() -> None
         burn_altitude=20.0,
     )
     t_fall = max(0.5, math.sqrt((2.0 * 9.8 * guidance.alt)) / 9.8)
-    on_track_vx = guidance.dx / t_fall
-    adjusted = apply_drift_guidance(guidance, cfg, vx=on_track_vx, vy_up=0.0)
+    under_speed_vx = (guidance.dx / t_fall) - 4.0
+    adjusted = apply_drift_guidance(guidance, cfg, vx=under_speed_vx, vy_up=0.0)
     assert abs(adjusted.vx_sp) > abs(guidance.vx_sp)
 
 
@@ -2214,24 +2214,19 @@ def test_drift_level_lists_expected_scenarios() -> None:
     assert callable(list_scenarios)
     scenarios = set(list_scenarios())
     base = {
-        "glide_short",
-        "glide_short_correction",
-        "glide_mid",
-        "glide_mid_correction",
-        "glide_long",
-        "glide_long_correction",
-        "glide_long_stress_correction",
-        "flat",
-        "flat_correction",
-        "flat_stress_correction",
-        "handoff_extreme",
-        "handoff_extreme_fast",
+        "entry_shallow",
+        "entry_shallow_trim",
+        "entry_mid",
+        "entry_mid_trim",
+        "entry_mid_energy",
+        "entry_steep",
+        "entry_steep_energy",
+        "entry_steep_stress",
     }
     assert base.issubset(scenarios)
     cargo_variants = {
-        "glide_mid_correction",
-        "glide_long_correction",
-        "glide_long_stress_correction",
+        "entry_mid_energy",
+        "entry_steep_stress",
     }
     for name in cargo_variants:
         assert f"{name}_cargo_high" in scenarios
@@ -2246,15 +2241,15 @@ def test_drift_level_lists_expected_quick_benchmark_scenarios() -> None:
     list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
     assert callable(list_quick_scenarios)
     assert list_quick_scenarios() == [
-        "glide_mid",
-        "glide_long_stress_correction",
-        "handoff_extreme",
+        "entry_mid_trim",
+        "entry_mid_energy",
+        "entry_steep_stress",
     ]
 
 
 def test_drift_scenario_sets_offset_and_horizontal_velocity() -> None:
     level = create_level_by_name("coast")
-    level.set_eval_scenario("glide_mid")
+    level.set_eval_scenario("entry_mid")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
     trans = actor.get_component(Transform)
@@ -2266,29 +2261,29 @@ def test_drift_scenario_sets_offset_and_horizontal_velocity() -> None:
     assert trans.pos.x * phys.vel.x < 0.0  # toward target from randomized side
 
 
-def test_drift_handoff_scenario_starts_fast_toward_target() -> None:
+def test_drift_stress_scenario_starts_with_high_toward_speed() -> None:
     level = create_level_by_name("coast")
-    level.set_eval_scenario("handoff_extreme_fast")
+    level.set_eval_scenario("entry_steep_stress")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=9)
     actor = game.actors[0]
     trans = actor.get_component(Transform)
     phys = actor.get_component(PhysicsState)
     assert trans is not None
     assert phys is not None
-    assert abs(phys.vel.x) >= 100.0
-    assert phys.vel.y > 0.0
+    assert abs(phys.vel.x) >= 20.0
+    assert math.isfinite(phys.vel.y)
     assert trans.pos.x * phys.vel.x < 0.0
 
 
 def test_drift_scenario_direction_is_deterministic_for_seed() -> None:
     level_a = create_level_by_name("coast")
-    level_a.set_eval_scenario("glide_mid")
+    level_a.set_eval_scenario("entry_mid")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=19)
     trans_a = game_a.actors[0].get_component(Transform)
     assert trans_a is not None
 
     level_b = create_level_by_name("coast")
-    level_b.set_eval_scenario("glide_mid")
+    level_b.set_eval_scenario("entry_mid")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=19)
     trans_b = game_b.actors[0].get_component(Transform)
     assert trans_b is not None
@@ -2298,25 +2293,27 @@ def test_drift_scenario_direction_is_deterministic_for_seed() -> None:
 
 def test_drift_correction_scenario_velocity_is_deterministic_for_seed() -> None:
     level_a = create_level_by_name("coast")
-    level_a.set_eval_scenario("glide_mid_correction")
+    level_a.set_eval_scenario("entry_mid_trim")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=23)
     phys_a = game_a.actors[0].get_component(PhysicsState)
     assert phys_a is not None
 
     level_b = create_level_by_name("coast")
-    level_b.set_eval_scenario("glide_mid_correction")
+    level_b.set_eval_scenario("entry_mid_trim")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=23)
     phys_b = game_b.actors[0].get_component(PhysicsState)
     assert phys_b is not None
 
     assert phys_a.vel.x == pytest.approx(phys_b.vel.x)
+    assert phys_a.vel.y == pytest.approx(phys_b.vel.y)
 
 
 def test_drift_correction_scenario_randomizes_error_direction_across_seeds() -> None:
     signs = set()
+    projected_magnitudes = []
     for seed in range(40):
         level = create_level_by_name("coast")
-        level.set_eval_scenario("flat_correction")
+        level.set_eval_scenario("entry_mid_energy")
         game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=seed)
         actor = game.actors[0]
         trans = actor.get_component(Transform)
@@ -2324,23 +2321,25 @@ def test_drift_correction_scenario_randomizes_error_direction_across_seeds() -> 
         assert trans is not None
         assert phys is not None
 
-        target_pos = getattr(level, "eval_target_pos", Vector2(0.0, 0.0))
-        alt = max(0.0, float(trans.pos.y - target_pos.y))
-        disc = max(0.0, (phys.vel.y * phys.vel.y) + (2.0 * 9.8 * alt))
-        t_fall = max(0.5, (phys.vel.y + math.sqrt(disc)) / 9.8)
-        ballistic_vx = (float(target_pos.x) - float(trans.pos.x)) / t_fall
-        vx_error = phys.vel.x - ballistic_vx
-        if vx_error > 1e-6:
+        alt = max(0.0, float(trans.pos.y))
+        vy_up = float(phys.vel.y)
+        disc = max(0.0, (vy_up * vy_up) + (2.0 * 9.8 * alt))
+        t_fall = max(0.5, (vy_up + math.sqrt(disc)) / 9.8)
+        projected_dx = float(trans.pos.x) + (float(phys.vel.x) * t_fall)
+        projected_magnitudes.append(abs(projected_dx))
+        if projected_dx > 1e-3:
             signs.add(1.0)
-        elif vx_error < -1e-6:
+        elif projected_dx < -1e-3:
             signs.add(-1.0)
 
     assert signs == {-1.0, 1.0}
+    assert min(projected_magnitudes) == pytest.approx(80.0, abs=0.75)
+    assert max(projected_magnitudes) == pytest.approx(80.0, abs=0.75)
 
 
 def test_drift_flat_scenario_starts_with_positive_vertical_velocity() -> None:
     level = create_level_by_name("coast")
-    level.set_eval_scenario("flat")
+    level.set_eval_scenario("entry_shallow")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=11)
     actor = game.actors[0]
     trans = actor.get_component(Transform)
@@ -2353,13 +2352,13 @@ def test_drift_flat_scenario_starts_with_positive_vertical_velocity() -> None:
 
 def test_drift_flat_correction_velocity_is_deterministic_for_seed() -> None:
     level_a = create_level_by_name("coast")
-    level_a.set_eval_scenario("flat_correction")
+    level_a.set_eval_scenario("entry_shallow_trim")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=37)
     phys_a = game_a.actors[0].get_component(PhysicsState)
     assert phys_a is not None
 
     level_b = create_level_by_name("coast")
-    level_b.set_eval_scenario("flat_correction")
+    level_b.set_eval_scenario("entry_shallow_trim")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=37)
     phys_b = game_b.actors[0].get_component(PhysicsState)
     assert phys_b is not None
@@ -2370,7 +2369,7 @@ def test_drift_flat_correction_velocity_is_deterministic_for_seed() -> None:
 
 def test_drift_cargo_scenario_applies_heavy_cargo_mass() -> None:
     level = create_level_by_name("coast")
-    level.set_eval_scenario("glide_long_stress_correction_cargo_high")
+    level.set_eval_scenario("entry_steep_stress_cargo_high")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
     cargo = actor.get_component(CargoHold)
@@ -2830,6 +2829,36 @@ def test_drift_full_eval_does_not_end_on_handoff(monkeypatch) -> None:
     assert level.should_end(game) is False
 
 
+def test_drift_focused_eval_fails_when_handoff_projection_is_out_of_bounds(monkeypatch) -> None:
+    def _handoff_snapshot(_game):
+        return {
+            "kind": "coast",
+            "handoff_done": True,
+            "projected_dx": 65.0,
+            "inside_target": False,
+            "on_track": False,
+            "speed_ready": True,
+            "descending": True,
+            "t_fall_ready": True,
+            "sensor_used": True,
+        }
+
+    level = create_level_by_name("coast")
+    level.set_eval_mode("focused")
+    monkeypatch.setattr(
+        level.__class__,
+        "_resolve_coast_snapshot",
+        staticmethod(_handoff_snapshot),
+    )
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=33)
+    result = game.run(print_freq=0, max_steps=60)
+    assert result["eval_mode"] == "focused"
+    assert result["eval_phase"] == "coast_setup"
+    assert result["coast_handoff_done"] is True
+    assert result["success"] is False
+    assert result["failure_mode"] == "projection_out_of_bounds"
+
+
 def test_transfer_focused_eval_stops_on_handoff_and_marks_success(monkeypatch) -> None:
     def _handoff_snapshot(_game):
         return {
@@ -3258,9 +3287,9 @@ def test_run_batch_quick_benchmark_uses_cross_level_core_suite(monkeypatch) -> N
         "steeper",
     ]
     assert coast_scenarios == [
-        "glide_long_stress_correction",
-        "glide_mid",
-        "handoff_extreme",
+        "entry_mid_energy",
+        "entry_mid_trim",
+        "entry_steep_stress",
     ]
     assert launch_scenarios == [
         "air_long",
