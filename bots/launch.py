@@ -12,11 +12,11 @@ from bots._coast_core import (
     COAST_POLICY,
     CoastCourseConfig,
     DropPolicy,
-    GuidanceTargets,
     apply_coast_guidance,
     compute_drop_guidance,
     cone_dx_limit,
 )
+from bots._guidance_types import GuidanceTargets
 from bots._launch_core import (
     LaunchSetupConfig,
     _ballistic_reference_vy,
@@ -24,9 +24,9 @@ from bots._launch_core import (
     _handoff_alignment,
     _predict_response_state,
     _predict_response_world_state,
-    resolve_sideburn_target_angle,
     setup_fuel_reserve_threshold,
 )
+from bots._sideburn_control import resolve_sideburn_target_angle
 from bots.coast import CoastBot
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
@@ -633,10 +633,14 @@ class LaunchBot(CoastBot):
             self._setup_direction = desired_direction
 
         target_angle = self._setup_direction * resolve_sideburn_target_angle(
-            self._setup_cfg,
             projected_dx=projected_dx_now,
             cone_limit=cone_limit_now,
             vy_up=float(passive.vy_up),
+            base_angle=self._setup_cfg.setup_sideburn_angle_rad,
+            min_angle=self._setup_cfg.setup_sideburn_angle_min_rad,
+            max_angle=self._setup_cfg.setup_sideburn_angle_max_rad,
+            upward_vy_target=self._setup_cfg.setup_sideburn_upward_vy_target,
+            upward_angle_gain=self._setup_cfg.setup_sideburn_upward_angle_gain,
         )
         angle_cmd = rate_limit_angle_command(
             target_angle,

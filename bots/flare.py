@@ -14,8 +14,12 @@ from bots._bot_math import (
     stable,
     vehicle_limits,
 )
-from bots._coast_core import COAST_POLICY, CoastCourseConfig, GuidanceTargets, cap_low_altitude_angle
-from bots._launch_core import LaunchSetupConfig, resolve_sideburn_target_angle
+from bots._coast_core import COAST_POLICY, CoastCourseConfig
+from bots._guidance_limits import cap_low_altitude_angle
+from bots._guidance_types import GuidanceTargets
+from bots._launch_core import LaunchSetupConfig
+from bots._sideburn_control import resolve_sideburn_target_angle
+from bots._terminal_burn import TerminalBurnModel, compute_terminal_burn_estimate
 from bots._targeting import pick_target
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
@@ -45,11 +49,11 @@ class FlareControlConfig:
     sideburn_vx_cap: float = 120.0
     sideburn_ax_floor: float = 1.2
     sideburn_ax_cap: float = 8.8
-    sideburn_vx_gain: float = 1.02
-    sideburn_pos_gain: float = 0.022
     sideburn_switch_dx: float = 13.0
     sideburn_switch_vx: float = 1.4
     sideburn_flip_vx: float = 6.0
+    sideburn_switch_hold_flip_frames: int = 24
+    sideburn_switch_hold_cross_frames: int = 18
     sideburn_force_dx: float = 24.0
     sideburn_stop_distance_ratio: float = 0.58
     sideburn_urgent_vx: float = 50.0
@@ -85,9 +89,6 @@ class FlareControlConfig:
     coupled_soft_alt: float = 15.0
     coupled_soft_dx: float = 12.0
     coupled_soft_scale: float = 0.56
-    coupled_ay_pos_gain: float = 1.45
-    coupled_ay_vel_gain: float = 0.88
-    coupled_ay_damping: float = 0.05
     coupled_angle_rate: float = 2.2
     coupled_max_tilt: float = 0.62
     coupled_low_alt_tilt: float = 0.18
@@ -102,15 +103,25 @@ class FlareControlConfig:
     coupled_low_alt_ax_cap: float = 4.4
     coupled_misaligned_alt: float = 14.0
     coupled_misaligned_vy_min: float = 1.25
+    projection_segment_length: float = 20.0
+    projection_max_points: int = 192
     eco_glide_lateral_hold_alt: float = 80.0
     anti_hover_alt: float = 24.0
     anti_hover_dx: float = 24.0
     anti_hover_vy_floor: float = 0.8
-    anti_hover_down_acc: float = 0.42
     emergency_vy: float = 6.0
     emergency_brake_gain: float = 0.24
     burn_enter_time_margin: float = 0.65
     burn_hold_frames: int = 8
+    burn_spool_quadratic_accel: float = 4.9
+    burn_flare_speed_base: float = 0.45
+    burn_flare_speed_alt_gain: float = 0.11
+    burn_flare_speed_min: float = 0.7
+    burn_flare_speed_max: float = 2.5
+    burn_margin_base: float = 2.1
+    burn_margin_dx_gain: float = 0.12
+    burn_margin_dx_deadband: float = 8.0
+    burn_activation_down_speed_min: float = 0.6
     touchdown_altitude: float = 4.0
     touchdown_descent_base: float = 0.35
     touchdown_descent_gain: float = 0.07
@@ -205,20 +216,21 @@ class FlareBot(Bot):
         return burn_altitude
 
     def _resolve_sideburn_direction(self, projected_dx: float, dx: float, vx: float) -> float:
+        cfg = self._control_cfg
         if self._sideburn_switch_hold > 0:
             self._sideburn_switch_hold -= 1
         if (
             self._sideburn_direction != 0.0
             and self._sideburn_switch_hold == 0
-            and (self._sideburn_direction * vx) > self._control_cfg.sideburn_flip_vx
+            and (self._sideburn_direction * vx) > cfg.sideburn_flip_vx
         ):
             self._sideburn_direction = -self._sideburn_direction
-            self._sideburn_switch_hold = 24
+            self._sideburn_switch_hold = int(cfg.sideburn_switch_hold_flip_frames)
             return self._sideburn_direction
 
         if abs(projected_dx) > 1e-3:
             candidate = math.copysign(1.0, projected_dx)
-        elif abs(vx) > self._control_cfg.sideburn_switch_vx:
+        elif abs(vx) > cfg.sideburn_switch_vx:
             candidate = -math.copysign(1.0, vx)
         elif abs(dx) > 1e-3:
             candidate = math.copysign(1.0, dx)
@@ -233,11 +245,11 @@ class FlareBot(Bot):
             if (
                 self._sideburn_switch_hold == 0
                 and
-                abs(projected_dx) <= self._control_cfg.sideburn_switch_dx
-                and abs(vx) <= self._control_cfg.sideburn_switch_vx
+                abs(projected_dx) <= cfg.sideburn_switch_dx
+                and abs(vx) <= cfg.sideburn_switch_vx
             ):
                 self._sideburn_direction = candidate
-                self._sideburn_switch_hold = 18
+                self._sideburn_switch_hold = int(cfg.sideburn_switch_hold_cross_frames)
         return self._sideburn_direction
 
     def update(
@@ -340,6 +352,20 @@ class FlareBot(Bot):
     def _engine_profile(self) -> tuple[float, float, float, float]:
         return engine_profile(self.vehicle_info)
 
+    def _terminal_burn_model(self) -> TerminalBurnModel:
+        cfg = self._control_cfg
+        return TerminalBurnModel(
+            spool_quadratic_accel=cfg.burn_spool_quadratic_accel,
+            flare_speed_base=cfg.burn_flare_speed_base,
+            flare_speed_alt_gain=cfg.burn_flare_speed_alt_gain,
+            flare_speed_min=cfg.burn_flare_speed_min,
+            flare_speed_max=cfg.burn_flare_speed_max,
+            burn_margin_base=cfg.burn_margin_base,
+            burn_margin_dx_gain=cfg.burn_margin_dx_gain,
+            burn_margin_dx_deadband=cfg.burn_margin_dx_deadband,
+            burn_activation_down_speed_min=cfg.burn_activation_down_speed_min,
+        )
+
     def _can_use_overdrive(
         self,
         passive: PassiveSensors,
@@ -386,8 +412,8 @@ class FlareBot(Bot):
             y=passive.y,
             active=active,
             clearance=self._ballistic_clearance(),
-            segment_length=20.0,
-            max_points=192,
+            segment_length=cfg.projection_segment_length,
+            max_points=int(cfg.projection_max_points),
         )
         track_dx = projection.projected_dx
         t_go = clamp(projection.t_fall, cfg.coupled_tgo_min, cfg.coupled_tgo_max)
@@ -560,33 +586,33 @@ class FlareBot(Bot):
                 vy_sp = min(vy_sp, -cfg.coupled_misaligned_vy_min)
 
         _, up_acc_max = vehicle_limits(passive, max_force)
-        down_speed = max(0.0, -float(passive.vy_up))
-        nominal_throttle = min(1.0, max_throttle)
-        spool_time = max(0.0, nominal_throttle - max(0.0, float(passive.thrust_level))) / max(
-            1e-3,
-            ramp_up,
+        time_to_impact, impact_source = ballistic_time_to_impact(passive, active)
+        burn = compute_terminal_burn_estimate(
+            alt=alt,
+            track_dx=track_dx,
+            vy_up=float(passive.vy_up),
+            thrust_level=float(passive.thrust_level),
+            up_acc_max=up_acc_max,
+            max_throttle=max_throttle,
+            ramp_up=ramp_up,
+            time_to_impact=time_to_impact,
+            burn_enter_time_margin=cfg.burn_enter_time_margin,
+            model=self._terminal_burn_model(),
         )
-        spool_distance = (down_speed * spool_time) + (4.9 * spool_time * spool_time)
-        flare_speed = clamp(0.45 + (0.11 * alt), 0.7, 2.5)
-        speed_to_kill = max(0.0, down_speed - flare_speed)
-        stop_distance = (speed_to_kill * speed_to_kill) / (2.0 * max(1e-3, up_acc_max))
-        burn_margin = 2.1 + (0.12 * max(0.0, abs_track_dx - 8.0))
-        burn_altitude = stop_distance + spool_distance + burn_margin
+        burn_altitude = burn.burn_altitude
         burn_altitude = self._terminal_brake_altitude(
             passive,
             alt=alt,
             dx=track_dx,
             burn_altitude=burn_altitude,
-            spool_time=spool_time,
+            spool_time=burn.spool_time,
             max_force=max_force,
         )
-        time_to_impact, impact_source = ballistic_time_to_impact(passive, active)
-        time_to_brake = spool_time + (speed_to_kill / max(1e-3, up_acc_max))
         raw_burn_now = bool(
-            down_speed > 0.6
-            and (
-                alt <= burn_altitude
-                or time_to_impact <= (time_to_brake + cfg.burn_enter_time_margin)
+            burn.raw_burn_now
+            or (
+                burn.down_speed > cfg.burn_activation_down_speed_min
+                and alt <= burn_altitude
             )
         )
         if raw_burn_now:
@@ -703,12 +729,6 @@ class FlareBot(Bot):
             return clamp(a_up_cmd, 0.0, 9.8 + (0.55 * up_acc_max))
         if vertical_mode in ("coast", "eco_glide", "speed_dive"):
             return 0.0
-        if vertical_mode == "coast_hold":
-            vy_err = vy_sp - passive.vy_up
-            # Keep correction burns thrust-backed without drifting into hover.
-            a_up_cmd = 7.2 + (0.2 * vy_err)
-            max_up_cmd = 9.8 if alt < 14.0 else 9.25
-            return clamp(a_up_cmd, 4.8, max_up_cmd)
         if vertical_mode == "terminal_burn":
             brake_gain = (
                 self._policy.terminal_brake_gain_high_alt
@@ -741,10 +761,14 @@ class FlareBot(Bot):
         direction = self._sideburn_direction if self._sideburn_direction != 0.0 else 1.0
         cone_limit = max(8.0, 2.0 * self._control_cfg.sideburn_switch_dx)
         target_angle = direction * resolve_sideburn_target_angle(
-            self._sideburn_cfg,
             projected_dx=self._last_projected_dx,
             cone_limit=cone_limit,
             vy_up=float(passive.vy_up),
+            base_angle=self._sideburn_cfg.setup_sideburn_angle_rad,
+            min_angle=self._sideburn_cfg.setup_sideburn_angle_min_rad,
+            max_angle=self._sideburn_cfg.setup_sideburn_angle_max_rad,
+            upward_vy_target=self._sideburn_cfg.setup_sideburn_upward_vy_target,
+            upward_angle_gain=self._sideburn_cfg.setup_sideburn_upward_angle_gain,
         )
         target_angle = clamp(
             target_angle,

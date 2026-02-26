@@ -8,19 +8,11 @@ from typing import Callable
 
 from bots._ballistics import BallisticProjection, ballistic_time_to_impact, estimate_ballistic_projection
 from bots._bot_math import clamp, finite_altitude, resolve_behavior, stable, vehicle_limits
+from bots._guidance_limits import cap_low_altitude_angle
+from bots._guidance_types import GuidanceTargets
+from bots._terminal_burn import TerminalBurnModel, compute_terminal_burn_estimate
 from core.bot import ActiveSensors, PassiveSensors
 from core.sensor import RadarContact
-
-
-@dataclass(frozen=True)
-class GuidanceTargets:
-    phase: str
-    vertical_mode: str
-    vx_sp: float
-    vy_sp: float
-    dx: float
-    alt: float
-    burn_altitude: float
 
 
 @dataclass(frozen=True)
@@ -58,6 +50,7 @@ class DropPolicy:
 
 
 BASE_DROP_POLICY = DropPolicy(status_prefix="plunge")
+_FLARE_HANDOFF_BURN_MODEL = TerminalBurnModel()
 
 
 @dataclass(frozen=True)
@@ -123,6 +116,9 @@ class CoastCourseConfig:
     flare_handoff_target_edge_margin: float = 8.0
     flare_handoff_vx_err_cap: float = 5.5
     flare_handoff_descending_vy_max: float = 2.0
+    flare_handoff_require_burn_imminent: bool = True
+    flare_handoff_burn_altitude_margin: float = 120.0
+    flare_handoff_burn_time_margin: float = 1.5
     flare_handoff_consecutive_pass_frames: int = 3
 
 
@@ -614,19 +610,6 @@ def lateral_tracking_command(
     return CoastLateralTracker(vx_target=vx_target, ax_target=ax_target)
 
 
-def cap_low_altitude_angle(
-    target_angle: float,
-    *,
-    alt: float,
-    dx: float,
-    cfg: CoastCourseConfig,
-) -> float:
-    if alt <= cfg.low_altitude_angle_limit_alt and abs(dx) <= cfg.low_altitude_angle_limit_dx:
-        cap = cfg.low_altitude_angle_cap
-        return clamp(target_angle, -cap, cap)
-    return target_angle
-
-
 def _target_half_width(target_size: float | None) -> float:
     if target_size is None:
         return 55.0
@@ -643,8 +626,12 @@ def should_handoff_to_flare(
     guidance: GuidanceTargets,
     cfg: CoastCourseConfig,
     *,
-    vx: float | None,
-    vy_up: float | None,
+    passive: PassiveSensors | None = None,
+    max_force: float | None = None,
+    max_throttle: float | None = None,
+    ramp_up: float | None = None,
+    vx: float | None = None,
+    vy_up: float | None = None,
     active: ActiveSensors | None = None,
     x: float | None = None,
     y: float | None = None,
@@ -683,7 +670,47 @@ def should_handoff_to_flare(
     descending = safe_vy_up <= cfg.flare_handoff_descending_vy_max
     alt_ready = alt <= cfg.flare_handoff_altitude_max
     t_fall_ready = projection.t_fall <= 9.5
-    raw_ready = centered and inside_target and speed_ready and descending and alt_ready and t_fall_ready
+    burn_ready = True
+    burn_altitude = None
+    time_to_brake = None
+    time_to_impact = None
+    if (
+        cfg.flare_handoff_require_burn_imminent
+        and passive is not None
+        and max_force is not None
+        and max_throttle is not None
+        and ramp_up is not None
+    ):
+        _, up_acc_max = vehicle_limits(passive, float(max_force))
+        time_to_impact, _ = ballistic_time_to_impact(passive, active)
+        burn_estimate = compute_terminal_burn_estimate(
+            alt=alt,
+            track_dx=projected_dx,
+            vy_up=float(passive.vy_up),
+            thrust_level=float(passive.thrust_level),
+            up_acc_max=up_acc_max,
+            max_throttle=float(max_throttle),
+            ramp_up=float(ramp_up),
+            time_to_impact=float(time_to_impact),
+            burn_enter_time_margin=0.65,
+            model=_FLARE_HANDOFF_BURN_MODEL,
+        )
+        burn_altitude = float(burn_estimate.burn_altitude)
+        time_to_brake = float(burn_estimate.time_to_brake)
+        burn_ready = bool(
+            burn_estimate.raw_burn_now
+            or alt <= (burn_altitude + cfg.flare_handoff_burn_altitude_margin)
+            or float(time_to_impact) <= (time_to_brake + cfg.flare_handoff_burn_time_margin)
+        )
+    raw_ready = (
+        centered
+        and inside_target
+        and speed_ready
+        and descending
+        and alt_ready
+        and t_fall_ready
+        and burn_ready
+    )
     required = (
         cfg.flare_handoff_consecutive_pass_frames
         if required_passes is None
@@ -707,6 +734,10 @@ def should_handoff_to_flare(
                 "alt_ready": alt_ready,
                 "t_fall": projection.t_fall,
                 "t_fall_ready": t_fall_ready,
+                "burn_ready": burn_ready,
+                "burn_altitude": burn_altitude,
+                "time_to_brake": time_to_brake,
+                "time_to_impact": time_to_impact,
                 "vx_needed": vx_needed,
                 "vx_err": vx_err,
                 "handoff_cone": handoff_cone,

@@ -1356,6 +1356,48 @@ def test_flare_sideburn_direction_lock_avoids_early_flip() -> None:
     assert third == pytest.approx(-1.0)
 
 
+def test_flare_bot_mini_matrix_success_guardrail() -> None:
+    config = RunConfig(
+        level_name="flare",
+        bot_name="flare",
+        bot_behavior=None,
+        headless=True,
+        batch=False,
+        print_freq=0,
+        max_time=300.0,
+        max_steps=None,
+        plot_mode="none",
+        stop_on_crash=True,
+        stop_on_out_of_fuel=True,
+        stop_on_first_land=True,
+        seed=None,
+        lander_name=None,
+        batch_seeds=None,
+        batch_levels=None,
+        batch_json=None,
+        batch_csv=None,
+        quick_benchmark=False,
+        batch_workers=1,
+        scenario_name=None,
+        batch_scenarios=None,
+    )
+    records = []
+    for scenario in ("shallower", "mid", "steeper"):
+        for seed in (0, 1):
+            records.append(
+                main_module._run_once_record(
+                    config,
+                    seed=seed,
+                    level_name="flare",
+                    eval_scenario_name=scenario,
+                )
+            )
+    summary = aggregate_eval_records(records)
+    assert summary["runs"] == 6
+    assert summary["successes"] == 6
+    assert summary["success_rate"] == pytest.approx(1.0)
+
+
 def test_lateral_tracking_command_increases_vx_target_for_large_offset() -> None:
     _, _, cfg = resolve_drift_behavior("drift")
     cmd = lateral_tracking_command(

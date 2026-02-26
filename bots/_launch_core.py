@@ -7,7 +7,8 @@ from dataclasses import dataclass
 
 from bots._ballistics import BallisticProjection, estimate_ballistic_projection
 from bots._bot_math import clamp
-from bots._coast_core import GuidanceTargets
+from bots._guidance_types import GuidanceTargets
+from bots._sideburn_control import resolve_sideburn_target_angle
 from core.bot import ActiveSensors
 
 
@@ -155,29 +156,6 @@ def _handoff_alignment(
     inside_target = abs(projected_dx) <= target_half
     centered = abs(projected_dx) <= center_tol
     return centered and inside_target, centered, inside_target, center_tol, target_half
-
-
-def resolve_sideburn_target_angle(
-    setup_cfg: LaunchSetupConfig,
-    *,
-    projected_dx: float,
-    cone_limit: float,
-    vy_up: float,
-) -> float:
-    """Compute sideburn angle magnitude with optional climb bias."""
-    min_angle = min(setup_cfg.setup_sideburn_angle_min_rad, setup_cfg.setup_sideburn_angle_max_rad)
-    max_angle = max(setup_cfg.setup_sideburn_angle_min_rad, setup_cfg.setup_sideburn_angle_max_rad)
-    base_angle = clamp(setup_cfg.setup_sideburn_angle_rad, min_angle, max_angle)
-    if max_angle - min_angle <= 1e-6:
-        return base_angle
-
-    miss_ratio = clamp(abs(projected_dx) / max(1.0, cone_limit), 0.0, 2.0)
-    center_bias = 0.16 * clamp(1.0 - miss_ratio, 0.0, 1.0)
-    climb_target = max(0.0, setup_cfg.setup_sideburn_upward_vy_target)
-    climb_gap = max(0.0, climb_target - float(vy_up))
-    climb_bias = setup_cfg.setup_sideburn_upward_angle_gain * (climb_gap / max(1.0, climb_target))
-    angle_mag = base_angle - center_bias - clamp(climb_bias, 0.0, 0.28)
-    return clamp(angle_mag, min_angle, max_angle)
 
 
 def setup_fuel_reserve_threshold(

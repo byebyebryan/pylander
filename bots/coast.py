@@ -276,6 +276,10 @@ class CoastBot(Bot):
         if not self._handoff_done and should_handoff_to_flare(
             guidance,
             self._course_cfg,
+            passive=passive,
+            max_force=max_force,
+            max_throttle=max_throttle,
+            ramp_up=ramp_up,
             vx=passive.vx,
             vy_up=passive.vy_up,
             active=self._active_sensors,
