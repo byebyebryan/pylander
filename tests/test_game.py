@@ -322,6 +322,45 @@ def test_ferry_bot_stays_landed_after_reaching_destination() -> None:
     assert second.target_angle == pytest.approx(0.0)
 
 
+def test_ferry_bot_clears_arrived_if_it_lands_away_from_destination() -> None:
+    bot = create_bot("ferry")
+    source_contacts = _make_ferry_contacts()
+    landed_source = _make_ferry_passive(state="landed", altitude=4.0, contacts=source_contacts)
+    bot.update(1.0 / 60.0, landed_source, active=SimpleNamespace())
+
+    def _delegate_active(_dt, _passive, _active):
+        return BotAction(
+            target_thrust=0.3,
+            target_angle=0.1,
+            refuel=False,
+            status="launch:coast",
+        )
+
+    bot._delegate.update = _delegate_active  # type: ignore[attr-defined]
+    enroute_from_source = _make_ferry_passive(
+        state="flying",
+        altitude=140.0,
+        contacts=source_contacts,
+    )
+    bot.update(1.0 / 60.0, enroute_from_source, active=SimpleNamespace())
+
+    dest_contacts = _make_ferry_contacts_from_dest()
+    landed_dest = _make_ferry_passive(state="landed", altitude=4.0, contacts=dest_contacts)
+    arrived = bot.update(1.0 / 60.0, landed_dest, active=SimpleNamespace())
+    assert arrived.status == "ferry:arrived"
+
+    enroute_from_dest = _make_ferry_passive(state="flying", altitude=140.0, contacts=dest_contacts)
+    bot.update(1.0 / 60.0, enroute_from_dest, active=SimpleNamespace())
+
+    landed_source_again = _make_ferry_passive(
+        state="landed",
+        altitude=4.0,
+        contacts=source_contacts,
+    )
+    action = bot.update(1.0 / 60.0, landed_source_again, active=SimpleNamespace())
+    assert action.status == "ferry:takeoff_upright"
+
+
 def test_zem_zev_bot_outputs_finite_action_for_flare_like_state() -> None:
     bot = create_bot("zem_zev")
     target = RadarContact(

@@ -102,14 +102,18 @@ class FerryBot(Bot):
         active: ActiveSensors,
     ) -> BotAction:
         if self._arrived and passive.state == "landed":
-            action = BotAction(
-                target_thrust=0.0,
-                target_angle=0.0,
-                refuel=False,
-                status="ferry:arrived",
-            )
-            self.status = action.status
-            return action
+            if self._is_landed_on_destination(passive):
+                action = BotAction(
+                    target_thrust=0.0,
+                    target_angle=0.0,
+                    refuel=False,
+                    status="ferry:arrived",
+                )
+                self.status = action.status
+                return action
+            # If we're landed somewhere else, clear the arrival latch and
+            # continue normal target/launch flow.
+            self._arrived = False
 
         if passive.state in ("crashed", "out_of_fuel"):
             action = BotAction(
