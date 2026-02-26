@@ -40,22 +40,33 @@ from core.sensor import RadarContact
 
 @dataclass(frozen=True)
 class CoastHandoffConfig:
-    altitude_max: float = 320.0
+    altitude_max: float = 240.0
     cone_scale: float = 0.45
-    center_tolerance: float = 30.0
+    center_tolerance: float = 7.0
     target_edge_margin: float = 8.0
-    vx_err_cap: float = 8.5
+    vx_err_cap: float = 5.5
     descending_vy_max: float = 2.0
     require_burn_imminent: bool = True
-    burn_altitude_margin: float = 85.0
-    burn_time_margin: float = 1.1
+    burn_altitude_margin: float = 120.0
+    burn_time_margin: float = 1.5
     t_fall_max: float = 9.5
     consecutive_pass_frames: int = 3
     burn_enter_time_margin: float = 0.65
     burn_activation_down_speed_min: float = 0.6
+    retrograde_align_speed_min: float = 2.0
+    retrograde_align_max_error_deg: float = 30.0
+    retrograde_align_altitude_margin: float = 180.0
 
 
 _BURN_MODEL = TerminalBurnModel()
+
+
+def _angle_diff(a: float, b: float) -> float:
+    return (b - a + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def _retrograde_angle(vx: float, vy_up: float) -> float:
+    return math.atan2(-float(vx), -float(vy_up))
 
 
 def _target_half_width(target_size: float | None) -> float:
@@ -81,19 +92,99 @@ def _cfg_attr(cfg: CoastCourseConfig, key: str, default: float) -> float:
     return numeric
 
 
+def _cfg_bool_attr(cfg: CoastCourseConfig, key: str, default: bool) -> bool:
+    value = getattr(cfg, key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"1", "true", "yes", "on"}:
+            return True
+        if text in {"0", "false", "no", "off"}:
+            return False
+        return bool(default)
+    if isinstance(value, (int, float)):
+        try:
+            numeric = float(value)
+        except (TypeError, ValueError):
+            return bool(default)
+        if not math.isfinite(numeric):
+            return bool(default)
+        return bool(numeric)
+    return bool(default)
+
+
 def _resolve_handoff_cfg(cfg: CoastCourseConfig) -> CoastHandoffConfig:
+    defaults = CoastHandoffConfig()
     return CoastHandoffConfig(
-        altitude_max=_cfg_attr(cfg, "flare_handoff_altitude_max", 320.0),
-        cone_scale=_cfg_attr(cfg, "flare_handoff_cone_scale", 0.45),
-        center_tolerance=_cfg_attr(cfg, "flare_handoff_center_tolerance", 30.0),
-        target_edge_margin=_cfg_attr(cfg, "flare_handoff_target_edge_margin", 8.0),
-        vx_err_cap=_cfg_attr(cfg, "flare_handoff_vx_err_cap", 8.5),
-        descending_vy_max=_cfg_attr(cfg, "flare_handoff_descending_vy_max", 2.0),
-        burn_altitude_margin=_cfg_attr(cfg, "flare_handoff_burn_altitude_margin", 85.0),
-        burn_time_margin=_cfg_attr(cfg, "flare_handoff_burn_time_margin", 1.1),
+        altitude_max=_cfg_attr(cfg, "flare_handoff_altitude_max", defaults.altitude_max),
+        cone_scale=_cfg_attr(cfg, "flare_handoff_cone_scale", defaults.cone_scale),
+        center_tolerance=_cfg_attr(
+            cfg,
+            "flare_handoff_center_tolerance",
+            defaults.center_tolerance,
+        ),
+        target_edge_margin=_cfg_attr(
+            cfg,
+            "flare_handoff_target_edge_margin",
+            defaults.target_edge_margin,
+        ),
+        vx_err_cap=_cfg_attr(cfg, "flare_handoff_vx_err_cap", defaults.vx_err_cap),
+        descending_vy_max=_cfg_attr(
+            cfg,
+            "flare_handoff_descending_vy_max",
+            defaults.descending_vy_max,
+        ),
+        require_burn_imminent=_cfg_bool_attr(
+            cfg,
+            "flare_handoff_require_burn_imminent",
+            defaults.require_burn_imminent,
+        ),
+        burn_altitude_margin=_cfg_attr(
+            cfg,
+            "flare_handoff_burn_altitude_margin",
+            defaults.burn_altitude_margin,
+        ),
+        burn_time_margin=_cfg_attr(
+            cfg,
+            "flare_handoff_burn_time_margin",
+            defaults.burn_time_margin,
+        ),
+        t_fall_max=_cfg_attr(cfg, "flare_handoff_t_fall_max", defaults.t_fall_max),
         consecutive_pass_frames=max(
             1,
-            int(_cfg_attr(cfg, "flare_handoff_consecutive_pass_frames", 3.0)),
+            int(
+                _cfg_attr(
+                    cfg,
+                    "flare_handoff_consecutive_pass_frames",
+                    float(defaults.consecutive_pass_frames),
+                )
+            ),
+        ),
+        burn_enter_time_margin=_cfg_attr(
+            cfg,
+            "flare_handoff_burn_enter_time_margin",
+            defaults.burn_enter_time_margin,
+        ),
+        burn_activation_down_speed_min=_cfg_attr(
+            cfg,
+            "flare_handoff_burn_activation_down_speed_min",
+            defaults.burn_activation_down_speed_min,
+        ),
+        retrograde_align_speed_min=_cfg_attr(
+            cfg,
+            "flare_handoff_retrograde_speed_min",
+            defaults.retrograde_align_speed_min,
+        ),
+        retrograde_align_max_error_deg=_cfg_attr(
+            cfg,
+            "flare_handoff_retrograde_max_error_deg",
+            defaults.retrograde_align_max_error_deg,
+        ),
+        retrograde_align_altitude_margin=_cfg_attr(
+            cfg,
+            "flare_handoff_retrograde_align_altitude_margin",
+            defaults.retrograde_align_altitude_margin,
         ),
     )
 
@@ -108,6 +199,7 @@ def should_handoff_to_flare(
     ramp_up: float | None = None,
     vx: float | None = None,
     vy_up: float | None = None,
+    angle_rad: float | None = None,
     active: ActiveSensors | None = None,
     x: float | None = None,
     y: float | None = None,
@@ -148,6 +240,28 @@ def should_handoff_to_flare(
     descending = safe_vy_up <= handoff_cfg.descending_vy_max
     alt_ready = alt <= handoff_cfg.altitude_max
     t_fall_ready = projection.t_fall <= handoff_cfg.t_fall_max
+    retrograde_target_angle = _retrograde_angle(safe_vx, safe_vy_up)
+    retrograde_angle_error_deg = None
+    speed_mag = math.hypot(safe_vx, safe_vy_up)
+    if speed_mag <= handoff_cfg.retrograde_align_speed_min:
+        retrograde_ready = True
+    else:
+        if angle_rad is None:
+            retrograde_ready = False
+        else:
+            try:
+                craft_angle = float(angle_rad)
+            except (TypeError, ValueError):
+                retrograde_ready = False
+            else:
+                if not math.isfinite(craft_angle):
+                    retrograde_ready = False
+                else:
+                    angle_error = abs(_angle_diff(craft_angle, retrograde_target_angle))
+                    retrograde_angle_error_deg = math.degrees(angle_error)
+                    retrograde_ready = (
+                        angle_error <= math.radians(handoff_cfg.retrograde_align_max_error_deg)
+                    )
 
     burn_ready = True
     burn_altitude = None
@@ -193,6 +307,7 @@ def should_handoff_to_flare(
         and descending
         and alt_ready
         and t_fall_ready
+        and retrograde_ready
         and burn_ready
     )
     emergency_ready = (
@@ -200,6 +315,7 @@ def should_handoff_to_flare(
         and descending
         and alt_ready
         and t_fall_ready
+        and retrograde_ready
         and burn_ready
     )
     raw_ready = raw_ready or emergency_ready
@@ -227,6 +343,9 @@ def should_handoff_to_flare(
                 "alt_ready": alt_ready,
                 "t_fall": projection.t_fall,
                 "t_fall_ready": t_fall_ready,
+                "retrograde_ready": retrograde_ready,
+                "retrograde_target_angle": retrograde_target_angle,
+                "retrograde_angle_error_deg": retrograde_angle_error_deg,
                 "burn_ready": burn_ready,
                 "burn_altitude": burn_altitude,
                 "time_to_brake": time_to_brake,
@@ -534,6 +653,7 @@ class CoastBot(Bot):
             ramp_up=ramp_up,
             vx=passive.vx,
             vy_up=passive.vy_up,
+            angle_rad=passive.angle,
             active=self._active_sensors,
             x=passive.x,
             y=passive.y,
@@ -553,6 +673,7 @@ class CoastBot(Bot):
                 f"in:{int(bool(handoff_debug.get('inside_target')))} "
                 f"spd:{int(bool(handoff_debug.get('speed_ready')))} "
                 f"des:{int(bool(handoff_debug.get('descending')))} "
+                f"retro:{int(bool(handoff_debug.get('retrograde_ready')))} "
                 f"pass:{int(handoff_debug.get('pass_count_after_sample', 0))}/"
                 f"{int(handoff_debug.get('required_passes', 1))}"
             )
@@ -773,6 +894,14 @@ class CoastBot(Bot):
         max_force = max_power * max_throttle
         mass, _ = vehicle_limits(passive, max_force)
         req = clamp((a_x_sp * mass) / max(max_force, 1e-3), -0.95, 0.95)
+        align_retrograde = (
+            (not self._handoff_done)
+            and vertical_mode in ("coast", "align")
+            and alt
+            <= (self._handoff_cfg.altitude_max + self._handoff_cfg.retrograde_align_altitude_margin)
+            and math.hypot(float(passive.vx), float(passive.vy_up))
+            > self._handoff_cfg.retrograde_align_speed_min
+        )
         max_tilt = 0.18 if alt < 20.0 else 0.56
         if vertical_mode == "coast_hold":
             # Coast impulse: prioritize lateral delta-v with a strong tilted burn.
@@ -782,12 +911,14 @@ class CoastBot(Bot):
         else:
             angle_cmd = math.asin(req)
             angle_cmd = clamp(angle_cmd, -max_tilt, max_tilt)
-            angle_cmd = rate_limit_angle_command(angle_cmd, self._prev_angle_cmd, dt)
+        if align_retrograde:
+            angle_cmd = _retrograde_angle(passive.vx, passive.vy_up)
+        angle_cmd = rate_limit_angle_command(angle_cmd, self._prev_angle_cmd, dt)
         self._prev_angle_cmd = angle_cmd
 
         cos_term = max(0.25, abs(math.cos(angle_cmd)))
         thrust = (mass * a_up_sp) / max(max_power * cos_term, 1e-3)
-        if alt < 9.0 and abs(dx) <= 10.0:
+        if alt < 9.0 and abs(dx) <= 10.0 and not align_retrograde:
             angle_cmd = 0.0
         if alt < 2.5 and abs(dx) <= 7.0 and abs(passive.vx) < 0.6 and abs(passive.vy_up) < 0.9:
             thrust = 0.0
@@ -805,7 +936,7 @@ class CoastBot(Bot):
             thrust = max(min_throttle, thrust)
         if vertical_mode == "coast_hold" and thrust > 0.0:
             thrust = max(thrust, min(max_throttle, 1.0))
-        if thrust <= 1e-5:
+        if thrust <= 1e-5 and not align_retrograde:
             angle_cmd = 0.0
 
         action = BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)

@@ -5,6 +5,7 @@
 ## Phase contract
 
 - `launch` should establish a good ballistic path, but it can leave bounded residual error.
+- `coast` scenarios start prograde (ship aligned with initial velocity) to mirror launch handoff.
 - `coast` continuously trims projected intercept error toward target center.
 - `coast` is not trying to fully kill speed unless the projection says it is required.
 - `flare` owns terminal burn and touchdown execution.
@@ -15,6 +16,7 @@ Coast->flare handoff is intentionally late:
 
 - being "on track" is necessary but not sufficient;
 - handoff also requires burn-imminent conditions plus safety margins;
+- handoff requires retrograde orientation (ship opposite velocity) before transfer;
 - pass/fail is filtered with consecutive-frame hysteresis to avoid chatter.
 
 This keeps coast active as long as useful, which is important for future disturbances (wind, moving targets, etc.).

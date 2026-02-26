@@ -39,6 +39,14 @@ _ANGLE_PROFILES: tuple[tuple[str, float], ...] = (
 )
 
 
+def _angle_from_velocity(vx: float, vy_up: float, *, opposite: bool = False) -> float:
+    vel_x = -float(vx) if opposite else float(vx)
+    vel_y = -float(vy_up) if opposite else float(vy_up)
+    if abs(vel_x) <= 1e-6 and abs(vel_y) <= 1e-6:
+        return 0.0
+    return math.atan2(vel_x, vel_y)
+
+
 def _build_angle_scenario(name: str, angle_deg: float) -> FlareScenario:
     angle_rad = math.radians(float(angle_deg))
     start_dx = _SPAWN_RADIUS * math.cos(angle_rad)
@@ -123,7 +131,6 @@ class FlareLevel(ScenarioLevel):
         actor = self.world.actors[0]
         trans = require_component(actor, Transform)
         phys = require_component(actor, PhysicsState)
-        trans.rotation = float(scenario.initial_angle)
 
         target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
         start_pos = Vector2(
@@ -135,6 +142,7 @@ class FlareLevel(ScenarioLevel):
         toward_speed = abs(float(scenario.initial_vx_toward_target))
         initial_vx = -direction * toward_speed
         initial_vy_up = float(scenario.initial_vy_up)
+        trans.rotation = _angle_from_velocity(initial_vx, initial_vy_up, opposite=True)
         validate_scenario_recoverability(
             actor,
             scenario_name=scenario.name,

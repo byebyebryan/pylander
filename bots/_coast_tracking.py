@@ -73,6 +73,22 @@ class CoastCourseConfig:
     coupled_lateral_alt_margin: float = 5.0
     coast_max_alt: float = 220.0
     coast_min_entry_vx: float = 9.0
+    flare_handoff_altitude_max: float = 240.0
+    flare_handoff_cone_scale: float = 0.45
+    flare_handoff_center_tolerance: float = 7.0
+    flare_handoff_target_edge_margin: float = 8.0
+    flare_handoff_vx_err_cap: float = 5.5
+    flare_handoff_descending_vy_max: float = 2.0
+    flare_handoff_require_burn_imminent: bool = True
+    flare_handoff_burn_altitude_margin: float = 120.0
+    flare_handoff_burn_time_margin: float = 1.5
+    flare_handoff_t_fall_max: float = 9.5
+    flare_handoff_consecutive_pass_frames: int = 3
+    flare_handoff_burn_enter_time_margin: float = 0.65
+    flare_handoff_burn_activation_down_speed_min: float = 0.6
+    flare_handoff_retrograde_speed_min: float = 2.0
+    flare_handoff_retrograde_max_error_deg: float = 30.0
+    flare_handoff_retrograde_align_altitude_margin: float = 180.0
 
 
 @dataclass(frozen=True)

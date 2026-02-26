@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import main as main_module
 import pytest
+import bots.coast as coast_module
 import bots.launch as launch_module
 from bots._coast_tracking import (
     COAST_POLICY,
@@ -1312,12 +1313,14 @@ def test_coast_handoff_to_flare_requires_consecutive_pass_frames() -> None:
                 "duration": 4.0,
             }
 
+    retrograde_angle = math.atan2(3.0, 1.0)
     debug: dict[str, object] = {}
     first_ready = should_handoff_to_flare(
         guidance,
         cfg,
         vx=-3.0,
         vy_up=-1.0,
+        angle_rad=retrograde_angle,
         active=_FakeActive(),
         x=10.0,
         y=120.0,
@@ -1336,6 +1339,7 @@ def test_coast_handoff_to_flare_requires_consecutive_pass_frames() -> None:
         cfg,
         vx=-3.0,
         vy_up=-1.0,
+        angle_rad=retrograde_angle,
         active=_FakeActive(),
         x=10.0,
         y=120.0,
@@ -1344,6 +1348,87 @@ def test_coast_handoff_to_flare_requires_consecutive_pass_frames() -> None:
         required_passes=3,
     )
     assert second_ready
+
+
+def test_coast_handoff_cfg_uses_course_handoff_fields() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    tuned_cfg = replace(
+        cfg,
+        flare_handoff_altitude_max=123.0,
+        flare_handoff_center_tolerance=4.5,
+        flare_handoff_vx_err_cap=2.75,
+        flare_handoff_require_burn_imminent=False,
+        flare_handoff_burn_altitude_margin=77.0,
+        flare_handoff_burn_time_margin=0.8,
+        flare_handoff_t_fall_max=6.25,
+        flare_handoff_consecutive_pass_frames=5,
+    )
+    handoff_cfg = coast_module._resolve_handoff_cfg(tuned_cfg)
+    assert handoff_cfg.altitude_max == pytest.approx(123.0)
+    assert handoff_cfg.center_tolerance == pytest.approx(4.5)
+    assert handoff_cfg.vx_err_cap == pytest.approx(2.75)
+    assert handoff_cfg.require_burn_imminent is False
+    assert handoff_cfg.burn_altitude_margin == pytest.approx(77.0)
+    assert handoff_cfg.burn_time_margin == pytest.approx(0.8)
+    assert handoff_cfg.t_fall_max == pytest.approx(6.25)
+    assert handoff_cfg.consecutive_pass_frames == 5
+
+
+def test_coast_handoff_to_flare_requires_retrograde_alignment() -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.0,
+        vy_sp=-2.0,
+        dx=-10.0,
+        alt=120.0,
+        burn_altitude=30.0,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {
+                "hit": True,
+                "hit_x": 0.0,
+                "hit_time": 4.0,
+                "duration": 4.0,
+            }
+
+    retrograde_angle = math.atan2(3.0, 1.0)
+    aligned = should_handoff_to_flare(
+        guidance,
+        cfg,
+        vx=-3.0,
+        vy_up=-1.0,
+        angle_rad=retrograde_angle,
+        active=_FakeActive(),
+        x=10.0,
+        y=120.0,
+        target_size=110.0,
+        consecutive_passes=2,
+        required_passes=3,
+    )
+    assert aligned
+
+    debug: dict[str, object] = {}
+    misaligned = should_handoff_to_flare(
+        guidance,
+        cfg,
+        vx=-3.0,
+        vy_up=-1.0,
+        angle_rad=retrograde_angle + math.radians(70.0),
+        active=_FakeActive(),
+        x=10.0,
+        y=120.0,
+        target_size=110.0,
+        consecutive_passes=2,
+        required_passes=3,
+        debug=debug,
+    )
+    assert not misaligned
+    assert bool(debug.get("retrograde_ready")) is False
 
 
 def test_flare_sideburn_direction_lock_avoids_early_flip() -> None:
@@ -2125,10 +2210,13 @@ def test_plunge_matrix_scenario_starts_with_zero_initial_velocity() -> None:
     level.set_eval_scenario("high_light")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
+    trans = actor.get_component(Transform)
     phys = actor.get_component(PhysicsState)
+    assert trans is not None
     assert phys is not None
     assert phys.vel.x == pytest.approx(0.0)
     assert phys.vel.y == pytest.approx(0.0)
+    assert trans.rotation == pytest.approx(0.0)
 
 
 def test_flare_level_lists_expected_scenarios() -> None:
@@ -2206,6 +2294,9 @@ def test_flare_matrix_scenario_starts_on_center_hit_ballistic_path() -> None:
         0.5 * abs(GRAVITY) * t_to_center * t_to_center
     )
     assert y_at_center == pytest.approx(target_pos.y)
+    retrograde_angle = math.atan2(-float(phys.vel.x), -float(phys.vel.y))
+    angle_error = abs((retrograde_angle - float(trans.rotation) + math.pi) % (2.0 * math.pi) - math.pi)
+    assert angle_error == pytest.approx(0.0, abs=1e-6)
 
 
 def test_drift_level_lists_expected_scenarios() -> None:
@@ -2259,6 +2350,9 @@ def test_drift_scenario_sets_offset_and_horizontal_velocity() -> None:
     assert abs(trans.pos.x) > 0.0
     assert abs(phys.vel.x) > 0.0
     assert trans.pos.x * phys.vel.x < 0.0  # toward target from randomized side
+    prograde_angle = math.atan2(float(phys.vel.x), float(phys.vel.y))
+    angle_error = abs((prograde_angle - float(trans.rotation) + math.pi) % (2.0 * math.pi) - math.pi)
+    assert angle_error == pytest.approx(0.0, abs=1e-6)
 
 
 def test_drift_stress_scenario_starts_with_high_toward_speed() -> None:

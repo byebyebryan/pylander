@@ -57,6 +57,14 @@ _PROFILE_TIERS: dict[str, tuple[str, ...]] = {
 _TIER_BY_KEY = {tier.key: tier for tier in _DEVIATION_TIERS}
 
 
+def _angle_from_velocity(vx: float, vy_up: float, *, opposite: bool = False) -> float:
+    vel_x = -float(vx) if opposite else float(vx)
+    vel_y = -float(vy_up) if opposite else float(vy_up)
+    if abs(vel_x) <= 1e-6 and abs(vel_y) <= 1e-6:
+        return 0.0
+    return math.atan2(vel_x, vel_y)
+
+
 def _scenario_name(profile: str, tier: str) -> str:
     if tier == "nominal":
         return profile
@@ -346,7 +354,7 @@ class CoastLevel(ScenarioLevel):
         projected_dx_error = deviation_sign * abs(float(scenario.projected_dx_error))
         vx_error = projected_dx_error / t_fall
         initial_vx = (-direction * toward_speed) + vx_error
-        trans.rotation = float(scenario.initial_angle)
+        trans.rotation = _angle_from_velocity(initial_vx, initial_vy_up)
 
         validate_scenario_recoverability(
             actor,

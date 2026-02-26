@@ -7,6 +7,7 @@
 Defined in [`levels/plunge.py`](../levels/plunge.py):
 
 - Spawn is centered above the target: `start_x = target_x = 0`
+- Initial attitude is upright (`angle = 0`)
 - Terrain: flat, with a flush/flatten target
 - Target size: `110`
 - Cargo mass varies by scenario tier

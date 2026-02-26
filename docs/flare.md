@@ -13,6 +13,7 @@ Defined in [`levels/flare.py`](../levels/flare.py):
 - Arc angles from horizon: `15deg`, `30deg`, `45deg`, `60deg`, `75deg`
 - Target entry timing: `_TARGET_FLIGHT_TIME_S = 12.0`
 - Spawn side (left/right) is deterministic from `(seed, scenario)`
+- Initial attitude is retrograde (opposite the spawned velocity vector)
 
 Initial velocity solve:
 
