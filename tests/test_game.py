@@ -1374,6 +1374,47 @@ def test_coast_handoff_cfg_uses_course_handoff_fields() -> None:
     assert handoff_cfg.consecutive_pass_frames == 5
 
 
+def test_coast_allocate_controls_holds_retrograde_after_primary_impulse() -> None:
+    bot = create_bot("coast")
+    bot._coast_primary_impulse_used = True
+    bot._coast_impulse_frames_remaining = 0
+    bot._handoff_done = False
+    passive = PassiveSensors(
+        x=0.0,
+        y=650.0,
+        altitude=650.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=14.0,
+        vy_up=-3.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.0,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    action = bot._allocate_controls(
+        dt=1.0,
+        passive=passive,
+        a_x_sp=0.0,
+        a_up_sp=0.0,
+        alt=650.0,
+        dx=180.0,
+        vertical_mode="coast",
+        max_power=230000.0,
+        min_throttle=0.25,
+        max_throttle=1.6,
+    )
+    expected_retrograde = math.atan2(-passive.vx, -passive.vy_up)
+    assert action.target_thrust == pytest.approx(0.0)
+    assert action.target_angle == pytest.approx(expected_retrograde)
+
+
 def test_coast_handoff_to_flare_requires_retrograde_alignment() -> None:
     _, _, cfg = resolve_drift_behavior("drift")
     guidance = GuidanceTargets(

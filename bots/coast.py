@@ -894,13 +894,19 @@ class CoastBot(Bot):
         max_force = max_power * max_throttle
         mass, _ = vehicle_limits(passive, max_force)
         req = clamp((a_x_sp * mass) / max(max_force, 1e-3), -0.95, 0.95)
-        align_retrograde = (
-            (not self._handoff_done)
-            and vertical_mode in ("coast", "align")
+        speed_mag = math.hypot(float(passive.vx), float(passive.vy_up))
+        primary_impulse_complete = (
+            self._coast_primary_impulse_used and self._coast_impulse_frames_remaining <= 0
+        )
+        handoff_window_align = (
+            vertical_mode in ("coast", "align")
             and alt
             <= (self._handoff_cfg.altitude_max + self._handoff_cfg.retrograde_align_altitude_margin)
-            and math.hypot(float(passive.vx), float(passive.vy_up))
-            > self._handoff_cfg.retrograde_align_speed_min
+        )
+        align_retrograde = (
+            (not self._handoff_done)
+            and speed_mag > self._handoff_cfg.retrograde_align_speed_min
+            and (primary_impulse_complete or handoff_window_align)
         )
         max_tilt = 0.18 if alt < 20.0 else 0.56
         if vertical_mode == "coast_hold":
