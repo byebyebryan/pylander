@@ -103,6 +103,12 @@ uv run python main.py plunge --headless --batch \
 
 # Fast regression
 uv run python main.py plunge --headless --quick-benchmark
+
+# Coast-only mini benchmark (same coast scenarios as preset)
+uv run python main.py coast --headless --batch \
+  --batch-seeds 0,1,2 \
+  --batch-levels coast \
+  --batch-scenarios entry_mid_trim,entry_mid_energy,entry_steep_stress
 ```
 
 Quick benchmark preset includes:

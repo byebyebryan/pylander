@@ -19,7 +19,7 @@ from bots._coast_tracking import (
 )
 from bots._guidance_limits import cap_low_altitude_angle
 from bots._guidance_types import GuidanceTargets
-from bots._ballistics import ballistic_time_to_impact
+from bots._ballistics import BallisticProjection, ballistic_time_to_impact
 from bots._launch_setup import LaunchSetupConfig
 from bots._targeting import pick_target
 from bots import create_bot, list_available_bots
@@ -1377,8 +1377,7 @@ def test_coast_handoff_cfg_uses_course_handoff_fields() -> None:
 
 def test_coast_allocate_controls_holds_retrograde_after_primary_impulse() -> None:
     bot = create_bot("coast")
-    bot._coast_primary_impulse_used = True
-    bot._coast_impulse_frames_remaining = 0
+    bot._coast_burn_done = True
     bot._handoff_done = False
     passive = PassiveSensors(
         x=0.0,
@@ -1414,6 +1413,178 @@ def test_coast_allocate_controls_holds_retrograde_after_primary_impulse() -> Non
     expected_retrograde = math.atan2(-passive.vx, -passive.vy_up)
     assert action.target_thrust == pytest.approx(0.0)
     assert action.target_angle == pytest.approx(expected_retrograde)
+
+
+def test_coast_single_burn_duration_solver_satisfies_model() -> None:
+    tau = coast_module._solve_single_burn_duration(
+        error_abs=36.0,
+        ax_abs=4.5,
+        window_s=6.0,
+    )
+    assert tau is not None
+    assert 0.0 < tau < 6.0
+    recovered_error = 4.5 * tau * (6.0 - (0.5 * tau))
+    assert recovered_error == pytest.approx(36.0)
+
+
+def test_coast_single_burn_duration_solver_rejects_infeasible_window() -> None:
+    tau = coast_module._solve_single_burn_duration(
+        error_abs=180.0,
+        ax_abs=2.0,
+        window_s=3.0,
+    )
+    assert tau is None
+
+
+def test_coast_plan_single_burn_angle_matches_error_direction() -> None:
+    bot = create_bot("coast")
+    passive = PassiveSensors(
+        x=0.0,
+        y=620.0,
+        altitude=620.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=-8.0,
+        vy_up=-1.2,
+        angle=-1.35,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.0,
+        vy_sp=-3.0,
+        dx=80.0,
+        alt=620.0,
+        burn_altitude=60.0,
+    )
+    projection = BallisticProjection(
+        projected_dx=80.0,
+        t_fall=8.0,
+        target_x=80.0,
+        impact_x=0.0,
+        used_sensor=False,
+    )
+    plan = bot._plan_single_burn(
+        passive=passive,
+        guidance=guidance,
+        projection=projection,
+        max_power=230000.0,
+        min_throttle=0.25,
+        max_throttle=1.6,
+        ramp_up=1.1,
+    )
+    assert plan is not None
+    assert math.sin(plan.target_angle) > 0.0
+    assert plan.duration_s > 0.0
+    assert 0.25 <= plan.target_thrust <= 1.6
+
+
+def test_coast_single_burn_stops_on_sign_flip_and_does_not_rearm() -> None:
+    bot = create_bot("coast")
+    passive = PassiveSensors(
+        x=0.0,
+        y=620.0,
+        altitude=620.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=-8.0,
+        vy_up=-1.2,
+        angle=-1.35,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.0,
+        vy_sp=-3.0,
+        dx=80.0,
+        alt=620.0,
+        burn_altitude=60.0,
+    )
+    projection_on_track = BallisticProjection(
+        projected_dx=80.0,
+        t_fall=8.0,
+        target_x=80.0,
+        impact_x=0.0,
+        used_sensor=False,
+    )
+    command_align = bot._coast_burn_command(
+        dt=1.0 / 60.0,
+        passive=passive,
+        guidance=guidance,
+        projection=projection_on_track,
+        max_power=230000.0,
+        min_throttle=0.25,
+        max_throttle=1.6,
+        ramp_up=1.1,
+    )
+    assert command_align is not None
+    assert command_align.state == "align"
+    assert command_align.target_thrust == pytest.approx(0.0)
+    passive_aligned = replace(passive, angle=command_align.target_angle)
+    command_burn = bot._coast_burn_command(
+        dt=1.0 / 60.0,
+        passive=passive_aligned,
+        guidance=guidance,
+        projection=projection_on_track,
+        max_power=230000.0,
+        min_throttle=0.25,
+        max_throttle=1.6,
+        ramp_up=1.1,
+    )
+    assert command_burn is not None
+    assert command_burn.state == "burn"
+    assert command_burn.target_thrust > 0.0
+    projection_sign_flip = BallisticProjection(
+        projected_dx=-2.0,
+        t_fall=7.0,
+        target_x=80.0,
+        impact_x=82.0,
+        used_sensor=False,
+    )
+    command_after_flip = bot._coast_burn_command(
+        dt=1.0 / 60.0,
+        passive=passive_aligned,
+        guidance=guidance,
+        projection=projection_sign_flip,
+        max_power=230000.0,
+        min_throttle=0.25,
+        max_throttle=1.6,
+        ramp_up=1.1,
+    )
+    assert command_after_flip is None
+    assert bot._coast_burn_done is True
+    assert bot._coast_burn_active is False
+    assert bot._coast_burn_plan is None
+    command_no_rearm = bot._coast_burn_command(
+        dt=1.0 / 60.0,
+        passive=passive_aligned,
+        guidance=guidance,
+        projection=projection_on_track,
+        max_power=230000.0,
+        min_throttle=0.25,
+        max_throttle=1.6,
+        ramp_up=1.1,
+    )
+    assert command_no_rearm is None
+    assert bot._coast_burn_plan is None
 
 
 def test_coast_handoff_to_flare_requires_retrograde_alignment() -> None:

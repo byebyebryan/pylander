@@ -641,6 +641,8 @@ class LaunchBot(CoastBot):
         max_power: float | None = None,
         min_throttle: float | None = None,
         max_throttle: float | None = None,
+        angle_override: float | None = None,
+        thrust_override: float | None = None,
     ) -> BotAction:
         if vertical_mode != "launch_sideburn":
             return super()._allocate_controls(
@@ -654,6 +656,8 @@ class LaunchBot(CoastBot):
                 max_power=max_power if max_power is not None else self._engine_profile()[0],
                 min_throttle=min_throttle if min_throttle is not None else self._engine_profile()[1],
                 max_throttle=max_throttle if max_throttle is not None else self._engine_profile()[2],
+                angle_override=angle_override,
+                thrust_override=thrust_override,
             )
         if max_power is None or min_throttle is None or max_throttle is None:
             max_power, min_throttle, max_throttle, _ = self._engine_profile()

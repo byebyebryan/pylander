@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
-from bots._ballistics import ballistic_time_to_impact, estimate_ballistic_projection
+from bots._ballistics import (
+    BallisticProjection,
+    ballistic_time_to_impact,
+    estimate_ballistic_projection,
+)
 from bots._bot_math import (
     clamp,
     coerce_finite,
@@ -18,10 +22,8 @@ from bots._bot_math import (
 from bots._coast_tracking import (
     COAST_POLICY,
     CoastCourseConfig,
-    apply_coast_guidance,
     cone_dx_limit,
     coupled_brake_window,
-    lateral_tracking_command,
     resolve_coast_behavior,
 )
 from bots._drop_guidance import compute_drop_guidance
@@ -59,6 +61,62 @@ class CoastHandoffConfig:
 
 
 _BURN_MODEL = TerminalBurnModel()
+
+
+@dataclass(frozen=True)
+class CoastSingleBurnConfig:
+    """Planner and execution knobs for the one-shot coast correction burn."""
+
+    min_abs_projected_dx: float = 8.0
+    min_time_window_s: float = 0.7
+    time_margin_s: float = 0.15
+    min_burn_duration_s: float = 0.18
+    max_burn_fraction: float = 0.9
+    min_lateral_sin: float = 0.08
+    start_angle_tolerance_deg: float = 4.0
+    stop_deadband_min: float = 2.0
+    stop_deadband_cone_scale: float = 0.35
+    stop_deadband_max: float = 12.0
+    rotation_rate_rad_s: float = math.radians(90.0)
+    planner_angle_samples: int = 12
+
+    @property
+    def start_angle_tolerance_rad(self) -> float:
+        return math.radians(self.start_angle_tolerance_deg)
+
+
+@dataclass(frozen=True)
+class _CoastBurnPlan:
+    target_angle: float
+    target_thrust: float
+    duration_s: float
+    error_sign: float
+    stop_deadband: float
+
+
+@dataclass(frozen=True)
+class _CoastBurnCommand:
+    target_angle: float
+    target_thrust: float
+    state: str
+
+
+def _solve_single_burn_duration(
+    *,
+    error_abs: float,
+    ax_abs: float,
+    window_s: float,
+) -> float | None:
+    """Solve |e| = |ax| * tau * (T - tau/2) using the smaller positive root."""
+    if error_abs <= 0.0 or ax_abs <= 1e-6 or window_s <= 0.0:
+        return None
+    discriminant = (window_s * window_s) - ((2.0 * error_abs) / ax_abs)
+    if discriminant < 0.0:
+        return None
+    tau = window_s - math.sqrt(max(0.0, discriminant))
+    if tau <= 0.0 or tau > window_s:
+        return None
+    return float(tau)
 
 
 def _angle_diff(a: float, b: float) -> float:
@@ -368,17 +426,12 @@ class CoastBot(Bot):
         self._handoff_event_summary = ""
         self._last_target_size: float | None = None
         self._flare_delegate = FlareBot()
-        self._coast_primary_impulse_frames = 52
-        self._coast_cleanup_impulse_frames = 40
-        self._coast_impulse_cooldown_frames = 60
-        self._coast_primary_trigger_dx = 20.0
-        self._coast_cleanup_trigger_dx = 100.0
-        self._coast_impulse_abort_altitude = 115.0
-        self._coast_impulse_descending_vy_max = -0.8
-        self._coast_impulse_frames_remaining = 0
-        self._coast_impulse_cooldown_remaining = 0
-        self._coast_primary_impulse_used = False
-        self._coast_cleanup_impulse_used = False
+        self._single_burn_cfg = CoastSingleBurnConfig()
+        self._coast_burn_plan: _CoastBurnPlan | None = None
+        self._coast_burn_active = False
+        self._coast_burn_done = False
+        self._coast_burn_elapsed_s = 0.0
+        self._coast_burn_state_summary = "idle"
         self.set_behavior(behavior)
 
     def set_vehicle_info(self, info: VehicleInfo):
@@ -401,10 +454,11 @@ class CoastBot(Bot):
         self._handoff_event_summary = ""
         self._last_target_size = None
         self._flare_delegate.set_behavior("flare")
-        self._coast_impulse_frames_remaining = 0
-        self._coast_impulse_cooldown_remaining = 0
-        self._coast_primary_impulse_used = False
-        self._coast_cleanup_impulse_used = False
+        self._coast_burn_plan = None
+        self._coast_burn_active = False
+        self._coast_burn_done = False
+        self._coast_burn_elapsed_s = 0.0
+        self._coast_burn_state_summary = "idle"
 
     @property
     def behavior(self) -> str:
@@ -419,10 +473,11 @@ class CoastBot(Bot):
         self._last_guidance = None
         self._ballistic_debug_summary = ""
         self._flare_delegate.set_behavior("flare")
-        self._coast_impulse_frames_remaining = 0
-        self._coast_impulse_cooldown_remaining = 0
-        self._coast_primary_impulse_used = False
-        self._coast_cleanup_impulse_used = False
+        self._coast_burn_plan = None
+        self._coast_burn_active = False
+        self._coast_burn_done = False
+        self._coast_burn_elapsed_s = 0.0
+        self._coast_burn_state_summary = "idle"
         if self.vehicle_info is not None:
             self._flare_delegate.set_vehicle_info(self.vehicle_info)
 
@@ -457,11 +512,16 @@ class CoastBot(Bot):
 
             target = pick_target(passive)
             if target is None:
+                self._coast_burn_plan = None
+                self._coast_burn_active = False
+                self._coast_burn_done = False
+                self._coast_burn_elapsed_s = 0.0
+                self._coast_burn_state_summary = "idle"
                 t_impact, impact_source = ballistic_time_to_impact(passive, active)
                 self._ballistic_debug_summary = (
                     f"ball tti:{stable(t_impact, 1):4.1f} "
                     f"src:{'s' if impact_source == 'sensor' else 'a'} "
-                    "burn:0"
+                    "burn:0 sb:idle"
                 )
                 alt = finite_altitude(passive)
                 a_up_sp = self._vertical_controller(
@@ -487,7 +547,7 @@ class CoastBot(Bot):
                 self.status = action.status
                 return action
 
-            guidance = self._guidance(
+            guidance_result = self._guidance(
                 passive,
                 target,
                 max_force=max_force,
@@ -495,18 +555,53 @@ class CoastBot(Bot):
                 ramp_up=ramp_up,
                 active=active,
             )
+            if (
+                isinstance(guidance_result, tuple)
+                and len(guidance_result) == 2
+                and isinstance(guidance_result[1], BallisticProjection)
+            ):
+                guidance, projection = guidance_result
+            else:
+                guidance = guidance_result  # LaunchBot override returns GuidanceTargets only.
+                projection = estimate_ballistic_projection(
+                    dx=guidance.dx,
+                    alt=max(0.0, guidance.alt),
+                    vx=passive.vx,
+                    vy_up=passive.vy_up,
+                    active=self._active_sensors,
+                    x=passive.x,
+                    y=passive.y,
+                    clearance=self._ballistic_clearance(),
+                )
             if self._behavior == "coast" and self._handoff_done:
                 flare_action = self._flare_delegate.update(dt, passive, active)
                 self.status = flare_action.status
                 return flare_action
 
-            if guidance.vertical_mode in ("coast", "coast_hold") and abs(guidance.dx) <= self._policy.coast_horiz_deadband:
+            burn_command = self._coast_burn_command(
+                dt=dt,
+                passive=passive,
+                guidance=guidance,
+                projection=projection,
+                max_power=max_power,
+                min_throttle=min_throttle,
+                max_throttle=max_throttle,
+                ramp_up=ramp_up,
+            )
+
+            if burn_command is not None:
+                a_x_sp = 0.0
+            elif guidance.phase in ("coast", "align"):
+                # Coast rewrite: allow one dedicated burn plan, otherwise stay neutral laterally.
+                a_x_sp = 0.0
+            elif guidance.vertical_mode in ("coast", "coast_hold") and abs(guidance.dx) <= self._policy.coast_horiz_deadband:
                 deadband = max(1e-3, self._policy.coast_horiz_deadband)
                 deadband_ratio = max(0.0, min(1.0, abs(guidance.dx) / deadband))
                 softened_vx_sp = guidance.vx_sp * deadband_ratio
                 a_x_sp = self._horizontal_controller(passive, softened_vx_sp)
             else:
                 a_x_sp = self._horizontal_controller(passive, guidance.vx_sp)
+
             a_up_sp = self._vertical_controller(
                 passive,
                 guidance.vy_sp,
@@ -525,12 +620,21 @@ class CoastBot(Bot):
                 max_power=max_power,
                 min_throttle=min_throttle,
                 max_throttle=max_throttle,
+                angle_override=None if burn_command is None else burn_command.target_angle,
+                thrust_override=None if burn_command is None else burn_command.target_thrust,
+            )
+            self._ballistic_debug_summary = (
+                f"ball pdx:{float(projection.projected_dx):6.1f} "
+                f"tf:{float(projection.t_fall):4.1f} "
+                f"src:{'s' if bool(projection.used_sensor) else 'a'} "
+                f"sb:{self._coast_burn_state_summary}"
             )
             action.status = (
                 f"{self._policy.status_prefix}:{guidance.phase} dx:{stable(guidance.dx, 1):6.1f} "
                 f"vx:{stable(passive.vx, 1):5.1f} vy:{stable(passive.vy_up, 1):5.1f} "
                 f"vys:{stable(guidance.vy_sp, 1):5.1f} "
-                f"balt:{stable(guidance.burn_altitude, 1):5.1f}"
+                f"balt:{stable(guidance.burn_altitude, 1):5.1f} "
+                f"sb:{self._coast_burn_state_summary}"
             )
             self.status = action.status
             return action
@@ -598,7 +702,7 @@ class CoastBot(Bot):
         max_throttle: float,
         ramp_up: float,
         active: ActiveSensors | None = None,
-    ) -> GuidanceTargets:
+    ) -> tuple[GuidanceTargets, BallisticProjection]:
         base_guidance, _ = compute_drop_guidance(
             self._policy,
             passive,
@@ -609,23 +713,17 @@ class CoastBot(Bot):
             active=active,
             terminal_brake_altitude_fn=self._terminal_brake_altitude,
         )
-        coast_debug: dict[str, object] = {}
-        guidance = apply_coast_guidance(
-            base_guidance,
-            self._course_cfg,
+        projection = estimate_ballistic_projection(
+            dx=base_guidance.dx,
+            alt=max(0.0, base_guidance.alt),
             vx=passive.vx,
             vy_up=passive.vy_up,
             active=self._active_sensors,
             x=passive.x,
             y=passive.y,
             clearance=self._ballistic_clearance(),
-            debug=coast_debug,
         )
-        guidance = self._shape_coast_impulse(
-            guidance,
-            projected_dx=coast_debug.get("projected_dx"),
-            vy_up=passive.vy_up,
-        )
+        guidance = base_guidance
         target_size = coerce_finite(getattr(target, "size", None), float("nan"))
         if not math.isfinite(target_size):
             target_size = None
@@ -671,90 +769,207 @@ class CoastBot(Bot):
             else:
                 self._handoff_pass_frames = 0
         self._ballistic_debug_summary = (
-            f"ball pdx:{float(coast_debug.get('projected_dx', 0.0)):6.1f} "
-            f"tf:{float(coast_debug.get('t_fall', 0.0)):4.1f} "
-            f"src:{'s' if bool(coast_debug.get('sensor_used')) else 'a'}"
+            f"ball pdx:{float(projection.projected_dx):6.1f} "
+            f"tf:{float(projection.t_fall):4.1f} "
+            f"src:{'s' if bool(projection.used_sensor) else 'a'} "
+            f"sb:{self._coast_burn_state_summary}"
         )
         self._last_guidance = guidance
-        return guidance
+        return guidance, projection
 
-    def _start_impulse(self, *, frames: int) -> None:
-        self._coast_impulse_frames_remaining = max(0, int(frames))
+    def _coast_phase_allows_single_burn(self, guidance: GuidanceTargets) -> bool:
+        if self._handoff_done:
+            return False
+        if guidance.phase not in ("coast", "align"):
+            return False
+        if guidance.vertical_mode in ("terminal_burn", "flare", "touchdown"):
+            return False
+        return True
 
-    def _step_impulse_timer(self) -> None:
-        if self._coast_impulse_frames_remaining <= 0:
-            return
-        self._coast_impulse_frames_remaining -= 1
-        if self._coast_impulse_frames_remaining == 0:
-            self._coast_impulse_cooldown_remaining = self._coast_impulse_cooldown_frames
+    @staticmethod
+    def _throttle_candidates(min_throttle: float, max_throttle: float) -> tuple[float, ...]:
+        candidates: list[float] = []
+        for raw in (
+            min_throttle,
+            0.45,
+            0.7,
+            1.0,
+            1.25,
+            max_throttle,
+        ):
+            numeric = clamp(float(raw), min_throttle, max_throttle)
+            if not candidates or abs(candidates[-1] - numeric) > 1e-6:
+                candidates.append(numeric)
+        return tuple(candidates)
 
-    def _shape_coast_impulse(
+    def _flip_arc_angles(self, current_angle: float, retrograde_angle: float) -> tuple[float, ...]:
+        delta = _angle_diff(current_angle, retrograde_angle)
+        span = abs(delta)
+        if span <= 1e-6:
+            return (retrograde_angle,)
+        direction = 1.0 if delta >= 0.0 else -1.0
+        samples = max(2, int(self._single_burn_cfg.planner_angle_samples))
+        return tuple(
+            current_angle + (direction * span * (idx / samples))
+            for idx in range(1, samples + 1)
+        )
+
+    def _plan_single_burn(
         self,
-        guidance: GuidanceTargets,
         *,
-        projected_dx: object,
-        vy_up: float,
-    ) -> GuidanceTargets:
-        if self._coast_impulse_frames_remaining > 0:
-            if (
-                guidance.vertical_mode in ("terminal_burn", "touchdown")
-                and float(guidance.alt) <= self._coast_impulse_abort_altitude
-            ):
-                self._coast_impulse_frames_remaining = 0
-                self._coast_impulse_cooldown_remaining = 0
-                return guidance
-            self._step_impulse_timer()
-            return replace(guidance, vertical_mode="coast_hold")
-        if self._coast_impulse_cooldown_remaining > 0:
-            self._coast_impulse_cooldown_remaining -= 1
-            if guidance.vertical_mode in ("coast_hold", "align"):
-                return replace(guidance, vertical_mode="coast")
-            return guidance
-        if guidance.vertical_mode in ("terminal_burn", "touchdown"):
-            return guidance
+        passive: PassiveSensors,
+        guidance: GuidanceTargets,
+        projection: BallisticProjection,
+        max_power: float,
+        min_throttle: float,
+        max_throttle: float,
+        ramp_up: float,
+    ) -> _CoastBurnPlan | None:
+        cfg = self._single_burn_cfg
+        projected_dx = float(projection.projected_dx)
+        error_abs = abs(projected_dx)
+        if error_abs < cfg.min_abs_projected_dx:
+            return None
+        t_fall = max(0.0, float(projection.t_fall))
+        if t_fall <= cfg.min_time_window_s:
+            return None
+        mass = max(0.5, float(passive.mass))
+        retrograde_angle = _retrograde_angle(passive.vx, passive.vy_up)
+        stop_deadband = clamp(
+            cfg.stop_deadband_cone_scale * cone_dx_limit(max(0.0, guidance.alt), self._course_cfg),
+            cfg.stop_deadband_min,
+            cfg.stop_deadband_max,
+        )
+        best: tuple[float, _CoastBurnPlan] | None = None
+        for angle in self._flip_arc_angles(float(passive.angle), retrograde_angle):
+            sin_term = math.sin(angle)
+            if abs(sin_term) < cfg.min_lateral_sin:
+                continue
+            if (sin_term * projected_dx) <= 0.0:
+                continue
+            align_time = abs(_angle_diff(float(passive.angle), angle)) / max(
+                1e-3,
+                cfg.rotation_rate_rad_s,
+            )
+            lateral_accel_per_throttle = (max_power / mass) * abs(sin_term)
+            for thrust in self._throttle_candidates(min_throttle, max_throttle):
+                spool_time = max(0.0, thrust - max(0.0, float(passive.thrust_level))) / max(1e-3, ramp_up)
+                time_window = t_fall - align_time - spool_time - cfg.time_margin_s
+                if time_window <= cfg.min_time_window_s:
+                    continue
+                burn_duration = _solve_single_burn_duration(
+                    error_abs=error_abs,
+                    ax_abs=lateral_accel_per_throttle * thrust,
+                    window_s=time_window,
+                )
+                if burn_duration is None:
+                    continue
+                if burn_duration < cfg.min_burn_duration_s:
+                    continue
+                if burn_duration > (cfg.max_burn_fraction * time_window):
+                    continue
+                fuel_proxy = thrust * burn_duration
+                candidate = _CoastBurnPlan(
+                    target_angle=float(angle),
+                    target_thrust=float(thrust),
+                    duration_s=float(burn_duration),
+                    error_sign=math.copysign(1.0, projected_dx),
+                    stop_deadband=float(stop_deadband),
+                )
+                if best is None or fuel_proxy < best[0]:
+                    best = (fuel_proxy, candidate)
+        if best is None:
+            return None
+        return best[1]
 
-        projected_abs = (
-            abs(float(projected_dx))
-            if isinstance(projected_dx, (int, float)) and math.isfinite(float(projected_dx))
-            else abs(float(guidance.dx))
+    def _coast_burn_command(
+        self,
+        *,
+        dt: float,
+        passive: PassiveSensors,
+        guidance: GuidanceTargets,
+        projection: BallisticProjection,
+        max_power: float,
+        min_throttle: float,
+        max_throttle: float,
+        ramp_up: float,
+    ) -> _CoastBurnCommand | None:
+        if not self._coast_phase_allows_single_burn(guidance):
+            self._coast_burn_plan = None
+            self._coast_burn_active = False
+            if guidance.phase not in ("coast", "align"):
+                self._coast_burn_done = True
+            self._coast_burn_state_summary = "idle"
+            return None
+
+        projected_dx = float(projection.projected_dx)
+        if self._coast_burn_active:
+            plan = self._coast_burn_plan
+            if plan is None:
+                self._coast_burn_active = False
+                self._coast_burn_done = True
+                self._coast_burn_state_summary = "done"
+                return None
+            self._coast_burn_elapsed_s += max(0.0, float(dt))
+            stop_due_to_time = self._coast_burn_elapsed_s >= plan.duration_s
+            stop_due_to_sign_flip = (projected_dx * plan.error_sign) <= 0.0
+            stop_due_to_deadband = abs(projected_dx) <= plan.stop_deadband
+            if stop_due_to_time or stop_due_to_sign_flip or stop_due_to_deadband:
+                self._coast_burn_active = False
+                self._coast_burn_done = True
+                self._coast_burn_plan = None
+                self._coast_burn_state_summary = "done"
+                return None
+            self._coast_burn_state_summary = "burn"
+            return _CoastBurnCommand(
+                target_angle=plan.target_angle,
+                target_thrust=plan.target_thrust,
+                state="burn",
+            )
+
+        if self._coast_burn_plan is not None:
+            plan = self._coast_burn_plan
+            angle_error = abs(_angle_diff(float(passive.angle), plan.target_angle))
+            if angle_error <= self._single_burn_cfg.start_angle_tolerance_rad:
+                self._coast_burn_active = True
+                self._coast_burn_elapsed_s = 0.0
+                self._coast_burn_state_summary = "burn"
+                return _CoastBurnCommand(
+                    target_angle=plan.target_angle,
+                    target_thrust=plan.target_thrust,
+                    state="burn",
+                )
+            self._coast_burn_state_summary = "align"
+            return _CoastBurnCommand(
+                target_angle=plan.target_angle,
+                target_thrust=0.0,
+                state="align",
+            )
+
+        if self._coast_burn_done:
+            self._coast_burn_state_summary = "done"
+            return None
+
+        plan = self._plan_single_burn(
+            passive=passive,
+            guidance=guidance,
+            projection=projection,
+            max_power=max_power,
+            min_throttle=min_throttle,
+            max_throttle=max_throttle,
+            ramp_up=ramp_up,
         )
-        projected_signed = (
-            float(projected_dx)
-            if isinstance(projected_dx, (int, float)) and math.isfinite(float(projected_dx))
-            else float(guidance.dx)
+        if plan is None:
+            self._coast_burn_state_summary = "idle"
+            return None
+        self._coast_burn_plan = plan
+        self._coast_burn_elapsed_s = 0.0
+        self._coast_burn_state_summary = "align"
+        return _CoastBurnCommand(
+            target_angle=plan.target_angle,
+            target_thrust=0.0,
+            state="align",
         )
-        overshoot_correction = (projected_signed * float(guidance.dx)) < 0.0
-        primary_frames = self._coast_primary_impulse_frames
-        cleanup_frames = self._coast_cleanup_impulse_frames
-        if overshoot_correction:
-            primary_frames = int(round(1.75 * primary_frames))
-            cleanup_frames = int(round(1.60 * cleanup_frames))
-        descending = float(vy_up) <= self._coast_impulse_descending_vy_max
-        eligible_phase = guidance.phase in ("coast", "align")
-        eligible_for_impulse = eligible_phase and descending
-        if (
-            (not self._coast_primary_impulse_used)
-            and projected_abs >= self._coast_primary_trigger_dx
-            and eligible_for_impulse
-        ):
-            self._coast_primary_impulse_used = True
-            self._start_impulse(frames=primary_frames)
-            self._step_impulse_timer()
-            return replace(guidance, vertical_mode="coast_hold")
-        if (
-            self._coast_cleanup_impulse_frames > 0
-            and self._coast_primary_impulse_used
-            and (not self._coast_cleanup_impulse_used)
-            and projected_abs >= self._coast_cleanup_trigger_dx
-            and eligible_for_impulse
-        ):
-            self._coast_cleanup_impulse_used = True
-            self._start_impulse(frames=cleanup_frames)
-            self._step_impulse_timer()
-            return replace(guidance, vertical_mode="coast_hold")
-        if guidance.vertical_mode in ("coast_hold", "align"):
-            return replace(guidance, vertical_mode="coast")
-        return guidance
 
     def get_evaluation_snapshot(self) -> dict[str, float | bool | str | None]:
         if self._handoff_snapshot is None:
@@ -790,23 +1005,7 @@ class CoastBot(Bot):
         passive: PassiveSensors,
         vx_sp: float,
     ) -> float:
-        guidance = self._last_guidance
-        if guidance is None or not passive.radar_contacts:
-            return (0.65 * (vx_sp - passive.vx)) - (0.08 * passive.ax)
-        tracker = lateral_tracking_command(
-            self._course_cfg,
-            dx=guidance.dx,
-            alt=guidance.alt,
-            vx=passive.vx,
-            vy_up=passive.vy_up,
-            ax=passive.ax,
-            vx_guidance=vx_sp,
-            active=self._active_sensors,
-            x=passive.x,
-            y=passive.y,
-            clearance=self._ballistic_clearance(),
-        )
-        return tracker.ax_target
+        return (0.65 * (vx_sp - passive.vx)) - (0.08 * passive.ax)
 
     def _vertical_controller(
         self,
@@ -878,14 +1077,13 @@ class CoastBot(Bot):
         max_power: float,
         min_throttle: float,
         max_throttle: float,
+        angle_override: float | None = None,
+        thrust_override: float | None = None,
     ) -> BotAction:
         max_force = max_power * max_throttle
         mass, _ = vehicle_limits(passive, max_force)
         req = clamp((a_x_sp * mass) / max(max_force, 1e-3), -0.95, 0.95)
         speed_mag = math.hypot(float(passive.vx), float(passive.vy_up))
-        primary_impulse_complete = (
-            self._coast_primary_impulse_used and self._coast_impulse_frames_remaining <= 0
-        )
         handoff_window_align = (
             vertical_mode in ("coast", "align")
             and alt
@@ -894,29 +1092,37 @@ class CoastBot(Bot):
         align_retrograde = (
             (not self._handoff_done)
             and speed_mag > self._handoff_cfg.retrograde_align_speed_min
-            and (primary_impulse_complete or handoff_window_align)
+            and (self._coast_burn_done or handoff_window_align)
         )
+        has_angle_override = angle_override is not None
+        has_thrust_override = thrust_override is not None
         max_tilt = 0.18 if alt < 20.0 else 0.56
-        if vertical_mode == "coast_hold":
-            # Coast impulse: prioritize lateral delta-v with a strong tilted burn.
+        if has_angle_override:
+            angle_cmd = float(angle_override)
+        elif vertical_mode == "coast_hold":
+            # Legacy fallback if guidance requests a hold-style correction.
             burst_tilt = min(max_tilt, 0.56 if alt >= 20.0 else 0.30)
             direction = 1.0 if a_x_sp >= 0.0 else -1.0
             angle_cmd = direction * burst_tilt
         else:
             angle_cmd = math.asin(req)
             angle_cmd = clamp(angle_cmd, -max_tilt, max_tilt)
-        if align_retrograde:
+        if align_retrograde and not has_angle_override:
             angle_cmd = _retrograde_angle(passive.vx, passive.vy_up)
         angle_cmd = rate_limit_angle_command(angle_cmd, self._prev_angle_cmd, dt)
         self._prev_angle_cmd = angle_cmd
 
-        cos_term = max(0.25, abs(math.cos(angle_cmd)))
-        thrust = (mass * a_up_sp) / max(max_power * cos_term, 1e-3)
-        if alt < 9.0 and abs(dx) <= 10.0 and not align_retrograde:
+        if has_thrust_override:
+            thrust = float(thrust_override)
+        else:
+            cos_term = max(0.25, abs(math.cos(angle_cmd)))
+            thrust = (mass * a_up_sp) / max(max_power * cos_term, 1e-3)
+        if alt < 9.0 and abs(dx) <= 10.0 and not align_retrograde and not has_angle_override:
             angle_cmd = 0.0
         if alt < 2.5 and abs(dx) <= 7.0 and abs(passive.vx) < 0.6 and abs(passive.vy_up) < 0.9:
             thrust = 0.0
-            angle_cmd = 0.0
+            if not has_angle_override:
+                angle_cmd = 0.0
 
         soft_cap = min(self._policy.overdrive_soft_cap, max_throttle)
         if thrust > soft_cap and not self._can_use_overdrive(
@@ -928,9 +1134,9 @@ class CoastBot(Bot):
         thrust = clamp(thrust, 0.0, max_throttle)
         if thrust > 0.0:
             thrust = max(min_throttle, thrust)
-        if vertical_mode == "coast_hold" and thrust > 0.0:
+        if vertical_mode == "coast_hold" and thrust > 0.0 and not has_thrust_override:
             thrust = max(thrust, min(max_throttle, 1.0))
-        if thrust <= 1e-5 and not align_retrograde:
+        if thrust <= 1e-5 and not align_retrograde and not has_angle_override:
             angle_cmd = 0.0
 
         action = BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)
