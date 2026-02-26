@@ -154,8 +154,6 @@ def should_handoff_to_coast(
                 "current_target_x": current_projection.target_x,
             }
         )
-    if alt_pred <= setup_cfg.handoff_force_coast_altitude:
-        return track_ready and not_falling_short
     return track_ready and speed_ready and not_falling_short
 
 
@@ -484,10 +482,7 @@ class LaunchBot(CoastBot):
         burn_done = (
             abs(current_projection.projected_dx) <= burn_end_dx and burn_speed_ready
         )
-        safety_guard = (
-            float(passive.altitude) <= self._setup_cfg.handoff_force_coast_altitude
-            or current_projection.t_fall <= self._setup_cfg.setup_burn_safety_t_fall_s
-        )
+        safety_guard = current_projection.t_fall <= self._setup_cfg.setup_burn_safety_t_fall_s
         handoff_debug.update(
             {
                 "burn_done": burn_done,
@@ -521,7 +516,7 @@ class LaunchBot(CoastBot):
                 min_frames = max(1, int(self._setup_cfg.setup_burn_min_frames))
                 can_end_setup_burn = (
                     self._setup_burn_frames >= min_frames
-                    and (burn_done or safety_guard or handoff_gate)
+                    and (burn_done or handoff_gate)
                 )
                 if can_end_setup_burn:
                     self._setup_burn_active = False
@@ -532,8 +527,6 @@ class LaunchBot(CoastBot):
                 handoff_reason = None
                 if self._setup_burn_complete:
                     handoff_reason = "burn_complete"
-                elif safety_guard:
-                    handoff_reason = "safety_guard"
                 elif handoff_gate:
                     handoff_reason = "gate"
                 if handoff_reason is not None:

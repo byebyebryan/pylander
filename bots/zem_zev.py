@@ -83,7 +83,7 @@ class ZemZevBot(Bot):
         return max(0.0, 0.5 * float(self.vehicle_info.height))
 
     def _resolve_target_error(self, passive: PassiveSensors) -> tuple[float, float]:
-        target = pick_target(passive)
+        target = pick_target(passive, pinned_uid=self.pinned_target_uid)
         if target is not None:
             return float(target.x) - float(passive.x), float(target.y) - float(passive.y)
         return 0.0, -max(0.0, finite_altitude(passive))

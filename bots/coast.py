@@ -438,6 +438,10 @@ class CoastBot(Bot):
         super().set_vehicle_info(info)
         self._flare_delegate.set_vehicle_info(info)
 
+    def set_pinned_target_uid(self, target_uid: str | None) -> None:
+        super().set_pinned_target_uid(target_uid)
+        self._flare_delegate.set_pinned_target_uid(self.pinned_target_uid)
+
     def set_behavior(self, behavior: str) -> None:
         key = str(behavior).strip().lower()
         if key != "coast":
@@ -510,7 +514,7 @@ class CoastBot(Bot):
             max_force = max_power * max_throttle
             _, up_acc_max = vehicle_limits(passive, max_force)
 
-            target = pick_target(passive)
+            target = pick_target(passive, pinned_uid=self.pinned_target_uid)
             if target is None:
                 self._coast_burn_plan = None
                 self._coast_burn_active = False

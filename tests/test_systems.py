@@ -346,6 +346,7 @@ def test_state_transition_takes_off_when_landed_and_thrust_requested() -> None:
     entity.add_component(Engine(target_thrust=0.2))
     entity.add_component(Transform(pos=Vector2(0.0, 10.0)))
     entity.add_component(FuelTank(fuel=10.0))
+    entity.add_component(LanderGeometry(width=8.0, height=8.0))
 
     world = World()
     world.add_entity(entity)
@@ -359,7 +360,29 @@ def test_state_transition_takes_off_when_landed_and_thrust_requested() -> None:
     assert ls is not None
     assert trans is not None
     assert ls.state == "flying"
-    assert math.isclose(trans.pos.y, 11.0, abs_tol=1e-6)
+    assert math.isclose(trans.pos.y, 15.0, abs_tol=1e-6)
+
+
+def test_state_transition_takeoff_uses_min_clearance_without_geometry() -> None:
+    entity = Entity()
+    entity.add_component(LanderState(state="landed"))
+    entity.add_component(Engine(target_thrust=0.2))
+    entity.add_component(Transform(pos=Vector2(0.0, 10.0)))
+    entity.add_component(FuelTank(fuel=10.0))
+
+    world = World()
+    world.add_entity(entity)
+    system = StateTransitionSystem()
+    system.world = world
+
+    system.update(1.0 / 60.0)
+
+    ls = entity.get_component(LanderState)
+    trans = entity.get_component(Transform)
+    assert ls is not None
+    assert trans is not None
+    assert ls.state == "flying"
+    assert math.isclose(trans.pos.y, 14.0, abs_tol=1e-6)
 
 
 @dataclass

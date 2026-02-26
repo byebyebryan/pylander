@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from core.components import Engine, FuelTank, LanderState, Transform
+from core.components import Engine, FuelTank, LanderGeometry, LanderState, Transform
 from core.ecs import System
+
+_MIN_TAKEOFF_CLEARANCE = 4.0
 
 
 class StateTransitionSystem(System):
@@ -22,7 +24,15 @@ class StateTransitionSystem(System):
 
             if ls.state == "landed" and eng.target_thrust > 0.0:
                 ls.state = "flying"
-                trans.pos.y += 1.0
+                geo = entity.get_component(LanderGeometry)
+                if geo is None:
+                    takeoff_clearance = _MIN_TAKEOFF_CLEARANCE
+                else:
+                    takeoff_clearance = max(
+                        _MIN_TAKEOFF_CLEARANCE,
+                        (0.5 * float(geo.height)) + 1.0,
+                    )
+                trans.pos.y += takeoff_clearance
 
             if ls.state == "flying" and tank.fuel <= 0.0 and eng.target_thrust <= 0.0:
                 ls.state = "out_of_fuel"

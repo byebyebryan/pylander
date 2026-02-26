@@ -129,6 +129,7 @@ class Bot(ABC):
     def __init__(self):
         self.status = ""
         self.vehicle_info: VehicleInfo | None = None
+        self._pinned_target_uid: str | None = None
 
     @abstractmethod
     def update(
@@ -153,6 +154,19 @@ class Bot(ABC):
     def set_vehicle_info(self, info: "VehicleInfo"):
         """Provide static vehicle parameters (dimensions, masses, performance)."""
         self.vehicle_info = info
+
+    @property
+    def pinned_target_uid(self) -> str | None:
+        """Optional radar contact UID to force as the active target."""
+        return self._pinned_target_uid
+
+    def set_pinned_target_uid(self, target_uid: str | None) -> None:
+        """Pin target selection to a specific radar contact UID."""
+        if target_uid is None:
+            self._pinned_target_uid = None
+            return
+        normalized = str(target_uid).strip()
+        self._pinned_target_uid = normalized if normalized else None
 
     def get_stats_text(self) -> list[str]:
         """Return a list of UI text lines for this bot.

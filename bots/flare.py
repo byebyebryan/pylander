@@ -288,7 +288,7 @@ class FlareBot(Bot):
             max_force = max_power * max_throttle
             _, up_acc_max = vehicle_limits(passive, max_force)
 
-            target = pick_target(passive)
+            target = pick_target(passive, pinned_uid=self.pinned_target_uid)
             if target is None:
                 t_impact, impact_source = ballistic_time_to_impact(passive, active)
                 self._ballistic_debug_summary = (

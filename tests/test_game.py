@@ -94,6 +94,7 @@ def test_bot_registry_exposes_expected_bots() -> None:
     assert "flare" in bots
     assert "coast" in bots
     assert "launch" in bots
+    assert "ferry" in bots
     assert "zem_zev" in bots
     assert "_drop_core" not in bots
     assert "_drift_core" not in bots
@@ -101,17 +102,159 @@ def test_bot_registry_exposes_expected_bots() -> None:
     assert "plunge_speed" not in bots
     assert "plunge_econ" not in bots
     assert "turtle" not in bots
-    assert {"drop", "drift", "transfer", "ferry"}.isdisjoint(set(bots))
+    assert {"drop", "drift", "transfer"}.isdisjoint(set(bots))
     plunge_bot = create_bot("plunge")
     flare_bot = create_bot("flare")
     coast_bot = create_bot("coast")
     launch_bot = create_bot("launch")
+    ferry_bot = create_bot("ferry")
     zem_zev_bot = create_bot("zem_zev")
     assert plunge_bot.__class__.__name__ == "PlungeBot"
     assert flare_bot.__class__.__name__ == "FlareBot"
     assert coast_bot.__class__.__name__ == "CoastBot"
     assert launch_bot.__class__.__name__ == "LaunchBot"
+    assert ferry_bot.__class__.__name__ == "FerryBot"
     assert zem_zev_bot.__class__.__name__ == "ZemZevBot"
+
+
+def _make_ferry_contacts() -> list[RadarContact]:
+    return [
+        RadarContact(
+            uid="ferry_site_source",
+            x=0.0,
+            y=0.0,
+            size=110.0,
+            angle=0.0,
+            distance=4.0,
+            rel_x=0.0,
+            rel_y=-4.0,
+            is_inner_lock=True,
+            info=None,
+        ),
+        RadarContact(
+            uid="ferry_site_dest",
+            x=800.0,
+            y=0.0,
+            size=110.0,
+            angle=0.0,
+            distance=800.0,
+            rel_x=800.0,
+            rel_y=-4.0,
+            is_inner_lock=True,
+            info=None,
+        ),
+    ]
+
+
+def _make_ferry_passive(
+    *,
+    state: str,
+    altitude: float,
+    contacts: list[RadarContact],
+) -> PassiveSensors:
+    return PassiveSensors(
+        x=0.0,
+        y=max(4.0, altitude),
+        altitude=altitude,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=0.0,
+        angle=0.35,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.0,
+        fuel=90.0,
+        max_fuel=100.0,
+        state=state,
+        radar_contacts=contacts,
+        proximity=None,
+    )
+
+
+def test_ferry_bot_keeps_upright_takeoff_until_pad_clear() -> None:
+    bot = create_bot("ferry")
+    contacts = _make_ferry_contacts()
+    landed = _make_ferry_passive(state="landed", altitude=4.0, contacts=contacts)
+    action_landed = bot.update(1.0 / 60.0, landed, active=SimpleNamespace())
+    assert action_landed.status == "ferry:takeoff_upright"
+    assert action_landed.target_angle == pytest.approx(0.0)
+    assert action_landed.target_thrust > 0.0
+
+    def _unexpected_delegate(*_args, **_kwargs):
+        raise AssertionError("delegate update should not run before pad clear")
+
+    bot._delegate.update = _unexpected_delegate  # type: ignore[attr-defined]
+    low_alt = _make_ferry_passive(state="flying", altitude=4.5, contacts=contacts)
+    action_low_alt = bot.update(1.0 / 60.0, low_alt, active=SimpleNamespace())
+    assert action_low_alt.status == "ferry:clear_pad"
+    assert action_low_alt.target_angle == pytest.approx(0.0)
+    assert action_low_alt.target_thrust > 0.0
+
+
+def test_ferry_bot_hands_off_to_launch_once_pad_is_clear() -> None:
+    bot = create_bot("ferry")
+    contacts = _make_ferry_contacts()
+    landed = _make_ferry_passive(state="landed", altitude=4.0, contacts=contacts)
+    bot.update(1.0 / 60.0, landed, active=SimpleNamespace())
+
+    captured: dict[str, str | None] = {
+        "first_uid": None,
+        "selected_uid": None,
+        "pinned_uid": None,
+    }
+
+    def _capture_delegate(_dt, passive, _active):
+        first = passive.radar_contacts[0] if passive.radar_contacts else None
+        captured["first_uid"] = None if first is None else first.uid
+        captured["pinned_uid"] = bot._delegate.pinned_target_uid
+        selected = pick_target(passive, pinned_uid=bot._delegate.pinned_target_uid)
+        captured["selected_uid"] = None if selected is None else selected.uid
+        return BotAction(
+            target_thrust=0.2,
+            target_angle=-0.6,
+            refuel=False,
+            status="launch:coast",
+        )
+
+    bot._delegate.update = _capture_delegate  # type: ignore[attr-defined]
+    clear_alt = _make_ferry_passive(state="flying", altitude=30.0, contacts=contacts)
+    action = bot.update(1.0 / 60.0, clear_alt, active=SimpleNamespace())
+
+    assert captured["first_uid"] == "ferry_site_source"
+    assert captured["pinned_uid"] == "ferry_site_dest"
+    assert captured["selected_uid"] == "ferry_site_dest"
+    assert action.status == "ferry:launch:coast"
+    assert action.target_angle == pytest.approx(-0.6)
+    assert action.target_thrust == pytest.approx(0.2)
+
+
+def test_ferry_bot_routes_launch_delegate_to_non_source_target() -> None:
+    bot = create_bot("ferry")
+    contacts = _make_ferry_contacts()
+    landed = _make_ferry_passive(state="landed", altitude=4.0, contacts=contacts)
+    bot.update(1.0 / 60.0, landed, active=SimpleNamespace())
+
+    captured: dict[str, str | None] = {"selected_uid": None, "pinned_uid": None}
+
+    def _capture_delegate(_dt, passive, _active):
+        captured["pinned_uid"] = bot._delegate.pinned_target_uid
+        selected = pick_target(passive, pinned_uid=bot._delegate.pinned_target_uid)
+        captured["selected_uid"] = None if selected is None else selected.uid
+        return BotAction(
+            target_thrust=0.0,
+            target_angle=0.0,
+            refuel=False,
+            status="launch:active",
+        )
+
+    bot._delegate.update = _capture_delegate  # type: ignore[attr-defined]
+    high_alt = _make_ferry_passive(state="flying", altitude=140.0, contacts=contacts)
+    action = bot.update(1.0 / 60.0, high_alt, active=SimpleNamespace())
+    assert captured["pinned_uid"] == "ferry_site_dest"
+    assert captured["selected_uid"] == "ferry_site_dest"
+    assert action.status.startswith("ferry:launch:")
 
 
 def test_zem_zev_bot_outputs_finite_action_for_flare_like_state() -> None:
@@ -366,6 +509,56 @@ def test_pick_target_prefers_first_radar_contact() -> None:
     target = pick_target(passive)
     assert target is not None
     assert target.uid == "first"
+
+
+def test_pick_target_respects_pinned_uid_when_present() -> None:
+    passive = PassiveSensors(
+        x=0.0,
+        y=150.0,
+        altitude=150.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-2.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.0,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[
+            RadarContact(
+                uid="source",
+                x=0.0,
+                y=0.0,
+                size=110.0,
+                angle=0.0,
+                distance=150.0,
+                rel_x=0.0,
+                rel_y=-150.0,
+                is_inner_lock=True,
+                info=None,
+            ),
+            RadarContact(
+                uid="dest",
+                x=800.0,
+                y=0.0,
+                size=110.0,
+                angle=0.0,
+                distance=814.0,
+                rel_x=800.0,
+                rel_y=-150.0,
+                is_inner_lock=True,
+                info=None,
+            ),
+        ],
+        proximity=None,
+    )
+    target = pick_target(passive, pinned_uid="dest")
+    assert target is not None
+    assert target.uid == "dest"
 
 
 def test_plunge_behavior_rejects_non_balanced_modes() -> None:
@@ -1056,6 +1249,43 @@ def test_should_handoff_to_drift_rejects_predicted_track_without_current_alignme
     assert not handoff
     assert bool(debug.get("on_track"))
     assert not bool(debug.get("current_guard_pass"))
+
+
+def test_should_handoff_to_drift_low_altitude_still_requires_speed_ready(monkeypatch) -> None:
+    _, _, cfg = resolve_drift_behavior("drift")
+    setup_cfg = TransferSetupConfig()
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.0,
+        vy_sp=-2.0,
+        dx=100.0,
+        alt=20.0,
+        burn_altitude=30.0,
+    )
+
+    def _fake_projection(**_kwargs):
+        return BallisticProjection(
+            projected_dx=10.0,
+            t_fall=2.0,
+            target_x=100.0,
+            impact_x=90.0,
+            used_sensor=False,
+        )
+
+    monkeypatch.setattr(launch_module, "estimate_ballistic_projection", _fake_projection)
+    handoff = should_handoff_to_drift(
+        guidance,
+        cfg,
+        setup_cfg,
+        vx=0.0,
+        vy_up=-1.0,
+        active=None,
+        x=0.0,
+        y=20.0,
+        target_size=300.0,
+    )
+    assert not handoff
 
 
 def test_transfer_bot_guidance_handoff_uses_drift_guidance_function(monkeypatch) -> None:
@@ -2328,7 +2558,8 @@ def test_level_registry_includes_named_presets() -> None:
     assert "flare" in level_names
     assert "coast" in level_names
     assert "launch" in level_names
-    assert {"drift", "transfer", "ferry"}.isdisjoint(set(level_names))
+    assert "ferry" in level_names
+    assert {"drift", "transfer"}.isdisjoint(set(level_names))
     assert "level_1" not in level_names
 
 
@@ -2339,7 +2570,7 @@ def test_cli_defaults_to_flat_when_omitted() -> None:
 
 
 def test_scenario_levels_reject_unknown_scenario_name() -> None:
-    for level_name in ("plunge", "flare", "coast", "launch"):
+    for level_name in ("plunge", "flare", "coast", "launch", "ferry"):
         level = create_level_by_name(level_name)
         with pytest.raises(ValueError):
             level.set_eval_scenario("not_a_real_scenario_name")
@@ -2795,6 +3026,30 @@ def test_launch_scenario_direction_is_deterministic_for_seed() -> None:
     assert trans_a.pos.x == pytest.approx(trans_b.pos.x)
     assert phys_a.vel.x == pytest.approx(phys_b.vel.x)
     assert phys_a.vel.y == pytest.approx(phys_b.vel.y)
+
+
+def test_ferry_level_spawns_on_source_pad_with_two_sites_and_empty_cargo() -> None:
+    level = create_level_by_name("ferry")
+    level.set_eval_scenario("default")
+    game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=5)
+
+    site_entities = level.world.site_entities
+    assert len(site_entities) == 2
+    site_xs: list[float] = []
+    for site_entity in site_entities:
+        trans = site_entity.get_component(Transform)
+        assert trans is not None
+        site_xs.append(float(trans.pos.x))
+    site_xs.sort()
+    assert site_xs[1] - site_xs[0] == pytest.approx(800.0)
+
+    actor = game.actors[0]
+    trans = actor.get_component(Transform)
+    cargo = actor.get_component(CargoHold)
+    assert trans is not None
+    assert cargo is not None
+    assert cargo.cargo_mass == pytest.approx(0.0)
+    assert trans.pos.x == pytest.approx(site_xs[0])
 
 
 def test_parse_seed_spec_supports_ranges_and_lists() -> None:

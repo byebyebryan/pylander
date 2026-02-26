@@ -20,6 +20,7 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 - Dedicated flare benchmark level (`flare`) with terminal-phase bot (`flare`)
 - Horizontal-control benchmark level (`coast`) with coast-first bot (`coast`)
 - Launch setup benchmark level (`launch`) with setup+handoff bot (`launch`)
+- Pad-to-pad ferry benchmark level (`ferry`) with launch-derived ferry bot (`ferry`)
 
 ## Setup
 
@@ -68,6 +69,9 @@ uv run python main.py launch --scenario air_steep
 
 # Run launch end-to-end (handoff + coast + terminal)
 uv run python main.py launch --eval-mode full
+
+# Pad-to-pad ferry level + bot
+uv run python main.py ferry
 
 # Use plunge bot on other levels if desired
 uv run python main.py flat --bot plunge
@@ -153,10 +157,10 @@ uv run python main.py [level_name] [options]
 
 **Levels:** Run `uv run python main.py --help` to list (e.g. `flat`, `mountains`, `plunge`).
 
-**Bot names:** `plunge`, `flare`, `coast`, `launch`, `zem_zev` (set via `--bot`; see `--help`).
+**Bot names:** `plunge`, `flare`, `coast`, `launch`, `ferry`, `zem_zev` (set via `--bot`; see `--help`).
 
 **Options:**
-- `--bot NAME` - Select bot (`plunge`, `flare`, `coast`, `launch`, `zem_zev`)
+- `--bot NAME` - Select bot (`plunge`, `flare`, `coast`, `launch`, `ferry`, `zem_zev`)
 - `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `plunge` => `balanced`; `flare` => `flare`; `coast` => `coast`; `launch` => `launch`)
 - `--headless` - Run without graphics (requires bot)
 - `--freq N` - Print stats every N frames (60 ≈ 1/s; 0 = off)

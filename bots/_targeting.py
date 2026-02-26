@@ -8,11 +8,19 @@ from core.bot import PassiveSensors
 from core.sensor import RadarContact
 
 
-def pick_target(passive: PassiveSensors) -> RadarContact | None:
-    """Select the first radar contact (eval levels currently expose one target)."""
+def pick_target(
+    passive: PassiveSensors,
+    *,
+    pinned_uid: str | None = None,
+) -> RadarContact | None:
+    """Select a radar target, optionally forcing a pinned contact UID."""
     contacts = passive.radar_contacts or []
     if not contacts:
         return None
+    if pinned_uid:
+        for contact in contacts:
+            if contact.uid == pinned_uid:
+                return contact
     return contacts[0]
 
 
