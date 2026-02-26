@@ -20,7 +20,7 @@ from bots._coast_tracking import (
 from bots._guidance_limits import cap_low_altitude_angle
 from bots._guidance_types import GuidanceTargets
 from bots._ballistics import ballistic_time_to_impact
-from bots._launch_core import LaunchSetupConfig
+from bots._launch_setup import LaunchSetupConfig
 from bots._targeting import pick_target
 from bots import create_bot, list_available_bots
 from bots.coast import should_handoff_to_flare
@@ -1063,6 +1063,7 @@ def test_transfer_bot_guidance_handoff_uses_drift_guidance_function(monkeypatch)
     bot._setup_cfg = replace(  # force quick handoff in this narrow unit test
         bot._setup_cfg,
         handoff_projected_dx_ratio=2.0,
+        setup_burn_min_frames=2,
     )
     target = RadarContact(
         uid="eval_site_primary",
@@ -1176,7 +1177,7 @@ def test_transfer_sideburn_allocation_targets_near_full_rotation() -> None:
         dx=200.0,
         vertical_mode="launch_sideburn",
     )
-    assert abs(action.target_angle) >= 1.2
+    assert abs(action.target_angle) >= 0.95
     assert action.target_thrust >= bot._setup_cfg.setup_sideburn_min_thrust
 
 
@@ -2516,24 +2517,11 @@ def test_transfer_level_lists_expected_scenarios() -> None:
     level = create_level_by_name("launch")
     list_scenarios = getattr(level, "list_batch_scenarios", None)
     assert callable(list_scenarios)
-    scenarios = set(list_scenarios())
-    base = {
+    assert set(list_scenarios()) == {
+        "air_shallow",
         "air_mid",
-        "air_long",
+        "air_steep",
     }
-    stress = {
-        "air_mid_reverse",
-    }
-    heavy = {
-        "air_long_heavy",
-        "air_mid_reverse_heavy",
-    }
-    assert base.issubset(scenarios)
-    assert stress.issubset(scenarios)
-    assert heavy.issubset(scenarios)
-    assert "air_low_long_climb" not in scenarios
-    assert "air_high_long_climb" not in scenarios
-    assert len(scenarios) == len(base) + len(stress) + len(heavy)
 
 
 def test_transfer_level_lists_expected_quick_benchmark_scenarios() -> None:
@@ -2542,9 +2530,7 @@ def test_transfer_level_lists_expected_quick_benchmark_scenarios() -> None:
     assert callable(list_quick_scenarios)
     assert list_quick_scenarios() == [
         "air_mid",
-        "air_long",
-        "air_mid_reverse",
-        "air_long_heavy",
+        "air_steep",
     ]
 
 
@@ -2570,26 +2556,31 @@ def test_transfer_scenario_direction_is_deterministic_for_seed() -> None:
     assert phys_a.vel.y == pytest.approx(phys_b.vel.y)
 
 
-def test_transfer_reverse_scenario_starts_with_velocity_away_from_target() -> None:
+def test_transfer_scenario_starts_upright_at_rest_on_circle_arc() -> None:
     level = create_level_by_name("launch")
-    level.set_eval_scenario("air_mid_reverse")
+    level.set_eval_scenario("air_steep")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=17)
     actor = game.actors[0]
     trans = actor.get_component(Transform)
     phys = actor.get_component(PhysicsState)
     assert trans is not None
     assert phys is not None
-    assert trans.pos.x * phys.vel.x > 0.0
+    assert trans.rotation == pytest.approx(0.0)
+    assert phys.vel.x == pytest.approx(0.0)
+    assert phys.vel.y == pytest.approx(0.0)
+    target_pos = getattr(level, "eval_target_pos", Vector2(0.0, 0.0))
+    radius = math.hypot(float(trans.pos.x - target_pos.x), float(trans.pos.y - target_pos.y))
+    assert radius == pytest.approx(800.0, rel=1e-3)
 
 
-def test_transfer_cargo_scenario_applies_heavy_cargo_mass() -> None:
+def test_transfer_scenario_applies_empty_cargo_mass() -> None:
     level = create_level_by_name("launch")
-    level.set_eval_scenario("air_long_heavy")
+    level.set_eval_scenario("air_mid")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=11)
     actor = game.actors[0]
     cargo = actor.get_component(CargoHold)
     assert cargo is not None
-    assert cargo.cargo_mass == pytest.approx(3200.0)
+    assert cargo.cargo_mass == pytest.approx(0.0)
 
 
 def test_launch_level_lists_expected_scenarios() -> None:
@@ -2597,11 +2588,9 @@ def test_launch_level_lists_expected_scenarios() -> None:
     list_scenarios = getattr(level, "list_batch_scenarios", None)
     assert callable(list_scenarios)
     assert list_scenarios() == [
+        "air_shallow",
         "air_mid",
-        "air_long",
-        "air_mid_reverse",
-        "air_long_heavy",
-        "air_mid_reverse_heavy",
+        "air_steep",
     ]
 
 
@@ -2611,15 +2600,13 @@ def test_launch_level_lists_expected_quick_benchmark_scenarios() -> None:
     assert callable(list_quick_scenarios)
     assert list_quick_scenarios() == [
         "air_mid",
-        "air_long",
-        "air_mid_reverse",
-        "air_long_heavy",
+        "air_steep",
     ]
 
 
 def test_launch_scenario_direction_is_deterministic_for_seed() -> None:
     level_a = create_level_by_name("launch")
-    level_a.set_eval_scenario("air_mid_reverse")
+    level_a.set_eval_scenario("air_steep")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=29)
     trans_a = game_a.actors[0].get_component(Transform)
     phys_a = game_a.actors[0].get_component(PhysicsState)
@@ -2627,7 +2614,7 @@ def test_launch_scenario_direction_is_deterministic_for_seed() -> None:
     assert phys_a is not None
 
     level_b = create_level_by_name("launch")
-    level_b.set_eval_scenario("air_mid_reverse")
+    level_b.set_eval_scenario("air_steep")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=29)
     trans_b = game_b.actors[0].get_component(Transform)
     phys_b = game_b.actors[0].get_component(PhysicsState)
@@ -3427,12 +3414,10 @@ def test_run_batch_quick_benchmark_uses_cross_level_core_suite(monkeypatch) -> N
         "entry_steep_stress",
     ]
     assert launch_scenarios == [
-        "air_long",
-        "air_long_heavy",
         "air_mid",
-        "air_mid_reverse",
+        "air_steep",
     ]
-    assert len(seen_runs) == 39  # 3 seeds x 13 quick scenarios
+    assert len(seen_runs) == 33  # 3 seeds x 11 quick scenarios
 
 
 def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:

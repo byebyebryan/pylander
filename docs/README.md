@@ -11,8 +11,8 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 
 - `plunge`: [`plunge.md`](plunge.md)
 - `flare` (level locked, bot placeholder): [`flare.md`](flare.md)
-- `coast` (placeholder for now): [`coast.md`](coast.md)
-- `launch` (placeholder for now): [`launch.md`](launch.md)
+- `coast`: [`coast.md`](coast.md)
+- `launch`: [`launch.md`](launch.md)
 
 ## Artifacts
 

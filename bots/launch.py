@@ -6,6 +6,7 @@ import math
 from dataclasses import replace
 from typing import Any
 
+from bots._ballistics import estimate_ballistic_projection
 from bots._bot_math import clamp, coerce_finite, rate_limit_angle_command, resolve_behavior
 from bots._coast_tracking import (
     COAST_COURSE,
@@ -16,13 +17,12 @@ from bots._coast_tracking import (
 )
 from bots._drop_guidance import DropPolicy, compute_drop_guidance
 from bots._guidance_types import GuidanceTargets
-from bots._launch_core import (
+from bots._launch_setup import (
     LaunchSetupConfig,
-    _ballistic_reference_vy,
-    _estimate_ballistic_projection,
-    _handoff_alignment,
-    _predict_response_state,
-    _predict_response_world_state,
+    ballistic_reference_vy,
+    handoff_alignment,
+    predict_response_state,
+    predict_response_world_state,
     setup_fuel_reserve_threshold,
 )
 from bots._sideburn_control import resolve_sideburn_target_angle
@@ -48,7 +48,7 @@ def should_handoff_to_coast(
     alt = max(0.0, float(guidance.alt))
     safe_vx = float(vx) if vx is not None and math.isfinite(vx) else 0.0
     safe_vy_up = float(vy_up) if vy_up is not None and math.isfinite(vy_up) else 0.0
-    current_projection = _estimate_ballistic_projection(
+    current_projection = estimate_ballistic_projection(
         dx=float(guidance.dx),
         alt=alt,
         vx=safe_vx,
@@ -58,22 +58,22 @@ def should_handoff_to_coast(
         active=active,
         clearance=clearance,
     )
-    dx_pred, alt_pred, vx_pred, vy_pred = _predict_response_state(
+    dx_pred, alt_pred, vx_pred, vy_pred = predict_response_state(
         dx=float(guidance.dx),
         alt=alt,
         vx=safe_vx,
         vy_up=safe_vy_up,
         delay_s=setup_cfg.setup_response_delay_s,
     )
-    x_pred, y_pred = _predict_response_world_state(
+    x_pred, y_pred = predict_response_world_state(
         x=x,
         y=y,
         vx=safe_vx,
         vy_up=safe_vy_up,
         delay_s=setup_cfg.setup_response_delay_s,
     )
-    planned_vy_up = _ballistic_reference_vy(guidance, setup_cfg, vy_pred)
-    projection = _estimate_ballistic_projection(
+    planned_vy_up = ballistic_reference_vy(guidance, setup_cfg, vy_pred)
+    projection = estimate_ballistic_projection(
         dx=dx_pred,
         alt=alt_pred,
         vx=vx_pred,
@@ -85,7 +85,7 @@ def should_handoff_to_coast(
     )
     t_fall = projection.t_fall
     projected_dx = projection.projected_dx
-    on_track, centered, inside_target, center_tol, target_half = _handoff_alignment(
+    on_track, centered, inside_target, center_tol, target_half = handoff_alignment(
         projected_dx=projected_dx,
         t_fall=t_fall,
         target_size=target_size,
@@ -97,7 +97,7 @@ def should_handoff_to_coast(
         current_inside_target,
         current_center_tol,
         _,
-    ) = _handoff_alignment(
+    ) = handoff_alignment(
         projected_dx=current_projection.projected_dx,
         t_fall=current_projection.t_fall,
         target_size=target_size,
@@ -172,25 +172,26 @@ def apply_launch_setup_guidance(
     target_size: float | None = None,
     clearance: float = 0.0,
 ) -> GuidanceTargets:
+    _ = course_cfg
     alt = max(0.0, float(guidance.alt))
     safe_vx = float(vx) if vx is not None and math.isfinite(vx) else 0.0
     safe_vy_up = float(vy_up) if vy_up is not None and math.isfinite(vy_up) else 0.0
-    dx_pred, alt_pred, vx_pred, vy_pred = _predict_response_state(
+    dx_pred, alt_pred, vx_pred, vy_pred = predict_response_state(
         dx=float(guidance.dx),
         alt=alt,
         vx=safe_vx,
         vy_up=safe_vy_up,
         delay_s=setup_cfg.setup_response_delay_s,
     )
-    x_pred, y_pred = _predict_response_world_state(
+    x_pred, y_pred = predict_response_world_state(
         x=x,
         y=y,
         vx=safe_vx,
         vy_up=safe_vy_up,
         delay_s=setup_cfg.setup_response_delay_s,
     )
-    planned_vy_up = _ballistic_reference_vy(guidance, setup_cfg, vy_pred)
-    projection = _estimate_ballistic_projection(
+    planned_vy_up = ballistic_reference_vy(guidance, setup_cfg, vy_pred)
+    projection = estimate_ballistic_projection(
         dx=dx_pred,
         alt=alt_pred,
         vx=vx_pred,
@@ -202,7 +203,7 @@ def apply_launch_setup_guidance(
     )
     projected_dx = projection.projected_dx
     t_fall = projection.t_fall
-    _, centered, inside_target, _, _ = _handoff_alignment(
+    _, centered, inside_target, _, _ = handoff_alignment(
         projected_dx=projected_dx,
         t_fall=t_fall,
         target_size=target_size,
@@ -273,6 +274,9 @@ class LaunchBot(CoastBot):
         super().__init__(behavior=behavior)
         self._setup_phase_seen = False
         self._handoff_done = False
+        self._setup_burn_active = False
+        self._setup_burn_complete = False
+        self._setup_burn_frames = 0
         self._setup_direction = 0.0
         self._active_sensors: ActiveSensors | None = None
         self._debug_projection_summary = ""
@@ -288,6 +292,9 @@ class LaunchBot(CoastBot):
         self._behavior = key
         self._setup_phase_seen = False
         self._handoff_done = False
+        self._setup_burn_active = False
+        self._setup_burn_complete = False
+        self._setup_burn_frames = 0
         self._setup_direction = 0.0
         self._active_sensors = None
         self._ballistic_debug_summary = ""
@@ -310,6 +317,9 @@ class LaunchBot(CoastBot):
         if passive.state != "flying":
             self._setup_phase_seen = False
             self._handoff_done = False
+            self._setup_burn_active = False
+            self._setup_burn_complete = False
+            self._setup_burn_frames = 0
             self._setup_direction = 0.0
             self._ballistic_debug_summary = ""
             self._debug_projection_summary = ""
@@ -416,7 +426,7 @@ class LaunchBot(CoastBot):
             dx=float(target.x) - float(passive.x),
             alt=float(passive.altitude),
         )
-        current_projection = _estimate_ballistic_projection(
+        current_projection = estimate_ballistic_projection(
             dx=current_guidance.dx,
             alt=current_guidance.alt,
             vx=passive.vx,
@@ -430,7 +440,7 @@ class LaunchBot(CoastBot):
         if not math.isfinite(target_size):
             target_size = None
         self._last_target_size = target_size
-        current_on_track, current_centered, current_inside_target, current_center_tol, current_target_half = _handoff_alignment(
+        current_on_track, current_centered, current_inside_target, current_center_tol, current_target_half = handoff_alignment(
             projected_dx=current_projection.projected_dx,
             t_fall=current_projection.t_fall,
             target_size=target_size,
@@ -449,21 +459,7 @@ class LaunchBot(CoastBot):
             clearance=self._ballistic_clearance(),
         )
         handoff_debug: dict[str, object] = {}
-        if self._handoff_done:
-            guidance = apply_coast_guidance(
-                current_guidance,
-                self._course_cfg,
-                vx=passive.vx,
-                vy_up=passive.vy_up,
-                active=self._active_sensors,
-                x=passive.x,
-                y=passive.y,
-                clearance=self._ballistic_clearance(),
-            )
-        elif not self._setup_phase_seen:
-            self._setup_phase_seen = True
-            guidance = setup_guidance
-        elif should_handoff_to_coast(
+        handoff_gate = should_handoff_to_coast(
             current_guidance,
             self._course_cfg,
             self._setup_cfg,
@@ -475,20 +471,35 @@ class LaunchBot(CoastBot):
             target_size=target_size,
             clearance=self._ballistic_clearance(),
             debug=handoff_debug,
-        ):
-            self._handoff_done = True
-            self._handoff_snapshot = self._build_handoff_snapshot(handoff_debug, passive)
-            self._handoff_event_summary = (
-                "handoff_evt "
-                f"pdx:{self._fmt_debug_float(handoff_debug.get('projected_dx'))} "
-                f"pix:{self._fmt_debug_float(handoff_debug.get('impact_x'))} "
-                f"ptx:{self._fmt_debug_float(handoff_debug.get('target_x'))} "
-                f"on:{int(bool(handoff_debug.get('on_track')))} "
-                f"ctr:{int(bool(handoff_debug.get('centered')))} "
-                f"in:{int(bool(handoff_debug.get('inside_target')))} "
-                f"ns:{int(bool(handoff_debug.get('not_falling_short')))} "
-                f"spd:{int(bool(handoff_debug.get('speed_ready')))}"
-            )
+        )
+        cone_limit = cone_dx_limit(max(0.0, float(passive.altitude)), self._course_cfg)
+        burn_end_dx = max(
+            self._setup_cfg.setup_burn_end_cone_ratio * cone_limit,
+            current_target_half + self._setup_cfg.setup_burn_end_target_margin,
+        )
+        burn_speed_ready = abs(float(setup_guidance.vx_sp) - float(passive.vx)) <= max(
+            2.5,
+            float(self._setup_cfg.setup_vx_deadband),
+        )
+        burn_done = (
+            abs(current_projection.projected_dx) <= burn_end_dx and burn_speed_ready
+        )
+        safety_guard = (
+            float(passive.altitude) <= self._setup_cfg.handoff_force_coast_altitude
+            or current_projection.t_fall <= self._setup_cfg.setup_burn_safety_t_fall_s
+        )
+        handoff_debug.update(
+            {
+                "burn_done": burn_done,
+                "burn_speed_ready": burn_speed_ready,
+                "burn_end_dx": burn_end_dx,
+                "safety_guard": safety_guard,
+                "setup_burn_active": self._setup_burn_active,
+                "setup_burn_complete": self._setup_burn_complete,
+                "setup_burn_frames": self._setup_burn_frames,
+            }
+        )
+        if self._handoff_done:
             guidance = apply_coast_guidance(
                 current_guidance,
                 self._course_cfg,
@@ -500,7 +511,62 @@ class LaunchBot(CoastBot):
                 clearance=self._ballistic_clearance(),
             )
         else:
-            guidance = setup_guidance
+            if not self._setup_phase_seen:
+                self._setup_phase_seen = True
+                self._setup_burn_active = True
+                self._setup_burn_complete = False
+                self._setup_burn_frames = 0
+            if self._setup_burn_active:
+                self._setup_burn_frames += 1
+                min_frames = max(1, int(self._setup_cfg.setup_burn_min_frames))
+                can_end_setup_burn = (
+                    self._setup_burn_frames >= min_frames
+                    and (burn_done or safety_guard or handoff_gate)
+                )
+                if can_end_setup_burn:
+                    self._setup_burn_active = False
+                    self._setup_burn_complete = True
+                else:
+                    guidance = setup_guidance
+            if not self._setup_burn_active:
+                handoff_reason = None
+                if self._setup_burn_complete:
+                    handoff_reason = "burn_complete"
+                elif safety_guard:
+                    handoff_reason = "safety_guard"
+                elif handoff_gate:
+                    handoff_reason = "gate"
+                if handoff_reason is not None:
+                    self._handoff_done = True
+                    handoff_debug["handoff_reason"] = handoff_reason
+                    self._handoff_snapshot = self._build_handoff_snapshot(
+                        handoff_debug,
+                        passive,
+                    )
+                    self._handoff_event_summary = (
+                        "handoff_evt "
+                        f"reason:{handoff_reason} "
+                        f"pdx:{self._fmt_debug_float(handoff_debug.get('projected_dx'))} "
+                        f"pix:{self._fmt_debug_float(handoff_debug.get('impact_x'))} "
+                        f"ptx:{self._fmt_debug_float(handoff_debug.get('target_x'))} "
+                        f"on:{int(bool(handoff_debug.get('on_track')))} "
+                        f"ctr:{int(bool(handoff_debug.get('centered')))} "
+                        f"in:{int(bool(handoff_debug.get('inside_target')))} "
+                        f"ns:{int(bool(handoff_debug.get('not_falling_short')))} "
+                        f"spd:{int(bool(handoff_debug.get('speed_ready')))}"
+                    )
+                    guidance = apply_coast_guidance(
+                        current_guidance,
+                        self._course_cfg,
+                        vx=passive.vx,
+                        vy_up=passive.vy_up,
+                        active=self._active_sensors,
+                        x=passive.x,
+                        y=passive.y,
+                        clearance=self._ballistic_clearance(),
+                    )
+                else:
+                    guidance = setup_guidance
         self._debug_projection_summary = (
             f"proj pdx:{current_projection.projected_dx:6.1f} "
             f"pix:{self._fmt_debug_float(current_projection.impact_x)} "
@@ -510,6 +576,9 @@ class LaunchBot(CoastBot):
             f"in:{int(current_inside_target)} "
             f"ct:{current_center_tol:4.1f} "
             f"th:{current_target_half:4.1f} "
+            f"bf:{self._setup_burn_frames:02d} "
+            f"ba:{int(self._setup_burn_active)} "
+            f"bc:{int(self._setup_burn_complete)} "
             f"hf:{int(self._handoff_done)}"
         )
         if handoff_debug:
@@ -589,7 +658,7 @@ class LaunchBot(CoastBot):
         if max_power is None or min_throttle is None or max_throttle is None:
             max_power, min_throttle, max_throttle, _ = self._engine_profile()
         mass = max(0.5, passive.mass)
-        projection_now = _estimate_ballistic_projection(
+        projection_now = estimate_ballistic_projection(
             dx=float(dx),
             alt=max(0.0, float(alt)),
             vx=float(passive.vx),
@@ -602,7 +671,7 @@ class LaunchBot(CoastBot):
         projected_dx_now = projection_now.projected_dx
         t_fall_now = projection_now.t_fall
         cone_limit_now = cone_dx_limit(max(0.0, float(alt)), self._course_cfg)
-        _, centered_now, inside_target_now, _, _ = _handoff_alignment(
+        _, centered_now, inside_target_now, _, _ = handoff_alignment(
             projected_dx=projected_dx_now,
             t_fall=t_fall_now,
             target_size=self._last_target_size,

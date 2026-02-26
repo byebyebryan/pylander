@@ -27,7 +27,7 @@ from bots._coast_tracking import (
 from bots._drop_guidance import compute_drop_guidance
 from bots._guidance_limits import cap_low_altitude_angle
 from bots._guidance_types import GuidanceTargets
-from bots._targeting import pick_target
+from bots._targeting import pick_target, target_half_width
 from bots._terminal_burn import (
     TerminalBurnModel,
     compute_terminal_burn_estimate,
@@ -67,18 +67,6 @@ def _angle_diff(a: float, b: float) -> float:
 
 def _retrograde_angle(vx: float, vy_up: float) -> float:
     return math.atan2(-float(vx), -float(vy_up))
-
-
-def _target_half_width(target_size: float | None) -> float:
-    if target_size is None:
-        return 55.0
-    try:
-        numeric = abs(float(target_size))
-    except (TypeError, ValueError):
-        return 55.0
-    if not math.isfinite(numeric):
-        return 55.0
-    return max(6.0, 0.5 * numeric)
 
 
 def _cfg_attr(cfg: CoastCourseConfig, key: str, default: float) -> float:
@@ -226,7 +214,7 @@ def should_handoff_to_flare(
     projected_dx = projection.projected_dx
     cone_limit = cone_dx_limit(alt, cfg)
     handoff_cone = max(4.0, handoff_cfg.cone_scale * cone_limit)
-    target_half = _target_half_width(target_size)
+    target_half = target_half_width(target_size)
     center_tol = min(
         max(0.5, target_half - handoff_cfg.target_edge_margin),
         max(0.5, handoff_cfg.center_tolerance),

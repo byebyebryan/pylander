@@ -1,15 +1,13 @@
-"""Shared launch setup math and control helpers."""
+"""Shared launch setup math and handoff helpers."""
 
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
 
-from bots._ballistics import BallisticProjection, estimate_ballistic_projection
 from bots._bot_math import clamp
 from bots._guidance_types import GuidanceTargets
-from bots._sideburn_control import resolve_sideburn_target_angle
-from core.bot import ActiveSensors
+from bots._targeting import target_half_width
 
 
 @dataclass(frozen=True)
@@ -20,13 +18,13 @@ class LaunchSetupConfig:
     setup_descent_vy_target: float = -2.2
     setup_response_delay_s: float = 0.65
     setup_ballistic_vy_blend: float = 0.45
-    handoff_force_coast_altitude: float = 420.0
-    setup_vx_deadband: float = 1.6
-    setup_sideburn_angle_rad: float = 1.40
-    setup_sideburn_angle_min_rad: float = 1.40
+    handoff_force_coast_altitude: float = 90.0
+    setup_vx_deadband: float = 3.8
+    setup_sideburn_angle_rad: float = 1.30
+    setup_sideburn_angle_min_rad: float = 1.00
     setup_sideburn_angle_max_rad: float = 1.40
-    setup_sideburn_upward_vy_target: float = 0.0
-    setup_sideburn_upward_angle_gain: float = 0.0
+    setup_sideburn_upward_vy_target: float = 4.0
+    setup_sideburn_upward_angle_gain: float = 0.55
     setup_sideburn_lateral_accel_floor: float = 1.0
     setup_sideburn_lateral_accel_cap: float = 10.0
     setup_sideburn_min_thrust: float = 0.35
@@ -42,9 +40,13 @@ class LaunchSetupConfig:
     handoff_shortfall_guard_ratio: float = 0.12
     setup_fuel_reserve_ratio: float = 0.0
     setup_fuel_reserve_floor: float = 0.0
+    setup_burn_min_frames: int = 12
+    setup_burn_end_cone_ratio: float = 1.25
+    setup_burn_end_target_margin: float = 16.0
+    setup_burn_safety_t_fall_s: float = 1.0
 
 
-def _predict_response_state(
+def predict_response_state(
     *,
     dx: float,
     alt: float,
@@ -55,15 +57,13 @@ def _predict_response_state(
     lag = max(0.0, float(delay_s))
     if lag <= 1e-6:
         return dx, alt, vx, vy_up
-    # Compensate for rotation + thrust spool delay by evaluating a short-horizon
-    # predicted state instead of chasing an immediate-state ballistic solution.
     dx_pred = dx - (vx * lag)
     alt_pred = max(0.0, alt + (vy_up * lag) - (4.9 * lag * lag))
     vy_pred = vy_up - (9.8 * lag)
     return dx_pred, alt_pred, vx, vy_pred
 
 
-def _predict_response_world_state(
+def predict_response_world_state(
     *,
     x: float | None,
     y: float | None,
@@ -85,30 +85,7 @@ def _predict_response_world_state(
     return x_pred, y_pred
 
 
-def _estimate_ballistic_projection(
-    *,
-    dx: float,
-    alt: float,
-    vx: float,
-    vy_up: float,
-    x: float | None = None,
-    y: float | None = None,
-    active: ActiveSensors | None = None,
-    clearance: float = 0.0,
-) -> BallisticProjection:
-    return estimate_ballistic_projection(
-        dx=dx,
-        alt=alt,
-        vx=vx,
-        vy_up=vy_up,
-        x=x,
-        y=y,
-        active=active,
-        clearance=clearance,
-    )
-
-
-def _ballistic_reference_vy(
+def ballistic_reference_vy(
     guidance: GuidanceTargets,
     setup_cfg: LaunchSetupConfig,
     vy_pred: float,
@@ -119,26 +96,14 @@ def _ballistic_reference_vy(
     return clamp(mixed_vy, min(vy_pred, envelope_vy), max(vy_pred, envelope_vy))
 
 
-def _target_half_width(target_size: float | None) -> float:
-    if target_size is None:
-        return 55.0
-    try:
-        numeric = abs(float(target_size))
-    except (TypeError, ValueError):
-        return 55.0
-    if not math.isfinite(numeric):
-        return 55.0
-    return max(6.0, 0.5 * numeric)
-
-
-def _handoff_alignment(
+def handoff_alignment(
     *,
     projected_dx: float,
     t_fall: float,
     target_size: float | None,
     setup_cfg: LaunchSetupConfig,
 ) -> tuple[bool, bool, bool, float, float]:
-    target_half = _target_half_width(target_size)
+    target_half = target_half_width(target_size)
     dynamic_tol = (
         setup_cfg.handoff_center_tolerance_base
         + (setup_cfg.handoff_center_tolerance_per_s * max(0.0, t_fall))
@@ -148,7 +113,6 @@ def _handoff_alignment(
         setup_cfg.handoff_center_tolerance_min,
         setup_cfg.handoff_center_tolerance_cap,
     )
-    # Keep centered-tolerance strictly within the target footprint.
     center_tol = min(
         center_tol,
         max(0.5, target_half - setup_cfg.handoff_target_edge_margin),
@@ -171,12 +135,9 @@ def setup_fuel_reserve_threshold(
 
 __all__ = [
     "LaunchSetupConfig",
-    "_ballistic_reference_vy",
-    "_estimate_ballistic_projection",
-    "_handoff_alignment",
-    "_predict_response_state",
-    "_predict_response_world_state",
-    "_target_half_width",
-    "resolve_sideburn_target_angle",
+    "ballistic_reference_vy",
+    "handoff_alignment",
+    "predict_response_state",
+    "predict_response_world_state",
     "setup_fuel_reserve_threshold",
 ]

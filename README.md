@@ -64,7 +64,7 @@ uv run python main.py coast --scenario entry_steep_stress
 uv run python main.py launch
 
 # Pick a specific launch scenario
-uv run python main.py launch --scenario air_mid_reverse
+uv run python main.py launch --scenario air_steep
 
 # Run launch end-to-end (handoff + coast + terminal)
 uv run python main.py launch --eval-mode full
@@ -110,7 +110,7 @@ Quick benchmark preset includes:
 - `plunge`: `low_normal`, `mid_normal`, `high_normal`
 - `flare`: `shallower`, `mid`, `steeper`
 - `coast`: `entry_mid_trim`, `entry_mid_energy`, `entry_steep_stress`
-- `launch`: `air_mid`, `air_long`, `air_mid_reverse`, `air_long_heavy`
+- `launch`: `air_mid`, `air_steep`
 
 Staged eval (`--eval-mode focused|full`) is mainly for `coast` and `launch`.
 
@@ -137,7 +137,7 @@ Scenario docs:
 - `plunge`: [`docs/plunge.md`](docs/plunge.md)
 - `flare` (level locked, bot placeholder): [`docs/flare.md`](docs/flare.md)
 - `coast`: [`docs/coast.md`](docs/coast.md)
-- `launch` (placeholder for now): [`docs/launch.md`](docs/launch.md)
+- `launch`: [`docs/launch.md`](docs/launch.md)
 
 ## Command Line Options
 

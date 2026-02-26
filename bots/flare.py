@@ -17,7 +17,7 @@ from bots._bot_math import (
 from bots._coast_tracking import COAST_POLICY, CoastCourseConfig
 from bots._guidance_limits import cap_low_altitude_angle
 from bots._guidance_types import GuidanceTargets
-from bots._launch_core import LaunchSetupConfig
+from bots._launch_setup import LaunchSetupConfig
 from bots._sideburn_control import resolve_sideburn_target_angle
 from bots._terminal_burn import (
     TerminalBurnModel,
