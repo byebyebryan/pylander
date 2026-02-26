@@ -6,7 +6,7 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 
 - Start here: [`docs/README.md`](docs/README.md)
 - Bot dev framework + API: [`docs/overview.md`](docs/overview.md)
-- Phase docs: [`docs/plunge.md`](docs/plunge.md), [`docs/flare.md`](docs/flare.md), [`docs/coast.md`](docs/coast.md), [`docs/launch.md`](docs/launch.md)
+- Phase docs: [`docs/plunge.md`](docs/plunge.md), [`docs/flare.md`](docs/flare.md), [`docs/coast.md`](docs/coast.md), [`docs/launch.md`](docs/launch.md), [`docs/ferry.md`](docs/ferry.md)
 
 ## Features
 
@@ -148,6 +148,7 @@ Scenario docs:
 - `flare`: [`docs/flare.md`](docs/flare.md)
 - `coast`: [`docs/coast.md`](docs/coast.md)
 - `launch`: [`docs/launch.md`](docs/launch.md)
+- `ferry`: [`docs/ferry.md`](docs/ferry.md)
 
 ## Command Line Options
 
@@ -161,7 +162,7 @@ uv run python main.py [level_name] [options]
 
 **Options:**
 - `--bot NAME` - Select bot (`plunge`, `flare`, `coast`, `launch`, `ferry`, `zem_zev`)
-- `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `plunge` => `balanced`; `flare` => `flare`; `coast` => `coast`; `launch` => `launch`)
+- `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `plunge` => `balanced`; `flare` => `flare`; `coast` => `coast`; `launch` => `launch`; `ferry` => `ferry`)
 - `--headless` - Run without graphics (requires bot)
 - `--freq N` - Print stats every N frames (60 ≈ 1/s; 0 = off)
 - `--steps N` - Limit simulation to N steps (headless)

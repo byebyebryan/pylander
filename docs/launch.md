@@ -7,6 +7,7 @@
 - Start from rest with the ship upright.
 - Do one practical setup burn, not endless trim.
 - Aim for a good ballistic path to target center.
+- Do not rely on a hard handoff altitude floor; use projection + speed readiness.
 - Hand off early to `coast`; later phases own fine correction and terminal quality.
 
 ## Level setup
@@ -45,7 +46,7 @@ Launch flow:
 
 1. Compute projection-guided setup command.
 2. Run an initial sideburn with coarse tolerances.
-3. End setup burn when alignment is good enough (or safety guard trips).
+3. End setup burn when alignment is good enough (or near-term impact safety guard trips).
 4. Handoff to coast immediately; coast may execute one correction burn or cancel it if projection settles during align.
 
 ## Evaluation notes

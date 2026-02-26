@@ -10,6 +10,7 @@ Complex landing behavior is easier to tune when each bot solves one job well and
 - `coast`: run at most one flip-arc correction burn and decide when to hand off to `flare`
 - `flare`: terminal 2-axis convergence and touchdown
 - `plunge`: vertical-only sandbox for burn timing + touchdown (no upstream handoff required)
+- `ferry`: pad-to-pad transfer wrapper (`upright clear -> launch -> coast -> flare`) with pinned destination targeting
 
 Main chain:
 
@@ -17,10 +18,13 @@ Main chain:
 
 `plunge` is intentionally standalone.
 
+`ferry` reuses the launch/coast/flare chain after an upright takeoff clear.
+
 ```mermaid
 flowchart LR
   launch[launch] --> coast[coast] --> flare[flare]
   flare --> touchdown[touchdown]
+  ferry[ferry] --> launch
   plunge[plunge] --> touchdown
 ```
 

@@ -13,6 +13,7 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 - `flare`: [`flare.md`](flare.md)
 - `coast`: [`coast.md`](coast.md)
 - `launch`: [`launch.md`](launch.md)
+- `ferry`: [`ferry.md`](ferry.md)
 
 ## Artifacts
 
