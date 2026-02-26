@@ -3367,6 +3367,18 @@ def test_hud_bot_active_falls_back_to_bot_name_when_status_has_no_prefix() -> No
     assert "BOT STATUS: searching target" in lines
 
 
+def test_hud_ignores_status_attribute_when_get_status_returns_non_string() -> None:
+    class _StatusBot:
+        status = "stale status"
+
+        @staticmethod
+        def get_status():
+            return {"stage": "terminal_burn"}
+
+    hud = HudOverlay(font=None, screen=None)
+    assert hud._resolve_bot_status(_StatusBot()) == ""
+
+
 def test_hud_suppresses_negative_zero_jitter() -> None:
     actor = Lander(start_pos=Vector2(0.0, 100.0))
     level = _FixedTerrainLevel()

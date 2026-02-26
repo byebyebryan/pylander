@@ -187,9 +187,8 @@ class HudOverlay:
     def _resolve_bot_status(bot) -> str:
         get_status = getattr(bot, "get_status", None)
         if callable(get_status):
-            status = get_status()
-            if isinstance(status, str):
-                return status.strip()
+            resolved_status = get_status()
+            return resolved_status.strip() if isinstance(resolved_status, str) else ""
         status = getattr(bot, "status", None)
         return status.strip() if isinstance(status, str) else ""
 
