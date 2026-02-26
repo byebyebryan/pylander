@@ -3330,6 +3330,43 @@ def test_hud_thrust_line_turns_red_in_overdrive() -> None:
     assert "[OD]" in thrust_entry[0]
 
 
+def test_hud_shows_bot_active_stage_and_status() -> None:
+    class _StatusBot:
+        _bot_name = "launch"
+        _bot_behavior = "launch"
+
+        @staticmethod
+        def get_status() -> str:
+            return "flare:terminal_burn dx:  12.3 vx: -3.1"
+
+    actor = Lander(start_pos=Vector2(0.0, 100.0))
+    level = _FixedTerrainLevel()
+    hud = HudOverlay(font=None, screen=None)
+
+    lines = hud._build_info_lines(level, actor, bot=_StatusBot())
+    assert "BOT: launch:launch" in lines
+    assert "BOT ACTIVE: flare    STAGE: terminal_burn" in lines
+    assert "BOT STATUS: flare:terminal_burn dx:  12.3 vx: -3.1" in lines
+
+
+def test_hud_bot_active_falls_back_to_bot_name_when_status_has_no_prefix() -> None:
+    class _StatusBot:
+        _bot_name = "coast"
+
+        @staticmethod
+        def get_status() -> str:
+            return "searching target"
+
+    actor = Lander(start_pos=Vector2(0.0, 100.0))
+    level = _FixedTerrainLevel()
+    hud = HudOverlay(font=None, screen=None)
+
+    lines = hud._build_info_lines(level, actor, bot=_StatusBot())
+    assert "BOT: coast" in lines
+    assert "BOT ACTIVE: coast    STAGE: searching" in lines
+    assert "BOT STATUS: searching target" in lines
+
+
 def test_hud_suppresses_negative_zero_jitter() -> None:
     actor = Lander(start_pos=Vector2(0.0, 100.0))
     level = _FixedTerrainLevel()

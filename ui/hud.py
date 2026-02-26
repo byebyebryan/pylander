@@ -124,15 +124,17 @@ class HudOverlay:
 
         lines: list[str] = [f"STATE: {ls.state.upper()}    CREDITS: {wallet.credits:.0f}"]
         if bot is not None:
-            bot_name = getattr(bot, "_bot_name", None)
-            if not isinstance(bot_name, str) or not bot_name:
-                bot_name = bot.__class__.__module__.split(".")[-1]
-            behavior = getattr(bot, "_bot_behavior", None)
-            if not isinstance(behavior, str) or not behavior:
-                prop_behavior = getattr(bot, "behavior", None)
-                behavior = prop_behavior if isinstance(prop_behavior, str) else ""
+            bot_name = self._resolve_bot_name(bot)
+            behavior = self._resolve_bot_behavior(bot)
             bot_label = f"{bot_name}:{behavior}" if behavior else bot_name
             lines.append(f"BOT: {bot_label}")
+            bot_status = self._resolve_bot_status(bot)
+            if bot_status:
+                active_bot, stage = self._parse_bot_status(bot_status)
+                active_label = active_bot if active_bot else bot_name
+                stage_label = stage if stage else "--"
+                lines.append(f"BOT ACTIVE: {active_label}    STAGE: {stage_label}")
+                lines.append(f"BOT STATUS: {bot_status}")
         lines.append("")
         lines.append(f"FUEL: {fuel_pct:.1f}% ({tank.fuel:.1f}/{tank.max_fuel:.1f})")
         if abs(target_thrust_pct - thrust_pct) < 1e-3:
@@ -165,6 +167,45 @@ class HudOverlay:
         else:
             lines.append("PROX: --")
         return lines
+
+    @staticmethod
+    def _resolve_bot_name(bot) -> str:
+        bot_name = getattr(bot, "_bot_name", None)
+        if isinstance(bot_name, str) and bot_name:
+            return bot_name
+        return bot.__class__.__module__.split(".")[-1]
+
+    @staticmethod
+    def _resolve_bot_behavior(bot) -> str:
+        behavior = getattr(bot, "_bot_behavior", None)
+        if isinstance(behavior, str) and behavior:
+            return behavior
+        prop_behavior = getattr(bot, "behavior", None)
+        return prop_behavior if isinstance(prop_behavior, str) else ""
+
+    @staticmethod
+    def _resolve_bot_status(bot) -> str:
+        get_status = getattr(bot, "get_status", None)
+        if callable(get_status):
+            status = get_status()
+            if isinstance(status, str):
+                return status.strip()
+        status = getattr(bot, "status", None)
+        return status.strip() if isinstance(status, str) else ""
+
+    @staticmethod
+    def _parse_bot_status(status: str) -> tuple[str | None, str | None]:
+        text = status.strip()
+        if not text:
+            return None, None
+        if ":" not in text:
+            token = text.split(maxsplit=1)[0]
+            return None, token if token else None
+        prefix, rest = text.split(":", 1)
+        active_bot = prefix.strip() or None
+        rest = rest.strip()
+        stage = rest.split(maxsplit=1)[0] if rest else None
+        return active_bot, stage
 
     def _build_control_lines(self, lander) -> list[str]:
         _ = lander
