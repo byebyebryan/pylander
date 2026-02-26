@@ -141,7 +141,7 @@ Staged eval (`--eval-mode focused|full`) is mainly for `coast` and `launch`.
 Scenario docs:
 
 - `plunge`: [`docs/plunge.md`](docs/plunge.md)
-- `flare` (level locked, bot placeholder): [`docs/flare.md`](docs/flare.md)
+- `flare`: [`docs/flare.md`](docs/flare.md)
 - `coast`: [`docs/coast.md`](docs/coast.md)
 - `launch`: [`docs/launch.md`](docs/launch.md)
 

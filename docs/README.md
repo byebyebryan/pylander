@@ -10,7 +10,7 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 ## Bot phases
 
 - `plunge`: [`plunge.md`](plunge.md)
-- `flare` (level locked, bot placeholder): [`flare.md`](flare.md)
+- `flare`: [`flare.md`](flare.md)
 - `coast`: [`coast.md`](coast.md)
 - `launch`: [`launch.md`](launch.md)
 

@@ -591,7 +591,7 @@ class CoastBot(Bot):
 
             if burn_command is not None:
                 a_x_sp = 0.0
-            elif guidance.phase in ("coast", "align"):
+            elif self._behavior == "coast" and guidance.phase in ("coast", "align"):
                 # Coast rewrite: allow one dedicated burn plan, otherwise stay neutral laterally.
                 a_x_sp = 0.0
             elif guidance.vertical_mode in ("coast", "coast_hold") and abs(guidance.dx) <= self._policy.coast_horiz_deadband:
@@ -929,6 +929,17 @@ class CoastBot(Bot):
 
         if self._coast_burn_plan is not None:
             plan = self._coast_burn_plan
+            # Revalidate queued plans each frame; handoff dynamics can naturally
+            # settle projected error before we finish rotating into burn attitude.
+            if (
+                abs(projected_dx) <= plan.stop_deadband
+                or (projected_dx * plan.error_sign) <= 0.0
+            ):
+                self._coast_burn_plan = None
+                self._coast_burn_active = False
+                self._coast_burn_elapsed_s = 0.0
+                self._coast_burn_state_summary = "idle"
+                return None
             angle_error = abs(_angle_diff(float(passive.angle), plan.target_angle))
             if angle_error <= self._single_burn_cfg.start_angle_tolerance_rad:
                 self._coast_burn_active = True

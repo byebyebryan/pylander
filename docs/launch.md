@@ -46,7 +46,7 @@ Launch flow:
 1. Compute projection-guided setup command.
 2. Run an initial sideburn with coarse tolerances.
 3. End setup burn when alignment is good enough (or safety guard trips).
-4. Handoff to coast immediately.
+4. Handoff to coast immediately; coast may execute one correction burn or cancel it if projection settles during align.
 
 ## Evaluation notes
 

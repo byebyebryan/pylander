@@ -273,7 +273,7 @@ class LaunchBot(CoastBot):
     def __init__(self, behavior: str = "launch") -> None:
         super().__init__(behavior=behavior)
         self._setup_phase_seen = False
-        self._handoff_done = False
+        self._setup_handoff_done = False
         self._setup_burn_active = False
         self._setup_burn_complete = False
         self._setup_burn_frames = 0
@@ -291,7 +291,7 @@ class LaunchBot(CoastBot):
         self._setup_cfg = setup_cfg
         self._behavior = key
         self._setup_phase_seen = False
-        self._handoff_done = False
+        self._setup_handoff_done = False
         self._setup_burn_active = False
         self._setup_burn_complete = False
         self._setup_burn_frames = 0
@@ -316,7 +316,7 @@ class LaunchBot(CoastBot):
     ) -> BotAction:
         if passive.state != "flying":
             self._setup_phase_seen = False
-            self._handoff_done = False
+            self._setup_handoff_done = False
             self._setup_burn_active = False
             self._setup_burn_complete = False
             self._setup_burn_frames = 0
@@ -499,7 +499,7 @@ class LaunchBot(CoastBot):
                 "setup_burn_frames": self._setup_burn_frames,
             }
         )
-        if self._handoff_done:
+        if self._setup_handoff_done:
             guidance = apply_coast_guidance(
                 current_guidance,
                 self._course_cfg,
@@ -537,7 +537,7 @@ class LaunchBot(CoastBot):
                 elif handoff_gate:
                     handoff_reason = "gate"
                 if handoff_reason is not None:
-                    self._handoff_done = True
+                    self._setup_handoff_done = True
                     handoff_debug["handoff_reason"] = handoff_reason
                     self._handoff_snapshot = self._build_handoff_snapshot(
                         handoff_debug,
@@ -579,7 +579,7 @@ class LaunchBot(CoastBot):
             f"bf:{self._setup_burn_frames:02d} "
             f"ba:{int(self._setup_burn_active)} "
             f"bc:{int(self._setup_burn_complete)} "
-            f"hf:{int(self._handoff_done)}"
+            f"hf:{int(self._setup_handoff_done)}"
         )
         if handoff_debug:
             self._debug_projection_summary += (
@@ -595,8 +595,19 @@ class LaunchBot(CoastBot):
 
     def get_evaluation_snapshot(self) -> dict[str, Any] | None:
         if self._handoff_snapshot is None:
-            return {"kind": "launch", "handoff_done": bool(self._handoff_done)}
+            return {"kind": "launch", "handoff_done": bool(self._setup_handoff_done)}
         return dict(self._handoff_snapshot)
+
+    def _coast_burn_command(self, *, guidance: GuidanceTargets, **kwargs):
+        # Keep coast burn state dormant during launch-sideburn setup.
+        if not self._setup_handoff_done:
+            self._coast_burn_plan = None
+            self._coast_burn_active = False
+            self._coast_burn_done = False
+            self._coast_burn_elapsed_s = 0.0
+            self._coast_burn_state_summary = "idle"
+            return None
+        return super()._coast_burn_command(guidance=guidance, **kwargs)
 
     def get_headless_stats(self) -> str:
         base = super().get_headless_stats()

@@ -6,7 +6,7 @@
 
 - `launch` should establish a good ballistic path, but it can leave bounded residual error.
 - `coast` scenarios start prograde (ship aligned with initial velocity) to mirror launch handoff.
-- `coast` plans one decisive correction burn against projected impact error.
+- `coast` plans at most one decisive correction burn against projected impact error.
 - `coast` is not trying to fully kill speed unless the projection says it is required.
 - `flare` owns terminal burn and touchdown execution.
 
@@ -41,6 +41,7 @@ Planning:
 
 Execution (closed loop):
 
+- while still in align (burn not active), cancel the queued plan if projection is already inside deadband or has crossed the target;
 - rotate to planned burn angle;
 - burn while recomputing projection every tick;
 - stop on first condition:

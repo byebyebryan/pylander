@@ -7,7 +7,7 @@ Pylander bot work is organized as a **phase-oriented pipeline**. The goal is to 
 Complex landing behavior is easier to tune when each bot solves one job well and hands off cleanly:
 
 - `launch`: establish a good approach trajectory and hand off to `coast`
-- `coast`: run a single flip-arc correction burn and decide when to hand off to `flare`
+- `coast`: run at most one flip-arc correction burn and decide when to hand off to `flare`
 - `flare`: terminal 2-axis convergence and touchdown
 - `plunge`: vertical-only sandbox for burn timing + touchdown (no upstream handoff required)
 
