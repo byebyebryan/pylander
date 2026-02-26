@@ -430,8 +430,16 @@ class _FakeContactAdapter:
 class _FakeCollidingContactAdapter:
     enabled = False
 
+    def __init__(self, *, rel_speed: float = 1.0) -> None:
+        self._rel_speed = float(rel_speed)
+
     def get_contact_report(self) -> dict:
-        return {"colliding": True, "normal": (0.0, 1.0), "rel_speed": 1.0, "point": (0.0, 0.0)}
+        return {
+            "colliding": True,
+            "normal": (0.0, 1.0),
+            "rel_speed": self._rel_speed,
+            "point": (0.0, 0.0),
+        }
 
     def teleport_lander(self, _pos, angle=None, clear_velocity=True) -> None:
         _ = angle, clear_velocity
@@ -657,6 +665,43 @@ def test_contact_system_crashes_on_high_speed_site_plane_cross_without_contact()
 
     # No engine collision report this frame; crossing fallback should still crash.
     system = ContactSystem(_FakeContactAdapter(), model)
+    system.world = world
+    system.update(dt)
+
+    ls = lander.get_component(LanderState)
+    assert ls is not None
+    assert ls.state == "crashed"
+
+
+def test_contact_system_crashes_on_high_speed_bounce_contact() -> None:
+    world = World()
+
+    lander = Entity(uid="lander")
+    lander.add_component(LanderState(state="flying"))
+    # Simulate a rebound frame after impact: upward velocity but high contact speed.
+    lander.add_component(PhysicsState(vel=Vector2(0.0, 6.0)))
+    lander.add_component(Transform(pos=Vector2(0.0, 4.0), rotation=0.0))
+    lander.add_component(FuelTank())
+    lander.add_component(LanderGeometry(width=8.0, height=8.0))
+    lander.add_component(Wallet(credits=0.0))
+    lander.add_component(Engine())
+    world.add_entity(lander)
+
+    site = Entity(uid="site_plane")
+    site.add_component(Transform(pos=Vector2(0.0, 0.0)))
+    site.add_component(
+        LandingSite(size=40.0, terrain_mode="elevated_supports", terrain_bound=False)
+    )
+    site.add_component(LandingSiteEconomy(award=100.0, fuel_price=10.0))
+    world.add_entity(site)
+
+    model = LandingSiteSurfaceModel()
+    projection = LandingSiteProjectionSystem(model)
+    projection.world = world
+    dt = 1.0 / 60.0
+    projection.update(dt)
+
+    system = ContactSystem(_FakeCollidingContactAdapter(rel_speed=45.0), model)
     system.world = world
     system.update(dt)
 

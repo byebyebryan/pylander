@@ -1,3 +1,5 @@
+import math
+
 from core.ecs import System, Entity
 from core.components import LanderState, PhysicsState, Transform, FuelTank, Wallet
 from core.maths import Range1D, Vector2
@@ -46,6 +48,18 @@ class ContactSystem(System):
 
         if site is not None and self._can_land_on_site(entity, site, half_w, half_h, dt):
             self._apply_landing(entity, site, half_h)
+            return
+        # Use solver-reported impact speed so hard impacts cannot "escape" crash
+        # classification due to an immediate upward rebound in the same frame.
+        contact_speed = report.get("rel_speed", 0.0)
+        try:
+            contact_speed = float(contact_speed)
+        except (TypeError, ValueError):
+            contact_speed = 0.0
+        if not math.isfinite(contact_speed):
+            contact_speed = 0.0
+        if report.get("colliding") and contact_speed >= ls.safe_landing_velocity:
+            self._apply_crash(entity)
             return
         if site is not None and self._crossed_site_plane(entity, site, half_w, half_h, dt):
             self._apply_crash(entity)

@@ -7,7 +7,7 @@ from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors, VehicleInfo
 from core.sensor import RadarContact
 
 _FERRY_BEHAVIORS = ("ferry",)
-_TAKEOFF_SAFE_ALTITUDE = 20.0
+_TAKEOFF_SAFE_ALTITUDE = 100.0
 _TAKEOFF_THRUST_TARGET = 0.9
 
 
@@ -19,6 +19,7 @@ class FerryBot(Bot):
         self._source_site_uid: str | None = None
         self._destination_site_uid: str | None = None
         self._pad_clear = False
+        self._arrived = False
         self.set_behavior(behavior)
 
     @property
@@ -38,6 +39,7 @@ class FerryBot(Bot):
         self._source_site_uid = None
         self._destination_site_uid = None
         self._pad_clear = False
+        self._arrived = False
         self.set_pinned_target_uid(None)
         self._delegate.set_pinned_target_uid(None)
         self._delegate.set_behavior("launch")
@@ -56,8 +58,16 @@ class FerryBot(Bot):
         if not contacts:
             return None
         if passive.state == "landed":
-            self._source_site_uid = contacts[0].uid
+            landed_uid = contacts[0].uid
+            if (
+                self._destination_site_uid is not None
+                and landed_uid is not None
+                and landed_uid == self._destination_site_uid
+            ):
+                return contacts[0]
+            self._source_site_uid = landed_uid
             self._destination_site_uid = None
+            self._arrived = False
         if self._destination_site_uid is not None:
             for contact in contacts:
                 if contact.uid == self._destination_site_uid:
@@ -72,12 +82,35 @@ class FerryBot(Bot):
             self._destination_site_uid = fallback.uid
         return fallback
 
+    def _is_landed_on_destination(self, passive: PassiveSensors) -> bool:
+        if passive.state != "landed":
+            return False
+        if self._destination_site_uid is None:
+            return False
+        contacts = passive.radar_contacts or []
+        if not contacts:
+            return False
+        landed_uid = contacts[0].uid
+        if landed_uid is not None:
+            return landed_uid == self._destination_site_uid
+        return any(contact.uid == self._destination_site_uid for contact in contacts)
+
     def update(
         self,
         dt: float,
         passive: PassiveSensors,
         active: ActiveSensors,
     ) -> BotAction:
+        if self._arrived and passive.state == "landed":
+            action = BotAction(
+                target_thrust=0.0,
+                target_angle=0.0,
+                refuel=False,
+                status="ferry:arrived",
+            )
+            self.status = action.status
+            return action
+
         if passive.state in ("crashed", "out_of_fuel"):
             action = BotAction(
                 target_thrust=0.0,
@@ -92,6 +125,16 @@ class FerryBot(Bot):
         pinned_uid = self._destination_site_uid
         self.set_pinned_target_uid(pinned_uid)
         self._delegate.set_pinned_target_uid(pinned_uid)
+        if self._is_landed_on_destination(passive):
+            self._arrived = True
+            action = BotAction(
+                target_thrust=0.0,
+                target_angle=0.0,
+                refuel=False,
+                status="ferry:arrived",
+            )
+            self.status = action.status
+            return action
         if passive.state in ("landed", "flying"):
             if passive.state == "landed":
                 self._delegate.set_behavior("launch")

@@ -146,6 +146,35 @@ def _make_ferry_contacts() -> list[RadarContact]:
     ]
 
 
+def _make_ferry_contacts_from_dest() -> list[RadarContact]:
+    return [
+        RadarContact(
+            uid="ferry_site_dest",
+            x=800.0,
+            y=0.0,
+            size=110.0,
+            angle=0.0,
+            distance=4.0,
+            rel_x=0.0,
+            rel_y=-4.0,
+            is_inner_lock=True,
+            info=None,
+        ),
+        RadarContact(
+            uid="ferry_site_source",
+            x=0.0,
+            y=0.0,
+            size=110.0,
+            angle=0.0,
+            distance=800.0,
+            rel_x=-800.0,
+            rel_y=-4.0,
+            is_inner_lock=True,
+            info=None,
+        ),
+    ]
+
+
 def _make_ferry_passive(
     *,
     state: str,
@@ -219,7 +248,7 @@ def test_ferry_bot_hands_off_to_launch_once_pad_is_clear() -> None:
         )
 
     bot._delegate.update = _capture_delegate  # type: ignore[attr-defined]
-    clear_alt = _make_ferry_passive(state="flying", altitude=30.0, contacts=contacts)
+    clear_alt = _make_ferry_passive(state="flying", altitude=130.0, contacts=contacts)
     action = bot.update(1.0 / 60.0, clear_alt, active=SimpleNamespace())
 
     assert captured["first_uid"] == "ferry_site_source"
@@ -255,6 +284,42 @@ def test_ferry_bot_routes_launch_delegate_to_non_source_target() -> None:
     assert captured["pinned_uid"] == "ferry_site_dest"
     assert captured["selected_uid"] == "ferry_site_dest"
     assert action.status.startswith("ferry:launch:")
+
+
+def test_ferry_bot_stays_landed_after_reaching_destination() -> None:
+    bot = create_bot("ferry")
+    source_contacts = _make_ferry_contacts()
+    landed_source = _make_ferry_passive(state="landed", altitude=4.0, contacts=source_contacts)
+    bot.update(1.0 / 60.0, landed_source, active=SimpleNamespace())
+
+    def _delegate_active(_dt, _passive, _active):
+        return BotAction(
+            target_thrust=0.3,
+            target_angle=0.1,
+            refuel=False,
+            status="launch:coast",
+        )
+
+    bot._delegate.update = _delegate_active  # type: ignore[attr-defined]
+    enroute = _make_ferry_passive(state="flying", altitude=140.0, contacts=source_contacts)
+    bot.update(1.0 / 60.0, enroute, active=SimpleNamespace())
+
+    dest_contacts = _make_ferry_contacts_from_dest()
+    landed_dest = _make_ferry_passive(state="landed", altitude=4.0, contacts=dest_contacts)
+
+    def _delegate_should_not_run(*_args, **_kwargs):
+        raise AssertionError("delegate update should not run after destination landing")
+
+    bot._delegate.update = _delegate_should_not_run  # type: ignore[attr-defined]
+    first = bot.update(1.0 / 60.0, landed_dest, active=SimpleNamespace())
+    second = bot.update(1.0 / 60.0, landed_dest, active=SimpleNamespace())
+
+    assert first.status == "ferry:arrived"
+    assert first.target_thrust == pytest.approx(0.0)
+    assert first.target_angle == pytest.approx(0.0)
+    assert second.status == "ferry:arrived"
+    assert second.target_thrust == pytest.approx(0.0)
+    assert second.target_angle == pytest.approx(0.0)
 
 
 def test_zem_zev_bot_outputs_finite_action_for_flare_like_state() -> None:
