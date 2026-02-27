@@ -417,6 +417,7 @@ class CoastBot(Bot):
         self._handoff_cfg = _resolve_handoff_cfg(self._course_cfg)
         self._behavior = "coast"
         self._prev_angle_cmd = 0.0
+        self._angle_cmd_initialized = False
         self._ballistic_debug_summary = ""
         self._last_guidance: GuidanceTargets | None = None
         self._active_sensors: ActiveSensors | None = None
@@ -448,6 +449,8 @@ class CoastBot(Bot):
         self._course_cfg = cfg
         self._handoff_cfg = _resolve_handoff_cfg(cfg)
         self._behavior = "coast"
+        self._prev_angle_cmd = 0.0
+        self._angle_cmd_initialized = False
         self._ballistic_debug_summary = ""
         self._handoff_done = False
         self._handoff_pass_frames = 0
@@ -471,6 +474,8 @@ class CoastBot(Bot):
         self._handoff_event_summary = ""
         self._last_target_size = None
         self._last_guidance = None
+        self._prev_angle_cmd = 0.0
+        self._angle_cmd_initialized = False
         self._ballistic_debug_summary = ""
         self._coast_burn_plan = None
         self._coast_burn_active = False
@@ -511,6 +516,9 @@ class CoastBot(Bot):
     ) -> BotAction:
         if passive.state != "flying":
             self._reset_runtime_state()
+        elif not self._angle_cmd_initialized:
+            self._prev_angle_cmd = float(passive.angle)
+            self._angle_cmd_initialized = True
         self._active_sensors = active
         try:
             if passive.state in ("landed", "crashed", "out_of_fuel"):

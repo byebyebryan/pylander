@@ -44,6 +44,8 @@ class LaunchSetupConfig:
     setup_burn_end_cone_ratio: float = 1.25
     setup_burn_end_target_margin: float = 16.0
     setup_burn_safety_t_fall_s: float = 1.0
+    handoff_prograde_speed_min: float = 2.0
+    handoff_prograde_max_error_deg: float = 35.0
 
 
 def predict_response_state(

@@ -30,6 +30,30 @@ from bots.coast import CoastBot
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
 
+
+def _angle_diff(a: float, b: float) -> float:
+    return (b - a + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def _prograde_alignment(
+    *,
+    angle_rad: float,
+    vx: float,
+    vy_up: float,
+    setup_cfg: LaunchSetupConfig,
+) -> tuple[bool, float | None]:
+    speed_mag = math.hypot(float(vx), float(vy_up))
+    if speed_mag <= max(0.0, float(setup_cfg.handoff_prograde_speed_min)):
+        return True, None
+    prograde_angle = math.atan2(float(vx), float(vy_up))
+    angle_error = abs(_angle_diff(float(angle_rad), prograde_angle))
+    error_deg = math.degrees(angle_error)
+    ready = angle_error <= math.radians(
+        max(0.0, float(setup_cfg.handoff_prograde_max_error_deg))
+    )
+    return ready, error_deg
+
+
 def should_handoff_to_coast(
     guidance: GuidanceTargets,
     course_cfg: CoastCourseConfig,
@@ -403,6 +427,10 @@ class LaunchBot(CoastBot):
             "inside_target": bool(handoff_debug.get("inside_target")),
             "not_falling_short": bool(handoff_debug.get("not_falling_short")),
             "speed_ready": bool(handoff_debug.get("speed_ready")),
+            "prograde_ready": bool(handoff_debug.get("prograde_ready")),
+            "prograde_angle_error_deg": self._snapshot_float(
+                handoff_debug.get("prograde_angle_error_deg")
+            ),
             "angle_rad": float(passive.angle),
             "altitude": float(passive.altitude),
             "x": handoff_x,
@@ -485,6 +513,12 @@ class LaunchBot(CoastBot):
             clearance=self._ballistic_clearance(),
             debug=handoff_debug,
         )
+        prograde_ready, prograde_angle_error_deg = _prograde_alignment(
+            angle_rad=float(passive.angle),
+            vx=float(passive.vx),
+            vy_up=float(passive.vy_up),
+            setup_cfg=self._setup_cfg,
+        )
         cone_limit = cone_dx_limit(max(0.0, float(passive.altitude)), self._course_cfg)
         burn_end_dx = max(
             self._setup_cfg.setup_burn_end_cone_ratio * cone_limit,
@@ -494,19 +528,42 @@ class LaunchBot(CoastBot):
             2.5,
             float(self._setup_cfg.setup_vx_deadband),
         )
+        setup_direction = self._setup_direction
+        if setup_direction == 0.0:
+            vx_sp = float(setup_guidance.vx_sp)
+            if abs(vx_sp) > 1e-3:
+                setup_direction = 1.0 if vx_sp > 0.0 else -1.0
+            elif abs(float(current_guidance.dx)) > 1e-3:
+                setup_direction = 1.0 if current_guidance.dx > 0.0 else -1.0
+        overshoot_margin = max(8.0, current_target_half, 0.25 * cone_limit)
+        along_track_miss_now = (
+            setup_direction * current_projection.projected_dx
+            if abs(setup_direction) > 1e-3
+            else None
+        )
+        overshot_setup = (
+            along_track_miss_now is not None
+            and along_track_miss_now <= (-overshoot_margin)
+        )
         burn_done = (
             abs(current_projection.projected_dx) <= burn_end_dx and burn_speed_ready
-        )
+        ) or overshot_setup
         safety_guard = current_projection.t_fall <= self._setup_cfg.setup_burn_safety_t_fall_s
         handoff_debug.update(
             {
                 "burn_done": burn_done,
                 "burn_speed_ready": burn_speed_ready,
                 "burn_end_dx": burn_end_dx,
+                "setup_direction": setup_direction,
+                "along_track_miss": along_track_miss_now,
+                "overshoot_margin": overshoot_margin,
+                "overshot_setup": overshot_setup,
                 "safety_guard": safety_guard,
                 "setup_burn_active": self._setup_burn_active,
                 "setup_burn_complete": self._setup_burn_complete,
                 "setup_burn_frames": self._setup_burn_frames,
+                "prograde_ready": prograde_ready,
+                "prograde_angle_error_deg": prograde_angle_error_deg,
             }
         )
         if self._setup_handoff_done:
@@ -544,7 +601,7 @@ class LaunchBot(CoastBot):
                     handoff_reason = "burn_complete"
                 elif handoff_gate:
                     handoff_reason = "gate"
-                if handoff_reason is not None:
+                if handoff_reason is not None and prograde_ready:
                     self._setup_handoff_done = True
                     handoff_debug["handoff_reason"] = handoff_reason
                     self._handoff_snapshot = self._build_handoff_snapshot(
@@ -561,7 +618,8 @@ class LaunchBot(CoastBot):
                         f"ctr:{int(bool(handoff_debug.get('centered')))} "
                         f"in:{int(bool(handoff_debug.get('inside_target')))} "
                         f"ns:{int(bool(handoff_debug.get('not_falling_short')))} "
-                        f"spd:{int(bool(handoff_debug.get('speed_ready')))}"
+                        f"spd:{int(bool(handoff_debug.get('speed_ready')))} "
+                        f"prg:{int(bool(handoff_debug.get('prograde_ready')))}"
                     )
                     guidance = apply_coast_guidance(
                         current_guidance,
@@ -597,6 +655,7 @@ class LaunchBot(CoastBot):
                 f" hct:{self._fmt_debug_float(handoff_debug.get('center_tolerance'))}"
                 f" hth:{self._fmt_debug_float(handoff_debug.get('target_half'))}"
                 f" hsp:{int(bool(handoff_debug.get('speed_ready')))}"
+                f" hpr:{int(bool(handoff_debug.get('prograde_ready')))}"
             )
         self._last_guidance = guidance
         return guidance
@@ -663,6 +722,25 @@ class LaunchBot(CoastBot):
         angle_override: float | None = None,
         thrust_override: float | None = None,
     ) -> BotAction:
+        # Launch gets one setup burn attempt; after it ends, stop thrusting and
+        # just align roughly prograde for a clean coast handoff.
+        if (
+            not self._setup_handoff_done
+            and self._setup_phase_seen
+            and self._setup_burn_complete
+        ):
+            speed_mag = math.hypot(float(passive.vx), float(passive.vy_up))
+            prograde_angle = 0.0
+            if speed_mag > max(0.0, float(self._setup_cfg.handoff_prograde_speed_min)):
+                prograde_angle = math.atan2(float(passive.vx), float(passive.vy_up))
+            angle_cmd = rate_limit_angle_command(
+                prograde_angle,
+                self._prev_angle_cmd,
+                dt,
+                max_rate=3.2,
+            )
+            self._prev_angle_cmd = angle_cmd
+            return BotAction(target_thrust=0.0, target_angle=angle_cmd, refuel=False)
         if vertical_mode != "launch_sideburn":
             return super()._allocate_controls(
                 dt,
@@ -713,14 +791,6 @@ class LaunchBot(CoastBot):
         else:
             desired_direction = 1.0
         if self._setup_direction == 0.0:
-            self._setup_direction = desired_direction
-        elif desired_direction != self._setup_direction and (
-            (inside_target_now and not centered_now)
-            or abs(a_x_sp) > 0.35
-            or abs(projected_dx_now) < 10.0
-            or abs(projected_dx_now) > (1.25 * cone_limit_now)
-            or abs(dx) < 10.0
-        ):
             self._setup_direction = desired_direction
 
         target_angle = self._setup_direction * resolve_sideburn_target_angle(

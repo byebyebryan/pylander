@@ -20,6 +20,7 @@ from bots._coast_tracking import (
 from bots._guidance_limits import cap_low_altitude_angle
 from bots._guidance_types import GuidanceTargets
 from bots._ballistics import BallisticProjection, ballistic_time_to_impact
+from bots._bot_math import rate_limit_angle_command
 from bots._launch_setup import LaunchSetupConfig
 from bots._targeting import pick_target
 from bots import create_bot, list_available_bots
@@ -115,6 +116,28 @@ def test_bot_registry_exposes_expected_bots() -> None:
     assert launch_bot.__class__.__name__ == "LaunchBot"
     assert ferry_bot.__class__.__name__ == "FerryBot"
     assert zem_zev_bot.__class__.__name__ == "ZemZevBot"
+
+
+def test_rate_limit_angle_command_uses_shortest_wrap_path() -> None:
+    prev_angle = math.radians(170.0)
+    target_angle = math.radians(-170.0)
+    limited = rate_limit_angle_command(
+        target_angle=target_angle,
+        prev_angle=prev_angle,
+        dt=1.0,
+        max_rate=math.radians(90.0),
+    )
+    assert limited == pytest.approx(math.radians(190.0))
+
+
+def test_rate_limit_angle_command_respects_linear_limit_when_not_wrapping() -> None:
+    limited = rate_limit_angle_command(
+        target_angle=0.8,
+        prev_angle=0.0,
+        dt=1.0,
+        max_rate=0.5,
+    )
+    assert limited == pytest.approx(0.5)
 
 
 def _make_ferry_contacts() -> list[RadarContact]:
@@ -1411,6 +1434,7 @@ def test_transfer_bot_guidance_handoff_uses_drift_guidance_function(monkeypatch)
         bot._setup_cfg,
         handoff_projected_dx_ratio=2.0,
         setup_burn_min_frames=2,
+        handoff_prograde_max_error_deg=180.0,
     )
     target = RadarContact(
         uid="eval_site_primary",
@@ -1637,6 +1661,266 @@ def test_transfer_sideburn_allocation_keeps_thrust_when_inside_cone_outside_targ
     )
     bot._active_sensors = None
     assert action.target_thrust >= bot._setup_cfg.setup_sideburn_min_thrust
+
+
+def test_launch_sideburn_direction_lock_prevents_mid_setup_reversal(monkeypatch) -> None:
+    bot = LaunchBot()
+    bot._last_target_size = 110.0
+    bot._last_guidance = GuidanceTargets(
+        phase="launch_setup_sideburn",
+        vertical_mode="launch_sideburn",
+        vx_sp=8.0,
+        vy_sp=-2.2,
+        dx=180.0,
+        alt=260.0,
+        burn_altitude=56.0,
+    )
+    passive = PassiveSensors(
+        x=0.0,
+        y=260.0,
+        altitude=260.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-2.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.5,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    projections = [
+        BallisticProjection(
+            projected_dx=120.0,
+            t_fall=6.0,
+            target_x=0.0,
+            impact_x=-120.0,
+            used_sensor=False,
+        ),
+        BallisticProjection(
+            projected_dx=-6.0,
+            t_fall=5.0,
+            target_x=0.0,
+            impact_x=6.0,
+            used_sensor=False,
+        ),
+    ]
+
+    def _fake_projection(*_args, **_kwargs):
+        return projections.pop(0)
+
+    monkeypatch.setattr(launch_module, "estimate_ballistic_projection", _fake_projection)
+
+    first = bot._allocate_controls(
+        dt=1.0,
+        passive=passive,
+        a_x_sp=6.0,
+        a_up_sp=0.0,
+        alt=260.0,
+        dx=180.0,
+        vertical_mode="launch_sideburn",
+    )
+    assert bot._setup_direction == pytest.approx(1.0)
+    assert first.target_angle > 0.0
+
+    second = bot._allocate_controls(
+        dt=1.0,
+        passive=passive,
+        a_x_sp=6.0,
+        a_up_sp=0.0,
+        alt=260.0,
+        dx=180.0,
+        vertical_mode="launch_sideburn",
+    )
+    assert bot._setup_direction == pytest.approx(1.0)
+    assert second.target_angle > 0.0
+
+
+def test_launch_handoff_waits_for_prograde_alignment(monkeypatch) -> None:
+    bot = LaunchBot()
+    bot._setup_phase_seen = True
+    bot._setup_burn_active = False
+    bot._setup_burn_complete = True
+    bot._setup_cfg = replace(
+        bot._setup_cfg,
+        handoff_prograde_speed_min=0.0,
+        handoff_prograde_max_error_deg=20.0,
+    )
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=180.0,
+        rel_x=-120.0,
+        rel_y=-140.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    vx = 18.0
+    vy_up = -3.5
+    prograde = math.atan2(vx, vy_up)
+    passive = PassiveSensors(
+        x=120.0,
+        y=140.0,
+        altitude=140.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=vx,
+        vy_up=vy_up,
+        angle=prograde + math.pi,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.4,
+        fuel=75.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+
+    def _fake_handoff_gate(*_args, **_kwargs):
+        return True
+
+    def _fake_coast_guidance(guidance: GuidanceTargets, *_args, **_kwargs):
+        return replace(guidance, phase="coast_handoff")
+
+    monkeypatch.setattr(launch_module, "should_handoff_to_coast", _fake_handoff_gate)
+    monkeypatch.setattr(launch_module, "apply_coast_guidance", _fake_coast_guidance)
+
+    first = bot._guidance(
+        passive,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+    )
+    assert bot._setup_handoff_done is False
+    assert first.phase == "launch_setup_sideburn"
+
+    aligned = replace(passive, angle=prograde)
+    second = bot._guidance(
+        aligned,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+    )
+    assert bot._setup_handoff_done is True
+    assert second.phase == "coast_handoff"
+
+
+def test_launch_stops_thrust_after_setup_burn_while_waiting_prograde() -> None:
+    bot = LaunchBot()
+    bot._setup_phase_seen = True
+    bot._setup_burn_complete = True
+    bot._setup_handoff_done = False
+    passive = PassiveSensors(
+        x=0.0,
+        y=180.0,
+        altitude=180.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=16.0,
+        vy_up=-4.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.0,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    action = bot._allocate_controls(
+        dt=1.0,
+        passive=passive,
+        a_x_sp=3.0,
+        a_up_sp=0.0,
+        alt=180.0,
+        dx=60.0,
+        vertical_mode="launch_sideburn",
+    )
+    assert action.target_thrust == pytest.approx(0.0)
+    assert action.target_angle == pytest.approx(math.atan2(16.0, -4.0))
+
+
+def test_launch_marks_setup_burn_complete_on_overshoot(monkeypatch) -> None:
+    bot = LaunchBot()
+    bot._setup_phase_seen = True
+    bot._setup_burn_active = True
+    bot._setup_burn_complete = False
+    bot._setup_burn_frames = int(bot._setup_cfg.setup_burn_min_frames)
+    bot._setup_direction = 1.0
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=260.0,
+        rel_x=-180.0,
+        rel_y=-200.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=180.0,
+        y=200.0,
+        altitude=200.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=18.0,
+        vy_up=-3.0,
+        angle=math.pi,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.5,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+    projection = BallisticProjection(
+        projected_dx=-160.0,
+        t_fall=5.5,
+        target_x=0.0,
+        impact_x=160.0,
+        used_sensor=False,
+    )
+
+    def _fake_projection(*_args, **_kwargs):
+        return projection
+
+    def _fake_setup_guidance(guidance: GuidanceTargets, *_args, **_kwargs):
+        return replace(guidance, phase="launch_setup_sideburn", vertical_mode="launch_sideburn")
+
+    monkeypatch.setattr(launch_module, "estimate_ballistic_projection", _fake_projection)
+    monkeypatch.setattr(launch_module, "apply_launch_setup_guidance", _fake_setup_guidance)
+    monkeypatch.setattr(launch_module, "should_handoff_to_coast", lambda *_args, **_kwargs: False)
+
+    guidance = bot._guidance(
+        passive,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+    )
+    assert bot._setup_burn_active is False
+    assert bot._setup_burn_complete is True
+    assert bot._setup_handoff_done is False
+    assert guidance.phase == "launch_setup_sideburn"
 
 
 def test_coast_handoff_to_flare_requires_consecutive_pass_frames() -> None:

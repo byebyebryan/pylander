@@ -165,6 +165,7 @@ class FlareBot(Bot):
         self._active_sensors: ActiveSensors | None = None
         self._behavior = "flare"
         self._prev_angle_cmd = 0.0
+        self._angle_cmd_initialized = False
         self._ballistic_debug_summary = ""
         self._last_guidance: GuidanceTargets | None = None
         self._last_projected_dx = 0.0
@@ -184,6 +185,8 @@ class FlareBot(Bot):
         if key != "flare":
             raise ValueError(f"Unknown flare behavior '{behavior}'. Expected one of: flare")
         self._behavior = "flare"
+        self._prev_angle_cmd = 0.0
+        self._angle_cmd_initialized = False
         self._ballistic_debug_summary = ""
         self._projection_summary = ""
         self._last_guidance = None
@@ -263,6 +266,8 @@ class FlareBot(Bot):
         active: ActiveSensors,
     ) -> BotAction:
         if passive.state != "flying":
+            self._prev_angle_cmd = 0.0
+            self._angle_cmd_initialized = False
             self._sideburn_active = False
             self._sideburn_direction = 0.0
             self._sideburn_release_counter = 0
@@ -282,6 +287,9 @@ class FlareBot(Bot):
             )
             self.status = action.status
             return action
+        if not self._angle_cmd_initialized:
+            self._prev_angle_cmd = float(passive.angle)
+            self._angle_cmd_initialized = True
         self._active_sensors = active
         try:
             max_power, min_throttle, max_throttle, ramp_up = self._engine_profile()
