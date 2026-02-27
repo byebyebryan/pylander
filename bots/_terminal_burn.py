@@ -75,6 +75,20 @@ def is_terminal_burn_imminent(
     )
 
 
+def scaled_abs_margin(
+    *,
+    base: float,
+    value: float,
+    gain: float,
+    deadband: float = 0.0,
+    cap: float | None = None,
+) -> float:
+    margin = float(base) + (float(gain) * max(0.0, abs(float(value)) - max(0.0, float(deadband))))
+    if cap is not None:
+        margin = min(margin, max(0.0, float(cap)))
+    return max(0.0, margin)
+
+
 def compute_terminal_burn_estimate(
     *,
     alt: float,
@@ -137,5 +151,6 @@ __all__ = [
     "TerminalBurnModel",
     "compute_terminal_burn_estimate",
     "is_terminal_burn_imminent",
+    "scaled_abs_margin",
     "should_start_terminal_burn",
 ]

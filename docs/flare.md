@@ -65,7 +65,7 @@ Every frame, `FlareBot` runs this pipeline:
 
 1. Acquire target with radar (`pick_target`).
 2. Estimate ballistic intercept with `estimate_ballistic_projection` -> `projected_dx`, `t_fall`.
-3. Choose guidance phase (`sideburn`, `coupled_terminal`, `touchdown`).
+3. Choose guidance phase (`sideburn`, `preflare_coast`, `coupled_terminal`, `touchdown`).
 4. Build setpoints (`vx_sp`, `vy_sp`) for the chosen phase.
 5. Convert setpoints to accelerations (`a_x_sp`, `a_up_sp`).
 6. Allocate thrust + angle with rate limits, tilt caps, and throttle caps.
@@ -78,8 +78,11 @@ The bot keeps one explicit sideburn state (`_sideburn_active`) plus release and 
 
 - Enter `sideburn` when projected overshoot and lateral speed/offset gates pass.
 - Stay in `sideburn` until exit gates pass for consecutive frames, timeout hits, altitude is too low, or climb abort trips.
+- Enter `preflare_coast` after sideburn/touchdown checks when burn is not yet armed; this keeps coast-like behavior and retrograde attitude bias.
+- Switch to `coupled_terminal` once burn gate is armed/committed, burn-hold is active, or low-alt settle guards require terminal authority.
 - Enter `touchdown` only when low altitude and low lateral error/speed are already true.
-- Otherwise run `coupled_terminal`.
+- At very low altitude, being over pad footprint (`|dx| <= target_half_width`) can force `touchdown` even if projected intercept error remains noisy, preventing prolonged low-altitude dithering.
+- Otherwise remain in `preflare_coast`.
 
 This is intentionally hysteretic. Entry and exit are not symmetric, so the bot avoids phase flipping.
 
@@ -96,13 +99,14 @@ Coupled terminal:
   - `vx_track = projected_dx / t_go`
   - `vx_stop = -vx`
   - `vx_sp = w * vx_track + (1 - w) * vx_stop`
+- When already over pad at lower altitude, `vx_sp` blends further toward damping to shed lateral speed before final commit.
 - `vx_sp` is clipped by global/low-alt/near-target caps.
 - `vy_sp` follows `coupled_descent_*`, with low-alt misalignment guard enforcing minimum sink.
 
 Touchdown:
 
 - Tight lateral cap near zero (`coupled_near_vx_cap`)
-- Very gentle descent from `touchdown_descent_*`
+- Deliberate final descent from `touchdown_descent_*` to avoid low-altitude hesitation.
 
 ### Burn timing model (vertical trigger)
 
@@ -116,11 +120,11 @@ The burn gate is based on estimated stopping geometry:
 - `burn_margin` from `burn_margin_*` (larger when lateral error is larger)
 - `burn_altitude = stop_distance + spool_distance + burn_margin`
 
-Then burn starts when:
+Then the burn gate runs in two steps:
 
-- `down_speed > burn_activation_down_speed_min`, and
-- `alt <= burn_altitude` **or**
-- `time_to_impact <= time_to_brake + burn_enter_time_margin`
+- **Arm**: mark burn readiness early using dynamic margins tied to lateral miss.
+- **Commit**: allow terminal burn when start criteria are met and commit-imminent checks pass.
+- **High-alt guard**: reject time-triggered commit when still far above `burn_altitude` and not yet close in brake time.
 
 `burn_hold_frames` adds hysteresis to avoid one-frame flicker.
 
@@ -140,6 +144,7 @@ Vertical acceleration:
 Thrust and angle allocation:
 
 - Angle command from `atan2(a_x_sp, a_up_sp)` then clamped by phase-specific tilt caps and rate limits.
+- In `eco_glide`, attitude is biased toward retrograde at altitude so coast->flare handoff does not rotate upright unnecessarily.
 - Very low altitude adds tighter tilt caps.
 - Thrust from requested acceleration magnitude, then clipped by engine limits and overdrive policy.
 - Touchdown cut (`touchdown_zero_*`) hard zeros thrust/angle only in very low, very slow, near-center conditions.
@@ -187,22 +192,26 @@ Start with these before touching the rest.
 | Knob | Primary effect | Increase does | Decrease does | Watch metrics |
 | --- | --- | --- | --- | --- |
 | `burn_margin_base` | Burn conservatism | Earlier burn, safer, more fuel | Later burn, riskier, less fuel | crash rate, fuel |
-| `burn_enter_time_margin` | Time-based burn buffer | Earlier trigger on short TTI | More reliance on altitude gate | late-burn crashes |
+| `burn_gate_arm_altitude_base` | Burn pre-arm conservatism | Arms earlier, safer, potentially more hover risk | Arms later, cleaner coast, more late-burn risk | hover time, crash rate |
+| `burn_gate_commit_time_margin` | Commit timing strictness | Earlier terminal commit | Later commit, more coasting | late-burn crashes, fuel |
 | `burn_hold_frames` | Burn hysteresis | Less flicker, more commitment | Snappier mode changes | thrust chatter |
 | `sideburn_enter_vx` | Sideburn entry aggressiveness | Fewer sideburn entries | More sideburn entries | path efficiency, oscillation |
 | `sideburn_exit_vx` | Sideburn release strictness | Sideburn holds longer | Sideburn exits earlier | time, lateral wobble |
-| `sideburn_release_frames` | Exit confidence | Smoother exit, slower release | Faster exit, more chatter risk | phase toggling |
+| `sideburn_switch_confirm_frames` | Direction-switch hysteresis | Fewer sign flips, slower correction reversals | Faster flips, more chatter risk | phase toggling, lateral wobble |
 | `coupled_vx_track_weight` | Track-vs-damp blend | More position chasing | More velocity damping | landing_offset, time |
-| `coupled_ax_pos_gain` | Lateral correction strength | Faster lateral convergence | Slower lateral convergence | offset, low-alt tilt |
+| `coupled_ax_damping` | Lateral oscillation damping | Less oscillation, slower response | Faster response, more overshoot risk | offset variance, tilt oscillation |
 | `coupled_low_alt_ax_cap` | Low-alt lateral authority | More low-alt correction | Gentler low-alt behavior | touchdown stability |
+| `retrograde_hold_max_tilt` | Eco-glide retrograde authority | Better pre-burn attitude continuity | More upright drift during coast-like glide | pre-burn rotation, settle time |
+| `touchdown_center_settle_dx` | Near-pad center-chasing cutoff | Settles earlier near pad center, less lateral chase | Keeps correcting center deeper into touchdown | landing_offset, settle time |
 | `touchdown_zero_vy` | Engine cutoff tolerance | Earlier cutoff | Later cutoff | bounce/hover near ground |
 
 Practical tuning order:
 
 1. Burn model (`burn_*`)
-2. Sideburn gates (`sideburn_enter_*`, `sideburn_exit_*`)
-3. Coupled lateral gains/caps (`coupled_ax_*`)
-4. Touchdown cut (`touchdown_zero_*`)
+2. Sideburn gates + switch hysteresis (`sideburn_enter_*`, `sideburn_exit_*`, `sideburn_switch_*`)
+3. Coupled lateral gains/caps (`coupled_ax_*`) + eco-glide transition (`eco_glide_*`)
+4. Retrograde coast attitude (`retrograde_hold_*`)
+5. Touchdown cut (`touchdown_zero_*`)
 
 ## Full parameter map (grouped)
 

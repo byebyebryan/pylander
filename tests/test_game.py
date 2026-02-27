@@ -682,7 +682,13 @@ def test_flare_guidance_keeps_terminal_mode_after_low_alt_commit(monkeypatch) ->
         return 2.0, "analytic"
 
     def _fake_burn_estimate(*_args, **_kwargs):
-        return SimpleNamespace(burn_altitude=26.0, spool_time=0.2)
+        return SimpleNamespace(
+            burn_altitude=26.0,
+            spool_time=0.2,
+            down_speed=4.0,
+            time_to_brake=1.2,
+            raw_burn_now=False,
+        )
 
     def _fake_should_start(*_args, **_kwargs):
         raw_calls["count"] += 1
@@ -761,7 +767,13 @@ def test_flare_guidance_blocks_far_above_pad_time_triggered_terminal_burn(
     monkeypatch.setattr(
         flare_module,
         "compute_terminal_burn_estimate",
-        lambda *_a, **_k: SimpleNamespace(burn_altitude=20.0, spool_time=0.2),
+        lambda *_a, **_k: SimpleNamespace(
+            burn_altitude=20.0,
+            spool_time=0.2,
+            down_speed=8.0,
+            time_to_brake=2.0,
+            raw_burn_now=False,
+        ),
     )
     monkeypatch.setattr(flare_module, "should_start_terminal_burn", lambda *_a, **_k: True)
     monkeypatch.setattr(FlareBot, "_terminal_brake_altitude", lambda *_a, **_k: 20.0)
@@ -775,6 +787,418 @@ def test_flare_guidance_blocks_far_above_pad_time_triggered_terminal_burn(
         active=SimpleNamespace(),
     )
     assert guidance.vertical_mode != "terminal_burn"
+
+
+def test_flare_guidance_stays_in_preflare_coast_before_gate(monkeypatch) -> None:
+    bot = FlareBot()
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=220.0,
+        rel_x=0.0,
+        rel_y=-220.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=0.0,
+        y=220.0,
+        altitude=220.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-8.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.4,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+    projection = BallisticProjection(
+        projected_dx=0.0,
+        t_fall=6.0,
+        target_x=target.x,
+        impact_x=target.x,
+        used_sensor=False,
+    )
+
+    monkeypatch.setattr(flare_module, "estimate_ballistic_projection", lambda *_a, **_k: projection)
+    monkeypatch.setattr(flare_module, "ballistic_time_to_impact", lambda *_a, **_k: (6.0, "analytic"))
+    monkeypatch.setattr(
+        flare_module,
+        "compute_terminal_burn_estimate",
+        lambda *_a, **_k: SimpleNamespace(
+            burn_altitude=20.0,
+            spool_time=0.2,
+            down_speed=8.0,
+            time_to_brake=2.0,
+            raw_burn_now=False,
+        ),
+    )
+    monkeypatch.setattr(flare_module, "should_start_terminal_burn", lambda *_a, **_k: False)
+    monkeypatch.setattr(FlareBot, "_terminal_brake_altitude", lambda *_a, **_k: 20.0)
+
+    guidance = bot._guidance(
+        passive,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+        active=SimpleNamespace(),
+    )
+    assert guidance.phase == "preflare_coast"
+    assert guidance.vertical_mode == "eco_glide"
+
+
+def test_flare_guidance_switches_to_coupled_terminal_when_gate_arms(monkeypatch) -> None:
+    bot = FlareBot()
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=95.0,
+        rel_x=0.0,
+        rel_y=-95.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=0.0,
+        y=95.0,
+        altitude=95.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-8.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.4,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+    projection = BallisticProjection(
+        projected_dx=0.0,
+        t_fall=2.0,
+        target_x=target.x,
+        impact_x=target.x,
+        used_sensor=False,
+    )
+
+    monkeypatch.setattr(flare_module, "estimate_ballistic_projection", lambda *_a, **_k: projection)
+    monkeypatch.setattr(flare_module, "ballistic_time_to_impact", lambda *_a, **_k: (2.0, "analytic"))
+    monkeypatch.setattr(
+        flare_module,
+        "compute_terminal_burn_estimate",
+        lambda *_a, **_k: SimpleNamespace(
+            burn_altitude=40.0,
+            spool_time=0.2,
+            down_speed=8.0,
+            time_to_brake=1.8,
+            raw_burn_now=False,
+        ),
+    )
+    monkeypatch.setattr(flare_module, "should_start_terminal_burn", lambda *_a, **_k: False)
+    monkeypatch.setattr(FlareBot, "_terminal_brake_altitude", lambda *_a, **_k: 40.0)
+
+    guidance = bot._guidance(
+        passive,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+        active=SimpleNamespace(),
+    )
+    assert guidance.phase == "coupled_terminal"
+    assert guidance.vertical_mode == "eco_glide"
+
+
+def test_flare_guidance_enters_touchdown_when_low_alt_over_pad(monkeypatch) -> None:
+    bot = FlareBot()
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=40.2,
+        rel_x=40.0,
+        rel_y=-4.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=-40.0,
+        y=4.0,
+        altitude=4.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.5,
+        vy_up=-1.2,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+    projection = BallisticProjection(
+        projected_dx=35.0,
+        t_fall=1.0,
+        target_x=target.x,
+        impact_x=target.x - 35.0,
+        used_sensor=False,
+    )
+
+    monkeypatch.setattr(flare_module, "estimate_ballistic_projection", lambda *_a, **_k: projection)
+    monkeypatch.setattr(flare_module, "ballistic_time_to_impact", lambda *_a, **_k: (1.0, "analytic"))
+    monkeypatch.setattr(
+        flare_module,
+        "compute_terminal_burn_estimate",
+        lambda *_a, **_k: SimpleNamespace(
+            burn_altitude=4.5,
+            spool_time=0.2,
+            down_speed=1.2,
+            time_to_brake=0.8,
+            raw_burn_now=False,
+        ),
+    )
+    monkeypatch.setattr(flare_module, "should_start_terminal_burn", lambda *_a, **_k: False)
+    monkeypatch.setattr(FlareBot, "_terminal_brake_altitude", lambda *_a, **_k: 4.5)
+
+    guidance = bot._guidance(
+        passive,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+        active=SimpleNamespace(),
+    )
+    assert guidance.phase == "touchdown"
+    assert guidance.vertical_mode == "flare"
+
+
+def test_flare_guidance_does_not_touchdown_over_pad_too_early(monkeypatch) -> None:
+    bot = FlareBot()
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=40.4,
+        rel_x=40.0,
+        rel_y=-6.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=-40.0,
+        y=6.0,
+        altitude=6.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.5,
+        vy_up=-1.2,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+    projection = BallisticProjection(
+        projected_dx=35.0,
+        t_fall=1.3,
+        target_x=target.x,
+        impact_x=target.x - 35.0,
+        used_sensor=False,
+    )
+
+    monkeypatch.setattr(flare_module, "estimate_ballistic_projection", lambda *_a, **_k: projection)
+    monkeypatch.setattr(flare_module, "ballistic_time_to_impact", lambda *_a, **_k: (1.3, "analytic"))
+    monkeypatch.setattr(
+        flare_module,
+        "compute_terminal_burn_estimate",
+        lambda *_a, **_k: SimpleNamespace(
+            burn_altitude=4.5,
+            spool_time=0.2,
+            down_speed=1.2,
+            time_to_brake=0.8,
+            raw_burn_now=False,
+        ),
+    )
+    monkeypatch.setattr(flare_module, "should_start_terminal_burn", lambda *_a, **_k: False)
+    monkeypatch.setattr(FlareBot, "_terminal_brake_altitude", lambda *_a, **_k: 4.5)
+
+    guidance = bot._guidance(
+        passive,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+        active=SimpleNamespace(),
+    )
+    assert guidance.phase != "touchdown"
+
+
+def test_flare_guidance_forces_touchdown_when_very_low_alt_over_pad(monkeypatch) -> None:
+    bot = FlareBot()
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=40.1,
+        rel_x=40.0,
+        rel_y=-3.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=-40.0,
+        y=3.0,
+        altitude=3.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=9.0,
+        vy_up=-0.8,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+    projection = BallisticProjection(
+        projected_dx=30.0,
+        t_fall=0.8,
+        target_x=target.x,
+        impact_x=target.x - 30.0,
+        used_sensor=False,
+    )
+
+    monkeypatch.setattr(flare_module, "estimate_ballistic_projection", lambda *_a, **_k: projection)
+    monkeypatch.setattr(flare_module, "ballistic_time_to_impact", lambda *_a, **_k: (0.8, "analytic"))
+    monkeypatch.setattr(
+        flare_module,
+        "compute_terminal_burn_estimate",
+        lambda *_a, **_k: SimpleNamespace(
+            burn_altitude=3.5,
+            spool_time=0.2,
+            down_speed=1.0,
+            time_to_brake=0.7,
+            raw_burn_now=False,
+        ),
+    )
+    monkeypatch.setattr(flare_module, "should_start_terminal_burn", lambda *_a, **_k: False)
+    monkeypatch.setattr(FlareBot, "_terminal_brake_altitude", lambda *_a, **_k: 3.5)
+
+    guidance = bot._guidance(
+        passive,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+        active=SimpleNamespace(),
+    )
+    assert guidance.phase == "touchdown"
+    assert guidance.vertical_mode == "flare"
+
+
+def test_flare_guidance_limits_over_pad_lateral_speed_when_low_alt(monkeypatch) -> None:
+    bot = FlareBot()
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=36.1,
+        rel_x=30.0,
+        rel_y=-20.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=-30.0,
+        y=20.0,
+        altitude=20.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=-12.0,
+        vy_up=-4.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.3,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+    projection = BallisticProjection(
+        projected_dx=30.0,
+        t_fall=2.0,
+        target_x=target.x,
+        impact_x=target.x - 30.0,
+        used_sensor=False,
+    )
+
+    monkeypatch.setattr(flare_module, "estimate_ballistic_projection", lambda *_a, **_k: projection)
+    monkeypatch.setattr(flare_module, "ballistic_time_to_impact", lambda *_a, **_k: (2.0, "analytic"))
+    monkeypatch.setattr(
+        flare_module,
+        "compute_terminal_burn_estimate",
+        lambda *_a, **_k: SimpleNamespace(
+            burn_altitude=10.0,
+            spool_time=0.2,
+            down_speed=4.0,
+            time_to_brake=1.0,
+            raw_burn_now=False,
+        ),
+    )
+    monkeypatch.setattr(flare_module, "should_start_terminal_burn", lambda *_a, **_k: False)
+    monkeypatch.setattr(FlareBot, "_terminal_brake_altitude", lambda *_a, **_k: 10.0)
+
+    guidance = bot._guidance(
+        passive,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+        active=SimpleNamespace(),
+    )
+    assert abs(guidance.vx_sp) <= bot._control_cfg.coupled_over_pad_brake_vx_cap
 
 
 def test_flare_sideburn_exit_does_not_force_burn_hold_high_altitude() -> None:
@@ -893,6 +1317,119 @@ def test_flare_terminal_vertical_controller_avoids_hover_near_ground() -> None:
     assert a_up <= 9.600001
 
 
+def test_flare_terminal_vertical_controller_enforces_min_sink_high_altitude() -> None:
+    bot = FlareBot()
+    passive = PassiveSensors(
+        x=0.0,
+        y=40.0,
+        altitude=40.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-0.1,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    a_up_slow = bot._vertical_controller(
+        passive,
+        vy_sp=-1.6,
+        alt=40.0,
+        vertical_mode="terminal_burn",
+        up_acc_max=10.0,
+    )
+    a_up_descending = bot._vertical_controller(
+        replace(passive, vy_up=-2.0),
+        vy_sp=-1.6,
+        alt=40.0,
+        vertical_mode="terminal_burn",
+        up_acc_max=10.0,
+    )
+    assert a_up_slow < a_up_descending
+
+
+def test_flare_vertical_controller_touchdown_phase_commits_sink_near_ground() -> None:
+    bot = FlareBot()
+    passive = PassiveSensors(
+        x=0.0,
+        y=4.0,
+        altitude=4.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-0.2,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    a_up_touchdown = bot._vertical_controller(
+        passive,
+        vy_sp=-0.9,
+        alt=4.0,
+        vertical_mode="flare",
+        up_acc_max=10.0,
+        phase="touchdown",
+    )
+    a_up_non_touchdown = bot._vertical_controller(
+        passive,
+        vy_sp=-0.9,
+        alt=4.0,
+        vertical_mode="flare",
+        up_acc_max=10.0,
+        phase="coupled_terminal",
+    )
+    assert a_up_touchdown < a_up_non_touchdown
+
+
+def test_flare_allocate_controls_biases_retrograde_during_eco_glide() -> None:
+    bot = FlareBot()
+    passive = PassiveSensors(
+        x=0.0,
+        y=120.0,
+        altitude=120.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=18.0,
+        vy_up=-6.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.0,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    action = bot._allocate_controls(
+        dt=1.0,
+        passive=passive,
+        a_x_sp=0.0,
+        a_up_sp=0.0,
+        alt=120.0,
+        dx=40.0,
+        vertical_mode="eco_glide",
+    )
+    retrograde = math.atan2(-float(passive.vx), -float(passive.vy_up))
+    assert action.target_thrust == pytest.approx(0.0)
+    assert action.target_angle == pytest.approx(retrograde, abs=0.12)
+
+
 def test_flare_horizontal_controller_softens_close_to_touchdown_altitude() -> None:
     bot = FlareBot()
     passive = PassiveSensors(
@@ -962,6 +1499,80 @@ def test_flare_horizontal_controller_stops_center_chasing_inside_pad_near_touchd
         vy_sp=-2.0,
         dx=30.0,  # inside pad half-width
         alt=6.0,
+        burn_altitude=4.0,
+    )
+    ax_target = bot._horizontal_controller(passive, vx_sp=0.0)
+    assert ax_target == pytest.approx(-1.2)
+
+
+def test_flare_horizontal_controller_boosts_settle_brake_for_high_vx_near_touchdown() -> None:
+    bot = FlareBot()
+    passive = PassiveSensors(
+        x=0.0,
+        y=6.0,
+        altitude=6.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=10.0,
+        vy_up=-1.5,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    bot._last_target_half = 55.0
+    bot._last_t_go = 1.2
+    bot._last_projected_dx = 40.0
+    bot._last_guidance = GuidanceTargets(
+        phase="coupled_terminal",
+        vertical_mode="terminal_burn",
+        vx_sp=0.0,
+        vy_sp=-2.0,
+        dx=30.0,  # inside pad half-width
+        alt=6.0,
+        burn_altitude=4.0,
+    )
+    ax_target = bot._horizontal_controller(passive, vx_sp=0.0)
+    assert ax_target < -1.2
+
+
+def test_flare_horizontal_controller_stops_center_chasing_across_pad_in_touchdown_phase() -> None:
+    bot = FlareBot()
+    passive = PassiveSensors(
+        x=0.0,
+        y=6.0,
+        altitude=6.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=4.0,
+        vy_up=-1.5,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    bot._last_target_half = 55.0
+    bot._last_t_go = 1.2
+    bot._last_projected_dx = 50.0
+    bot._last_guidance = GuidanceTargets(
+        phase="touchdown",
+        vertical_mode="flare",
+        vx_sp=0.0,
+        vy_sp=-2.0,
+        dx=50.0,  # inside pad half-width but outside center settle window
+        alt=4.0,
         burn_altitude=4.0,
     )
     ax_target = bot._horizontal_controller(passive, vx_sp=0.0)
@@ -2802,6 +3413,9 @@ def test_flare_sideburn_direction_lock_avoids_early_flip() -> None:
     assert first == pytest.approx(1.0)
     assert second == pytest.approx(1.0)
     third = bot._resolve_sideburn_direction(projected_dx=-3.0, dx=-3.0, vx=-0.5)
+    assert third == pytest.approx(1.0)
+    for _ in range(bot._control_cfg.sideburn_switch_confirm_frames - 1):
+        third = bot._resolve_sideburn_direction(projected_dx=-3.0, dx=-3.0, vx=-0.5)
     assert third == pytest.approx(-1.0)
 
 

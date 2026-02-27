@@ -22,11 +22,23 @@ from bots._sideburn_control import resolve_sideburn_target_angle
 from bots._terminal_burn import (
     TerminalBurnModel,
     compute_terminal_burn_estimate,
+    scaled_abs_margin,
     should_start_terminal_burn,
 )
 from bots._targeting import pick_target, target_half_width
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
+
+
+def _angle_diff(a: float, b: float) -> float:
+    return (float(b) - float(a) + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def _blend_angle(current: float, target: float, weight: float) -> float:
+    w = clamp(float(weight), 0.0, 1.0)
+    if w <= 0.0:
+        return float(current)
+    return float(current) + (_angle_diff(float(current), float(target)) * w)
 
 
 @dataclass(frozen=True)
@@ -55,9 +67,12 @@ class FlareControlConfig:
     sideburn_ax_cap: float = 8.8
     sideburn_switch_dx: float = 13.0
     sideburn_switch_vx: float = 1.4
+    sideburn_switch_dx_confirm: float = 10.0
+    sideburn_switch_vx_confirm: float = 1.0
+    sideburn_switch_confirm_frames: int = 4
     sideburn_flip_vx: float = 6.0
     sideburn_switch_hold_flip_frames: int = 24
-    sideburn_switch_hold_cross_frames: int = 18
+    sideburn_switch_hold_cross_frames: int = 24
     sideburn_force_dx: float = 24.0
     sideburn_stop_distance_ratio: float = 0.58
     sideburn_urgent_vx: float = 50.0
@@ -79,6 +94,8 @@ class FlareControlConfig:
     coupled_tgo_min: float = 0.8
     coupled_tgo_max: float = 12.0
     coupled_vx_track_weight: float = 0.68
+    coupled_vx_shed_ratio_gain: float = 0.40
+    coupled_vx_shed_weight_min: float = 0.38
     coupled_vx_cap: float = 16.0
     coupled_near_dx: float = 20.0
     coupled_near_alt: float = 18.0
@@ -88,8 +105,8 @@ class FlareControlConfig:
     coupled_descent_min: float = 1.0
     coupled_descent_max: float = 14.0
     coupled_ax_pos_gain: float = 0.82
-    coupled_ax_vel_gain: float = 0.98
-    coupled_ax_damping: float = 0.07
+    coupled_ax_vel_gain: float = 0.88
+    coupled_ax_damping: float = 0.12
     coupled_ax_cap: float = 8.8
     coupled_soft_alt: float = 15.0
     coupled_soft_dx: float = 12.0
@@ -104,6 +121,8 @@ class FlareControlConfig:
     coupled_low_alt_vx_cap_gain: float = 0.7
     coupled_low_alt_vx_cap_min: float = 2.2
     coupled_low_alt_vx_cap_max: float = 7.0
+    coupled_over_pad_brake_alt: float = 40.0
+    coupled_over_pad_brake_vx_cap: float = 5.0
     coupled_low_alt_ax_alt: float = 22.0
     coupled_low_alt_ax_cap: float = 4.4
     coupled_misaligned_alt: float = 14.0
@@ -111,6 +130,7 @@ class FlareControlConfig:
     projection_segment_length: float = 20.0
     projection_max_points: int = 192
     eco_glide_lateral_hold_alt: float = 80.0
+    eco_glide_lateral_blend_alt: float = 52.0
     anti_hover_alt: float = 24.0
     anti_hover_dx: float = 24.0
     anti_hover_vy_floor: float = 0.8
@@ -120,9 +140,22 @@ class FlareControlConfig:
     burn_hold_frames: int = 24
     burn_hold_terminal_altitude: float = 220.0
     burn_hold_descending_vy_min: float = 1.8
-    burn_time_trigger_altitude_margin: float = 180.0
-    settle_burn_altitude: float = 12.0
-    settle_burn_vy_min: float = 1.2
+    burn_gate_arm_hold_frames: int = 26
+    burn_gate_arm_altitude_base: float = 36.0
+    burn_gate_arm_altitude_dx_gain: float = 0.24
+    burn_gate_arm_altitude_dx_cap: float = 110.0
+    burn_gate_arm_time_base: float = 0.38
+    burn_gate_arm_time_dx_gain: float = 0.008
+    burn_gate_arm_time_cap: float = 1.1
+    burn_gate_commit_altitude_margin: float = 16.0
+    burn_gate_commit_time_margin: float = 0.4
+    burn_high_altitude_guard_base: float = 80.0
+    burn_high_altitude_guard_dx_gain: float = 0.35
+    burn_high_altitude_guard_dx_cap: float = 165.0
+    burn_high_altitude_guard_down_speed_gain: float = 8.0
+    burn_high_altitude_guard_time_margin: float = 0.2
+    settle_burn_altitude: float = 6.0
+    settle_burn_vy_min: float = 0.9
     burn_spool_quadratic_accel: float = 4.9
     burn_flare_speed_base: float = 0.45
     burn_flare_speed_alt_gain: float = 0.11
@@ -132,16 +165,33 @@ class FlareControlConfig:
     burn_margin_dx_gain: float = 0.12
     burn_margin_dx_deadband: float = 8.0
     burn_activation_down_speed_min: float = 0.6
+    terminal_hover_cap_high_alt: float = 0.32
+    terminal_hover_cap_mid_alt: float = 0.18
+    terminal_hover_cap_low_alt: float = 0.10
+    terminal_min_sink_vy: float = 1.4
+    terminal_min_sink_gain: float = 0.36
+    flare_min_sink_vy: float = 0.9
+    flare_min_sink_gain: float = 0.26
+    retrograde_hold_alt: float = 72.0
+    retrograde_hold_blend_alt: float = 26.0
+    retrograde_hold_speed_min: float = 3.0
+    retrograde_hold_ax_blend_cap: float = 2.6
+    retrograde_hold_max_tilt: float = 1.28
+    retrograde_hold_angle_rate: float = 2.8
     touchdown_altitude: float = 4.0
-    touchdown_descent_base: float = 0.35
-    touchdown_descent_gain: float = 0.07
-    touchdown_descent_min: float = 0.35
-    touchdown_descent_max: float = 0.85
+    touchdown_descent_base: float = 0.48
+    touchdown_descent_gain: float = 0.09
+    touchdown_descent_min: float = 0.45
+    touchdown_descent_max: float = 1.10
     touchdown_entry_dx: float = 8.0
     touchdown_entry_vx: float = 2.0
     touchdown_entry_altitude: float = 7.0
     touchdown_entry_dx_relaxed: float = 12.0
     touchdown_entry_vx_relaxed: float = 3.0
+    touchdown_over_pad_commit_altitude: float = 4.8
+    touchdown_over_pad_forced_commit_altitude: float = 3.5
+    touchdown_over_pad_commit_vx: float = 5.0
+    touchdown_center_settle_dx: float = 45.0
     touchdown_tilt_limit_alt: float = 10.0
     touchdown_tilt_limit_rad: float = 0.20
     touchdown_tilt_limit_hard_alt: float = 5.0
@@ -150,6 +200,12 @@ class FlareControlConfig:
     touchdown_zero_dx: float = 7.0
     touchdown_zero_vx: float = 0.55
     touchdown_zero_vy: float = 0.9
+    touchdown_flare_hover_cap: float = 9.42
+    touchdown_flare_hover_cap_low: float = 9.30
+    touchdown_commit_sink_vy: float = 1.0
+    touchdown_commit_sink_gain: float = 0.30
+    touchdown_settle_ax_cap: float = 1.2
+    touchdown_settle_ax_speed_gain: float = 0.45
 
 
 class FlareBot(Bot):
@@ -190,8 +246,11 @@ class FlareBot(Bot):
         self._sideburn_release_counter = 0
         self._sideburn_frame_count = 0
         self._sideburn_switch_hold = 0
+        self._sideburn_switch_candidate = 0.0
+        self._sideburn_switch_candidate_frames = 0
         self._sideburn_reentry_cooldown = 0
         self._terminal_burn_hold = 0
+        self._burn_gate_armed_frames = 0
         self.set_behavior(behavior)
 
     def set_behavior(self, behavior: str) -> None:
@@ -212,8 +271,11 @@ class FlareBot(Bot):
         self._sideburn_release_counter = 0
         self._sideburn_frame_count = 0
         self._sideburn_switch_hold = 0
+        self._sideburn_switch_candidate = 0.0
+        self._sideburn_switch_candidate_frames = 0
         self._sideburn_reentry_cooldown = 0
         self._terminal_burn_hold = 0
+        self._burn_gate_armed_frames = 0
 
     @property
     def behavior(self) -> str:
@@ -248,6 +310,8 @@ class FlareBot(Bot):
         ):
             self._sideburn_direction = -self._sideburn_direction
             self._sideburn_switch_hold = int(cfg.sideburn_switch_hold_flip_frames)
+            self._sideburn_switch_candidate = 0.0
+            self._sideburn_switch_candidate_frames = 0
             return self._sideburn_direction
 
         if abs(projected_dx) > 1e-3:
@@ -263,15 +327,31 @@ class FlareBot(Bot):
 
         if self._sideburn_direction == 0.0:
             self._sideburn_direction = candidate
+            self._sideburn_switch_candidate = 0.0
+            self._sideburn_switch_candidate_frames = 0
         elif candidate != self._sideburn_direction:
             if (
                 self._sideburn_switch_hold == 0
                 and
-                abs(projected_dx) <= cfg.sideburn_switch_dx
-                and abs(vx) <= cfg.sideburn_switch_vx
+                abs(projected_dx) <= cfg.sideburn_switch_dx_confirm
+                and abs(vx) <= cfg.sideburn_switch_vx_confirm
             ):
-                self._sideburn_direction = candidate
-                self._sideburn_switch_hold = int(cfg.sideburn_switch_hold_cross_frames)
+                if candidate == self._sideburn_switch_candidate:
+                    self._sideburn_switch_candidate_frames += 1
+                else:
+                    self._sideburn_switch_candidate = candidate
+                    self._sideburn_switch_candidate_frames = 1
+                if self._sideburn_switch_candidate_frames >= int(cfg.sideburn_switch_confirm_frames):
+                    self._sideburn_direction = candidate
+                    self._sideburn_switch_hold = int(cfg.sideburn_switch_hold_cross_frames)
+                    self._sideburn_switch_candidate = 0.0
+                    self._sideburn_switch_candidate_frames = 0
+            else:
+                self._sideburn_switch_candidate = 0.0
+                self._sideburn_switch_candidate_frames = 0
+        else:
+            self._sideburn_switch_candidate = 0.0
+            self._sideburn_switch_candidate_frames = 0
         return self._sideburn_direction
 
     def update(
@@ -288,8 +368,11 @@ class FlareBot(Bot):
             self._sideburn_release_counter = 0
             self._sideburn_frame_count = 0
             self._sideburn_switch_hold = 0
+            self._sideburn_switch_candidate = 0.0
+            self._sideburn_switch_candidate_frames = 0
             self._sideburn_reentry_cooldown = 0
             self._terminal_burn_hold = 0
+            self._burn_gate_armed_frames = 0
             self._last_guidance = None
             self._last_target_half = 55.0
             self._projection_summary = ""
@@ -327,6 +410,7 @@ class FlareBot(Bot):
                     alt=alt,
                     vertical_mode="flare",
                     up_acc_max=up_acc_max,
+                    phase=None,
                 )
                 action = self._allocate_controls(
                     dt,
@@ -356,6 +440,7 @@ class FlareBot(Bot):
                 guidance.alt,
                 guidance.vertical_mode,
                 up_acc_max,
+                phase=guidance.phase,
             )
             action = self._allocate_controls(
                 dt,
@@ -365,6 +450,7 @@ class FlareBot(Bot):
                 dx=guidance.dx,
                 alt=guidance.alt,
                 vertical_mode=guidance.vertical_mode,
+                phase=guidance.phase,
             )
             action.status = (
                 f"{self._policy.status_prefix}:{guidance.phase} dx:{stable(guidance.dx, 1):6.1f} "
@@ -500,6 +586,8 @@ class FlareBot(Bot):
                 self._sideburn_frame_count = 0
                 self._sideburn_direction = 0.0
                 self._sideburn_switch_hold = 0
+                self._sideburn_switch_candidate = 0.0
+                self._sideburn_switch_candidate_frames = 0
                 self._sideburn_reentry_cooldown = max(
                     self._sideburn_reentry_cooldown,
                     int(cfg.sideburn_reentry_cooldown_frames),
@@ -539,15 +627,31 @@ class FlareBot(Bot):
             self._sideburn_release_counter = 0
             self._sideburn_frame_count = 0
             self._sideburn_switch_hold = 0
+            self._sideburn_switch_candidate = 0.0
+            self._sideburn_switch_candidate_frames = 0
 
-        touchdown_ready = (
+        touchdown_track_ready = (
             (alt <= cfg.touchdown_altitude)
             and abs_track_dx <= cfg.touchdown_entry_dx
             and abs(float(passive.vx)) <= cfg.touchdown_entry_vx
-        ) or (
+        )
+        touchdown_relaxed_track_ready = (
             alt <= cfg.touchdown_entry_altitude
             and abs_track_dx <= cfg.touchdown_entry_dx_relaxed
             and abs(float(passive.vx)) <= cfg.touchdown_entry_vx_relaxed
+        )
+        touchdown_over_pad_ready = (
+            alt <= cfg.touchdown_over_pad_commit_altitude
+            and abs(dx) <= self._last_target_half
+            and (
+                alt <= cfg.touchdown_over_pad_forced_commit_altitude
+                or abs(float(passive.vx)) <= cfg.touchdown_over_pad_commit_vx
+            )
+        )
+        touchdown_ready = (
+            touchdown_track_ready
+            or touchdown_relaxed_track_ready
+            or touchdown_over_pad_ready
         )
         if touchdown_ready:
             phase = "touchdown"
@@ -556,8 +660,8 @@ class FlareBot(Bot):
             phase = "sideburn"
             vertical_mode = "coast_hold"
         else:
-            phase = "coupled_terminal"
-            vertical_mode = "terminal_burn"
+            phase = "preflare_coast"
+            vertical_mode = "eco_glide"
 
         if phase == "sideburn":
             vx_target_mag = min(
@@ -590,9 +694,18 @@ class FlareBot(Bot):
         else:
             vx_track = track_dx / max(0.5, t_go)
             vx_stop = -float(passive.vx)
+            vx_track_weight = cfg.coupled_vx_track_weight
+            track_need_mag = max(1.0, track_vx_need)
+            speed_ratio = abs(float(passive.vx)) / track_need_mag
+            if speed_ratio > 1.0:
+                reduction = cfg.coupled_vx_shed_ratio_gain * (speed_ratio - 1.0)
+                vx_track_weight = max(
+                    cfg.coupled_vx_shed_weight_min,
+                    vx_track_weight * (1.0 - reduction),
+                )
             vx_sp = (
-                (cfg.coupled_vx_track_weight * vx_track)
-                + ((1.0 - cfg.coupled_vx_track_weight) * vx_stop)
+                (vx_track_weight * vx_track)
+                + ((1.0 - vx_track_weight) * vx_stop)
             )
             vx_sp = clamp(vx_sp, -cfg.coupled_vx_cap, cfg.coupled_vx_cap)
             if alt <= cfg.coupled_low_alt_vx_cap_alt:
@@ -605,6 +718,17 @@ class FlareBot(Bot):
                 vx_sp = clamp(vx_sp, -low_alt_vx_cap, low_alt_vx_cap)
             if abs_track_dx <= cfg.coupled_near_dx and alt <= cfg.coupled_near_alt:
                 vx_sp = clamp(vx_sp, -cfg.coupled_near_vx_cap, cfg.coupled_near_vx_cap)
+            if abs(dx) <= self._last_target_half and alt <= cfg.coupled_over_pad_brake_alt:
+                vx_damp = clamp(
+                    -float(passive.vx),
+                    -cfg.coupled_over_pad_brake_vx_cap,
+                    cfg.coupled_over_pad_brake_vx_cap,
+                )
+                vx_sp = clamp(
+                    (0.35 * vx_sp) + (0.65 * vx_damp),
+                    -cfg.coupled_over_pad_brake_vx_cap,
+                    cfg.coupled_over_pad_brake_vx_cap,
+                )
             vy_sp = -clamp(
                 cfg.coupled_descent_base + (cfg.coupled_descent_gain * math.sqrt(max(0.0, alt))),
                 cfg.coupled_descent_min,
@@ -642,15 +766,60 @@ class FlareBot(Bot):
             spool_time=burn.spool_time,
             max_force=max_force,
         )
-        raw_burn_now = should_start_terminal_burn(
+        raw_burn_start = should_start_terminal_burn(
             alt=alt,
             burn_altitude=burn_altitude,
             burn_activation_down_speed_min=cfg.burn_activation_down_speed_min,
             estimate=burn,
         )
+        arm_altitude_margin = scaled_abs_margin(
+            base=cfg.burn_gate_arm_altitude_base,
+            value=track_dx,
+            gain=cfg.burn_gate_arm_altitude_dx_gain,
+            cap=cfg.burn_gate_arm_altitude_dx_cap,
+        )
+        arm_time_margin = scaled_abs_margin(
+            base=cfg.burn_gate_arm_time_base,
+            value=track_dx,
+            gain=cfg.burn_gate_arm_time_dx_gain,
+            cap=cfg.burn_gate_arm_time_cap,
+        )
+        burn_ready_speed = burn.down_speed > float(cfg.burn_activation_down_speed_min)
+        burn_arm_now = bool(
+            burn_ready_speed
+            and (
+                alt <= (burn_altitude + arm_altitude_margin)
+                or time_to_impact <= (burn.time_to_brake + arm_time_margin)
+            )
+        )
+        if burn_arm_now:
+            self._burn_gate_armed_frames = max(
+                self._burn_gate_armed_frames,
+                int(cfg.burn_gate_arm_hold_frames),
+            )
+        elif self._burn_gate_armed_frames > 0:
+            self._burn_gate_armed_frames -= 1
+        burn_gate_armed = self._burn_gate_armed_frames > 0
+        burn_commit_imminent = bool(
+            burn_ready_speed
+            and (
+                alt <= (burn_altitude + cfg.burn_gate_commit_altitude_margin)
+                or time_to_impact <= (burn.time_to_brake + cfg.burn_gate_commit_time_margin)
+            )
+        )
+        raw_burn_now = raw_burn_start and burn_commit_imminent
         if raw_burn_now and alt > burn_altitude:
-            max_time_trigger_alt = burn_altitude + cfg.burn_time_trigger_altitude_margin
-            if alt > max_time_trigger_alt:
+            max_time_trigger_alt = burn_altitude + scaled_abs_margin(
+                base=cfg.burn_high_altitude_guard_base
+                + (cfg.burn_high_altitude_guard_down_speed_gain * burn.down_speed),
+                value=track_dx,
+                gain=cfg.burn_high_altitude_guard_dx_gain,
+                cap=cfg.burn_high_altitude_guard_dx_cap,
+            )
+            if (
+                alt > max_time_trigger_alt
+                and time_to_impact > (burn.time_to_brake + cfg.burn_high_altitude_guard_time_margin)
+            ):
                 raw_burn_now = False
         if raw_burn_now:
             self._terminal_burn_hold = max(self._terminal_burn_hold, int(cfg.burn_hold_frames))
@@ -662,28 +831,39 @@ class FlareBot(Bot):
             alt <= cfg.settle_burn_altitude
             and float(passive.vy_up) > -cfg.settle_burn_vy_min
         )
-        if phase == "coupled_terminal":
-            if raw_burn_now:
-                vertical_mode = "terminal_burn"
-            elif (
-                hold_burn
-                and alt <= cfg.burn_hold_terminal_altitude
-                and float(passive.vy_up) <= -cfg.burn_hold_descending_vy_min
-            ):
-                vertical_mode = "terminal_burn"
-            elif low_alt_settle_burn:
-                vertical_mode = "terminal_burn"
-            elif hold_burn:
-                vertical_mode = "flare"
-            else:
-                low_alt_misaligned = (
-                    alt <= cfg.anti_hover_alt
-                    and (
-                        abs_track_dx > cfg.anti_hover_dx
-                        or abs(float(passive.vx)) > cfg.touchdown_entry_vx
-                    )
-                )
-                vertical_mode = "flare" if low_alt_misaligned else "eco_glide"
+        low_alt_misaligned = (
+            alt <= cfg.anti_hover_alt
+            and (
+                abs_track_dx > cfg.anti_hover_dx
+                or abs(float(passive.vx)) > cfg.touchdown_entry_vx
+            )
+        )
+        if phase == "preflare_coast":
+            terminal_phase = bool(
+                burn_gate_armed
+                or raw_burn_now
+                or hold_burn
+                or low_alt_settle_burn
+                or low_alt_misaligned
+            )
+            if terminal_phase:
+                phase = "coupled_terminal"
+                if raw_burn_now:
+                    vertical_mode = "terminal_burn"
+                elif (
+                    hold_burn
+                    and alt <= cfg.burn_hold_terminal_altitude
+                    and float(passive.vy_up) <= -cfg.burn_hold_descending_vy_min
+                ):
+                    vertical_mode = "terminal_burn"
+                elif low_alt_settle_burn:
+                    vertical_mode = "terminal_burn"
+                elif hold_burn:
+                    vertical_mode = "flare"
+                elif low_alt_misaligned:
+                    vertical_mode = "flare"
+                else:
+                    vertical_mode = "eco_glide"
         guidance = GuidanceTargets(
             phase=phase,
             vertical_mode=vertical_mode,
@@ -697,7 +877,7 @@ class FlareBot(Bot):
         self._projection_summary = (
             f"proj pdx:{track_dx:6.1f} tf:{projection.t_fall:4.1f} "
             f"src:{'s' if projection.used_sensor else 'a'} "
-            f"sb:{int(self._sideburn_active)} burn:{int(burn_now)} "
+            f"sb:{int(self._sideburn_active)} burn:{int(burn_now)} arm:{int(burn_gate_armed)} "
             f"tti:{time_to_impact:4.1f}{impact_source[:1]}"
         )
         return guidance
@@ -730,16 +910,11 @@ class FlareBot(Bot):
                 ax_mag = max(ax_mag, cfg.sideburn_ax_floor)
             return direction * clamp(ax_mag, 0.0, cfg.sideburn_ax_cap)
 
-        if (
-            guidance.vertical_mode == "eco_glide"
-            and guidance.alt >= cfg.eco_glide_lateral_hold_alt
-        ):
-            return 0.0
-
         t_go = clamp(self._last_t_go, cfg.coupled_tgo_min, cfg.coupled_tgo_max)
         vx_err = vx_sp - float(passive.vx)
         pos_term = self._last_projected_dx / max(1e-3, t_go * t_go)
         vel_term = vx_err / max(1e-3, t_go)
+        vel_term *= clamp(1.0 - (0.05 * max(0.0, t_go - 2.0)), 0.55, 1.0)
         ax_target = (
             (cfg.coupled_ax_pos_gain * pos_term)
             + (cfg.coupled_ax_vel_gain * vel_term)
@@ -751,13 +926,38 @@ class FlareBot(Bot):
         if guidance.alt <= cfg.coupled_low_alt_ax_alt:
             ax_cap = min(ax_cap, cfg.coupled_low_alt_ax_cap)
         ax_target = clamp(ax_target, -ax_cap, ax_cap)
+        if guidance.vertical_mode == "eco_glide":
+            if guidance.alt >= cfg.eco_glide_lateral_hold_alt:
+                return 0.0
+            if guidance.alt > cfg.eco_glide_lateral_blend_alt:
+                glide_blend = (
+                    (cfg.eco_glide_lateral_hold_alt - guidance.alt)
+                    / max(
+                        1e-3,
+                        cfg.eco_glide_lateral_hold_alt - cfg.eco_glide_lateral_blend_alt,
+                    )
+                )
+                ax_target *= clamp(glide_blend, 0.0, 1.0)
+        settle_dx = min(self._last_target_half, cfg.touchdown_center_settle_dx)
         if (
-            guidance.alt <= cfg.touchdown_entry_altitude
-            and abs(guidance.dx) <= self._last_target_half
+            guidance.phase == "touchdown"
+            and guidance.alt <= cfg.touchdown_over_pad_commit_altitude
         ):
+            settle_dx = self._last_target_half
+        if guidance.alt <= cfg.touchdown_entry_altitude and abs(guidance.dx) <= settle_dx:
             # At touchdown height while still over pad width, prioritize
             # settling velocity over chasing target-center x.
-            return clamp((-0.35 * float(passive.vx)) - (0.08 * float(passive.ax)), -1.2, 1.2)
+            settle_cap = cfg.touchdown_settle_ax_cap
+            if abs(float(passive.vx)) > cfg.touchdown_over_pad_commit_vx:
+                settle_cap += cfg.touchdown_settle_ax_speed_gain * (
+                    abs(float(passive.vx)) - cfg.touchdown_over_pad_commit_vx
+                )
+            settle_cap = min(settle_cap, cfg.coupled_low_alt_ax_cap)
+            return clamp(
+                (-0.42 * float(passive.vx)) - (0.10 * float(passive.ax)),
+                -settle_cap,
+                settle_cap,
+            )
         if guidance.alt <= cfg.touchdown_entry_altitude:
             ax_target *= 0.65
         return ax_target
@@ -769,6 +969,7 @@ class FlareBot(Bot):
         alt: float,
         vertical_mode: str,
         up_acc_max: float,
+        phase: str | None = None,
     ) -> float:
         cfg = self._control_cfg
         if vertical_mode == "coast_hold":
@@ -801,12 +1002,15 @@ class FlareBot(Bot):
                 vy_err = float(vy_sp) - float(passive.vy_up)
                 a_up_cmd += 0.32 * vy_err
                 a_up_cmd = clamp(a_up_cmd, 9.0, 9.8 + (0.55 * up_acc_max))
+            if alt > cfg.touchdown_entry_altitude and float(passive.vy_up) > -cfg.terminal_min_sink_vy:
+                sink_shortfall = float(passive.vy_up) + cfg.terminal_min_sink_vy
+                a_up_cmd -= cfg.terminal_min_sink_gain * sink_shortfall
             if passive.vy_up > -1.2:
-                hover_cap_gain = 0.45
+                hover_cap_gain = cfg.terminal_hover_cap_high_alt
                 if alt <= cfg.touchdown_tilt_limit_hard_alt:
-                    hover_cap_gain = 0.10
+                    hover_cap_gain = cfg.terminal_hover_cap_low_alt
                 elif alt <= cfg.touchdown_tilt_limit_alt:
-                    hover_cap_gain = 0.20
+                    hover_cap_gain = cfg.terminal_hover_cap_mid_alt
                 a_up_cmd = min(a_up_cmd, 9.8 + (hover_cap_gain * up_acc_max))
             if alt <= cfg.touchdown_entry_altitude and passive.vy_up > -0.6:
                 a_up_cmd = min(a_up_cmd, 9.6)
@@ -818,8 +1022,21 @@ class FlareBot(Bot):
             a_up_cmd += 0.08
         if alt < 3.0 and passive.vy_up > -0.45:
             a_up_cmd -= 0.12
+        if (
+            phase == "touchdown"
+            and alt > cfg.touchdown_zero_alt
+            and float(passive.vy_up) > -cfg.touchdown_commit_sink_vy
+        ):
+            sink_shortfall = float(passive.vy_up) + cfg.touchdown_commit_sink_vy
+            a_up_cmd -= cfg.touchdown_commit_sink_gain * sink_shortfall
+        if alt > cfg.touchdown_entry_altitude and float(passive.vy_up) > -cfg.flare_min_sink_vy:
+            sink_shortfall = float(passive.vy_up) + cfg.flare_min_sink_vy
+            a_up_cmd -= cfg.flare_min_sink_gain * sink_shortfall
         if alt <= cfg.touchdown_entry_altitude and passive.vy_up > -0.8:
-            a_up_cmd = min(a_up_cmd, 9.6)
+            hover_cap = cfg.touchdown_flare_hover_cap
+            if phase == "touchdown" and alt <= cfg.touchdown_over_pad_commit_altitude:
+                hover_cap = min(hover_cap, cfg.touchdown_flare_hover_cap_low)
+            a_up_cmd = min(a_up_cmd, hover_cap)
         return a_up_cmd
 
     def _allocate_sideburn_controls(
@@ -892,6 +1109,7 @@ class FlareBot(Bot):
         alt: float,
         dx: float,
         vertical_mode: str,
+        phase: str | None = None,
     ) -> BotAction:
         if vertical_mode == "coast_hold":
             return self._allocate_sideburn_controls(
@@ -904,27 +1122,49 @@ class FlareBot(Bot):
         max_power, min_throttle, max_throttle, _ = self._engine_profile()
         max_force = max_power * max_throttle
         mass, _ = vehicle_limits(passive, max_force)
+        cfg = self._control_cfg
         up_component = max(0.0, float(a_up_sp))
         target_angle = math.atan2(float(a_x_sp), max(0.2, up_component))
-        max_tilt = self._control_cfg.coupled_max_tilt
+        max_tilt = cfg.coupled_max_tilt
+        angle_rate = cfg.coupled_angle_rate
+        if vertical_mode == "eco_glide" or phase == "preflare_coast":
+            speed_mag = math.hypot(float(passive.vx), float(passive.vy_up))
+            if speed_mag >= cfg.retrograde_hold_speed_min and alt > cfg.touchdown_tilt_limit_alt:
+                retrograde_angle = math.atan2(-float(passive.vx), -float(passive.vy_up))
+                authority_weight = clamp(
+                    1.0 - (abs(float(a_x_sp)) / max(1e-3, cfg.retrograde_hold_ax_blend_cap)),
+                    0.0,
+                    1.0,
+                )
+                altitude_weight = clamp(
+                    (alt - cfg.retrograde_hold_blend_alt)
+                    / max(1e-3, cfg.retrograde_hold_alt - cfg.retrograde_hold_blend_alt),
+                    0.0,
+                    1.0,
+                )
+                hold_weight = authority_weight * altitude_weight
+                if hold_weight > 0.0:
+                    target_angle = _blend_angle(target_angle, retrograde_angle, hold_weight)
+                    max_tilt = max(max_tilt, cfg.retrograde_hold_max_tilt)
+                    angle_rate = max(angle_rate, cfg.retrograde_hold_angle_rate)
         if alt < 20.0:
             if (
-                abs(dx) <= self._control_cfg.coupled_low_alt_tilt_dx
-                and abs(float(passive.vx)) <= self._control_cfg.coupled_low_alt_tilt_vx
+                abs(dx) <= cfg.coupled_low_alt_tilt_dx
+                and abs(float(passive.vx)) <= cfg.coupled_low_alt_tilt_vx
             ):
-                max_tilt = self._control_cfg.coupled_low_alt_tilt
+                max_tilt = cfg.coupled_low_alt_tilt
             else:
-                max_tilt = self._control_cfg.coupled_low_alt_tilt_far
-        if alt <= self._control_cfg.touchdown_tilt_limit_alt:
-            max_tilt = min(max_tilt, self._control_cfg.touchdown_tilt_limit_rad)
-        if alt <= self._control_cfg.touchdown_tilt_limit_hard_alt:
-            max_tilt = min(max_tilt, self._control_cfg.touchdown_tilt_limit_hard_rad)
+                max_tilt = cfg.coupled_low_alt_tilt_far
+        if alt <= cfg.touchdown_tilt_limit_alt:
+            max_tilt = min(max_tilt, cfg.touchdown_tilt_limit_rad)
+        if alt <= cfg.touchdown_tilt_limit_hard_alt:
+            max_tilt = min(max_tilt, cfg.touchdown_tilt_limit_hard_rad)
         target_angle = clamp(target_angle, -max_tilt, max_tilt)
         angle_cmd = rate_limit_angle_command(
             target_angle,
             self._prev_angle_cmd,
             dt,
-            max_rate=self._control_cfg.coupled_angle_rate,
+            max_rate=angle_rate,
         )
         self._prev_angle_cmd = angle_cmd
         angle_cmd = cap_low_altitude_angle(
