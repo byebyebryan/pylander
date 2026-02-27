@@ -70,7 +70,7 @@ class ContactSystem(System):
             return
 
         speed = phys.vel.length()
-        angle_ok = abs(trans.rotation) < ls.safe_landing_angle
+        angle_ok = self._upright_angle_error(trans.rotation) < ls.safe_landing_angle
         speed_ok = speed < ls.safe_landing_velocity
 
         if (
@@ -98,7 +98,7 @@ class ContactSystem(System):
         rel_vel = phys.vel - site.vel
         if rel_vel.y > 0.0:
             return False
-        if abs(trans.rotation) >= ls.safe_landing_angle:
+        if self._upright_angle_error(trans.rotation) >= ls.safe_landing_angle:
             return False
         if rel_vel.length() >= ls.safe_landing_velocity:
             return False
@@ -128,6 +128,11 @@ class ContactSystem(System):
         # A small tolerance avoids edge jitter around the exact plane.
         tol = 0.5
         return prev_bottom >= site.y - tol and current_bottom <= site.y + tol
+
+    @staticmethod
+    def _upright_angle_error(angle: float) -> float:
+        wrapped = (float(angle) + math.pi) % (2.0 * math.pi) - math.pi
+        return abs(wrapped)
 
     def _apply_landing(self, entity: Entity, site, half_h: float) -> None:
         ls = entity.get_component(LanderState)

@@ -601,6 +601,40 @@ def test_contact_system_marks_zero_award_site_visited() -> None:
     assert econ.visited is True
 
 
+def test_contact_system_allows_wrapped_equivalent_upright_angle() -> None:
+    world = World()
+
+    lander = Entity(uid="lander")
+    lander.add_component(LanderState(state="flying"))
+    lander.add_component(PhysicsState(vel=Vector2(0.0, -1.0)))
+    # 2*pi - small_epsilon is equivalent to slight negative tilt.
+    lander.add_component(Transform(pos=Vector2(0.0, 4.0), rotation=(2.0 * math.pi) - 0.05))
+    lander.add_component(FuelTank())
+    lander.add_component(LanderGeometry(width=8.0, height=8.0))
+    lander.add_component(Wallet(credits=0.0))
+    lander.add_component(Engine())
+    world.add_entity(lander)
+
+    site = Entity(uid="site_upright_wrap")
+    site.add_component(Transform(pos=Vector2(0.0, 0.0)))
+    site.add_component(LandingSite(size=30.0, terrain_mode="elevated_supports", terrain_bound=False))
+    site.add_component(LandingSiteEconomy(award=100.0, fuel_price=10.0))
+    world.add_entity(site)
+
+    model = LandingSiteSurfaceModel()
+    projection = LandingSiteProjectionSystem(model)
+    projection.world = world
+    projection.update(1.0 / 60.0)
+
+    system = ContactSystem(_FakeContactAdapter(), model)
+    system.world = world
+    system.update(1.0 / 60.0)
+
+    ls = lander.get_component(LanderState)
+    assert ls is not None
+    assert ls.state == "landed"
+
+
 def test_contact_system_does_not_snap_land_when_far_below_site() -> None:
     world = World()
 

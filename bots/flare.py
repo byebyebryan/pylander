@@ -24,7 +24,7 @@ from bots._terminal_burn import (
     compute_terminal_burn_estimate,
     should_start_terminal_burn,
 )
-from bots._targeting import pick_target
+from bots._targeting import pick_target, target_half_width
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
 
@@ -71,6 +71,7 @@ class FlareControlConfig:
     sideburn_abort_climb_vy: float = 1.2
     sideburn_reentry_cooldown_frames: int = 72
     sideburn_exit_burn_hold_frames: int = 700
+    sideburn_exit_burn_hold_altitude: float = 90.0
     sideburn_entry_vy_max: float = 1.0
     sideburn_emergency_alt: float = 240.0
     sideburn_angle_rate: float = 3.2
@@ -116,7 +117,12 @@ class FlareControlConfig:
     emergency_vy: float = 6.0
     emergency_brake_gain: float = 0.24
     burn_enter_time_margin: float = 0.65
-    burn_hold_frames: int = 8
+    burn_hold_frames: int = 24
+    burn_hold_terminal_altitude: float = 220.0
+    burn_hold_descending_vy_min: float = 1.8
+    burn_time_trigger_altitude_margin: float = 180.0
+    settle_burn_altitude: float = 12.0
+    settle_burn_vy_min: float = 1.2
     burn_spool_quadratic_accel: float = 4.9
     burn_flare_speed_base: float = 0.45
     burn_flare_speed_alt_gain: float = 0.11
@@ -133,6 +139,13 @@ class FlareControlConfig:
     touchdown_descent_max: float = 0.85
     touchdown_entry_dx: float = 8.0
     touchdown_entry_vx: float = 2.0
+    touchdown_entry_altitude: float = 7.0
+    touchdown_entry_dx_relaxed: float = 12.0
+    touchdown_entry_vx_relaxed: float = 3.0
+    touchdown_tilt_limit_alt: float = 10.0
+    touchdown_tilt_limit_rad: float = 0.20
+    touchdown_tilt_limit_hard_alt: float = 5.0
+    touchdown_tilt_limit_hard_rad: float = 0.12
     touchdown_zero_alt: float = 2.4
     touchdown_zero_dx: float = 7.0
     touchdown_zero_vx: float = 0.55
@@ -170,6 +183,7 @@ class FlareBot(Bot):
         self._last_guidance: GuidanceTargets | None = None
         self._last_projected_dx = 0.0
         self._last_t_go = 1.0
+        self._last_target_half = 55.0
         self._projection_summary = ""
         self._sideburn_active = False
         self._sideburn_direction = 0.0
@@ -192,6 +206,7 @@ class FlareBot(Bot):
         self._last_guidance = None
         self._last_projected_dx = 0.0
         self._last_t_go = 1.0
+        self._last_target_half = 55.0
         self._sideburn_active = False
         self._sideburn_direction = 0.0
         self._sideburn_release_counter = 0
@@ -276,6 +291,7 @@ class FlareBot(Bot):
             self._sideburn_reentry_cooldown = 0
             self._terminal_burn_hold = 0
             self._last_guidance = None
+            self._last_target_half = 55.0
             self._projection_summary = ""
             self._ballistic_debug_summary = ""
         if passive.state in ("landed", "crashed", "out_of_fuel"):
@@ -415,6 +431,7 @@ class FlareBot(Bot):
         cfg = self._control_cfg
         alt = finite_altitude(passive)
         dx = float(target.x) - float(passive.x)
+        self._last_target_half = target_half_width(getattr(target, "size", None))
         projection = estimate_ballistic_projection(
             dx=dx,
             alt=alt,
@@ -487,10 +504,11 @@ class FlareBot(Bot):
                     self._sideburn_reentry_cooldown,
                     int(cfg.sideburn_reentry_cooldown_frames),
                 )
-                self._terminal_burn_hold = max(
-                    self._terminal_burn_hold,
-                    int(cfg.sideburn_exit_burn_hold_frames),
-                )
+                if alt <= cfg.sideburn_exit_burn_hold_altitude:
+                    self._terminal_burn_hold = max(
+                        self._terminal_burn_hold,
+                        int(cfg.sideburn_exit_burn_hold_frames),
+                    )
         elif (
             self._sideburn_reentry_cooldown <= 0
             and
@@ -523,9 +541,13 @@ class FlareBot(Bot):
             self._sideburn_switch_hold = 0
 
         touchdown_ready = (
-            alt <= cfg.touchdown_altitude
+            (alt <= cfg.touchdown_altitude)
             and abs_track_dx <= cfg.touchdown_entry_dx
             and abs(float(passive.vx)) <= cfg.touchdown_entry_vx
+        ) or (
+            alt <= cfg.touchdown_entry_altitude
+            and abs_track_dx <= cfg.touchdown_entry_dx_relaxed
+            and abs(float(passive.vx)) <= cfg.touchdown_entry_vx_relaxed
         )
         if touchdown_ready:
             phase = "touchdown"
@@ -626,14 +648,30 @@ class FlareBot(Bot):
             burn_activation_down_speed_min=cfg.burn_activation_down_speed_min,
             estimate=burn,
         )
+        if raw_burn_now and alt > burn_altitude:
+            max_time_trigger_alt = burn_altitude + cfg.burn_time_trigger_altitude_margin
+            if alt > max_time_trigger_alt:
+                raw_burn_now = False
         if raw_burn_now:
             self._terminal_burn_hold = max(self._terminal_burn_hold, int(cfg.burn_hold_frames))
         elif self._terminal_burn_hold > 0:
             self._terminal_burn_hold -= 1
         hold_burn = (self._terminal_burn_hold > 0) and (not raw_burn_now)
         burn_now = raw_burn_now or hold_burn
+        low_alt_settle_burn = (
+            alt <= cfg.settle_burn_altitude
+            and float(passive.vy_up) > -cfg.settle_burn_vy_min
+        )
         if phase == "coupled_terminal":
             if raw_burn_now:
+                vertical_mode = "terminal_burn"
+            elif (
+                hold_burn
+                and alt <= cfg.burn_hold_terminal_altitude
+                and float(passive.vy_up) <= -cfg.burn_hold_descending_vy_min
+            ):
+                vertical_mode = "terminal_burn"
+            elif low_alt_settle_burn:
                 vertical_mode = "terminal_burn"
             elif hold_burn:
                 vertical_mode = "flare"
@@ -712,7 +750,17 @@ class FlareBot(Bot):
         ax_cap = cfg.coupled_ax_cap
         if guidance.alt <= cfg.coupled_low_alt_ax_alt:
             ax_cap = min(ax_cap, cfg.coupled_low_alt_ax_cap)
-        return clamp(ax_target, -ax_cap, ax_cap)
+        ax_target = clamp(ax_target, -ax_cap, ax_cap)
+        if (
+            guidance.alt <= cfg.touchdown_entry_altitude
+            and abs(guidance.dx) <= self._last_target_half
+        ):
+            # At touchdown height while still over pad width, prioritize
+            # settling velocity over chasing target-center x.
+            return clamp((-0.35 * float(passive.vx)) - (0.08 * float(passive.ax)), -1.2, 1.2)
+        if guidance.alt <= cfg.touchdown_entry_altitude:
+            ax_target *= 0.65
+        return ax_target
 
     def _vertical_controller(
         self,
@@ -747,8 +795,21 @@ class FlareBot(Bot):
                 else self._policy.terminal_brake_gain_low_alt
             )
             a_up_cmd = 9.8 + (brake_gain * up_acc_max)
-            if passive.vy_up > -0.7:
-                a_up_cmd = min(a_up_cmd, 9.8 + (0.45 * up_acc_max))
+            if alt > cfg.touchdown_tilt_limit_alt:
+                # Avoid high-altitude hover in terminal mode by following
+                # the guidance descent speed more directly.
+                vy_err = float(vy_sp) - float(passive.vy_up)
+                a_up_cmd += 0.32 * vy_err
+                a_up_cmd = clamp(a_up_cmd, 9.0, 9.8 + (0.55 * up_acc_max))
+            if passive.vy_up > -1.2:
+                hover_cap_gain = 0.45
+                if alt <= cfg.touchdown_tilt_limit_hard_alt:
+                    hover_cap_gain = 0.10
+                elif alt <= cfg.touchdown_tilt_limit_alt:
+                    hover_cap_gain = 0.20
+                a_up_cmd = min(a_up_cmd, 9.8 + (hover_cap_gain * up_acc_max))
+            if alt <= cfg.touchdown_entry_altitude and passive.vy_up > -0.6:
+                a_up_cmd = min(a_up_cmd, 9.6)
             return a_up_cmd
 
         vy_err = vy_sp - passive.vy_up
@@ -757,6 +818,8 @@ class FlareBot(Bot):
             a_up_cmd += 0.08
         if alt < 3.0 and passive.vy_up > -0.45:
             a_up_cmd -= 0.12
+        if alt <= cfg.touchdown_entry_altitude and passive.vy_up > -0.8:
+            a_up_cmd = min(a_up_cmd, 9.6)
         return a_up_cmd
 
     def _allocate_sideburn_controls(
@@ -852,6 +915,10 @@ class FlareBot(Bot):
                 max_tilt = self._control_cfg.coupled_low_alt_tilt
             else:
                 max_tilt = self._control_cfg.coupled_low_alt_tilt_far
+        if alt <= self._control_cfg.touchdown_tilt_limit_alt:
+            max_tilt = min(max_tilt, self._control_cfg.touchdown_tilt_limit_rad)
+        if alt <= self._control_cfg.touchdown_tilt_limit_hard_alt:
+            max_tilt = min(max_tilt, self._control_cfg.touchdown_tilt_limit_hard_rad)
         target_angle = clamp(target_angle, -max_tilt, max_tilt)
         angle_cmd = rate_limit_angle_command(
             target_angle,

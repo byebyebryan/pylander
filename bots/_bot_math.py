@@ -83,5 +83,6 @@ def rate_limit_angle_command(
     max_delta = max_rate * max(dt, 1e-3)
     delta = (target_angle - prev_angle + math.pi) % (2.0 * math.pi) - math.pi
     limited_delta = clamp(delta, -max_delta, max_delta)
-    return prev_angle + limited_delta
+    limited = prev_angle + limited_delta
+    return (limited + math.pi) % (2.0 * math.pi) - math.pi
 

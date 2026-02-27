@@ -8,6 +8,7 @@ from types import SimpleNamespace
 import main as main_module
 import pytest
 import bots.coast as coast_module
+import bots.flare as flare_module
 import bots.launch as launch_module
 from bots._coast_tracking import (
     COAST_POLICY,
@@ -127,7 +128,7 @@ def test_rate_limit_angle_command_uses_shortest_wrap_path() -> None:
         dt=1.0,
         max_rate=math.radians(90.0),
     )
-    assert limited == pytest.approx(math.radians(190.0))
+    assert limited == pytest.approx(math.radians(-170.0))
 
 
 def test_rate_limit_angle_command_respects_linear_limit_when_not_wrapping() -> None:
@@ -397,6 +398,190 @@ def test_coast_bot_emits_ownership_handoff_to_flare_when_gate_is_done(monkeypatc
     assert bool(snapshot.get("handoff_done")) is True
 
 
+def test_coast_forces_flare_handoff_when_terminal_burn_requested(monkeypatch) -> None:
+    bot = create_bot("coast")
+    bot.set_pinned_target_uid("ferry_site_dest")
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="terminal_burn",
+        vx_sp=0.0,
+        vy_sp=-4.0,
+        dx=120.0,
+        alt=130.0,
+        burn_altitude=80.0,
+    )
+    projection = BallisticProjection(
+        projected_dx=60.0,
+        t_fall=2.8,
+        target_x=800.0,
+        impact_x=860.0,
+        used_sensor=False,
+    )
+
+    def _stub_drop_guidance(*_args, **_kwargs):
+        return guidance, projection
+
+    def _stub_projection(*_args, **_kwargs):
+        return projection
+
+    monkeypatch.setattr(coast_module, "compute_drop_guidance", _stub_drop_guidance)
+    monkeypatch.setattr(coast_module, "estimate_ballistic_projection", _stub_projection)
+
+    def _stub_handoff(*_args, **_kwargs):
+        debug = _kwargs.get("debug")
+        if isinstance(debug, dict):
+            debug.update(
+                {
+                    "burn_ready": True,
+                    "alt_ready": True,
+                    "t_fall_ready": True,
+                    "descending": True,
+                    "centered": True,
+                    "inside_target": False,
+                    "retrograde_ready": True,
+                    "pass_count_after_sample": 0,
+                    "required_passes": 3,
+                }
+            )
+        return False
+
+    monkeypatch.setattr(coast_module, "should_handoff_to_flare", _stub_handoff)
+
+    passive = _make_ferry_passive(
+        state="flying",
+        altitude=130.0,
+        contacts=_make_ferry_contacts(),
+    )
+    passive = replace(passive, vx=22.0, vy_up=-15.0, angle=2.3)
+    action = bot.update(1.0 / 60.0, passive, active=SimpleNamespace())
+
+    assert isinstance(action.handoff_to, FlareBot)
+    assert action.stage == "handoff"
+    assert "reason:terminal_takeover" in bot._handoff_event_summary
+
+
+def test_coast_terminal_takeover_waits_for_terminal_readiness(monkeypatch) -> None:
+    bot = create_bot("coast")
+    bot.set_pinned_target_uid("ferry_site_dest")
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="terminal_burn",
+        vx_sp=0.0,
+        vy_sp=-4.0,
+        dx=120.0,
+        alt=280.0,
+        burn_altitude=80.0,
+    )
+    projection = BallisticProjection(
+        projected_dx=60.0,
+        t_fall=7.8,
+        target_x=800.0,
+        impact_x=860.0,
+        used_sensor=False,
+    )
+
+    def _stub_drop_guidance(*_args, **_kwargs):
+        return guidance, projection
+
+    def _stub_projection(*_args, **_kwargs):
+        return projection
+
+    def _stub_handoff(*_args, **_kwargs):
+        debug = _kwargs.get("debug")
+        if isinstance(debug, dict):
+            debug.update(
+                {
+                    "burn_ready": False,
+                    "alt_ready": False,
+                    "t_fall_ready": True,
+                    "descending": True,
+                    "retrograde_ready": True,
+                    "raw_ready": False,
+                    "pass_count_after_sample": 0,
+                    "required_passes": 3,
+                }
+            )
+        return False
+
+    monkeypatch.setattr(coast_module, "compute_drop_guidance", _stub_drop_guidance)
+    monkeypatch.setattr(coast_module, "estimate_ballistic_projection", _stub_projection)
+    monkeypatch.setattr(coast_module, "should_handoff_to_flare", _stub_handoff)
+
+    passive = _make_ferry_passive(
+        state="flying",
+        altitude=280.0,
+        contacts=_make_ferry_contacts(),
+    )
+    passive = replace(passive, vx=22.0, vy_up=-5.0, angle=2.3)
+    action = bot.update(1.0 / 60.0, passive, active=SimpleNamespace())
+
+    assert action.handoff_to is None
+    assert bot._handoff_done is False
+
+
+def test_coast_terminal_takeover_allows_handoff_when_inside_target_even_without_retrograde(
+    monkeypatch,
+) -> None:
+    bot = create_bot("coast")
+    bot.set_pinned_target_uid("ferry_site_dest")
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="terminal_burn",
+        vx_sp=0.0,
+        vy_sp=-4.0,
+        dx=40.0,
+        alt=180.0,
+        burn_altitude=90.0,
+    )
+    projection = BallisticProjection(
+        projected_dx=20.0,
+        t_fall=4.0,
+        target_x=800.0,
+        impact_x=820.0,
+        used_sensor=False,
+    )
+
+    def _stub_drop_guidance(*_args, **_kwargs):
+        return guidance, projection
+
+    def _stub_projection(*_args, **_kwargs):
+        return projection
+
+    def _stub_handoff(*_args, **_kwargs):
+        debug = _kwargs.get("debug")
+        if isinstance(debug, dict):
+            debug.update(
+                {
+                    "burn_ready": True,
+                    "alt_ready": True,
+                    "t_fall_ready": True,
+                    "descending": True,
+                    "centered": False,
+                    "inside_target": True,
+                    "retrograde_ready": False,
+                    "pass_count_after_sample": 0,
+                    "required_passes": 3,
+                }
+            )
+        return False
+
+    monkeypatch.setattr(coast_module, "compute_drop_guidance", _stub_drop_guidance)
+    monkeypatch.setattr(coast_module, "estimate_ballistic_projection", _stub_projection)
+    monkeypatch.setattr(coast_module, "should_handoff_to_flare", _stub_handoff)
+
+    passive = _make_ferry_passive(
+        state="flying",
+        altitude=180.0,
+        contacts=_make_ferry_contacts(),
+    )
+    passive = replace(passive, vx=18.0, vy_up=-14.0, angle=2.3)
+    action = bot.update(1.0 / 60.0, passive, active=SimpleNamespace())
+
+    assert isinstance(action.handoff_to, FlareBot)
+    assert action.stage == "handoff"
+    assert "reason:terminal_takeover" in bot._handoff_event_summary
+
+
 def test_zem_zev_bot_outputs_finite_action_for_flare_like_state() -> None:
     bot = create_bot("zem_zev")
     target = RadarContact(
@@ -446,6 +631,341 @@ def test_zem_zev_bot_outputs_finite_action_for_flare_like_state() -> None:
     assert math.isfinite(action.target_angle)
     assert 0.0 <= action.target_thrust <= 1.6
     assert abs(action.target_angle) <= 0.8
+
+
+def test_flare_guidance_keeps_terminal_mode_after_low_alt_commit(monkeypatch) -> None:
+    bot = FlareBot()
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=12.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=40.0,
+        rel_x=12.0,
+        rel_y=-30.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=0.0,
+        y=30.0,
+        altitude=30.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=1.0,
+        vy_up=-4.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.4,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+    projection = BallisticProjection(
+        projected_dx=4.0,
+        t_fall=2.0,
+        target_x=target.x,
+        impact_x=target.x + 4.0,
+        used_sensor=False,
+    )
+    raw_calls = {"count": 0}
+
+    def _fake_projection(*_args, **_kwargs):
+        return projection
+
+    def _fake_time_to_impact(*_args, **_kwargs):
+        return 2.0, "analytic"
+
+    def _fake_burn_estimate(*_args, **_kwargs):
+        return SimpleNamespace(burn_altitude=26.0, spool_time=0.2)
+
+    def _fake_should_start(*_args, **_kwargs):
+        raw_calls["count"] += 1
+        return raw_calls["count"] == 1
+
+    monkeypatch.setattr(flare_module, "estimate_ballistic_projection", _fake_projection)
+    monkeypatch.setattr(flare_module, "ballistic_time_to_impact", _fake_time_to_impact)
+    monkeypatch.setattr(flare_module, "compute_terminal_burn_estimate", _fake_burn_estimate)
+    monkeypatch.setattr(flare_module, "should_start_terminal_burn", _fake_should_start)
+
+    first = bot._guidance(
+        passive,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+        active=SimpleNamespace(),
+    )
+    second = bot._guidance(
+        passive,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+        active=SimpleNamespace(),
+    )
+    assert first.vertical_mode == "terminal_burn"
+    assert second.vertical_mode == "terminal_burn"
+
+
+def test_flare_guidance_blocks_far_above_pad_time_triggered_terminal_burn(
+    monkeypatch,
+) -> None:
+    bot = FlareBot()
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=220.0,
+        rel_x=0.0,
+        rel_y=-220.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=0.0,
+        y=220.0,
+        altitude=220.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-8.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.4,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+    projection = BallisticProjection(
+        projected_dx=0.0,
+        t_fall=6.0,
+        target_x=target.x,
+        impact_x=target.x,
+        used_sensor=False,
+    )
+
+    monkeypatch.setattr(flare_module, "estimate_ballistic_projection", lambda *_a, **_k: projection)
+    monkeypatch.setattr(flare_module, "ballistic_time_to_impact", lambda *_a, **_k: (6.0, "analytic"))
+    monkeypatch.setattr(
+        flare_module,
+        "compute_terminal_burn_estimate",
+        lambda *_a, **_k: SimpleNamespace(burn_altitude=20.0, spool_time=0.2),
+    )
+    monkeypatch.setattr(flare_module, "should_start_terminal_burn", lambda *_a, **_k: True)
+    monkeypatch.setattr(FlareBot, "_terminal_brake_altitude", lambda *_a, **_k: 20.0)
+
+    guidance = bot._guidance(
+        passive,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+        active=SimpleNamespace(),
+    )
+    assert guidance.vertical_mode != "terminal_burn"
+
+
+def test_flare_sideburn_exit_does_not_force_burn_hold_high_altitude() -> None:
+    bot = FlareBot()
+    bot._sideburn_active = True
+    bot._sideburn_direction = 1.0
+    bot._sideburn_frame_count = int(bot._control_cfg.sideburn_max_frames)
+    bot._terminal_burn_hold = 0
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=200.0,
+        rel_x=0.0,
+        rel_y=-200.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=0.0,
+        y=200.0,
+        altitude=200.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-1.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+    _ = bot._guidance(
+        passive,
+        target,
+        max_force=230000.0 * 1.6,
+        max_throttle=1.6,
+        ramp_up=1.1,
+        active=SimpleNamespace(),
+    )
+    assert bot._sideburn_active is False
+    assert bot._terminal_burn_hold == 0
+
+
+def test_flare_allocate_controls_hard_limits_tilt_close_to_ground() -> None:
+    bot = FlareBot()
+    passive = PassiveSensors(
+        x=0.0,
+        y=4.0,
+        altitude=4.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=3.0,
+        vy_up=-1.2,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.3,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    action = bot._allocate_controls(
+        dt=1.0,
+        passive=passive,
+        a_x_sp=8.0,
+        a_up_sp=9.8,
+        alt=4.0,
+        dx=15.0,
+        vertical_mode="terminal_burn",
+    )
+    assert abs(action.target_angle) == pytest.approx(
+        bot._control_cfg.touchdown_tilt_limit_hard_rad,
+        abs=1e-6,
+    )
+
+
+def test_flare_terminal_vertical_controller_avoids_hover_near_ground() -> None:
+    bot = FlareBot()
+    passive = PassiveSensors(
+        x=0.0,
+        y=5.0,
+        altitude=5.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=0.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    a_up = bot._vertical_controller(
+        passive,
+        vy_sp=-2.0,
+        alt=5.0,
+        vertical_mode="terminal_burn",
+        up_acc_max=10.0,
+    )
+    assert a_up <= 9.600001
+
+
+def test_flare_horizontal_controller_softens_close_to_touchdown_altitude() -> None:
+    bot = FlareBot()
+    passive = PassiveSensors(
+        x=0.0,
+        y=6.0,
+        altitude=6.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=4.0,
+        vy_up=-2.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    bot._last_t_go = 1.5
+    bot._last_projected_dx = 20.0
+    bot._last_guidance = GuidanceTargets(
+        phase="coupled_terminal",
+        vertical_mode="flare",
+        vx_sp=0.0,
+        vy_sp=-2.0,
+        dx=20.0,
+        alt=6.0,
+        burn_altitude=5.0,
+    )
+    low_alt_ax = bot._horizontal_controller(passive, vx_sp=0.0)
+    bot._last_guidance = replace(bot._last_guidance, alt=30.0)
+    high_alt_ax = bot._horizontal_controller(passive, vx_sp=0.0)
+    assert abs(low_alt_ax) < abs(high_alt_ax)
+
+
+def test_flare_horizontal_controller_stops_center_chasing_inside_pad_near_touchdown() -> None:
+    bot = FlareBot()
+    passive = PassiveSensors(
+        x=0.0,
+        y=6.0,
+        altitude=6.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=4.0,
+        vy_up=-1.5,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.2,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    bot._last_target_half = 55.0
+    bot._last_t_go = 1.2
+    bot._last_projected_dx = 40.0
+    bot._last_guidance = GuidanceTargets(
+        phase="coupled_terminal",
+        vertical_mode="terminal_burn",
+        vx_sp=0.0,
+        vy_sp=-2.0,
+        dx=30.0,  # inside pad half-width
+        alt=6.0,
+        burn_altitude=4.0,
+    )
+    ax_target = bot._horizontal_controller(passive, vx_sp=0.0)
+    assert ax_target == pytest.approx(-1.2)
 
 
 def test_zem_zev_bot_outputs_finite_action_for_plunge_like_state() -> None:

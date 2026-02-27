@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from bots._ballistics import (
     BallisticProjection,
@@ -432,6 +432,7 @@ class CoastBot(Bot):
         self._coast_burn_done = False
         self._coast_burn_elapsed_s = 0.0
         self._coast_burn_state_summary = "idle"
+        self._terminal_mode_latch = 0
         self.set_behavior(behavior)
 
     def set_vehicle_info(self, info: VehicleInfo):
@@ -462,6 +463,7 @@ class CoastBot(Bot):
         self._coast_burn_done = False
         self._coast_burn_elapsed_s = 0.0
         self._coast_burn_state_summary = "idle"
+        self._terminal_mode_latch = 0
 
     @property
     def behavior(self) -> str:
@@ -482,6 +484,7 @@ class CoastBot(Bot):
         self._coast_burn_done = False
         self._coast_burn_elapsed_s = 0.0
         self._coast_burn_state_summary = "idle"
+        self._terminal_mode_latch = 0
 
     def _handoff_to_flare_action(self, passive: PassiveSensors) -> BotAction:
         handoff_context: dict[str, object] = {
@@ -751,32 +754,74 @@ class CoastBot(Bot):
         if not math.isfinite(target_size):
             target_size = None
         self._last_target_size = target_size
+        target_half = target_half_width(target_size)
+
+        if guidance.vertical_mode == "terminal_burn" and (not self._coast_burn_active):
+            self._terminal_mode_latch = max(self._terminal_mode_latch, 24)
+        elif self._terminal_mode_latch > 0:
+            self._terminal_mode_latch -= 1
+        if (
+            guidance.vertical_mode in ("coast", "coast_hold")
+            and self._terminal_mode_latch > 0
+            and abs(float(projection.projected_dx)) <= max(18.0, 3.0 * target_half)
+        ):
+            guidance = replace(guidance, vertical_mode="terminal_burn")
 
         handoff_debug: dict[str, object] = {}
-        if not self._handoff_done and should_handoff_to_flare(
-            guidance,
-            self._course_cfg,
-            passive=passive,
-            max_force=max_force,
-            max_throttle=max_throttle,
-            ramp_up=ramp_up,
-            vx=passive.vx,
-            vy_up=passive.vy_up,
-            angle_rad=passive.angle,
-            active=self._active_sensors,
-            x=passive.x,
-            y=passive.y,
-            target_size=target_size,
-            clearance=self._ballistic_clearance(),
-            consecutive_passes=self._handoff_pass_frames,
-            required_passes=self._handoff_cfg.consecutive_pass_frames,
-            debug=handoff_debug,
-        ):
+        handoff_gate = False
+        if not self._handoff_done:
+            handoff_gate = should_handoff_to_flare(
+                guidance,
+                self._course_cfg,
+                passive=passive,
+                max_force=max_force,
+                max_throttle=max_throttle,
+                ramp_up=ramp_up,
+                vx=passive.vx,
+                vy_up=passive.vy_up,
+                angle_rad=passive.angle,
+                active=self._active_sensors,
+                x=passive.x,
+                y=passive.y,
+                target_size=target_size,
+                clearance=self._ballistic_clearance(),
+                consecutive_passes=self._handoff_pass_frames,
+                required_passes=self._handoff_cfg.consecutive_pass_frames,
+                debug=handoff_debug,
+            )
+        terminal_takeover_ready = (
+            bool(handoff_debug.get("burn_ready"))
+            and bool(handoff_debug.get("alt_ready"))
+            and bool(handoff_debug.get("t_fall_ready"))
+            and bool(handoff_debug.get("descending"))
+            and (
+                bool(handoff_debug.get("centered"))
+                or bool(handoff_debug.get("inside_target"))
+            )
+        )
+        terminal_takeover = (
+            (not self._handoff_done)
+            and guidance.vertical_mode == "terminal_burn"
+            and (not self._coast_burn_active)
+            and terminal_takeover_ready
+        )
+        handoff_reason: str | None = None
+        if terminal_takeover:
+            handoff_reason = "terminal_takeover"
+        elif handoff_gate:
+            handoff_reason = "gate"
+        if handoff_reason is not None:
             self._handoff_done = True
-            self._handoff_pass_frames = int(handoff_debug.get("pass_count_after_sample", 0))
+            self._terminal_mode_latch = 0
+            sampled_passes = int(handoff_debug.get("pass_count_after_sample", 0))
+            if handoff_reason == "terminal_takeover":
+                self._handoff_pass_frames = max(1, sampled_passes)
+            else:
+                self._handoff_pass_frames = sampled_passes
             self._handoff_snapshot = self._build_handoff_snapshot(handoff_debug, passive)
             self._handoff_event_summary = (
                 "handoff_evt "
+                f"reason:{handoff_reason} "
                 f"pdx:{float(handoff_debug.get('projected_dx', 0.0)):5.1f} "
                 f"on:{int(bool(handoff_debug.get('centered')))} "
                 f"in:{int(bool(handoff_debug.get('inside_target')))} "
