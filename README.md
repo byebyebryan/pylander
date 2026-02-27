@@ -158,7 +158,7 @@ uv run python main.py [level_name] [options]
 
 **Levels:** Run `uv run python main.py --help` to list (e.g. `flat`, `mountains`, `plunge`).
 
-**Bot names:** `plunge`, `flare`, `coast`, `launch`, `ferry`, `zem_zev` (set via `--bot`; see `--help`).
+**Bot names:** `plunge`, `flare`, `coast`, `launch`, `ferry`, `zem_zev` (set via `--bot`; see `--help`). `zem_zev` is a phased ZEM/ZEV terminal controller usable as a `flare` replacement (see [`docs/flare.md`](docs/flare.md)).
 
 **Options:**
 - `--bot NAME` - Select bot (`plunge`, `flare`, `coast`, `launch`, `ferry`, `zem_zev`)

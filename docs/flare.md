@@ -224,6 +224,83 @@ Practical tuning order:
 - `projection_*`: ballistic projection fidelity
 - `anti_hover_*`, `eco_glide_*`, `emergency_*`: safety and anti-stall guardrails
 
+## ZEM/ZEV alternative (`zem_zev` bot)
+
+Implementation: [`bots/zem_zev.py`](../bots/zem_zev.py)
+
+A phased terminal controller that replaces the flare bot's large parameter surface with ZEM/ZEV optimal-guidance math. Run it on any flare scenario via `--bot zem_zev`.
+
+### Phases
+
+1. **`preflare_coast`** -- Engine off, retrograde attitude bias. Emergency brake if stopping distance is critical.
+2. **`terminal_burn`** -- Full ZEM/ZEV 2-axis guidance. Latched once committed (no oscillation back to coast).
+3. **`touchdown`** -- Gentle proportional settle with engine cutoff when nearly still.
+
+### Feasibility-root flare gate
+
+Instead of a hand-tuned burn-altitude trigger, the gate computes the thrust acceleration magnitude the ZEM/ZEV law would request at the current state:
+
+```
+a_req = hypot(
+    (Kp_x / t_go^2) * ZEM_x + (Kv_x / t_go) * ZEV_x,
+    (Kp_y / t_go^2) * ZEM_y + (Kv_y / t_go) * ZEV_y,
+)
+```
+
+Terminal burn starts when `a_req` falls within the engine's feasible band `[min_accel, (g + up_acc_max) / margin]` and the lander is descending fast enough. This naturally adapts to different entry angles, speeds, and altitudes.
+
+### Min-thrust awareness
+
+The engine has a minimum throttle floor. The gate checks that `a_req >= min_accel` (where `min_accel = max_power * min_throttle / mass`) so burns don't start when the required thrust is below what the engine can deliver. All thrust allocation enforces `thrust >= min_throttle` when non-zero.
+
+### Stability guards
+
+- **Soft denominator floor** (`t_go_floor`): prevents gain blow-up in ZEM/ZEV terms without clamping actual `t_go`.
+- **Measured-accel damping**: feeds back `passive.ax` to reduce lateral oscillation.
+- **Low-alt gain taper**: reduces lateral authority below `low_alt_gain_taper_alt`.
+- **Lateral deadband**: suppresses corrections when close to target near ground.
+- **Anti-hover / min-sink**: forces descent when the lander lingers.
+- **Angle rate and tilt limits**: preserved from the original controller.
+
+### Tuning
+
+The config has ~35 parameters (vs ~90+ in `FlareControlConfig`). Key knobs:
+
+| Knob | Effect |
+| --- | --- |
+| `zem_pos_gain_{x,y}`, `zev_vel_gain_{x,y}` | Core guidance aggressiveness |
+| `gate_accel_margin` | How conservatively the gate fires (lower = earlier) |
+| `t_go_floor` | Denominator safety (not a behavior clamp) |
+| `ax_damping` | Lateral oscillation suppression |
+| `low_alt_gain_taper_alt` | Where lateral authority starts fading |
+
+### Benchmark comparison (seeds 0-19, all scenarios)
+
+| Metric | flare | zem_zev |
+| --- | --- | --- |
+| Success rate | 100% | 96% |
+| Fuel consumed (mean) | 24.63 | 46.62 |
+| Landing offset (mean) | 4.19 | 4.59 |
+| Time (mean) | 20.95 | 23.04 |
+
+Per-scenario success: shallower 100%, shallow 85%, mid 95%, steep 100%, steeper 100%.
+
+The `zem_zev` bot is simpler (~35 params vs ~90+) but uses roughly 2x more fuel than `flare` due to the absence of a sideburn phase for lateral correction during coast. Shallow entries overfly the target, then the terminal burn corrects laterally while descending, which is inherently less fuel-efficient than `flare`'s dedicated lateral correction phase.
+
+### Comparison commands
+
+```bash
+# Flare bot baseline
+uv run python main.py flare --headless --batch --bot flare \
+  --batch-scenarios shallower,shallow,mid,steep,steeper \
+  --batch-seeds 0-19 --batch-json auto --batch-csv auto
+
+# ZEM/ZEV candidate
+uv run python main.py flare --headless --batch --bot zem_zev \
+  --batch-scenarios shallower,shallow,mid,steep,steeper \
+  --batch-seeds 0-19 --batch-json auto --batch-csv auto
+```
+
 ## Entry trajectories (docs asset)
 
 The plot below shows engine-off center-hit trajectories for the five angle profiles.

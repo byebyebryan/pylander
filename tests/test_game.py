@@ -1618,6 +1618,293 @@ def test_zem_zev_bot_outputs_finite_action_for_plunge_like_state() -> None:
     assert abs(action.target_angle) <= 0.8
 
 
+def test_zem_zev_starts_in_preflare_coast_phase() -> None:
+    bot = create_bot("zem_zev")
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=600.0,
+        rel_x=-420.0,
+        rel_y=-430.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=420.0,
+        y=430.0,
+        altitude=430.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=-20.0,
+        vy_up=9.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.0,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {"hit": True, "hit_x": -40.0, "hit_time": 8.0, "duration": 8.0}
+
+    action = bot.update(1.0 / 60.0, passive, active=_FakeActive())
+    assert bot._phase == "preflare_coast"
+    assert action.target_thrust == pytest.approx(0.0)
+
+
+def test_zem_zev_feasibility_gate_transitions_to_terminal() -> None:
+    from bots.zem_zev import ZemZevBot
+
+    bot = ZemZevBot()
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=30.0,
+        rel_x=3.0,
+        rel_y=-25.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=-3.0,
+        y=25.0,
+        altitude=25.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.5,
+        vy_up=-5.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.0,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {"hit": True, "hit_x": -1.0, "hit_time": 1.3, "duration": 1.3}
+
+    action = bot.update(1.0 / 60.0, passive, active=_FakeActive())
+    assert bot._phase == "terminal_burn"
+    assert action.target_thrust > 0.0
+
+
+def test_zem_zev_min_throttle_floor_applied() -> None:
+    from bots.zem_zev import ZemZevBot
+
+    bot = ZemZevBot()
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=30.0,
+        rel_x=3.0,
+        rel_y=-25.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=-3.0,
+        y=25.0,
+        altitude=25.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.5,
+        vy_up=-5.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.0,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {"hit": True, "hit_x": -1.0, "hit_time": 1.3, "duration": 1.3}
+
+    action = bot.update(1.0 / 60.0, passive, active=_FakeActive())
+    if action.target_thrust > 0.0:
+        assert action.target_thrust >= 0.25
+
+
+def test_zem_zev_phase_latch_does_not_oscillate() -> None:
+    from bots.zem_zev import ZemZevBot
+
+    bot = ZemZevBot()
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=30.0,
+        rel_x=3.0,
+        rel_y=-25.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive_terminal = PassiveSensors(
+        x=-3.0,
+        y=25.0,
+        altitude=25.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.5,
+        vy_up=-5.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.0,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {"hit": True, "hit_x": -1.0, "hit_time": 1.3, "duration": 1.3}
+
+    bot.update(1.0 / 60.0, passive_terminal, active=_FakeActive())
+    assert bot._phase == "terminal_burn"
+
+    # Simulate a frame where gate might not pass again — should stay terminal
+    passive_high = replace(passive_terminal, y=200.0, altitude=200.0, vy_up=-2.0)
+
+    class _FakeActiveHigh:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {"hit": True, "hit_x": -3.0, "hit_time": 8.0, "duration": 8.0}
+
+    bot.update(1.0 / 60.0, passive_high, active=_FakeActiveHigh())
+    assert bot._phase == "terminal_burn", "terminal_burn should latch once committed"
+
+
+def test_zem_zev_touchdown_settles_and_cuts_engine() -> None:
+    from bots.zem_zev import ZemZevBot
+
+    bot = ZemZevBot()
+    bot._phase = "terminal_burn"
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=3.0,
+        rel_x=1.0,
+        rel_y=-2.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=-1.0,
+        y=2.0,
+        altitude=2.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.1,
+        vy_up=-0.3,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.3,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {"hit": True, "hit_x": -0.5, "hit_time": 0.6, "duration": 0.6}
+
+    action = bot.update(1.0 / 60.0, passive, active=_FakeActive())
+    assert bot._phase == "touchdown"
+    assert action.target_thrust == pytest.approx(0.0)
+
+
+def test_zem_zev_coast_uses_retrograde_attitude() -> None:
+    from bots.zem_zev import ZemZevBot
+
+    bot = ZemZevBot()
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=600.0,
+        rel_x=-400.0,
+        rel_y=-300.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=400.0,
+        y=300.0,
+        altitude=300.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=-30.0,
+        vy_up=10.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.0,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {"hit": True, "hit_x": -100.0, "hit_time": 10.0, "duration": 10.0}
+
+    action = bot.update(1.0 / 60.0, passive, active=_FakeActive())
+    assert bot._phase == "preflare_coast"
+    assert action.target_thrust == pytest.approx(0.0)
+    # Retrograde for vx=-30, vy_up=10 → angle should be positive (tilted right)
+    assert action.target_angle > 0.0
+
+
 def test_active_sensors_ballistic_trajectory_reports_hit_payload() -> None:
     sensors = _ActiveSensorImpl(
         origin_fn=lambda: Vector2(0.0, 0.0),
