@@ -9,20 +9,21 @@ Defined in [`levels/flare.py`](../levels/flare.py):
 - Cargo: half (`2250`)
 - Terrain: flat, flush/flatten target
 - Target size: `110`
-- Spawn geometry: upper arc around target center, radius `_SPAWN_RADIUS = 800`
-- Arc angles from horizon: `15deg`, `30deg`, `45deg`, `60deg`, `75deg`
-- Target entry timing: `_TARGET_FLIGHT_TIME_S = 12.0`
+- Spawn geometry: upper arc around target center, `radius in [700, 900]`
+- Arc base angles from horizon: `15deg`, `30deg`, `45deg`, `60deg`, `75deg`
+- Per-run angle deviation: `[-5deg, +5deg]` from the base angle
+- Target entry timing: `target_flight_time_s in [10, 12]`
 - Spawn side (left/right) is deterministic from `(seed, scenario)`
 - Initial attitude is retrograde (opposite the spawned velocity vector)
 
 Initial velocity solve:
 
-- `dx = R * cos(theta)`
-- `dy = R * sin(theta)`
-- `vx = dx / T`
+- `dx = R * cos(theta_base + theta_dev)`
+- `dy = R * sin(theta_base + theta_dev)`
+- `vx = -dx / T`
 - `vy_up = ((0.5 * g * T^2) - dy) / T`
 
-where `R = _SPAWN_RADIUS`, `T = _TARGET_FLIGHT_TIME_S`, `g = abs(GRAVITY)`.
+where `R in [700,900]`, `theta_dev in [-5deg,+5deg]`, `T in [10,12]`, and `g = abs(GRAVITY)`.
 
 ## Scenarios
 
@@ -54,7 +55,7 @@ Useful metrics (from [`core/eval.py`](../core/eval.py)):
 Common eval commands:
 
 - `uv run python main.py flare --headless --quick-benchmark`
-- `uv run python main.py flare --headless --batch --batch-seeds 0-29 --batch-scenarios shallower,shallow,mid,steep,steeper`
+- `uv run python main.py flare --headless --batch --batch-scenarios shallower,shallow,mid,steep,steeper`
 
 ## Flare bot: detailed control flow
 

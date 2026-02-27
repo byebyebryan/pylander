@@ -3736,11 +3736,11 @@ def test_flare_matrix_scenario_starts_on_center_hit_ballistic_path() -> None:
     assert trans is not None
     assert phys is not None
     assert abs(phys.vel.x) > 1e-6
-    assert phys.vel.y > 0.0
+    assert math.isfinite(phys.vel.y)
     target_pos = getattr(level, "eval_target_pos", Vector2(0.0, 0.0))
     assert trans.pos.x * phys.vel.x < 0.0  # Always moving toward target center.
     t_to_center = abs((target_pos.x - trans.pos.x) / phys.vel.x)
-    assert t_to_center == pytest.approx(12.0)
+    assert 10.0 <= t_to_center <= 12.0
     y_at_center = trans.pos.y + (phys.vel.y * t_to_center) - (
         0.5 * abs(GRAVITY) * t_to_center * t_to_center
     )
@@ -3755,27 +3755,14 @@ def test_drift_level_lists_expected_scenarios() -> None:
     list_scenarios = getattr(level, "list_batch_scenarios", None)
     assert callable(list_scenarios)
     scenarios = set(list_scenarios())
-    base = {
-        "entry_shallow",
-        "entry_shallow_trim",
-        "entry_mid",
-        "entry_mid_trim",
-        "entry_mid_energy",
-        "entry_steep",
-        "entry_steep_energy",
-        "entry_steep_stress",
+    assert scenarios == {
+        "entry_shallow_low",
+        "entry_shallow_high",
+        "entry_mid_low",
+        "entry_mid_high",
+        "entry_steep_low",
+        "entry_steep_high",
     }
-    assert base.issubset(scenarios)
-    cargo_variants = {
-        "entry_mid_energy",
-        "entry_steep_stress",
-    }
-    for name in cargo_variants:
-        assert f"{name}_cargo_high" in scenarios
-        assert f"{name}_cargo_low" not in scenarios
-    for name in (base - cargo_variants):
-        assert f"{name}_cargo_high" not in scenarios
-    assert len(scenarios) == len(base) + len(cargo_variants)
 
 
 def test_drift_level_lists_expected_quick_benchmark_scenarios() -> None:
@@ -3783,15 +3770,15 @@ def test_drift_level_lists_expected_quick_benchmark_scenarios() -> None:
     list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
     assert callable(list_quick_scenarios)
     assert list_quick_scenarios() == [
-        "entry_mid_trim",
-        "entry_mid_energy",
-        "entry_steep_stress",
+        "entry_mid_low",
+        "entry_mid_high",
+        "entry_steep_high",
     ]
 
 
 def test_drift_scenario_sets_offset_and_horizontal_velocity() -> None:
     level = create_level_by_name("coast")
-    level.set_eval_scenario("entry_mid")
+    level.set_eval_scenario("entry_mid_low")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
     trans = actor.get_component(Transform)
@@ -3808,27 +3795,31 @@ def test_drift_scenario_sets_offset_and_horizontal_velocity() -> None:
 
 def test_drift_stress_scenario_starts_with_high_toward_speed() -> None:
     level = create_level_by_name("coast")
-    level.set_eval_scenario("entry_steep_stress")
+    level.set_eval_scenario("entry_steep_high")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=9)
     actor = game.actors[0]
     trans = actor.get_component(Transform)
     phys = actor.get_component(PhysicsState)
     assert trans is not None
     assert phys is not None
-    assert abs(phys.vel.x) >= 20.0
-    assert math.isfinite(phys.vel.y)
     assert trans.pos.x * phys.vel.x < 0.0
+    alt = max(0.0, float(trans.pos.y))
+    vy_up = float(phys.vel.y)
+    disc = max(0.0, (vy_up * vy_up) + (2.0 * 9.8 * alt))
+    t_fall = max(0.5, (vy_up + math.sqrt(disc)) / 9.8)
+    projected_dx = float(trans.pos.x) + (float(phys.vel.x) * t_fall)
+    assert 79.0 <= abs(projected_dx) <= 101.0
 
 
 def test_drift_scenario_direction_is_deterministic_for_seed() -> None:
     level_a = create_level_by_name("coast")
-    level_a.set_eval_scenario("entry_mid")
+    level_a.set_eval_scenario("entry_mid_low")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=19)
     trans_a = game_a.actors[0].get_component(Transform)
     assert trans_a is not None
 
     level_b = create_level_by_name("coast")
-    level_b.set_eval_scenario("entry_mid")
+    level_b.set_eval_scenario("entry_mid_low")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=19)
     trans_b = game_b.actors[0].get_component(Transform)
     assert trans_b is not None
@@ -3838,13 +3829,13 @@ def test_drift_scenario_direction_is_deterministic_for_seed() -> None:
 
 def test_drift_correction_scenario_velocity_is_deterministic_for_seed() -> None:
     level_a = create_level_by_name("coast")
-    level_a.set_eval_scenario("entry_mid_trim")
+    level_a.set_eval_scenario("entry_mid_high")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=23)
     phys_a = game_a.actors[0].get_component(PhysicsState)
     assert phys_a is not None
 
     level_b = create_level_by_name("coast")
-    level_b.set_eval_scenario("entry_mid_trim")
+    level_b.set_eval_scenario("entry_mid_high")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=23)
     phys_b = game_b.actors[0].get_component(PhysicsState)
     assert phys_b is not None
@@ -3858,7 +3849,7 @@ def test_drift_correction_scenario_randomizes_error_direction_across_seeds() -> 
     projected_magnitudes = []
     for seed in range(40):
         level = create_level_by_name("coast")
-        level.set_eval_scenario("entry_mid_energy")
+        level.set_eval_scenario("entry_mid_high")
         game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=seed)
         actor = game.actors[0]
         trans = actor.get_component(Transform)
@@ -3878,13 +3869,13 @@ def test_drift_correction_scenario_randomizes_error_direction_across_seeds() -> 
             signs.add(-1.0)
 
     assert signs == {-1.0, 1.0}
-    assert min(projected_magnitudes) == pytest.approx(80.0, abs=0.75)
-    assert max(projected_magnitudes) == pytest.approx(80.0, abs=0.75)
+    assert min(projected_magnitudes) >= 79.0
+    assert max(projected_magnitudes) <= 101.0
 
 
 def test_drift_flat_scenario_starts_with_positive_vertical_velocity() -> None:
     level = create_level_by_name("coast")
-    level.set_eval_scenario("entry_shallow")
+    level.set_eval_scenario("entry_shallow_low")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=11)
     actor = game.actors[0]
     trans = actor.get_component(Transform)
@@ -3897,13 +3888,13 @@ def test_drift_flat_scenario_starts_with_positive_vertical_velocity() -> None:
 
 def test_drift_flat_correction_velocity_is_deterministic_for_seed() -> None:
     level_a = create_level_by_name("coast")
-    level_a.set_eval_scenario("entry_shallow_trim")
+    level_a.set_eval_scenario("entry_shallow_low")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=37)
     phys_a = game_a.actors[0].get_component(PhysicsState)
     assert phys_a is not None
 
     level_b = create_level_by_name("coast")
-    level_b.set_eval_scenario("entry_shallow_trim")
+    level_b.set_eval_scenario("entry_shallow_low")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=37)
     phys_b = game_b.actors[0].get_component(PhysicsState)
     assert phys_b is not None
@@ -3912,14 +3903,14 @@ def test_drift_flat_correction_velocity_is_deterministic_for_seed() -> None:
     assert phys_a.vel.y == pytest.approx(phys_b.vel.y)
 
 
-def test_drift_cargo_scenario_applies_heavy_cargo_mass() -> None:
+def test_drift_scenario_applies_default_cargo_mass() -> None:
     level = create_level_by_name("coast")
-    level.set_eval_scenario("entry_steep_stress_cargo_high")
+    level.set_eval_scenario("entry_steep_high")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=7)
     actor = game.actors[0]
     cargo = actor.get_component(CargoHold)
     assert cargo is not None
-    assert cargo.cargo_mass == pytest.approx(4500.0)
+    assert cargo.cargo_mass == pytest.approx(1800.0)
 
 
 def test_transfer_level_lists_expected_scenarios() -> None:
@@ -3979,7 +3970,7 @@ def test_transfer_scenario_starts_upright_at_rest_on_circle_arc() -> None:
     assert phys.vel.y == pytest.approx(0.0)
     target_pos = getattr(level, "eval_target_pos", Vector2(0.0, 0.0))
     radius = math.hypot(float(trans.pos.x - target_pos.x), float(trans.pos.y - target_pos.y))
-    assert radius == pytest.approx(800.0, rel=1e-3)
+    assert 700.0 <= radius <= 900.0
 
 
 def test_transfer_scenario_applies_empty_cargo_mass() -> None:
@@ -4037,7 +4028,7 @@ def test_launch_scenario_direction_is_deterministic_for_seed() -> None:
 
 def test_ferry_level_spawns_on_source_pad_with_two_sites_and_empty_cargo() -> None:
     level = create_level_by_name("ferry")
-    level.set_eval_scenario("default")
+    level.set_eval_scenario("mid")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=5)
 
     site_entities = level.world.site_entities
@@ -4048,7 +4039,7 @@ def test_ferry_level_spawns_on_source_pad_with_two_sites_and_empty_cargo() -> No
         assert trans is not None
         site_xs.append(float(trans.pos.x))
     site_xs.sort()
-    assert site_xs[1] - site_xs[0] == pytest.approx(800.0)
+    assert 300.0 <= (site_xs[1] - site_xs[0]) <= 500.0
 
     actor = game.actors[0]
     trans = actor.get_component(Transform)
@@ -4090,7 +4081,7 @@ def test_resolve_batch_plan_uses_quick_benchmark_cross_level_suite() -> None:
         batch_workers=1,
     )
     seeds, levels = _resolve_batch_plan(config)
-    assert seeds == [0, 1, 2]
+    assert seeds == [0]
     assert levels == ["plunge", "flare", "coast", "launch"]
 
 
@@ -4832,6 +4823,104 @@ def test_run_batch_honors_batch_scenarios_filter(monkeypatch) -> None:
     assert seen_scenarios == ["mid_normal", "high_heavy"]
 
 
+def test_run_batch_auto_repeats_range_enabled_scenarios_without_explicit_seeds(
+    monkeypatch,
+) -> None:
+    seen_seeds: list[int | None] = []
+
+    def _fake_plan(_config):
+        return [0], ["flare"]
+
+    def _fake_run_once_record(config, *, seed, level_name, eval_scenario_name=None):
+        _ = config, level_name, eval_scenario_name
+        seen_seeds.append(seed)
+        return {
+            "seed": seed,
+            "state": "landed",
+            "success": True,
+        }
+
+    monkeypatch.setattr(main_module, "_resolve_batch_plan", _fake_plan)
+    monkeypatch.setattr(main_module, "_run_once_record", _fake_run_once_record)
+    monkeypatch.setattr(main_module.os, "cpu_count", lambda: 1)
+
+    config = RunConfig(
+        level_name="flare",
+        bot_name="flare",
+        bot_behavior=None,
+        headless=True,
+        batch=True,
+        print_freq=0,
+        max_time=300.0,
+        max_steps=100,
+        plot_mode="none",
+        stop_on_crash=True,
+        stop_on_out_of_fuel=True,
+        stop_on_first_land=True,
+        seed=None,
+        lander_name=None,
+        batch_seeds=None,
+        batch_levels="flare",
+        batch_scenarios="mid",
+        batch_json=None,
+        batch_csv=None,
+        quick_benchmark=False,
+        batch_workers=1,
+    )
+    exit_code = _run_batch(config)
+    assert exit_code == 0
+    assert seen_seeds == list(range(10))
+
+
+def test_run_batch_does_not_repeat_fixed_scenarios_without_explicit_seeds(
+    monkeypatch,
+) -> None:
+    seen_seeds: list[int | None] = []
+
+    def _fake_plan(_config):
+        return [0], ["plunge"]
+
+    def _fake_run_once_record(config, *, seed, level_name, eval_scenario_name=None):
+        _ = config, level_name, eval_scenario_name
+        seen_seeds.append(seed)
+        return {
+            "seed": seed,
+            "state": "landed",
+            "success": True,
+        }
+
+    monkeypatch.setattr(main_module, "_resolve_batch_plan", _fake_plan)
+    monkeypatch.setattr(main_module, "_run_once_record", _fake_run_once_record)
+    monkeypatch.setattr(main_module.os, "cpu_count", lambda: 1)
+
+    config = RunConfig(
+        level_name="plunge",
+        bot_name="plunge",
+        bot_behavior=None,
+        headless=True,
+        batch=True,
+        print_freq=0,
+        max_time=300.0,
+        max_steps=100,
+        plot_mode="none",
+        stop_on_crash=True,
+        stop_on_out_of_fuel=True,
+        stop_on_first_land=True,
+        seed=None,
+        lander_name=None,
+        batch_seeds=None,
+        batch_levels="plunge",
+        batch_scenarios="mid_normal",
+        batch_json=None,
+        batch_csv=None,
+        quick_benchmark=False,
+        batch_workers=1,
+    )
+    exit_code = _run_batch(config)
+    assert exit_code == 0
+    assert seen_seeds == [0]
+
+
 def test_run_batch_quick_benchmark_uses_cross_level_core_suite(monkeypatch) -> None:
     seen_runs: list[tuple[int | None, str, str | None]] = []
 
@@ -4912,15 +5001,15 @@ def test_run_batch_quick_benchmark_uses_cross_level_core_suite(monkeypatch) -> N
         "steeper",
     ]
     assert coast_scenarios == [
-        "entry_mid_energy",
-        "entry_mid_trim",
-        "entry_steep_stress",
+        "entry_mid_high",
+        "entry_mid_low",
+        "entry_steep_high",
     ]
     assert launch_scenarios == [
         "air_mid",
         "air_steep",
     ]
-    assert len(seen_runs) == 33  # 3 seeds x 11 quick scenarios
+    assert len(seen_runs) == 11  # 1 seed x 11 quick scenarios
 
 
 def test_run_batch_rejects_empty_seed_plan(monkeypatch) -> None:

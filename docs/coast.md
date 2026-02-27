@@ -66,11 +66,22 @@ This keeps coast active as long as useful, which is important for future disturb
 
 ## Scenario design
 
-The coast level uses flare-like entry baselines and a single deviation knob:
+The coast level now mirrors flare-style ranged entry setup and solves initial velocity from an explicit impact target:
 
-- `projected_dx_error`: intended horizontal miss at ballistic impact (engine-off projection).
+- Base entry angles: `15deg`, `45deg`, `75deg`
+- Per-run angle deviation: `[-5deg, +5deg]`
+- Radius: `[700, 900]`
+- Error tiers:
+  - `low`: `|projected_dx_error| in [40, 60]`
+  - `high`: `|projected_dx_error| in [80, 100]`
+- Error sign is randomized per seeded run in full benchmark mode.
 
-The scenario setup applies that deviation by offsetting initial `vx`, and keeps sign randomization deterministic per `(seed, scenario)`.
+Setup flow:
+
+- build start position from sampled angle/radius;
+- choose `impact_target_x = target_x + projected_dx_error`;
+- sample `t_flight in [10, 12]`;
+- solve initial `vx`/`vy` so ballistic impact reaches `(impact_target_x, target_y)` at `t_flight`.
 
 ## Module ownership
 
@@ -93,8 +104,7 @@ For coast-only regression checks, use a coast-only batch (instead of cross-level
 
 ```bash
 uv run python main.py coast --headless --batch \
-  --batch-seeds 0,1,2 \
   --batch-levels coast \
-  --batch-scenarios entry_mid_trim,entry_mid_energy,entry_steep_stress
+  --batch-scenarios entry_mid_low,entry_mid_high,entry_steep_high
 ```
 

@@ -59,7 +59,7 @@ uv run python main.py flare --bot zem_zev --scenario mid
 uv run python main.py coast
 
 # Pick a specific coast scenario
-uv run python main.py coast --scenario entry_steep_stress
+uv run python main.py coast --scenario entry_steep_high
 
 # Launch setup benchmark level + bot
 uv run python main.py launch
@@ -108,21 +108,21 @@ uv run python main.py plunge --headless --batch \
 # Fast regression
 uv run python main.py plunge --headless --quick-benchmark
 
-# Coast-only mini benchmark (same coast scenarios as preset)
+# Coast-only mini benchmark (range-enabled scenarios auto-sample seeds)
 uv run python main.py coast --headless --batch \
-  --batch-seeds 0,1,2 \
   --batch-levels coast \
-  --batch-scenarios entry_mid_trim,entry_mid_energy,entry_steep_stress
+  --batch-scenarios entry_mid_low,entry_mid_high,entry_steep_high
 ```
 
 Quick benchmark preset includes:
 
 - `plunge`: `low_normal`, `mid_normal`, `high_normal`
 - `flare`: `shallower`, `mid`, `steeper`
-- `coast`: `entry_mid_trim`, `entry_mid_energy`, `entry_steep_stress`
+- `coast`: `entry_mid_low`, `entry_mid_high`, `entry_steep_high`
 - `launch`: `air_mid`, `air_steep`
 
 Staged eval (`--eval-mode focused|full`) is mainly for `coast` and `launch`.
+Quick benchmark runs one deterministic median sample per scenario (seed `0`).
 
 ## Controls (Human Mode)
 
@@ -180,11 +180,12 @@ uv run python main.py [level_name] [options]
 - `--batch-json PATH|auto` - Write JSON report
 - `--batch-csv PATH|auto` - Write CSV rows
 - `--batch-workers N` - Parallel worker processes for batch runs (`1` = sequential; effective workers are capped by CPU count and run count)
-- `--quick-benchmark` - Built-in cross-level core benchmark preset (`plunge` + `flare` + `coast` + `launch` subsets)
+- `--quick-benchmark` - Built-in cross-level core benchmark preset using median scenario values (`plunge` + `flare` + `coast` + `launch` subsets)
 - `--help`, `-h` - Show help message
 
 Batch mode defaults to `--freq 0` (quiet) for speed; pass `--freq` to enable per-run stats.
 Quiet mode disables per-step stats output, but batch progress lines still print.
+If `--batch-seeds` is omitted, range-enabled scenarios auto-run seeds `0-9`; fixed scenarios run once at seed `0`.
 
 Batch/headless eval records include `landing_offset` (absolute horizontal error from target center on landed runs).
 

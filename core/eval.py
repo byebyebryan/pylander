@@ -281,6 +281,11 @@ def normalize_run_result(
             result.get("launch_setup_path_efficiency")
         ),
     }
+    for key, value in result.items():
+        if not isinstance(key, str) or not key.startswith("scenario_"):
+            continue
+        if isinstance(value, (int, float, str, bool)) or value is None:
+            record[key] = value
     if "plot_path" in result:
         record["plot_path"] = result.get("plot_path")
     if "plot_paths" in result:

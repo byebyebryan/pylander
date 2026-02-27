@@ -52,6 +52,9 @@ class RunConfig:
     batch_scenarios: str | None = None
 
 
+_AUTO_RANDOMIZED_BATCH_SEEDS: tuple[int, ...] = tuple(range(10))
+
+
 def _format_list(title: str, items: list[str]) -> str:
     if not items:
         return f"{title}:\n  (none)"
@@ -507,7 +510,7 @@ def _resolve_scenarios_for_config(
 
 def _resolve_batch_plan(config: RunConfig) -> tuple[list[int], list[str]]:
     if config.quick_benchmark:
-        seeds = [0, 1, 2]
+        seeds = [0]
         levels = _list_quick_benchmark_levels() or [config.level_name]
         return seeds, levels
 
@@ -538,6 +541,9 @@ def _configure_level(level, config: RunConfig) -> None:
     level.stop_on_crash = stop_on_crash
     level.stop_on_out_of_fuel = stop_on_out_of_fuel
     level.stop_on_first_land = stop_on_first_land
+    set_benchmark_mode = getattr(level, "set_benchmark_mode", None)
+    if callable(set_benchmark_mode):
+        set_benchmark_mode("median" if config.quick_benchmark else "sample")
     set_eval_mode = getattr(level, "set_eval_mode", None)
     if callable(set_eval_mode):
         set_eval_mode(config.eval_mode)
@@ -781,6 +787,7 @@ def _run_batch(config: RunConfig) -> int:
 
     default_bot_cache: dict[str, str | None] = {}
     level_scenarios_cache: dict[tuple[str, bool], list[str]] = {}
+    scenario_randomized_cache: dict[tuple[str, str | None], bool] = {}
 
     def _resolve_default_bot_cached(level_name: str) -> str | None:
         if level_name not in default_bot_cache:
@@ -795,7 +802,30 @@ def _run_batch(config: RunConfig) -> int:
             )
         return level_scenarios_cache[key]
 
+    def _scenario_has_randomized_fields(level_name: str, scenario_name: str | None) -> bool:
+        key = (level_name, scenario_name)
+        if key in scenario_randomized_cache:
+            return scenario_randomized_cache[key]
+        try:
+            level = create_level(level_name)
+            _set_eval_scenario(level, scenario_name)
+            checker = getattr(level, "scenario_has_randomized_fields", None)
+            if callable(checker):
+                try:
+                    has_ranges = bool(checker(scenario_name))
+                except TypeError:
+                    has_ranges = bool(checker())
+            else:
+                has_ranges = False
+        except Exception:
+            has_ranges = False
+        scenario_randomized_cache[key] = has_ranges
+        return has_ranges
+
     run_plan: list[tuple[int, str, str | None]] = []
+    explicit_seed_control = bool(
+        config.quick_benchmark or config.batch_seeds is not None or config.seed is not None
+    )
     for level_name in levels:
         scenarios = _resolve_scenarios_for_config(
             config,
@@ -803,10 +833,22 @@ def _run_batch(config: RunConfig) -> int:
             level_scenario_resolver=_resolve_level_scenarios_cached,
         )
         if not scenarios:
-            run_plan.extend((seed, level_name, None) for seed in seeds)
+            if explicit_seed_control:
+                scenario_seeds = seeds
+            elif _scenario_has_randomized_fields(level_name, None):
+                scenario_seeds = list(_AUTO_RANDOMIZED_BATCH_SEEDS)
+            else:
+                scenario_seeds = [0]
+            run_plan.extend((seed, level_name, None) for seed in scenario_seeds)
             continue
         for scenario_name in scenarios:
-            run_plan.extend((seed, level_name, scenario_name) for seed in seeds)
+            if explicit_seed_control:
+                scenario_seeds = seeds
+            elif _scenario_has_randomized_fields(level_name, scenario_name):
+                scenario_seeds = list(_AUTO_RANDOMIZED_BATCH_SEEDS)
+            else:
+                scenario_seeds = [0]
+            run_plan.extend((seed, level_name, scenario_name) for seed in scenario_seeds)
     total = len(run_plan)
     if total <= 0:
         raise ValueError("Batch mode resolved no runs")
@@ -874,6 +916,7 @@ def _run_batch(config: RunConfig) -> int:
 
     summary = aggregate_eval_records(records)
     failed = [r for r in records if not r.get("success", False)]
+    used_seeds = sorted({seed for seed, _level_name, _scenario_name in run_plan})
 
     json_path = None
     csv_path = None
@@ -883,7 +926,7 @@ def _run_batch(config: RunConfig) -> int:
                 kind="json",
                 level_name=config.level_name,
                 bot_name=batch_bot_name,
-                seeds=seeds,
+                seeds=used_seeds,
                 scenarios=levels,
             )
             if config.batch_json == "auto"
@@ -902,7 +945,7 @@ def _run_batch(config: RunConfig) -> int:
                 kind="csv",
                 level_name=config.level_name,
                 bot_name=batch_bot_name,
-                seeds=seeds,
+                seeds=used_seeds,
                 scenarios=levels,
             )
             if config.batch_csv == "auto"

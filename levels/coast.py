@@ -9,10 +9,11 @@ from core.components import FuelTank, PhysicsState, Transform
 from core.ecs import require_component
 from core.level import Level
 from core.maths import Vector2
-from core.terrain import ballistic_fall_time
 from levels.scenario_common import (
+    SampleRange,
     ScenarioLevel,
     ScenarioLevelSpec,
+    has_randomized_values,
     validate_scenario_recoverability,
 )
 
@@ -20,12 +21,11 @@ from levels.scenario_common import (
 @dataclass(frozen=True)
 class CoastScenario:
     name: str
-    angle_deg: float
-    start_dx: float
-    start_dy: float
-    initial_vx_toward_target: float
-    initial_vy_up: float
-    projected_dx_error: float = 0.0
+    base_angle_deg: float
+    projected_dx_error: float | SampleRange
+    radius: float | SampleRange = SampleRange(700.0, 900.0)
+    angle_deviation_deg: float | SampleRange = SampleRange(-5.0, 5.0)
+    target_flight_time_s: float | SampleRange = SampleRange(10.0, 12.0)
     initial_angle: float = 0.0
     cargo_mass: float = 1800.0
 
@@ -33,28 +33,18 @@ class CoastScenario:
 @dataclass(frozen=True)
 class _DeviationTier:
     key: str
-    projected_dx_error: float
+    projected_dx_error: SampleRange
 
 
-_SPAWN_RADIUS = 800.0
-_TARGET_FLIGHT_TIME_S = 12.0
 _ANGLE_PROFILES: tuple[tuple[str, float], ...] = (
-    ("entry_shallow", 30.0),
-    ("entry_mid", 45.0),
-    ("entry_steep", 60.0),
+    ("shallow", 15.0),
+    ("mid", 45.0),
+    ("steep", 75.0),
 )
 _DEVIATION_TIERS: tuple[_DeviationTier, ...] = (
-    _DeviationTier(key="nominal", projected_dx_error=0.0),
-    _DeviationTier(key="trim", projected_dx_error=30.0),
-    _DeviationTier(key="energy", projected_dx_error=80.0),
-    _DeviationTier(key="stress", projected_dx_error=90.0),
+    _DeviationTier(key="low", projected_dx_error=SampleRange(40.0, 60.0)),
+    _DeviationTier(key="high", projected_dx_error=SampleRange(80.0, 100.0)),
 )
-_PROFILE_TIERS: dict[str, tuple[str, ...]] = {
-    "entry_shallow": ("nominal", "trim"),
-    "entry_mid": ("nominal", "trim", "energy"),
-    "entry_steep": ("nominal", "energy", "stress"),
-}
-_TIER_BY_KEY = {tier.key: tier for tier in _DEVIATION_TIERS}
 
 
 def _angle_from_velocity(vx: float, vy_up: float, *, opposite: bool = False) -> float:
@@ -66,83 +56,45 @@ def _angle_from_velocity(vx: float, vy_up: float, *, opposite: bool = False) -> 
 
 
 def _scenario_name(profile: str, tier: str) -> str:
-    if tier == "nominal":
-        return profile
-    return f"{profile}_{tier}"
+    return f"entry_{profile}_{tier}"
 
 
 def _build_entry(profile_name: str, angle_deg: float, tier: _DeviationTier) -> CoastScenario:
-    angle_rad = math.radians(float(angle_deg))
-    start_dx = _SPAWN_RADIUS * math.cos(angle_rad)
-    start_dy = _SPAWN_RADIUS * math.sin(angle_rad)
-    gravity = 9.8
-    time_to_target = _TARGET_FLIGHT_TIME_S
-    vx_toward_target = start_dx / max(1e-6, time_to_target)
-    vy_up = ((0.5 * gravity * time_to_target * time_to_target) - start_dy) / max(1e-6, time_to_target)
     return CoastScenario(
         name=_scenario_name(profile_name, tier.key),
-        angle_deg=float(angle_deg),
-        start_dx=float(start_dx),
-        start_dy=float(start_dy),
-        initial_vx_toward_target=float(vx_toward_target),
-        initial_vy_up=float(vy_up),
-        projected_dx_error=float(tier.projected_dx_error),
+        base_angle_deg=float(angle_deg),
+        projected_dx_error=tier.projected_dx_error,
     )
 
 
-_BASE_SCENARIOS: tuple[CoastScenario, ...] = tuple(
-    _build_entry(profile_name, angle_deg, _TIER_BY_KEY[tier_key])
+_SCENARIOS: tuple[CoastScenario, ...] = tuple(
+    _build_entry(profile_name, angle_deg, tier)
     for profile_name, angle_deg in _ANGLE_PROFILES
-    for tier_key in _PROFILE_TIERS[profile_name]
-)
-_CARGO_VARIANTS: tuple[tuple[str, float], ...] = (
-    ("cargo_high", 4500.0),
-)
-_CARGO_VARIANT_BASES: tuple[str, ...] = (
-    "entry_mid_energy",
-    "entry_steep_stress",
-)
-_SCENARIOS: tuple[CoastScenario, ...] = (
-    _BASE_SCENARIOS + tuple(
-        CoastScenario(
-            name=f"{base.name}_{suffix}",
-            angle_deg=base.angle_deg,
-            start_dx=base.start_dx,
-            start_dy=base.start_dy,
-            initial_vx_toward_target=base.initial_vx_toward_target,
-            initial_vy_up=base.initial_vy_up,
-            projected_dx_error=base.projected_dx_error,
-            initial_angle=base.initial_angle,
-            cargo_mass=cargo_mass,
-        )
-        for base in _BASE_SCENARIOS
-        if base.name in _CARGO_VARIANT_BASES
-        for suffix, cargo_mass in _CARGO_VARIANTS
-    )
+    for tier in _DEVIATION_TIERS
 )
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "entry_mid_trim"
+_DEFAULT_SCENARIO = "entry_mid_low"
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    "entry_mid_trim",
-    "entry_mid_energy",
-    "entry_steep_stress",
+    "entry_mid_low",
+    "entry_mid_high",
+    "entry_steep_high",
 )
 _COAST_EVAL_MODES: tuple[str, ...] = ("auto", "focused", "full")
 _COAST_DEFAULT_EVAL_MODE = "full"
 _FOCUSED_SUCCESS_PROJECTED_DX_MAX = 30.0
 
-def _make_spec(scenario: CoastScenario) -> ScenarioLevelSpec:
+def _make_spec(*, name: str, start_dx: float, start_dy: float, cargo_mass: float) -> ScenarioLevelSpec:
     return ScenarioLevelSpec(
-        name=scenario.name,
-        start_x=scenario.start_dx,
+        name=name,
+        start_x=start_dx,
         target_x=0.0,
-        spawn_clearance=scenario.start_dy,
+        spawn_clearance=start_dy,
         terrain_kind="flat",
         target_mode="flush_flatten",
         target_offset_y=0.0,
         target_size=110.0,
-        cargo_mass=scenario.cargo_mass,
+        cargo_mass=cargo_mass,
     )
 
 
@@ -154,7 +106,12 @@ class CoastLevel(ScenarioLevel):
         self._eval_scenario_name = _DEFAULT_SCENARIO
         self._eval_mode_name = "auto"
         self._resolved_eval_mode = _COAST_DEFAULT_EVAL_MODE
-        self.scenario = _make_spec(_SCENARIO_BY_NAME[self._eval_scenario_name])
+        self.scenario = _make_spec(
+            name=self._eval_scenario_name,
+            start_dx=0.0,
+            start_dy=800.0,
+            cargo_mass=1800.0,
+        )
         self._reset_phase_eval_metrics()
 
     @staticmethod
@@ -178,6 +135,17 @@ class CoastLevel(ScenarioLevel):
             known = ", ".join(_COAST_EVAL_MODES)
             raise ValueError(f"Unknown coast eval mode '{name}'. Expected one of: {known}")
         self._eval_mode_name = key
+
+    def scenario_has_randomized_fields(self, _name: str | None = None) -> bool:
+        scenario = _SCENARIO_BY_NAME[self._eval_scenario_name]
+        return has_randomized_values(
+            (
+                scenario.radius,
+                scenario.angle_deviation_deg,
+                scenario.target_flight_time_s,
+                scenario.projected_dx_error,
+            )
+        )
 
     @staticmethod
     def _to_optional_float(value: Any) -> float | None:
@@ -314,22 +282,31 @@ class CoastLevel(ScenarioLevel):
         self._reset_phase_eval_metrics()
         scenario_base = _SCENARIO_BY_NAME[self._eval_scenario_name]
         scenario_name_hash = sum(ord(ch) for ch in scenario_base.name)
-        dir_rng = random.Random(seed ^ (scenario_name_hash << 1))
-        err_rng = random.Random(seed ^ (scenario_name_hash << 2))
-        direction = -1.0 if dir_rng.random() < 0.5 else 1.0
-        deviation_sign = -1.0 if err_rng.random() < 0.5 else 1.0
-        scenario = CoastScenario(
+        rng = random.Random(seed ^ (scenario_name_hash << 1))
+        direction = -1.0 if rng.random() < 0.5 else 1.0
+        radius = self._resolve_sample_value(scenario_base.radius, rng)
+        angle_deviation_deg = self._resolve_sample_value(scenario_base.angle_deviation_deg, rng)
+        target_flight_time_s = max(
+            1e-6,
+            self._resolve_sample_value(scenario_base.target_flight_time_s, rng),
+        )
+        projected_dx_error_mag = abs(self._resolve_sample_value(scenario_base.projected_dx_error, rng))
+        if self._benchmark_random_mode == "median":
+            projected_dx_error_sign = 1.0
+        else:
+            projected_dx_error_sign = -1.0 if rng.random() < 0.5 else 1.0
+        projected_dx_error = projected_dx_error_sign * projected_dx_error_mag
+        entry_angle_deg = float(scenario_base.base_angle_deg) + angle_deviation_deg
+        entry_angle_rad = math.radians(entry_angle_deg)
+        start_dx_mag = radius * math.cos(entry_angle_rad)
+        start_dy = radius * math.sin(entry_angle_rad)
+        start_dx = direction * start_dx_mag
+        self.scenario = _make_spec(
             name=scenario_base.name,
-            angle_deg=scenario_base.angle_deg,
-            start_dx=float(scenario_base.start_dx) * direction,
-            start_dy=float(scenario_base.start_dy),
-            initial_vx_toward_target=float(scenario_base.initial_vx_toward_target),
-            initial_vy_up=float(scenario_base.initial_vy_up),
-            projected_dx_error=float(scenario_base.projected_dx_error),
-            initial_angle=float(scenario_base.initial_angle),
+            start_dx=start_dx,
+            start_dy=start_dy,
             cargo_mass=float(scenario_base.cargo_mass),
         )
-        self.scenario = _make_spec(scenario)
         super().setup(game, seed)
 
         actor = self.world.actors[0]
@@ -337,29 +314,23 @@ class CoastLevel(ScenarioLevel):
         phys = require_component(actor, PhysicsState)
         target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
         trans.pos = Vector2(
-            float(target_pos.x) + (direction * float(scenario_base.start_dx)),
-            float(target_pos.y) + float(scenario_base.start_dy),
+            float(target_pos.x) + start_dx,
+            float(target_pos.y) + start_dy,
         )
         actor.start_pos = Vector2(trans.pos)
 
-        toward_speed = abs(float(scenario.initial_vx_toward_target))
-        initial_vy_up = float(scenario.initial_vy_up)
-        t_fall = max(
-            0.5,
-            ballistic_fall_time(
-                altitude=float(scenario.start_dy),
-                vy_up=initial_vy_up,
-            ),
-        )
-        projected_dx_error = deviation_sign * abs(float(scenario.projected_dx_error))
-        vx_error = projected_dx_error / t_fall
-        initial_vx = (-direction * toward_speed) + vx_error
+        impact_target_x = float(target_pos.x) + projected_dx_error
+        initial_vx = (impact_target_x - float(trans.pos.x)) / target_flight_time_s
+        initial_vy_up = (
+            (float(target_pos.y) - float(trans.pos.y))
+            + (0.5 * 9.8 * target_flight_time_s * target_flight_time_s)
+        ) / target_flight_time_s
         trans.rotation = _angle_from_velocity(initial_vx, initial_vy_up)
 
         validate_scenario_recoverability(
             actor,
-            scenario_name=scenario.name,
-            spawn_clearance=float(scenario.start_dy),
+            scenario_name=scenario_base.name,
+            spawn_clearance=start_dy,
             initial_vy_up=initial_vy_up,
         )
         phys.vel = Vector2(initial_vx, initial_vy_up)
@@ -382,6 +353,18 @@ class CoastLevel(ScenarioLevel):
         self._phase1_prev_pos = Vector2(trans.pos)
         tank = require_component(actor, FuelTank)
         self._phase1_prev_fuel = float(tank.fuel)
+        self._set_scenario_params(
+            {
+                "radius": radius,
+                "entry_angle_deg": entry_angle_deg,
+                "angle_deviation_deg": angle_deviation_deg,
+                "target_flight_time_s": target_flight_time_s,
+                "projected_dx_error": projected_dx_error,
+                "projected_dx_error_mag": projected_dx_error_mag,
+                "projected_dx_error_sign": projected_dx_error_sign,
+                "direction": direction,
+            }
+        )
         setattr(self, "scenario_name", scenario_base.name)
 
     def update(self, game, dt: float) -> None:

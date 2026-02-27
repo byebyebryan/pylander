@@ -17,8 +17,9 @@ Defined in [`levels/launch.py`](../levels/launch.py):
 - Cargo: empty (`0`) for this iteration.
 - Terrain: flat, flush/flatten target.
 - Target size: `110`.
-- Spawn geometry: radius-`800` upper arc around target center.
-- Arc angles from horizon: `15deg`, `45deg`, `75deg`.
+- Spawn geometry: upper arc around target center with `radius in [700, 900]`.
+- Arc base angles from horizon: `15deg`, `45deg`, `75deg`.
+- Per-run angle deviation: `[-5deg, +5deg]` from the base angle.
 - Spawn side (left/right) is deterministic from `(seed, scenario)`.
 - Initial attitude and velocity are fixed:
   - `angle = 0` (upright)
@@ -67,5 +68,5 @@ Focused runs emit setup/handoff metrics (`launch_setup_*`, `launch_handoff_*`) v
 Common commands:
 
 - `uv run python main.py launch --headless --quick-benchmark`
-- `uv run python main.py launch --headless --batch --batch-seeds 0-9 --batch-scenarios air_shallow,air_mid,air_steep`
+- `uv run python main.py launch --headless --batch --batch-scenarios air_shallow,air_mid,air_steep`
 

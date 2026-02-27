@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any
 
 from core.components import FuelTank, PhysicsState, Transform
@@ -10,8 +10,10 @@ from core.ecs import require_component
 from core.level import Level
 from core.maths import Vector2
 from levels.scenario_common import (
+    SampleRange,
     ScenarioLevel,
     ScenarioLevelSpec,
+    has_randomized_values,
     validate_scenario_recoverability,
 )
 
@@ -19,14 +21,13 @@ from levels.scenario_common import (
 @dataclass(frozen=True)
 class LaunchScenario:
     name: str
-    angle_deg: float
-    start_dx: float
-    start_dy: float
+    base_angle_deg: float
+    radius: float | SampleRange
+    angle_deviation_deg: float | SampleRange
     initial_angle: float = 0.0
     cargo_mass: float = 0.0
 
 
-_SPAWN_RADIUS = 800.0
 _ANGLE_PROFILES: tuple[tuple[str, float], ...] = (
     ("air_shallow", 15.0),
     ("air_mid", 45.0),
@@ -34,15 +35,12 @@ _ANGLE_PROFILES: tuple[tuple[str, float], ...] = (
 )
 
 
-def _build_angle_scenario(name: str, angle_deg: float) -> LaunchScenario:
-    angle_rad = math.radians(float(angle_deg))
-    start_dx = _SPAWN_RADIUS * math.cos(angle_rad)
-    start_dy = _SPAWN_RADIUS * math.sin(angle_rad)
+def _build_angle_scenario(name: str, base_angle_deg: float) -> LaunchScenario:
     return LaunchScenario(
         name=name,
-        angle_deg=float(angle_deg),
-        start_dx=float(start_dx),
-        start_dy=float(start_dy),
+        base_angle_deg=float(base_angle_deg),
+        radius=SampleRange(700.0, 900.0),
+        angle_deviation_deg=SampleRange(-5.0, 5.0),
     )
 
 
@@ -59,17 +57,17 @@ _LAUNCH_EVAL_MODES: tuple[str, ...] = ("auto", "focused", "full")
 _LAUNCH_DEFAULT_EVAL_MODE = "full"
 
 
-def _make_spec(scenario: LaunchScenario) -> ScenarioLevelSpec:
+def _make_spec(*, name: str, start_dx: float, start_dy: float, cargo_mass: float) -> ScenarioLevelSpec:
     return ScenarioLevelSpec(
-        name=scenario.name,
-        start_x=scenario.start_dx,
+        name=name,
+        start_x=start_dx,
         target_x=0.0,
-        spawn_clearance=scenario.start_dy,
+        spawn_clearance=start_dy,
         terrain_kind="flat",
         target_mode="flush_flatten",
         target_offset_y=0.0,
         target_size=110.0,
-        cargo_mass=scenario.cargo_mass,
+        cargo_mass=cargo_mass,
     )
 
 
@@ -81,7 +79,12 @@ class LaunchLevel(ScenarioLevel):
         self._eval_scenario_name = _DEFAULT_SCENARIO
         self._eval_mode_name = "auto"
         self._resolved_eval_mode = _LAUNCH_DEFAULT_EVAL_MODE
-        self.scenario = _make_spec(_SCENARIO_BY_NAME[self._eval_scenario_name])
+        self.scenario = _make_spec(
+            name=self._eval_scenario_name,
+            start_dx=0.0,
+            start_dy=800.0,
+            cargo_mass=0.0,
+        )
         self._reset_phase_eval_metrics()
 
     @staticmethod
@@ -105,6 +108,10 @@ class LaunchLevel(ScenarioLevel):
             known = ", ".join(_LAUNCH_EVAL_MODES)
             raise ValueError(f"Unknown launch eval mode '{name}'. Expected one of: {known}")
         self._eval_mode_name = key
+
+    def scenario_has_randomized_fields(self, _name: str | None = None) -> bool:
+        scenario = _SCENARIO_BY_NAME[self._eval_scenario_name]
+        return has_randomized_values((scenario.radius, scenario.angle_deviation_deg))
 
     @staticmethod
     def _to_optional_float(value: Any) -> float | None:
@@ -264,13 +271,20 @@ class LaunchLevel(ScenarioLevel):
         self._reset_phase_eval_metrics()
         scenario_base = _SCENARIO_BY_NAME[self._eval_scenario_name]
         scenario_name_hash = sum(ord(ch) for ch in scenario_base.name)
-        dir_rng = random.Random(seed ^ (scenario_name_hash << 1))
-        direction = -1.0 if dir_rng.random() < 0.5 else 1.0
-        scenario = replace(
-            scenario_base,
-            start_dx=float(scenario_base.start_dx) * direction,
+        rng = random.Random(seed ^ (scenario_name_hash << 1))
+        direction = -1.0 if rng.random() < 0.5 else 1.0
+        radius = self._resolve_sample_value(scenario_base.radius, rng)
+        angle_deviation_deg = self._resolve_sample_value(scenario_base.angle_deviation_deg, rng)
+        entry_angle_deg = float(scenario_base.base_angle_deg) + angle_deviation_deg
+        entry_angle_rad = math.radians(entry_angle_deg)
+        start_dx = direction * radius * math.cos(entry_angle_rad)
+        start_dy = radius * math.sin(entry_angle_rad)
+        self.scenario = _make_spec(
+            name=scenario_base.name,
+            start_dx=start_dx,
+            start_dy=start_dy,
+            cargo_mass=float(scenario_base.cargo_mass),
         )
-        self.scenario = _make_spec(scenario)
         super().setup(game, seed)
 
         actor = self.world.actors[0]
@@ -278,19 +292,19 @@ class LaunchLevel(ScenarioLevel):
         trans = require_component(actor, Transform)
         phys = require_component(actor, PhysicsState)
         start_pos = Vector2(
-            float(target_pos.x) + float(scenario.start_dx),
-            float(target_pos.y) + float(scenario.start_dy),
+            float(target_pos.x) + start_dx,
+            float(target_pos.y) + start_dy,
         )
         trans.pos = Vector2(start_pos)
         actor.start_pos = Vector2(start_pos)
 
         validate_scenario_recoverability(
             actor,
-            scenario_name=scenario.name,
-            spawn_clearance=scenario.start_dy,
+            scenario_name=scenario_base.name,
+            spawn_clearance=start_dy,
             initial_vy_up=0.0,
         )
-        trans.rotation = float(scenario.initial_angle)
+        trans.rotation = float(scenario_base.initial_angle)
         initial_vx = 0.0
         initial_vy_up = 0.0
         phys.vel = Vector2(initial_vx, initial_vy_up)
@@ -313,6 +327,14 @@ class LaunchLevel(ScenarioLevel):
         self._phase1_prev_pos = Vector2(trans.pos)
         tank = require_component(actor, FuelTank)
         self._phase1_prev_fuel = float(tank.fuel)
+        self._set_scenario_params(
+            {
+                "radius": radius,
+                "entry_angle_deg": entry_angle_deg,
+                "angle_deviation_deg": angle_deviation_deg,
+                "direction": direction,
+            }
+        )
         setattr(self, "scenario_name", scenario_base.name)
 
     def update(self, game, dt: float) -> None:

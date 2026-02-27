@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
+from typing import Literal
 
 import core.terrain as _terrain
 from core.components import (
@@ -36,6 +37,51 @@ from levels.common import (
     get_mass,
     should_end_default,
 )
+
+
+BenchmarkRandomMode = Literal["median", "sample"]
+
+
+@dataclass(frozen=True)
+class SampleRange:
+    low: float
+    high: float
+
+    def __post_init__(self) -> None:
+        lo = float(self.low)
+        hi = float(self.high)
+        if hi < lo:
+            raise ValueError(f"Invalid SampleRange: high({hi}) < low({lo})")
+
+    def median(self) -> float:
+        return 0.5 * (float(self.low) + float(self.high))
+
+    def sample(self, rng: random.Random) -> float:
+        return rng.uniform(float(self.low), float(self.high))
+
+
+SampleValue = float | SampleRange
+
+
+def is_ranged_value(value: SampleValue) -> bool:
+    return isinstance(value, SampleRange)
+
+
+def has_randomized_values(values: list[SampleValue] | tuple[SampleValue, ...]) -> bool:
+    return any(is_ranged_value(v) for v in values)
+
+
+def resolve_sample_value(
+    value: SampleValue,
+    *,
+    mode: BenchmarkRandomMode,
+    rng: random.Random,
+) -> float:
+    if not is_ranged_value(value):
+        return float(value)
+    if mode == "median":
+        return value.median()
+    return value.sample(rng)
 
 
 @dataclass(frozen=True)
@@ -121,11 +167,32 @@ class ScenarioLevel(Level):
 
     scenario: ScenarioLevelSpec | None = None
     default_bot_name: str | None = None
+    _benchmark_random_mode: BenchmarkRandomMode = "sample"
+
+    def set_benchmark_mode(self, mode: str) -> None:
+        key = str(mode or "sample").strip().lower()
+        if key not in {"median", "sample"}:
+            raise ValueError(f"Unknown benchmark mode '{mode}'. Expected one of: median, sample")
+        self._benchmark_random_mode = "median" if key == "median" else "sample"
+
+    def scenario_has_randomized_fields(self, _name: str | None = None) -> bool:
+        return False
+
+    def _resolve_sample_value(self, value: SampleValue, rng: random.Random) -> float:
+        return resolve_sample_value(
+            value,
+            mode=self._benchmark_random_mode,
+            rng=rng,
+        )
+
+    def _set_scenario_params(self, params: dict[str, float | int | str | bool]) -> None:
+        setattr(self, "_scenario_params", dict(params))
 
     def setup(self, _game, seed: int) -> None:
         spec = self.scenario
         if spec is None:
             raise ValueError(f"{type(self).__name__} must define `scenario`")
+        self._set_scenario_params({})
 
         rng = random.Random(seed)
         base_terrain = _build_base_terrain(seed, spec)
@@ -263,5 +330,11 @@ class ScenarioLevel(Level):
             score=score,
         )
         result["scenario"] = getattr(self, "scenario_name", type(self).__name__)
+        result["scenario_benchmark_mode"] = self._benchmark_random_mode
+        params = getattr(self, "_scenario_params", None)
+        if isinstance(params, dict):
+            for key, value in params.items():
+                if isinstance(value, (int, float, str, bool)):
+                    result[f"scenario_{key}"] = value
         return result
 

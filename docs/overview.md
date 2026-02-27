@@ -36,7 +36,8 @@ flowchart LR
 - Prefer headless mode for iteration:
   - `uv run python main.py <level> --headless`
 - Fix `--seed` and `--scenario` while tuning one change.
-- Use `--quick-benchmark` to catch regressions early.
+- Use `--quick-benchmark` to catch regressions early (one median setup per scenario, seed `0`).
+- In full batch mode, range-enabled scenarios auto-sample seeds `0-9` when `--batch-seeds` is omitted; fixed scenarios run once.
 
 ## What to measure
 

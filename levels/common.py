@@ -547,12 +547,22 @@ class PresetLevel(Level):
             landing_score=100.0,
             crash_penalty=-200.0,
         )
-        return build_end_result_default(
+        result = build_end_result_default(
             game,
             landing_count=landing_count,
             crash_count=crash_count,
             score=score,
         )
+        result["scenario"] = getattr(self, "scenario_name", type(self).__name__)
+        benchmark_mode = getattr(self, "_benchmark_random_mode", None)
+        if isinstance(benchmark_mode, str):
+            result["scenario_benchmark_mode"] = benchmark_mode
+        params = getattr(self, "_scenario_params", None)
+        if isinstance(params, dict):
+            for key, value in params.items():
+                if isinstance(value, (int, float, str, bool)):
+                    result[f"scenario_{key}"] = value
+        return result
 
 
 def compute_score_default(
