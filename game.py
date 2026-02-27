@@ -336,12 +336,13 @@ class LanderGame:
                 )
             if bot_uid is not None:
                 self.actor_bots[bot_uid] = self.bot
-        for uid, actor_bot in self.actor_bots.items():
+        for uid, actor_bot in list(self.actor_bots.items()):
             actor = self.ecs_world.get_entity_by_id(uid)
             if actor is None:
                 continue
-            if hasattr(actor_bot, "set_vehicle_info"):
-                actor_bot.set_vehicle_info(_build_vehicle_info(actor))
+            self._install_actor_bot(uid, actor, actor_bot, context=None)
+        if self.renderer is not None:
+            self.renderer.bot = self._active_actor_bot()
 
         self.level.start(self)
         self.plotter = Plotter(
@@ -429,6 +430,98 @@ class LanderGame:
         idx = ordered_ids.index(self.active_player_actor_uid)
         next_uid = ordered_ids[(idx + delta) % len(ordered_ids)]
         self._set_active_actor(next_uid)
+
+    @staticmethod
+    def _resolve_bot_runtime_name(bot: Bot) -> str:
+        bot_name = getattr(bot, "_bot_name", None)
+        if isinstance(bot_name, str) and bot_name:
+            return bot_name
+        return bot.__class__.__module__.split(".")[-1]
+
+    @staticmethod
+    def _resolve_stage_from_status(status: str | None) -> str | None:
+        if not isinstance(status, str):
+            return None
+        text = status.strip()
+        if not text:
+            return None
+        if ":" not in text:
+            token = text.split(maxsplit=1)[0]
+            return token or None
+        _, rest = text.split(":", 1)
+        rest = rest.strip()
+        if not rest:
+            return None
+        token = rest.split(maxsplit=1)[0]
+        return token or None
+
+    def _active_actor_bot(self) -> Bot | None:
+        active_uid = self.active_player_actor_uid
+        if active_uid in self.actor_bots:
+            return self.actor_bots[active_uid]
+        return self.bot
+
+    def _ensure_bot_identity_fields(self, bot: Bot) -> None:
+        bot_name = getattr(bot, "_bot_name", None)
+        if not isinstance(bot_name, str) or not bot_name:
+            setattr(bot, "_bot_name", bot.__class__.__module__.split(".")[-1])
+        behavior = getattr(bot, "behavior", None)
+        if isinstance(behavior, str) and behavior:
+            setattr(bot, "_bot_behavior", behavior)
+
+    def _install_actor_bot(
+        self,
+        uid: str,
+        actor: Entity,
+        bot: Bot,
+        *,
+        context: dict[str, object] | None,
+    ) -> None:
+        self.actor_bots[uid] = bot
+        self._ensure_bot_identity_fields(bot)
+        if hasattr(bot, "set_vehicle_info"):
+            bot.set_vehicle_info(_build_vehicle_info(actor))
+        if context is not None:
+            import_ctx = getattr(bot, "import_handoff_context", None)
+            if callable(import_ctx):
+                import_ctx(context)
+            elif "pinned_target_uid" in context and hasattr(bot, "set_pinned_target_uid"):
+                bot.set_pinned_target_uid(context.get("pinned_target_uid"))
+        set_display_state = getattr(bot, "set_display_state", None)
+        if callable(set_display_state):
+            set_display_state(
+                active_bot=self._resolve_bot_runtime_name(bot),
+                stage=None,
+            )
+
+    def _collect_handoff_context(
+        self,
+        bot: Bot,
+        action: BotAction,
+    ) -> dict[str, object] | None:
+        merged: dict[str, object] = {}
+        export_ctx = getattr(bot, "export_handoff_context", None)
+        if callable(export_ctx):
+            exported = export_ctx()
+            if isinstance(exported, dict):
+                merged.update(exported)
+        if isinstance(action.handoff_context, dict):
+            merged.update(action.handoff_context)
+        return merged if merged else None
+
+    def _apply_action_display_state(self, bot: Bot, action: BotAction) -> None:
+        active_bot = action.active_bot
+        if not isinstance(active_bot, str) or not active_bot.strip():
+            active_bot = self._resolve_bot_runtime_name(bot)
+        stage = action.stage
+        if not isinstance(stage, str) or not stage.strip():
+            stage = self._resolve_stage_from_status(action.status)
+        set_display_state = getattr(bot, "set_display_state", None)
+        if callable(set_display_state):
+            set_display_state(
+                active_bot=active_bot,
+                stage=stage,
+            )
 
     def run(
         self,
@@ -684,7 +777,7 @@ class LanderGame:
             timers.consume_bot()
             if self.actor_bots:
                 self.sensor_update_system.update(bot_dt)
-                for uid, bot in self.actor_bots.items():
+                for uid, bot in list(self.actor_bots.items()):
                     actor = self.ecs_world.get_entity_by_id(uid)
                     if actor is None:
                         continue
@@ -695,7 +788,26 @@ class LanderGame:
                     active_sensors = _build_active_sensors(
                         actor, self.engine_adapter, self.terrain
                     )
-                    action: BotAction = bot.update(bot_dt, passive_sensors, active_sensors)
+                    current_bot = self.actor_bots.get(uid, bot)
+                    action: BotAction = current_bot.update(
+                        bot_dt,
+                        passive_sensors,
+                        active_sensors,
+                    )
+                    handoff_hops = 0
+                    while action.handoff_to is not None and handoff_hops < 4:
+                        next_bot = action.handoff_to
+                        handoff_context = self._collect_handoff_context(current_bot, action)
+                        self._install_actor_bot(
+                            uid,
+                            actor,
+                            next_bot,
+                            context=handoff_context,
+                        )
+                        current_bot = next_bot
+                        action = current_bot.update(bot_dt, passive_sensors, active_sensors)
+                        handoff_hops += 1
+                    self._apply_action_display_state(current_bot, action)
                     bot_controls_by_uid[uid] = (
                         action.target_thrust,
                         action.target_angle,
@@ -705,6 +817,7 @@ class LanderGame:
 
     def _render(self, frame_dt: float) -> float:
         if not self.headless and self.renderer is not None:
+            self.renderer.bot = self._active_actor_bot()
             self.renderer.update(frame_dt)
             self.renderer.draw()
             return self.renderer.tick(TARGET_RENDERING_FPS)

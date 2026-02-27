@@ -227,63 +227,30 @@ def test_ferry_bot_hands_off_to_launch_once_pad_is_clear() -> None:
     contacts = _make_ferry_contacts()
     landed = _make_ferry_passive(state="landed", altitude=4.0, contacts=contacts)
     bot.update(1.0 / 60.0, landed, active=SimpleNamespace())
-
-    captured: dict[str, str | None] = {
-        "first_uid": None,
-        "selected_uid": None,
-        "pinned_uid": None,
-    }
-
-    def _capture_delegate(_dt, passive, _active):
-        first = passive.radar_contacts[0] if passive.radar_contacts else None
-        captured["first_uid"] = None if first is None else first.uid
-        captured["pinned_uid"] = bot._delegate.pinned_target_uid
-        selected = pick_target(passive, pinned_uid=bot._delegate.pinned_target_uid)
-        captured["selected_uid"] = None if selected is None else selected.uid
-        return BotAction(
-            target_thrust=0.2,
-            target_angle=-0.6,
-            refuel=False,
-            status="launch:coast",
-        )
-
-    bot._delegate.update = _capture_delegate  # type: ignore[attr-defined]
     clear_alt = _make_ferry_passive(state="flying", altitude=130.0, contacts=contacts)
     action = bot.update(1.0 / 60.0, clear_alt, active=SimpleNamespace())
+    selected = pick_target(clear_alt, pinned_uid=bot._delegate.pinned_target_uid)
+    assert bot._delegate.pinned_target_uid == "ferry_site_dest"
+    assert selected is not None
+    assert selected.uid == "ferry_site_dest"
+    assert action.handoff_to is bot._delegate
+    assert action.status == "ferry:handoff_launch"
+    assert action.active_bot == "launch"
+    assert action.stage == "handoff"
 
-    assert captured["first_uid"] == "ferry_site_source"
-    assert captured["pinned_uid"] == "ferry_site_dest"
-    assert captured["selected_uid"] == "ferry_site_dest"
-    assert action.status == "ferry:launch:coast"
-    assert action.target_angle == pytest.approx(-0.6)
-    assert action.target_thrust == pytest.approx(0.2)
 
-
-def test_ferry_bot_routes_launch_delegate_to_non_source_target() -> None:
+def test_ferry_bot_handoff_keeps_destination_target_pinned() -> None:
     bot = create_bot("ferry")
     contacts = _make_ferry_contacts()
     landed = _make_ferry_passive(state="landed", altitude=4.0, contacts=contacts)
     bot.update(1.0 / 60.0, landed, active=SimpleNamespace())
-
-    captured: dict[str, str | None] = {"selected_uid": None, "pinned_uid": None}
-
-    def _capture_delegate(_dt, passive, _active):
-        captured["pinned_uid"] = bot._delegate.pinned_target_uid
-        selected = pick_target(passive, pinned_uid=bot._delegate.pinned_target_uid)
-        captured["selected_uid"] = None if selected is None else selected.uid
-        return BotAction(
-            target_thrust=0.0,
-            target_angle=0.0,
-            refuel=False,
-            status="launch:active",
-        )
-
-    bot._delegate.update = _capture_delegate  # type: ignore[attr-defined]
     high_alt = _make_ferry_passive(state="flying", altitude=140.0, contacts=contacts)
     action = bot.update(1.0 / 60.0, high_alt, active=SimpleNamespace())
-    assert captured["pinned_uid"] == "ferry_site_dest"
-    assert captured["selected_uid"] == "ferry_site_dest"
-    assert action.status.startswith("ferry:launch:")
+    selected = pick_target(high_alt, pinned_uid=bot._delegate.pinned_target_uid)
+    assert bot._delegate.pinned_target_uid == "ferry_site_dest"
+    assert selected is not None
+    assert selected.uid == "ferry_site_dest"
+    assert action.handoff_to is bot._delegate
 
 
 def test_ferry_bot_stays_landed_after_reaching_destination() -> None:
@@ -291,26 +258,12 @@ def test_ferry_bot_stays_landed_after_reaching_destination() -> None:
     source_contacts = _make_ferry_contacts()
     landed_source = _make_ferry_passive(state="landed", altitude=4.0, contacts=source_contacts)
     bot.update(1.0 / 60.0, landed_source, active=SimpleNamespace())
-
-    def _delegate_active(_dt, _passive, _active):
-        return BotAction(
-            target_thrust=0.3,
-            target_angle=0.1,
-            refuel=False,
-            status="launch:coast",
-        )
-
-    bot._delegate.update = _delegate_active  # type: ignore[attr-defined]
     enroute = _make_ferry_passive(state="flying", altitude=140.0, contacts=source_contacts)
-    bot.update(1.0 / 60.0, enroute, active=SimpleNamespace())
+    handoff = bot.update(1.0 / 60.0, enroute, active=SimpleNamespace())
+    assert handoff.status == "ferry:handoff_launch"
 
     dest_contacts = _make_ferry_contacts_from_dest()
     landed_dest = _make_ferry_passive(state="landed", altitude=4.0, contacts=dest_contacts)
-
-    def _delegate_should_not_run(*_args, **_kwargs):
-        raise AssertionError("delegate update should not run after destination landing")
-
-    bot._delegate.update = _delegate_should_not_run  # type: ignore[attr-defined]
     first = bot.update(1.0 / 60.0, landed_dest, active=SimpleNamespace())
     second = bot.update(1.0 / 60.0, landed_dest, active=SimpleNamespace())
 
@@ -327,16 +280,6 @@ def test_ferry_bot_clears_arrived_if_it_lands_away_from_destination() -> None:
     source_contacts = _make_ferry_contacts()
     landed_source = _make_ferry_passive(state="landed", altitude=4.0, contacts=source_contacts)
     bot.update(1.0 / 60.0, landed_source, active=SimpleNamespace())
-
-    def _delegate_active(_dt, _passive, _active):
-        return BotAction(
-            target_thrust=0.3,
-            target_angle=0.1,
-            refuel=False,
-            status="launch:coast",
-        )
-
-    bot._delegate.update = _delegate_active  # type: ignore[attr-defined]
     enroute_from_source = _make_ferry_passive(
         state="flying",
         altitude=140.0,
@@ -359,6 +302,76 @@ def test_ferry_bot_clears_arrived_if_it_lands_away_from_destination() -> None:
     )
     action = bot.update(1.0 / 60.0, landed_source_again, active=SimpleNamespace())
     assert action.status == "ferry:takeoff_upright"
+
+
+def test_launch_bot_emits_ownership_handoff_to_coast(monkeypatch) -> None:
+    bot = LaunchBot()
+    bot.set_pinned_target_uid("launch_target")
+    bot._setup_handoff_done = True
+
+    def _stub_super_update(_self, _dt, passive, _active):
+        return BotAction(
+            target_thrust=0.12,
+            target_angle=passive.angle,
+            refuel=False,
+            status="launch:coast",
+        )
+
+    monkeypatch.setattr(coast_module.CoastBot, "update", _stub_super_update)
+    passive = _make_ferry_passive(
+        state="flying",
+        altitude=150.0,
+        contacts=_make_ferry_contacts(),
+    )
+    action = bot.update(1.0 / 60.0, passive, active=SimpleNamespace())
+
+    assert isinstance(action.handoff_to, coast_module.CoastBot)
+    assert action.handoff_context is not None
+    assert action.handoff_context.get("pinned_target_uid") == "launch_target"
+    assert action.active_bot == "coast"
+    assert action.stage == "handoff"
+
+
+def test_coast_bot_emits_ownership_handoff_to_flare_when_gate_is_done(monkeypatch) -> None:
+    bot = create_bot("coast")
+    bot.set_pinned_target_uid("coast_target")
+    bot._handoff_done = True
+
+    guidance = GuidanceTargets(
+        phase="coast",
+        vertical_mode="coast",
+        vx_sp=0.0,
+        vy_sp=-2.0,
+        dx=0.0,
+        alt=120.0,
+        burn_altitude=30.0,
+    )
+    projection = BallisticProjection(
+        projected_dx=0.0,
+        t_fall=3.0,
+        target_x=0.0,
+        impact_x=0.0,
+        used_sensor=False,
+    )
+
+    def _stub_guidance(*_args, **_kwargs):
+        return guidance, projection
+
+    monkeypatch.setattr(bot, "_guidance", _stub_guidance)
+    passive = _make_ferry_passive(
+        state="flying",
+        altitude=120.0,
+        contacts=_make_ferry_contacts(),
+    )
+    action = bot.update(1.0 / 60.0, passive, active=SimpleNamespace())
+
+    assert isinstance(action.handoff_to, FlareBot)
+    assert action.handoff_context is not None
+    assert action.handoff_context.get("pinned_target_uid") == "coast_target"
+    snapshot = action.handoff_context.get("evaluation_snapshot")
+    assert isinstance(snapshot, dict)
+    assert snapshot.get("kind") == "coast"
+    assert bool(snapshot.get("handoff_done")) is True
 
 
 def test_zem_zev_bot_outputs_finite_action_for_flare_like_state() -> None:
@@ -2233,6 +2246,65 @@ class _PassiveBot(Bot):
         return BotAction(target_thrust=0.0, target_angle=passive.angle, refuel=False)
 
 
+class _TerminalCaptureBot(Bot):
+    def __init__(self) -> None:
+        super().__init__()
+        self.seen_target_uid: str | None = None
+        self.seen_snapshot_kind: str | None = None
+
+    def update(self, dt, passive, active) -> BotAction:  # noqa: D401
+        _ = dt, active
+        self.seen_target_uid = self.pinned_target_uid
+        snapshot = self.get_evaluation_snapshot()
+        if isinstance(snapshot, dict):
+            kind = snapshot.get("kind")
+            self.seen_snapshot_kind = str(kind) if isinstance(kind, str) else None
+        return BotAction(
+            target_thrust=0.33,
+            target_angle=passive.angle,
+            refuel=False,
+            status="flare:terminal_burn",
+            active_bot="flare",
+            stage="terminal_burn",
+        )
+
+
+class _HandoffOnceBot(Bot):
+    def __init__(self, next_bot: Bot) -> None:
+        super().__init__()
+        self._next_bot = next_bot
+        self._handoff_sent = False
+        self.set_pinned_target_uid("handoff_target")
+
+    def update(self, dt, passive, active) -> BotAction:  # noqa: D401
+        _ = dt, passive, active
+        if not self._handoff_sent:
+            self._handoff_sent = True
+            return BotAction(
+                target_thrust=0.0,
+                target_angle=0.0,
+                refuel=False,
+                status="launch:handoff",
+                handoff_to=self._next_bot,
+                handoff_context={
+                    "evaluation_snapshot": {
+                        "kind": "launch",
+                        "handoff_done": True,
+                    }
+                },
+                active_bot="launch",
+                stage="handoff",
+            )
+        return BotAction(
+            target_thrust=0.0,
+            target_angle=0.0,
+            refuel=False,
+            status="launch:coast",
+            active_bot="launch",
+            stage="coast",
+        )
+
+
 class _ShortLevel(Level):
     def __init__(self, stop_after_updates: int = 3):
         self.stop_after_updates = stop_after_updates
@@ -2522,6 +2594,33 @@ def test_game_assigns_passed_bot_to_bot_role_actor() -> None:
     game = LanderGame(level=level, bot=bot, headless=True)
 
     assert game.actor_bots == {"actor_bot": bot}
+
+
+def test_game_handoff_replaces_owner_and_transfers_context() -> None:
+    level = _TwoActorLevel()
+    successor = _TerminalCaptureBot()
+    bot = _HandoffOnceBot(successor)
+    game = LanderGame(level=level, bot=bot, headless=True)
+
+    timers = LoopTimers(
+        physics_dt=0.1,
+        bot_dt=0.1,
+        frame_dt=0.1,
+        time_accum_bot=0.1,
+    )
+    controls = game._update_bot_steps(timers)
+
+    assert game.actor_bots["actor_bot"] is successor
+    assert successor.seen_target_uid == "handoff_target"
+    assert successor.seen_snapshot_kind == "launch"
+    thrust, angle, refuel = controls["actor_bot"]
+    assert thrust == pytest.approx(0.33)
+    assert angle == pytest.approx(0.0)
+    assert refuel is False
+    assert successor.get_display_state() == {
+        "active_bot": "flare",
+        "stage": "terminal_burn",
+    }
 
 
 @pytest.mark.parametrize(
@@ -3724,6 +3823,27 @@ def test_hud_bot_active_falls_back_to_bot_name_when_status_has_no_prefix() -> No
     assert "BOT: coast" in lines
     assert "BOT ACTIVE: coast    STAGE: searching" in lines
     assert "BOT STATUS: searching target" in lines
+
+
+def test_hud_prefers_structured_display_state_over_status_prefix_chain() -> None:
+    class _StatusBot:
+        _bot_name = "ferry"
+
+        @staticmethod
+        def get_status() -> str:
+            return "ferry:launch:coast dx:  12.3"
+
+        @staticmethod
+        def get_display_state() -> dict[str, str]:
+            return {"active_bot": "coast", "stage": "terminal_burn"}
+
+    actor = Lander(start_pos=Vector2(0.0, 100.0))
+    level = _FixedTerrainLevel()
+    hud = HudOverlay(font=None, screen=None)
+
+    lines = hud._build_info_lines(level, actor, bot=_StatusBot())
+    assert "BOT ACTIVE: coast    STAGE: terminal_burn" in lines
+    assert "BOT STATUS: ferry:launch:coast dx:  12.3" in lines
 
 
 def test_hud_ignores_status_attribute_when_get_status_returns_non_string() -> None:

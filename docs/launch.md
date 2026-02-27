@@ -47,7 +47,13 @@ Launch flow:
 1. Compute projection-guided setup command.
 2. Run an initial sideburn with coarse tolerances.
 3. End setup burn when alignment is good enough (or near-term impact safety guard trips).
-4. Handoff to coast immediately; coast may execute one correction burn or cancel it if projection settles during align.
+4. Transfer control ownership to `coast` immediately; coast may execute one correction burn or cancel it if projection settles during align.
+
+Handoff semantics:
+
+- Ownership transfer is explicit (`launch` does not keep driving after handoff).
+- Shared runtime context is persisted through transfers (for example pinned target UID and evaluation snapshot metadata).
+- Downstream chain remains `coast -> flare`, where `flare` is the terminal-burn owner.
 
 ## Evaluation notes
 

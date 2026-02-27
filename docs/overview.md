@@ -20,6 +20,9 @@ Main chain:
 
 `ferry` reuses the launch/coast/flare chain after an upright takeoff clear.
 
+Ownership handoff is explicit: when a phase completes, runtime control owner switches to the next bot (not nested delegation).
+The handoff also carries shared context so downstream phases keep continuity (for example pinned target UID and handoff snapshots).
+
 ```mermaid
 flowchart LR
   launch[launch] --> coast[coast] --> flare[flare]
@@ -106,9 +109,14 @@ Bots emit target-style actions:
 - `target_angle`: radians (`0` = upright)
 - `refuel`: `True/False`
 - `status`: short UI/log string
+- `handoff_to`: optional next bot instance for explicit ownership transfer
+- `handoff_context`: optional transferable state payload (for example pinned target UID)
+- `active_bot`, `stage`: structured HUD labels (authoritative over status parsing when set)
 
 ### Notes
 
 - Bots should use the sensor/action API, not engine internals.
 - `ActiveSensors` is rebuilt per bot step and caches repeated ballistic queries within the step.
+- Runtime ownership transfer applies `handoff_to`, installs the new owner in `actor_bots`, and hydrates it with `handoff_context`.
+- Base hooks `export_handoff_context()` and `import_handoff_context()` provide deterministic cross-bot state carry.
 

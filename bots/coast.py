@@ -425,7 +425,6 @@ class CoastBot(Bot):
         self._handoff_snapshot: dict[str, float | bool | str | None] | None = None
         self._handoff_event_summary = ""
         self._last_target_size: float | None = None
-        self._flare_delegate = FlareBot()
         self._single_burn_cfg = CoastSingleBurnConfig()
         self._coast_burn_plan: _CoastBurnPlan | None = None
         self._coast_burn_active = False
@@ -436,11 +435,9 @@ class CoastBot(Bot):
 
     def set_vehicle_info(self, info: VehicleInfo):
         super().set_vehicle_info(info)
-        self._flare_delegate.set_vehicle_info(info)
 
     def set_pinned_target_uid(self, target_uid: str | None) -> None:
         super().set_pinned_target_uid(target_uid)
-        self._flare_delegate.set_pinned_target_uid(self.pinned_target_uid)
 
     def set_behavior(self, behavior: str) -> None:
         key = str(behavior).strip().lower()
@@ -457,7 +454,6 @@ class CoastBot(Bot):
         self._handoff_snapshot = None
         self._handoff_event_summary = ""
         self._last_target_size = None
-        self._flare_delegate.set_behavior("flare")
         self._coast_burn_plan = None
         self._coast_burn_active = False
         self._coast_burn_done = False
@@ -476,14 +472,31 @@ class CoastBot(Bot):
         self._last_target_size = None
         self._last_guidance = None
         self._ballistic_debug_summary = ""
-        self._flare_delegate.set_behavior("flare")
         self._coast_burn_plan = None
         self._coast_burn_active = False
         self._coast_burn_done = False
         self._coast_burn_elapsed_s = 0.0
         self._coast_burn_state_summary = "idle"
-        if self.vehicle_info is not None:
-            self._flare_delegate.set_vehicle_info(self.vehicle_info)
+
+    def _handoff_to_flare_action(self, passive: PassiveSensors) -> BotAction:
+        handoff_context: dict[str, object] = {
+            "pinned_target_uid": self.pinned_target_uid,
+        }
+        snapshot = self.get_evaluation_snapshot()
+        if isinstance(snapshot, dict) and bool(snapshot.get("handoff_done")):
+            handoff_context["evaluation_snapshot"] = dict(snapshot)
+        action = BotAction(
+            target_thrust=0.0,
+            target_angle=float(passive.angle),
+            refuel=False,
+            status=f"{self._policy.status_prefix}:handoff_flare",
+            handoff_to=FlareBot(),
+            handoff_context=handoff_context,
+            active_bot="flare",
+            stage="handoff",
+        )
+        self.status = action.status
+        return action
 
     def _ballistic_clearance(self) -> float:
         if self.vehicle_info is None:
@@ -578,9 +591,7 @@ class CoastBot(Bot):
                     clearance=self._ballistic_clearance(),
                 )
             if self._behavior == "coast" and self._handoff_done:
-                flare_action = self._flare_delegate.update(dt, passive, active)
-                self.status = flare_action.status
-                return flare_action
+                return self._handoff_to_flare_action(passive)
 
             burn_command = self._coast_burn_command(
                 dt=dt,
@@ -987,6 +998,9 @@ class CoastBot(Bot):
         )
 
     def get_evaluation_snapshot(self) -> dict[str, float | bool | str | None]:
+        inherited = super().get_evaluation_snapshot()
+        if isinstance(inherited, dict) and inherited.get("kind") == "launch":
+            return dict(inherited)
         if self._handoff_snapshot is None:
             return {"kind": "coast", "handoff_done": bool(self._handoff_done)}
         return dict(self._handoff_snapshot)

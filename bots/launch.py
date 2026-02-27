@@ -326,7 +326,22 @@ class LaunchBot(CoastBot):
             self._handoff_snapshot = None
         self._active_sensors = active
         try:
-            return super().update(dt, passive, active)
+            action = super().update(dt, passive, active)
+            if passive.state == "flying" and self._setup_handoff_done:
+                handoff_context: dict[str, Any] = {
+                    "pinned_target_uid": self.pinned_target_uid,
+                }
+                snapshot = self.get_evaluation_snapshot()
+                if isinstance(snapshot, dict) and bool(snapshot.get("handoff_done")):
+                    handoff_context["evaluation_snapshot"] = dict(snapshot)
+                action.handoff_to = CoastBot()
+                action.handoff_context = handoff_context
+                action.active_bot = "coast"
+                action.stage = "handoff"
+                if not action.status:
+                    action.status = "launch:handoff_coast"
+                self.status = action.status
+            return action
         finally:
             self._active_sensors = None
 

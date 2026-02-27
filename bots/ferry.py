@@ -95,6 +95,19 @@ class FerryBot(Bot):
             return landed_uid == self._destination_site_uid
         return any(contact.uid == self._destination_site_uid for contact in contacts)
 
+    def _handoff_to_launch_action(self) -> BotAction:
+        action = BotAction(
+            target_thrust=self._takeoff_thrust(),
+            target_angle=0.0,
+            refuel=False,
+            status="ferry:handoff_launch",
+            handoff_to=self._delegate,
+            active_bot="launch",
+            stage="handoff",
+        )
+        self.status = action.status
+        return action
+
     def update(
         self,
         dt: float,
@@ -166,13 +179,14 @@ class FerryBot(Bot):
                 # Hand off once clear of the departure pad.
                 self._delegate.set_behavior("launch")
                 self._pad_clear = True
-            action = self._delegate.update(dt, passive, active)
-        else:
-            action = self._delegate.update(dt, passive, active)
-        if action.status and not action.status.startswith("ferry:"):
-            action.status = f"ferry:{action.status}"
-        elif not action.status:
-            action.status = "ferry:active"
+                return self._handoff_to_launch_action()
+            return self._handoff_to_launch_action()
+        action = BotAction(
+            target_thrust=0.0,
+            target_angle=float(passive.angle),
+            refuel=False,
+            status="ferry:idle",
+        )
         self.status = action.status
         return action
 

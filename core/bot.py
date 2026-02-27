@@ -121,6 +121,10 @@ class BotAction:
     refuel: bool
     status: str = ""  # bot status for UI
     message: str = ""  # optional message (not persisted)
+    handoff_to: "Bot | None" = None  # optional ownership transfer target
+    handoff_context: dict[str, Any] | None = None  # context persisted across handoffs
+    active_bot: str | None = None  # explicit active bot label for HUD
+    stage: str | None = None  # explicit stage label for HUD
 
 
 class Bot(ABC):
@@ -130,6 +134,9 @@ class Bot(ABC):
         self.status = ""
         self.vehicle_info: VehicleInfo | None = None
         self._pinned_target_uid: str | None = None
+        self._display_active_bot: str | None = None
+        self._display_stage: str | None = None
+        self._inherited_evaluation_snapshot: dict[str, Any] | None = None
 
     @abstractmethod
     def update(
@@ -168,6 +175,45 @@ class Bot(ABC):
         normalized = str(target_uid).strip()
         self._pinned_target_uid = normalized if normalized else None
 
+    def set_display_state(
+        self,
+        *,
+        active_bot: str | None = None,
+        stage: str | None = None,
+    ) -> None:
+        """Persist HUD display labels computed by runtime orchestration."""
+        self._display_active_bot = active_bot
+        self._display_stage = stage
+
+    def get_display_state(self) -> dict[str, str | None]:
+        """Return structured display labels for HUD consumers."""
+        return {
+            "active_bot": self._display_active_bot,
+            "stage": self._display_stage,
+        }
+
+    def export_handoff_context(self) -> dict[str, Any]:
+        """Return transferable runtime context for bot ownership handoff."""
+        context: dict[str, Any] = {}
+        if self.pinned_target_uid is not None:
+            context["pinned_target_uid"] = self.pinned_target_uid
+        snapshot = self.get_evaluation_snapshot()
+        if isinstance(snapshot, dict) and bool(snapshot.get("handoff_done")):
+            context["evaluation_snapshot"] = dict(snapshot)
+        return context
+
+    def import_handoff_context(self, context: dict[str, Any] | None) -> None:
+        """Apply transferred runtime context after a bot ownership handoff."""
+        if not isinstance(context, dict):
+            return
+        if "pinned_target_uid" in context:
+            self.set_pinned_target_uid(context.get("pinned_target_uid"))
+        snapshot = context.get("evaluation_snapshot")
+        if isinstance(snapshot, dict):
+            self._inherited_evaluation_snapshot = dict(snapshot)
+        else:
+            self._inherited_evaluation_snapshot = None
+
     def get_stats_text(self) -> list[str]:
         """Return a list of UI text lines for this bot.
 
@@ -188,7 +234,9 @@ class Bot(ABC):
 
     def get_evaluation_snapshot(self) -> dict[str, Any] | None:
         """Return optional structured evaluation state for the current frame."""
-        return None
+        if self._inherited_evaluation_snapshot is None:
+            return None
+        return dict(self._inherited_evaluation_snapshot)
 
 
 class _ActiveSensorImpl:

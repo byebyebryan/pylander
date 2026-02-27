@@ -129,11 +129,12 @@ class HudOverlay:
             bot_label = f"{bot_name}:{behavior}" if behavior else bot_name
             lines.append(f"BOT: {bot_label}")
             bot_status = self._resolve_bot_status(bot)
-            if bot_status:
-                active_bot, stage = self._parse_bot_status(bot_status)
+            active_bot, stage = self._resolve_bot_display_state(bot, bot_status)
+            if bot_status or active_bot or stage:
                 active_label = active_bot if active_bot else bot_name
                 stage_label = stage if stage else "--"
                 lines.append(f"BOT ACTIVE: {active_label}    STAGE: {stage_label}")
+            if bot_status:
                 lines.append(f"BOT STATUS: {bot_status}")
         lines.append("")
         lines.append(f"FUEL: {fuel_pct:.1f}% ({tank.fuel:.1f}/{tank.max_fuel:.1f})")
@@ -205,6 +206,31 @@ class HudOverlay:
         rest = rest.strip()
         stage = rest.split(maxsplit=1)[0] if rest else None
         return active_bot, stage
+
+    @staticmethod
+    def _clean_display_text(value: object) -> str | None:
+        if not isinstance(value, str):
+            return None
+        text = value.strip()
+        return text if text else None
+
+    @classmethod
+    def _resolve_bot_display_state(
+        cls,
+        bot,
+        status: str,
+    ) -> tuple[str | None, str | None]:
+        get_display_state = getattr(bot, "get_display_state", None)
+        if callable(get_display_state):
+            display_state = get_display_state()
+            if isinstance(display_state, dict):
+                active_bot = cls._clean_display_text(display_state.get("active_bot"))
+                stage = cls._clean_display_text(display_state.get("stage"))
+                if active_bot or stage:
+                    return active_bot, stage
+        if status:
+            return cls._parse_bot_status(status)
+        return None, None
 
     def _build_control_lines(self, lander) -> list[str]:
         _ = lander

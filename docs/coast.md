@@ -59,6 +59,9 @@ Coast->flare handoff is intentionally late:
 - handoff requires retrograde orientation (ship opposite velocity) before transfer;
 - pass/fail is filtered with consecutive-frame hysteresis to avoid chatter.
 
+When the handoff gate passes, `coast` emits explicit ownership transfer to `flare` (not delegated nested update).
+The handoff payload carries shared context (for example pinned target UID and handoff snapshot fields) so terminal phase starts with continuity.
+
 This keeps coast active as long as useful, which is important for future disturbances (wind, moving targets, etc.).
 
 ## Scenario design
