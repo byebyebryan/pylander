@@ -1,4 +1,4 @@
-# Launch phase (`launch` level + `launch` bot)
+# Launch phase (`launch` level)
 
 `launch` is the pad-to-pad transfer scenario: take off from one site, fly to the other, and finish on the destination pad.
 
@@ -16,17 +16,21 @@ Defined in [`levels/launch.py`](../levels/launch.py):
   - `mid`: `dx in [300, 500]`
   - `far`: `dx in [600, 1000]`
 
-## Bot behavior
+## Default bot behavior
 
-Implementation: [`bots/launch.py`](../bots/launch.py)
+Default implementation: [`bots/zem_zev.py`](../bots/zem_zev.py)
 
-`launch` is a transfer wrapper that:
+`launch` now defaults to `zem_zev` end-to-end:
 
-1. Locks source pad on initial landed frame.
-2. Selects/pins destination pad.
-3. Clears pad upright to safe altitude.
-4. Hands control to `zem_zev` for in-flight guidance.
-5. Holds landed state on destination (`launch:arrived`).
+1. Selects destination when starting landed on the source pad.
+2. Performs upright takeoff and low-altitude pad-clear (`~10` altitude).
+3. Transitions directly to optimizer guidance for transfer + terminal landing.
+4. Holds landed state once on the selected destination pad.
+
+Optional wrapper implementation: [`bots/launch.py`](../bots/launch.py)
+
+- `launch` bot remains available via `--bot launch`.
+- Wrapper behavior is still upright pad-clear then ownership handoff to `zem_zev`.
 
 Run-end scoring fields:
 

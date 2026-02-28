@@ -20,7 +20,7 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 - Dedicated flare benchmark level (`flare`) defaulting to unified optimizer bot (`zem_zev`)
 - Horizontal-control benchmark level (`coast`) defaulting to unified optimizer bot (`zem_zev`)
 - Setup benchmark level (`setup`) defaulting to unified optimizer bot (`zem_zev`)
-- Pad-to-pad launch transfer level (`launch`) with wrapper bot (`launch`) that hands off to `zem_zev`
+- Pad-to-pad launch transfer level (`launch`) defaulting to unified optimizer bot (`zem_zev`)
 
 ## Setup
 
@@ -81,6 +81,9 @@ uv run python main.py setup --eval-mode full
 
 # Pad-to-pad launch transfer level + bot
 uv run python main.py launch
+
+# Run wrapper launch bot explicitly (upright pad-clear then handoff)
+uv run python main.py launch --bot launch
 
 # Use plunge bot on other levels if desired
 uv run python main.py flat --bot plunge
@@ -168,7 +171,7 @@ uv run python main.py [level_name] [options]
 
 **Levels:** Run `uv run python main.py --help` to list (e.g. `flat`, `mountains`, `plunge`).
 
-**Bot names:** `plunge`, `flare`, `coast`, `setup`, `launch`, `zem_zev` (set via `--bot`; see `--help`). `zem_zev` is the optimizer-first unified in-flight controller used by default on `setup`, `coast`, and `flare` levels (see [`docs/zem_zev.md`](docs/zem_zev.md) and [`docs/zem_full_envelope.md`](docs/zem_full_envelope.md)).
+**Bot names:** `plunge`, `flare`, `coast`, `setup`, `launch`, `zem_zev` (set via `--bot`; see `--help`). `zem_zev` is the optimizer-first unified full-envelope controller used by default on `launch`, `setup`, `coast`, and `flare` levels (see [`docs/zem_zev.md`](docs/zem_zev.md) and [`docs/zem_full_envelope.md`](docs/zem_full_envelope.md)).
 
 **Options:**
 - `--bot NAME` - Select bot (`plunge`, `flare`, `coast`, `setup`, `launch`, `zem_zev`)

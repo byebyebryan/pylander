@@ -328,6 +328,40 @@ def test_launch_bot_clears_arrived_if_it_lands_away_from_destination() -> None:
     assert action.status == "launch:takeoff_upright"
 
 
+def test_zem_zev_launch_takeoff_picks_destination_and_clears_pad() -> None:
+    bot = create_bot("zem_zev")
+    contacts = _make_launch_contacts()
+
+    landed = _make_launch_passive(state="landed", altitude=4.0, contacts=contacts)
+    landed_action = bot.update(1.0 / 60.0, landed, active=SimpleNamespace())
+    assert landed_action.status == "zem_zev:takeoff"
+    assert landed_action.target_thrust > 0.0
+    assert landed_action.target_angle == pytest.approx(0.0)
+    assert bot._auto_target_uid == "launch_site_dest"
+
+    low_alt = _make_launch_passive(state="flying", altitude=6.0, contacts=contacts)
+    low_alt_action = bot.update(1.0 / 60.0, low_alt, active=SimpleNamespace())
+    assert low_alt_action.status == "zem_zev:clear_pad"
+    assert low_alt_action.target_thrust > 0.0
+    assert low_alt_action.target_angle == pytest.approx(0.0)
+
+
+def test_zem_zev_stays_landed_after_arriving_on_selected_destination() -> None:
+    bot = create_bot("zem_zev")
+    source_contacts = _make_launch_contacts()
+    landed_source = _make_launch_passive(state="landed", altitude=4.0, contacts=source_contacts)
+    takeoff = bot.update(1.0 / 60.0, landed_source, active=SimpleNamespace())
+    assert takeoff.status == "zem_zev:takeoff"
+    assert bot._auto_target_uid == "launch_site_dest"
+
+    dest_contacts = _make_launch_contacts_from_dest()
+    landed_dest = _make_launch_passive(state="landed", altitude=4.0, contacts=dest_contacts)
+    arrived = bot.update(1.0 / 60.0, landed_dest, active=SimpleNamespace())
+    assert arrived.status == "zem_zev:landed"
+    assert arrived.target_thrust == pytest.approx(0.0)
+    assert arrived.target_angle == pytest.approx(0.0)
+
+
 def test_launch_bot_emits_ownership_handoff_to_coast(monkeypatch) -> None:
     bot = SetupBot()
     bot.set_pinned_target_uid("launch_target")
@@ -4948,6 +4982,7 @@ def test_transfer_scenario_applies_empty_cargo_mass() -> None:
 
 def test_launch_level_lists_expected_scenarios() -> None:
     level = create_level_by_name("launch")
+    assert level.default_bot_name == "zem_zev"
     list_scenarios = getattr(level, "list_batch_scenarios", None)
     assert callable(list_scenarios)
     assert list_scenarios() == [

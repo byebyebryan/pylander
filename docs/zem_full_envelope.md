@@ -7,7 +7,7 @@ This doc tracks how `zem_zev` is integrated into the full in-flight envelope.
 - `flare` level default bot: `zem_zev`
 - `coast` level default bot: `zem_zev`
 - `setup` level default bot: `zem_zev`
-- `launch` remains a wrapper bot and hands off to `zem_zev` after pad clear
+- `launch` level default bot: `zem_zev` (wrapper `launch` bot remains optional)
 
 Legacy phase bots remain available:
 

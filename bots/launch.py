@@ -7,7 +7,7 @@ from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors, VehicleInfo
 from core.sensor import RadarContact
 
 _LAUNCH_BEHAVIORS = ("launch",)
-_TAKEOFF_SAFE_ALTITUDE = 100.0
+_TAKEOFF_SAFE_ALTITUDE = 10.0
 _TAKEOFF_THRUST_TARGET = 0.9
 
 

@@ -37,7 +37,7 @@ _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = ("mid",)
 class LaunchLevel(PresetLevel):
     """Two-pad flat transfer setup for repeated point-to-point launch runs."""
 
-    default_bot_name = "launch"
+    default_bot_name = "zem_zev"
     dynamic_site_enabled = False
 
     site_specs = ()

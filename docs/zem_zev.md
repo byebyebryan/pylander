@@ -3,7 +3,7 @@
 Implementation: [`bots/zem_zev.py`](../bots/zem_zev.py), [`bots/_optimizer_pdg.py`](../bots/_optimizer_pdg.py)
 
 `zem_zev` is an optimizer-first full-envelope guidance bot.
-It is now the default in-flight controller for `setup`, `coast`, and `flare` levels.
+It is now the default controller for `launch`, `setup`, `coast`, and `flare` levels.
 Legacy `setup` / `coast` / `flare` bots are still available for targeted experiments.
 
 ## Naming

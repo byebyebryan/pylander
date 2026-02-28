@@ -86,6 +86,10 @@ class ZemZevConfig:
     touchdown_phase_altitude: float = 4.0
     touchdown_phase_speed: float = 2.5
 
+    # Launch-from-pad bootstrap when starting landed with a different target.
+    launch_takeoff_clear_altitude: float = 10.0
+    launch_takeoff_thrust: float = 0.9
+
 
 class ZemZevBot(Bot):
     def __init__(self, behavior: str = "zem_zev") -> None:
@@ -122,6 +126,8 @@ class ZemZevBot(Bot):
         self._terminal_gate_projected_dx: float | None = None
         self._last_projection_dx: float | None = None
         self._last_projection_t_fall: float | None = None
+        self._auto_target_uid: str | None = None
+        self._launch_takeoff_active = False
 
         self.set_behavior(behavior)
 
@@ -133,6 +139,8 @@ class ZemZevBot(Bot):
             )
         self._behavior = "zem_zev"
         self._reset_state()
+        self._auto_target_uid = None
+        self._launch_takeoff_active = False
 
     def _reset_state(self) -> None:
         self._prev_angle_cmd = 0.0
@@ -160,6 +168,45 @@ class ZemZevBot(Bot):
         self._terminal_gate_projected_dx = None
         self._last_projection_dx = None
         self._last_projection_t_fall = None
+
+    @staticmethod
+    def _contact_distance(contact) -> float:
+        try:
+            return abs(float(contact.distance))
+        except (TypeError, ValueError):
+            rel_x = float(getattr(contact, "rel_x", 0.0))
+            rel_y = float(getattr(contact, "rel_y", 0.0))
+            return math.hypot(rel_x, rel_y)
+
+    def _landed_contact_uid(self, passive: PassiveSensors) -> str | None:
+        contacts = passive.radar_contacts or []
+        if not contacts:
+            return None
+        landed = min(contacts, key=self._contact_distance)
+        return landed.uid
+
+    def _resolve_target_contact(self, passive: PassiveSensors):
+        contacts = passive.radar_contacts or []
+        if not contacts:
+            return None
+
+        forced_uid = self.pinned_target_uid or self._auto_target_uid
+        if forced_uid:
+            for contact in contacts:
+                if contact.uid == forced_uid:
+                    return contact
+
+        if passive.state == "landed" and self.pinned_target_uid is None and len(contacts) >= 2:
+            landed_uid = self._landed_contact_uid(passive)
+            for contact in contacts:
+                if contact.uid is not None and contact.uid != landed_uid:
+                    self._auto_target_uid = contact.uid
+                    return contact
+
+        return pick_target(passive, pinned_uid=self.pinned_target_uid)
+
+    def _takeoff_thrust(self, max_throttle: float) -> float:
+        return clamp(self._cfg.launch_takeoff_thrust, 0.0, max_throttle)
 
     @property
     def behavior(self) -> str:
@@ -489,18 +536,70 @@ class ZemZevBot(Bot):
         passive: PassiveSensors,
         active: ActiveSensors,
     ) -> BotAction:
+        if passive.state == "crashed":
+            self._reset_state()
+            self._auto_target_uid = None
+            self._launch_takeoff_active = False
+            action = BotAction(0.0, passive.angle, False, status="zem_zev:crashed")
+            self.status = action.status
+            return action
+        if passive.state == "out_of_fuel":
+            self._reset_state()
+            self._auto_target_uid = None
+            self._launch_takeoff_active = False
+            action = BotAction(0.0, passive.angle, False, status="zem_zev:out_of_fuel")
+            self.status = action.status
+            return action
+
+        if passive.state == "landed":
+            self._reset_state()
+
+        max_power, min_throttle, max_throttle, _ramp_up = engine_profile(self.vehicle_info)
+        target = self._resolve_target_contact(passive)
+        target_uid = target.uid if target is not None else None
+
+        if passive.state == "landed":
+            landed_uid = self._landed_contact_uid(passive)
+            if target_uid is None or landed_uid == target_uid:
+                self._launch_takeoff_active = False
+                action = BotAction(0.0, 0.0, False, status="zem_zev:landed")
+                self.status = action.status
+                return action
+
+            self._launch_takeoff_active = True
+            action = BotAction(
+                self._takeoff_thrust(max_throttle),
+                0.0,
+                False,
+                status="zem_zev:takeoff",
+            )
+            self.status = action.status
+            return action
+
         if passive.state != "flying":
             self._reset_state()
-        if passive.state in ("landed", "crashed", "out_of_fuel"):
+            self._launch_takeoff_active = False
             action = BotAction(0.0, passive.angle, False, status=f"zem_zev:{passive.state}")
             self.status = action.status
             return action
+
+        alt = max(0.0, finite_altitude(passive))
+        if self._launch_takeoff_active and alt < self._cfg.launch_takeoff_clear_altitude:
+            action = BotAction(
+                self._takeoff_thrust(max_throttle),
+                0.0,
+                False,
+                status="zem_zev:clear_pad",
+            )
+            self.status = action.status
+            return action
+        if self._launch_takeoff_active and alt >= self._cfg.launch_takeoff_clear_altitude:
+            self._launch_takeoff_active = False
 
         if not self._angle_cmd_initialized:
             self._prev_angle_cmd = float(passive.angle)
             self._angle_cmd_initialized = True
 
-        max_power, min_throttle, max_throttle, _ramp_up = engine_profile(self.vehicle_info)
         mass = max(0.5, float(passive.mass))
         max_force = max_power * max_throttle
         nominal_force = max_power * min(1.0, max_throttle)
@@ -509,7 +608,6 @@ class ZemZevBot(Bot):
         nominal_thrust_accel = max(0.1, nominal_force / mass)
         min_thrust_accel = max(0.0, min_force / mass)
 
-        target = pick_target(passive, pinned_uid=self.pinned_target_uid)
         if target is not None:
             dx = float(target.x) - float(passive.x)
             dy = float(target.y) - float(passive.y)
@@ -518,7 +616,6 @@ class ZemZevBot(Bot):
             dx = 0.0
             dy = -max(0.0, finite_altitude(passive))
 
-        alt = max(0.0, finite_altitude(passive))
         self._elapsed_time_s += max(0.0, float(dt))
         self._update_phase_tracking(
             passive=passive,
