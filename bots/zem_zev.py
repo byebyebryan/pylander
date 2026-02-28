@@ -118,6 +118,12 @@ class ZemZevConfig:
     # Lateral miss → earlier ignition: burn_alt += lateral_gate_gain * |projected_dx|
     gate_lateral_gain: float = 0.25
     gate_lateral_deadband: float = 15.0
+    # Shallow-entry guard: trigger terminal once horizontal stopping room is
+    # nearly exhausted while still traveling toward the pad.
+    gate_lateral_stop_ax_scale: float = 0.90
+    gate_lateral_stop_margin: float = 8.0
+    gate_lateral_stop_vx_min: float = 8.0
+    gate_lateral_stop_alt_max: float = 320.0
 
     # Damping: measured-accel feedback
     ax_damping: float = 0.10
@@ -133,6 +139,13 @@ class ZemZevConfig:
     # Terminal descent speed floor
     terminal_min_sink_vy: float = 1.2
     terminal_min_sink_gain: float = 0.30
+    terminal_sink_base: float = 0.45
+    terminal_sink_alt_gain: float = 0.11
+    terminal_sink_dx_gain: float = 3.0
+    terminal_sink_min: float = 0.7
+    terminal_sink_max: float = 9.2
+    terminal_sink_high_alt: float = 160.0
+    terminal_sink_high_alt_max: float = 11.5
 
     # Anti-hover near ground in terminal
     terminal_hover_cap_gain: float = 0.22
@@ -253,6 +266,8 @@ class ZemZevBot(Bot):
         up_acc_max: float,
         min_accel: float,
         down_speed: float,
+        dx: float,
+        vx: float,
         projected_dx: float,
         thrust_level: float,
         max_throttle: float,
@@ -294,10 +309,27 @@ class ZemZevBot(Bot):
         )
         stop_gate = alt <= (stop_distance + spool_distance + cfg.stop_margin + lateral_margin)
 
+        # Horizontal stopping-room gate for shallow entries. A pure vertical
+        # gate can commit too late when horizontal speed is still high.
+        lateral_stop_gate = False
+        abs_vx = abs(vx)
+        if (
+            abs_vx >= cfg.gate_lateral_stop_vx_min
+            and (dx * vx) > 0.0
+            and alt <= cfg.gate_lateral_stop_alt_max
+        ):
+            lateral_ax = max(0.6, cfg.net_ax_cap * cfg.gate_lateral_stop_ax_scale)
+            lateral_stop_distance = (abs_vx * abs_vx) / (2.0 * max(1e-3, lateral_ax))
+            lateral_spool_distance = abs_vx * spool_time
+            lateral_stop_gate = (
+                abs(dx)
+                <= (lateral_stop_distance + lateral_spool_distance + cfg.gate_lateral_stop_margin)
+            )
+
         # Emergency: must commit if falling fast at moderate altitude
         emergency = down_speed >= cfg.emergency_vy and alt <= cfg.emergency_alt
 
-        return vert_feasible or stop_gate or emergency
+        return vert_feasible or stop_gate or lateral_stop_gate or emergency
 
     # -- ZEM/ZEV thrust accel --
 
@@ -448,6 +480,8 @@ class ZemZevBot(Bot):
             up_acc_max=up_acc_max,
             min_accel=min_accel,
             down_speed=down_speed,
+            dx=dx,
+            vx=vx,
             projected_dx=projected_dx,
             thrust_level=float(passive.thrust_level),
             max_throttle=max_throttle,
@@ -589,9 +623,15 @@ class ZemZevBot(Bot):
         vy_now = float(passive.vy_up)
         dx_mag = abs(dx)
         miss_factor = clamp(dx_mag / 100.0, 0.0, 1.0)
+        sink_cap = cfg.terminal_sink_max
+        if alt > cfg.terminal_sink_high_alt:
+            sink_cap = max(sink_cap, cfg.terminal_sink_high_alt_max)
         target_sink = -clamp(
-            0.45 + 0.11 * alt + 3.0 * miss_factor,
-            0.7, 8.0,
+            cfg.terminal_sink_base
+            + (cfg.terminal_sink_alt_gain * alt)
+            + (cfg.terminal_sink_dx_gain * miss_factor),
+            cfg.terminal_sink_min,
+            sink_cap,
         )
         if vy_now > target_sink:
             overshoot = vy_now - target_sink

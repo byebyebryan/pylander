@@ -218,8 +218,11 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--batch-workers",
         type=int,
-        default=1,
-        help="Batch worker processes (1 = sequential)",
+        default=None,
+        help=(
+            "Batch worker processes (default: auto = CPU count; "
+            "1 = sequential)"
+        ),
     )
     return parser
 
@@ -260,7 +263,11 @@ def _parse_args(args: argparse.Namespace) -> RunConfig:
         batch_json=args.batch_json,
         batch_csv=args.batch_csv,
         quick_benchmark=args.quick_benchmark,
-        batch_workers=max(1, int(args.batch_workers)),
+        batch_workers=(
+            max(1, int(args.batch_workers))
+            if args.batch_workers is not None
+            else max(1, int(os.cpu_count() or 1))
+        ),
         eval_mode=str(getattr(args, "eval_mode", "auto") or "auto"),
     )
 

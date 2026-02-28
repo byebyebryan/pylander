@@ -179,7 +179,7 @@ uv run python main.py [level_name] [options]
 - `--batch-scenarios CSV` - Scenario names for batch suites
 - `--batch-json PATH|auto` - Write JSON report
 - `--batch-csv PATH|auto` - Write CSV rows
-- `--batch-workers N` - Parallel worker processes for batch runs (`1` = sequential; effective workers are capped by CPU count and run count)
+- `--batch-workers N` - Parallel worker processes for batch runs (default: auto = CPU count; `1` = sequential; effective workers are capped by CPU count and run count)
 - `--quick-benchmark` - Built-in cross-level core benchmark preset using median scenario values (`plunge` + `flare` + `coast` + `launch` subsets)
 - `--help`, `-h` - Show help message
 
