@@ -68,6 +68,10 @@ class ZemZevConfig:
     touchdown_zero_alt: float = 2.4
     touchdown_zero_vx: float = 0.55
     touchdown_zero_vy: float = 0.95
+    touchdown_rescue_altitude: float = 4.5
+    touchdown_rescue_vy_ratio: float = 1.8
+    touchdown_rescue_tilt: float = 0.14
+    touchdown_rescue_alt_floor: float = 0.8
 
     # Safety brake when descent rate is critical
     emergency_vy: float = 12.0
@@ -526,6 +530,37 @@ class ZemZevBot(Bot):
                 dt,
                 max_rate=cfg.angle_rate,
             )
+
+        # Low-altitude rescue: if descent is outside the braking envelope, bias
+        # toward vertical braking and compute required throttle from kinematics.
+        down_speed = max(0.0, -float(passive.vy_up))
+        rescue_limit = self._braking_speed_limit(alt, max_thrust_accel, max_tilt_now)
+        if (
+            alt <= cfg.touchdown_rescue_altitude
+            and down_speed > (cfg.touchdown_rescue_vy_ratio * rescue_limit)
+        ):
+            rescue_angle_target = 0.0
+            if abs(float(passive.vx)) > cfg.touchdown_zero_vx:
+                rescue_angle_target = math.copysign(cfg.touchdown_rescue_tilt, -float(passive.vx))
+            rescue_angle_target = clamp(
+                rescue_angle_target,
+                -cfg.touchdown_rescue_tilt,
+                cfg.touchdown_rescue_tilt,
+            )
+            angle_cmd = rate_limit_angle_command(
+                rescue_angle_target,
+                self._prev_angle_cmd,
+                dt,
+                max_rate=cfg.angle_rate,
+            )
+
+            alt_eff = max(cfg.touchdown_rescue_alt_floor, alt - cfg.touchdown_zero_alt)
+            v_excess = max(0.0, down_speed - cfg.vy_touch_cap)
+            required_net_brake = (v_excess * v_excess) / (2.0 * alt_eff)
+            required_ay = _GRAVITY_MAG + required_net_brake
+            required_accel = required_ay / max(0.2, math.cos(angle_cmd))
+            required_thrust = (mass * required_accel) / max(max_power, 1e-3)
+            thrust = max(thrust, clamp(required_thrust, 0.0, max_throttle))
         self._prev_angle_cmd = angle_cmd
 
         return BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)

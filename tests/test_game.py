@@ -1889,6 +1889,60 @@ def test_zem_zev_touchdown_settles_and_cuts_engine() -> None:
     assert action.target_angle == pytest.approx(0.0)
 
 
+def test_zem_zev_touchdown_rescue_increases_braking_when_descent_is_critical(
+    monkeypatch,
+) -> None:
+    from bots.zem_zev import ZemZevBot
+
+    bot = ZemZevBot()
+    target = RadarContact(
+        uid="eval_site_primary",
+        x=0.0,
+        y=0.0,
+        size=110.0,
+        angle=0.0,
+        distance=14.0,
+        rel_x=10.0,
+        rel_y=-10.0,
+        is_inner_lock=True,
+        info=None,
+    )
+    passive = PassiveSensors(
+        x=-10.0,
+        y=10.0,
+        altitude=10.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=8.0,
+        vy_up=-18.0,
+        angle=0.25,
+        ax=0.0,
+        ay_up=0.0,
+        mass=12000.0,
+        thrust_level=0.5,
+        fuel=80.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[target],
+        proximity=None,
+    )
+
+    class _FakeActive:
+        def ballistic_trajectory(self, *args, **kwargs):
+            _ = args, kwargs
+            return {
+                "hit": True,
+                "hit_x": 0.0,
+                "hit_time": 0.8,
+                "duration": 0.8,
+            }
+
+    monkeypatch.setattr(bot, "_braking_speed_limit", lambda *_args, **_kwargs: 2.0)
+    action = bot.update(1.0 / 60.0, passive, active=_FakeActive())
+    assert action.target_thrust > 1.0
+    assert abs(action.target_angle) < abs(passive.angle)
+
+
 def test_zem_zev_initial_guidance_tilts_retrograde_for_lateral_arrest() -> None:
     from bots.zem_zev import ZemZevBot
 
