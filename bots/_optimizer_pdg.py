@@ -111,6 +111,7 @@ class PDGOptimizer:
         self._x_ref: cp.Parameter | None = None
         self._y_ref: cp.Parameter | None = None
         self._vy_floor: cp.Parameter | None = None
+        self._g_param: cp.Parameter | None = None
 
         self._build_problem()
 
@@ -119,7 +120,7 @@ class PDGOptimizer:
         n = int(cfg.horizon_steps)
         dt = float(cfg.step_dt)
         dt2 = dt * dt
-        g = 9.8
+        g_param = cp.Parameter(nonneg=True)
 
         x = cp.Variable(n + 1)
         y = cp.Variable(n + 1)
@@ -157,9 +158,10 @@ class PDGOptimizer:
             constraints.extend(
                 [
                     x[k + 1] == x[k] + (vx[k] * dt) + (0.5 * ax[k] * dt2),
-                    y[k + 1] == y[k] + (vy[k] * dt) + (0.5 * (ay[k] - g) * dt2),
+                    # Gravity comes from runtime config, not a hardcoded Earth value.
+                    y[k + 1] == y[k] + (vy[k] * dt) + (0.5 * (ay[k] - g_param) * dt2),
                     vx[k + 1] == vx[k] + (ax[k] * dt),
-                    vy[k + 1] == vy[k] + ((ay[k] - g) * dt),
+                    vy[k + 1] == vy[k] + ((ay[k] - g_param) * dt),
                     ay[k] >= 0.0,
                     cp.norm(cp.hstack([ax[k], ay[k]]), 2) <= a_max,
                     cp.abs(ax[k]) <= tilt_tan * ay[k],
@@ -223,6 +225,7 @@ class PDGOptimizer:
         self._x_ref = x_ref
         self._y_ref = y_ref
         self._vy_floor = vy_floor
+        self._g_param = g_param
 
     def solve(
         self,
@@ -239,6 +242,7 @@ class PDGOptimizer:
         nominal_thrust_accel: float,
         max_tilt_rad: float,
         descent_floor_vy: float,
+        gravity_mag: float,
         warm_start: PDGPlan | None,
     ) -> PDGPlan | None:
         if self._problem is None:
@@ -261,6 +265,7 @@ class PDGOptimizer:
         )
         self._tilt_tan.value = max(1e-3, math.tan(max(0.02, float(max_tilt_rad))))
         self._vy_floor.value = float(descent_floor_vy)
+        self._g_param.value = max(0.0, float(gravity_mag))
 
         x_ref = np.linspace(float(x), float(target_x), n + 1)
         y_ref = np.linspace(float(y), float(target_y), n + 1)
