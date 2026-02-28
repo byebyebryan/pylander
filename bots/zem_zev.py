@@ -46,10 +46,8 @@ class ZemZevConfig:
     fallback_hold_steps: int = 12
     long_horizon_altitude: float = 120.0
     long_horizon_time_to_go: float = 6.0
-    high_alt_coast_vy_boost_alt: float = 180.0
-    high_alt_coast_vy_boost_max: float = 1.10
-    high_alt_floor_relax_alt: float = 160.0
-    high_alt_floor_relax_min_scale: float = 0.80
+    high_alt_coast_vy_boost_alt: float = 220.0
+    high_alt_coast_vy_boost_max: float = 1.03
 
     # Attitude/allocator limits
     max_tilt: float = 0.78
@@ -367,7 +365,6 @@ class ZemZevBot(QueryBot):
         # Nominal-first schedule: OD is reserve, not baseline burn design.
         target_vy = self._desired_terminal_vy(alt, nominal_thrust_accel, max_tilt)
         descent_floor_vy = self._descent_floor_vy(alt, nominal_thrust_accel, max_tilt)
-        descent_floor_weight_scale = 1.0
         if phase in ("setup", "coast"):
             if alt > self._cfg.high_alt_coast_vy_boost_alt:
                 # Allow slightly faster commanded descent when far/high to reduce hover-like nibbling.
@@ -381,16 +378,6 @@ class ZemZevBot(QueryBot):
                     vy_alpha * max(0.0, self._cfg.high_alt_coast_vy_boost_max - 1.0)
                 )
                 target_vy = min(target_vy * vy_boost, -self._cfg.braking_min_speed)
-            if alt > self._cfg.high_alt_floor_relax_alt:
-                relax_alpha = clamp(
-                    (alt - self._cfg.high_alt_floor_relax_alt)
-                    / max(1e-3, 3.0 * self._cfg.high_alt_floor_relax_alt),
-                    0.0,
-                    1.0,
-                )
-                descent_floor_weight_scale = 1.0 - (
-                    relax_alpha * max(0.0, 1.0 - self._cfg.high_alt_floor_relax_min_scale)
-                )
         optimizer = self._select_optimizer(phase=phase, alt=alt, vy_up=float(passive.vy_up))
 
         plan = optimizer.solve(
@@ -409,7 +396,6 @@ class ZemZevBot(QueryBot):
             gravity_mag=_GRAVITY_MAG,
             pad_half_width=self._last_target_half,
             altitude_hint=alt,
-            descent_floor_weight_scale=descent_floor_weight_scale,
             warm_start=self._plan,
         )
         if plan is not None:
