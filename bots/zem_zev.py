@@ -115,6 +115,7 @@ class ZemZevBot(QueryBot):
         self._behavior = "zem_zev"
         self._prev_angle_cmd = 0.0
         self._angle_cmd_initialized = False
+        self._thrust_enabled = False
         self._last_target_half = 55.0
 
         self._plan: PDGPlan | None = None
@@ -159,6 +160,7 @@ class ZemZevBot(QueryBot):
     def _reset_state(self) -> None:
         self._prev_angle_cmd = 0.0
         self._angle_cmd_initialized = False
+        self._thrust_enabled = False
         self._plan = None
         self._plan_elapsed = 0.0
         self._replan_timer = 0.0
@@ -541,7 +543,14 @@ class ZemZevBot(QueryBot):
         thrust = (mass * thrust_acc) / max(max_power, 1e-3)
         thrust = clamp(thrust, 0.0, max_throttle)
         idle_angle_target: float | None = None
-        if thrust <= (cfg.throttle_off_threshold_scale * min_throttle):
+        off_threshold = cfg.throttle_off_threshold_scale * min_throttle
+        if self._thrust_enabled:
+            if thrust < off_threshold:
+                self._thrust_enabled = False
+        elif thrust >= min_throttle:
+            self._thrust_enabled = True
+
+        if not self._thrust_enabled:
             thrust = 0.0
             if alt > cfg.touchdown_zero_alt and abs(float(passive.vx)) > 0.5:
                 idle_angle_target = clamp(
@@ -589,6 +598,8 @@ class ZemZevBot(QueryBot):
             required_accel = required_ay / max(0.2, math.cos(angle_cmd))
             required_thrust = (mass * required_accel) / max(max_power, 1e-3)
             thrust = max(thrust, clamp(required_thrust, 0.0, max_throttle))
+            if thrust >= min_throttle:
+                self._thrust_enabled = True
         self._prev_angle_cmd = angle_cmd
 
         return BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)

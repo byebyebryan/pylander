@@ -34,11 +34,11 @@ class PDGOptimizerConfig:
     w_upward_vy: float = 1.20
 
     # Soft floor around minimum thrust acceleration (convex hinge penalty)
-    w_min_accel: float = 0.16
+    w_min_accel: float = 0.18
     w_descent_floor: float = 0.24
     w_altitude_progress: float = 0.00
     w_downspeed_progress: float = 0.00
-    w_thrust_linear: float = 0.12
+    w_thrust_linear: float = 0.14
     w_overdrive_linear: float = 1.40
     w_overdrive_quadratic: float = 6.00
 
