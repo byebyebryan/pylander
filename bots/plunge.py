@@ -15,10 +15,20 @@ from bots._bot_math import (
     stable,
     vehicle_limits,
 )
-from bots._guidance_types import GuidanceTargets
 from bots._targeting import pick_target
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.sensor import RadarContact
+
+
+@dataclass(frozen=True)
+class GuidanceTargets:
+    phase: str
+    vertical_mode: str
+    vx_sp: float
+    vy_sp: float
+    dx: float
+    alt: float
+    burn_altitude: float
 
 
 @dataclass(frozen=True)

@@ -1,55 +1,54 @@
-# Setup phase (`setup` level + `setup` bot)
+# Setup level (`setup`)
 
-`setup` is the pre-terminal approach scenario. Default control uses unified `zem_zev`; `setup` bot remains available for explicit setup->coast handoff experiments.
+`setup` is the pre-terminal setup benchmark for unified `zem_zev` guidance.
 
-## Phase contract
+## Purpose
 
-- Start from rest, upright.
-- Execute one practical setup sideburn.
-- Target a good ballistic approach to center.
-- Hand off when projection/speed conditions are met.
+- Start far from target, upright, at rest.
+- Force trajectory establishment from a cold state.
+- Measure whether the controller reaches a strong setup gate before coast/terminal progression.
 
-## Level setup
+Focused evaluation for this level ends at `zem_setup_gate_done`.
+
+## Scenario design
 
 Defined in [`levels/setup.py`](../levels/setup.py):
 
-- Cargo: empty (`0`)
-- Terrain: flat, flush target
-- Target size: `110`
-- Spawn geometry: arc around target with `radius in [700, 900]`
-- Base entry angles: `15deg`, `45deg`, `75deg`
-- Per-run angle deviation: `[-5deg, +5deg]`
-- Side (left/right) deterministic from `(seed, scenario)`
-- Initial state: `angle = 0`, `vx = 0`, `vy_up = 0`
+- Base entry angles: `shallower` (15deg), `shallow` (30deg), `mid` (45deg), `steep` (60deg), `steeper` (75deg)
+- Radius tiers:
+  - `near`: `[620, 780]`
+  - `far`: `[860, 1050]`
+- Angle deviation: `[-5deg, +5deg]`
+- Initial state: upright, `vx=0`, `vy_up=0`
 
 Scenarios:
 
-- `air_shallow`
-- `air_mid`
-- `air_steep`
+- `shallower_near`, `shallower_far`
+- `shallow_near`, `shallow_far`
+- `mid_near`, `mid_far`
+- `steep_near`, `steep_far`
+- `steeper_near`, `steeper_far`
 
 Defaults:
 
-- Default scenario: `air_mid`
-- Quick benchmark subset: `air_mid`, `air_steep`
+- default scenario: `mid_near`
+- quick benchmark subset: `shallow_near`, `mid_far`, `steep_far`
 
-## Bot and eval
+## Focused metrics
 
-- Setup bot implementation: [`bots/setup.py`](../bots/setup.py)
-- Shared setup helpers: [`bots/_launch_setup.py`](../bots/_launch_setup.py)
-
-`setup --eval-mode focused`:
-
-- Unified (`zem_zev`) success gate: `zem_setup_gate_done`
-- Setup-bot success gate: `setup_handoff_done`
-- Eval phase labels: `zem_setup_gate` or `setup_phase`
-
-Core setup metrics:
-
-- `setup_handoff_*`
-- `setup_distance`, `setup_fuel_consumed`, `setup_fuel_per_distance`, `setup_path_efficiency`
+- `setup_phase_done`
+- `setup_phase_time`
+- `setup_phase_altitude`
+- `setup_phase_projected_dx`
+- `setup_phase_distance`
+- `setup_phase_fuel_consumed`
+- `setup_phase_fuel_per_distance`
+- `setup_phase_path_efficiency`
 
 ## Commands
 
-- `uv run python main.py setup --headless --quick-benchmark`
-- `uv run python main.py setup --headless --batch --batch-scenarios air_shallow,air_mid,air_steep`
+```bash
+uv run python main.py setup
+uv run python main.py setup --headless --quick-benchmark
+uv run python main.py setup --headless --batch --batch-scenarios shallow_near,mid_far,steep_far
+```

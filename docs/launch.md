@@ -1,47 +1,42 @@
-# Launch phase (`launch` level)
+# Launch level (`launch`)
 
-`launch` is the pad-to-pad transfer scenario: take off from one site, fly to the other, and finish on the destination pad.
+`launch` is the pad-to-pad transfer scenario handled end-to-end by `zem_zev`.
 
 ## Level setup
 
 Defined in [`levels/launch.py`](../levels/launch.py):
 
 - Terrain: flat (`y = 0`)
-- Sites: source pad fixed at `x = 0`; destination pad sampled by scenario range
+- Two pads: source at `x=0`, destination sampled by scenario
 - Pad size: `110`
-- Spawn: on source pad (`spawn_x = 0`, no jitter)
+- Spawn: on source pad
 - Cargo: forced empty (`cargo_mass = 0`)
-- Scenarios:
-  - `near`: `dx in [150, 250]`
-  - `mid`: `dx in [300, 500]`
-  - `far`: `dx in [600, 1000]`
 
-## Default bot behavior
+Scenarios:
 
-Default implementation: [`bots/zem_zev.py`](../bots/zem_zev.py)
+- `near`: `dx in [150, 250]`
+- `mid`: `dx in [300, 500]`
+- `far`: `dx in [600, 1000]`
 
-`launch` now defaults to `zem_zev` end-to-end:
+## Runtime behavior
 
-1. Selects destination when starting landed on the source pad.
-2. Performs upright takeoff and low-altitude pad-clear (`~10` altitude).
-3. Transitions directly to optimizer guidance for transfer + terminal landing.
-4. Holds landed state once on the selected destination pad.
+`zem_zev` handles:
 
-Optional wrapper implementation: [`bots/launch.py`](../bots/launch.py)
+1. destination selection from pad contacts,
+2. upright takeoff + pad clear,
+3. transfer guidance,
+4. terminal landing on destination pad.
 
-- `launch` bot remains available via `--bot launch`.
-- Wrapper behavior is still upright pad-clear then ownership handoff to `zem_zev`.
+Run-end success fields:
 
-Run-end scoring fields:
-
-- `launch_arrived` (boolean success gate)
+- `launch_arrived`
 - `launch_landed_site_uid`
-- `failure_mode="wrong_pad"` when landed away from destination
+- `failure_mode="wrong_pad"` when landed on non-destination pad
 
 ## Commands
 
-- Interactive/headless:
-  - `uv run python main.py launch`
-  - `uv run python main.py launch --headless --seed 0`
-- Batch:
-  - `uv run python main.py launch --headless --batch --batch-scenarios near,mid,far`
+```bash
+uv run python main.py launch
+uv run python main.py launch --headless --seed 0
+uv run python main.py launch --headless --batch --batch-scenarios near,mid,far
+```

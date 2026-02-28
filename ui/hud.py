@@ -125,9 +125,7 @@ class HudOverlay:
         lines: list[str] = [f"STATE: {ls.state.upper()}    CREDITS: {wallet.credits:.0f}"]
         if bot is not None:
             bot_name = self._resolve_bot_name(bot)
-            behavior = self._resolve_bot_behavior(bot)
-            bot_label = f"{bot_name}:{behavior}" if behavior else bot_name
-            lines.append(f"BOT: {bot_label}")
+            lines.append(f"BOT: {bot_name}")
             bot_status = self._resolve_bot_status(bot)
             active_bot, stage = self._resolve_bot_display_state(bot, bot_status)
             if bot_status or active_bot or stage:
@@ -177,14 +175,6 @@ class HudOverlay:
         return bot.__class__.__module__.split(".")[-1]
 
     @staticmethod
-    def _resolve_bot_behavior(bot) -> str:
-        behavior = getattr(bot, "_bot_behavior", None)
-        if isinstance(behavior, str) and behavior:
-            return behavior
-        prop_behavior = getattr(bot, "behavior", None)
-        return prop_behavior if isinstance(prop_behavior, str) else ""
-
-    @staticmethod
     def _resolve_bot_status(bot) -> str:
         get_status = getattr(bot, "get_status", None)
         if callable(get_status):
@@ -220,14 +210,6 @@ class HudOverlay:
         bot,
         status: str,
     ) -> tuple[str | None, str | None]:
-        get_display_state = getattr(bot, "get_display_state", None)
-        if callable(get_display_state):
-            display_state = get_display_state()
-            if isinstance(display_state, dict):
-                active_bot = cls._clean_display_text(display_state.get("active_bot"))
-                stage = cls._clean_display_text(display_state.get("stage"))
-                if active_bot or stage:
-                    return active_bot, stage
         if status:
             return cls._parse_bot_status(status)
         return None, None

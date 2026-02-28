@@ -22,36 +22,49 @@ from levels.scenario_common import (
 class SetupScenario:
     name: str
     base_angle_deg: float
-    radius: float | SampleRange
-    angle_deviation_deg: float | SampleRange
+    radius: SampleRange
+    angle_deviation_deg: SampleRange = SampleRange(-5.0, 5.0)
     initial_angle: float = 0.0
     cargo_mass: float = 0.0
 
 
 _ANGLE_PROFILES: tuple[tuple[str, float], ...] = (
-    ("air_shallow", 15.0),
-    ("air_mid", 45.0),
-    ("air_steep", 75.0),
+    ("shallower", 15.0),
+    ("shallow", 30.0),
+    ("mid", 45.0),
+    ("steep", 60.0),
+    ("steeper", 75.0),
+)
+
+_RADIUS_TIERS: tuple[tuple[str, SampleRange], ...] = (
+    ("near", SampleRange(620.0, 780.0)),
+    ("far", SampleRange(860.0, 1050.0)),
 )
 
 
-def _build_angle_scenario(name: str, base_angle_deg: float) -> SetupScenario:
+def _scenario_name(angle_key: str, radius_key: str) -> str:
+    return f"{angle_key}_{radius_key}"
+
+
+def _build_scenario(angle_key: str, angle_deg: float, radius_key: str, radius: SampleRange) -> SetupScenario:
     return SetupScenario(
-        name=name,
-        base_angle_deg=float(base_angle_deg),
-        radius=SampleRange(700.0, 900.0),
-        angle_deviation_deg=SampleRange(-5.0, 5.0),
+        name=_scenario_name(angle_key, radius_key),
+        base_angle_deg=angle_deg,
+        radius=radius,
     )
 
 
 _SCENARIOS: tuple[SetupScenario, ...] = tuple(
-    _build_angle_scenario(name, angle_deg) for name, angle_deg in _ANGLE_PROFILES
+    _build_scenario(angle_key, angle_deg, radius_key, radius)
+    for angle_key, angle_deg in _ANGLE_PROFILES
+    for radius_key, radius in _RADIUS_TIERS
 )
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "air_mid"
+_DEFAULT_SCENARIO = "mid_near"
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    "air_mid",
-    "air_steep",
+    "shallow_near",
+    "mid_far",
+    "steep_far",
 )
 _SETUP_EVAL_MODES: tuple[str, ...] = ("auto", "focused", "full")
 _SETUP_DEFAULT_EVAL_MODE = "full"
@@ -126,7 +139,7 @@ class SetupLevel(ScenarioLevel):
         return numeric
 
     @staticmethod
-    def _resolve_setup_snapshot(game) -> dict[str, Any] | None:
+    def _resolve_zem_snapshot(game) -> dict[str, Any] | None:
         actor_bots = getattr(game, "actor_bots", {})
         if not isinstance(actor_bots, dict):
             return None
@@ -140,8 +153,7 @@ class SetupLevel(ScenarioLevel):
                 continue
             if not isinstance(snapshot, dict):
                 continue
-            kind = snapshot.get("kind")
-            if kind in {"setup", "zem_zev"} or "handoff_done" in snapshot:
+            if str(snapshot.get("kind") or "") == "zem_zev":
                 return snapshot
         return None
 
@@ -151,34 +163,14 @@ class SetupLevel(ScenarioLevel):
         return self._eval_mode_name
 
     def _reset_phase_eval_metrics(self) -> None:
-        self._phase1_snapshot_kind: str | None = None
-        self._phase1_handoff_done = False
-        self._phase1_handoff_time = None
-        self._phase1_setup_distance = 0.0
-        self._phase1_setup_fuel_consumed = 0.0
-        self._phase1_prev_pos: Vector2 | None = None
-        self._phase1_prev_fuel: float | None = None
-        self._phase1_handoff_projected_dx = None
-        self._phase1_handoff_impact_x = None
-        self._phase1_handoff_target_x = None
-        self._phase1_handoff_impact_error = None
-        self._phase1_handoff_current_impact_x = None
-        self._phase1_handoff_current_target_x = None
-        self._phase1_handoff_current_impact_error = None
-        self._phase1_handoff_abs_angle_deg = None
-        self._phase1_handoff_x = None
-        self._phase1_handoff_y = None
-        self._phase1_handoff_dx = None
-        self._phase1_handoff_altitude = None
-        self._phase1_handoff_vx = None
-        self._phase1_handoff_vy_up = None
-        self._phase1_handoff_speed = None
-        self._phase1_handoff_horizontal_speed = None
-        self._phase1_handoff_on_track = None
-        self._phase1_handoff_speed_ready = None
-        self._phase1_handoff_not_falling_short = None
-        self._phase1_handoff_centered = None
-        self._phase1_handoff_inside_target = None
+        self._setup_phase_done = False
+        self._setup_phase_time = None
+        self._setup_phase_altitude = None
+        self._setup_phase_projected_dx = None
+        self._setup_phase_distance = 0.0
+        self._setup_phase_fuel_consumed = 0.0
+        self._setup_prev_pos: Vector2 | None = None
+        self._setup_prev_fuel: float | None = None
         self._zem_setup_gate_done = False
         self._zem_setup_gate_time = None
         self._zem_setup_gate_altitude = None
@@ -193,108 +185,32 @@ class SetupLevel(ScenarioLevel):
         self._zem_fallback_frames = None
 
     def _update_phase_metrics(self) -> None:
-        if self._phase1_handoff_done:
+        if self._setup_phase_done:
             return
         actor = self.world.actors[0]
         trans = require_component(actor, Transform)
         tank = require_component(actor, FuelTank)
         cur_pos = Vector2(trans.pos)
         cur_fuel = float(tank.fuel)
-        if self._phase1_prev_pos is not None:
-            self._phase1_setup_distance += math.hypot(
-                cur_pos.x - self._phase1_prev_pos.x,
-                cur_pos.y - self._phase1_prev_pos.y,
+        if self._setup_prev_pos is not None:
+            self._setup_phase_distance += math.hypot(
+                cur_pos.x - self._setup_prev_pos.x,
+                cur_pos.y - self._setup_prev_pos.y,
             )
-        if self._phase1_prev_fuel is not None:
-            self._phase1_setup_fuel_consumed += max(0.0, self._phase1_prev_fuel - cur_fuel)
-        self._phase1_prev_pos = cur_pos
-        self._phase1_prev_fuel = cur_fuel
-
-    def _capture_handoff(self, game, snapshot: dict[str, Any]) -> None:
-        if self._phase1_handoff_done:
-            return
-        self._phase1_snapshot_kind = "setup"
-        actor = self.world.actors[0]
-        trans = require_component(actor, Transform)
-        self._phase1_handoff_done = True
-        self._phase1_handoff_time = float(getattr(game, "_elapsed_time", 0.0))
-        self._phase1_handoff_projected_dx = self._to_optional_float(snapshot.get("projected_dx"))
-        self._phase1_handoff_impact_x = self._to_optional_float(snapshot.get("impact_x"))
-        self._phase1_handoff_target_x = self._to_optional_float(snapshot.get("target_x"))
-        self._phase1_handoff_impact_error = self._to_optional_float(snapshot.get("impact_error"))
-        self._phase1_handoff_current_impact_x = self._to_optional_float(
-            snapshot.get("current_impact_x")
-        )
-        self._phase1_handoff_current_target_x = self._to_optional_float(
-            snapshot.get("current_target_x")
-        )
-        self._phase1_handoff_current_impact_error = self._to_optional_float(
-            snapshot.get("current_impact_error")
-        )
-        if (
-            self._phase1_handoff_impact_error is None
-            and self._phase1_handoff_impact_x is not None
-            and self._phase1_handoff_target_x is not None
-        ):
-            self._phase1_handoff_impact_error = abs(
-                self._phase1_handoff_impact_x - self._phase1_handoff_target_x
-            )
-        if (
-            self._phase1_handoff_current_impact_error is None
-            and self._phase1_handoff_current_impact_x is not None
-            and self._phase1_handoff_current_target_x is not None
-        ):
-            self._phase1_handoff_current_impact_error = abs(
-                self._phase1_handoff_current_impact_x - self._phase1_handoff_current_target_x
-            )
-        angle_rad = self._to_optional_float(snapshot.get("angle_rad"))
-        if angle_rad is None:
-            angle_rad = float(trans.rotation)
-        self._phase1_handoff_abs_angle_deg = abs(math.degrees(angle_rad))
-        self._phase1_handoff_x = self._to_optional_float(snapshot.get("x"))
-        self._phase1_handoff_y = self._to_optional_float(snapshot.get("y"))
-        self._phase1_handoff_dx = self._to_optional_float(snapshot.get("dx"))
-        self._phase1_handoff_altitude = self._to_optional_float(snapshot.get("altitude"))
-        self._phase1_handoff_vx = self._to_optional_float(snapshot.get("vx"))
-        self._phase1_handoff_vy_up = self._to_optional_float(snapshot.get("vy_up"))
-        self._phase1_handoff_speed = self._to_optional_float(snapshot.get("speed"))
-        self._phase1_handoff_horizontal_speed = self._to_optional_float(
-            snapshot.get("horizontal_speed")
-        )
-        if (
-            self._phase1_handoff_speed is None
-            and self._phase1_handoff_vx is not None
-            and self._phase1_handoff_vy_up is not None
-        ):
-            self._phase1_handoff_speed = math.hypot(
-                self._phase1_handoff_vx,
-                self._phase1_handoff_vy_up,
-            )
-        if (
-            self._phase1_handoff_horizontal_speed is None
-            and self._phase1_handoff_vx is not None
-        ):
-            self._phase1_handoff_horizontal_speed = abs(self._phase1_handoff_vx)
-        self._phase1_handoff_on_track = bool(snapshot.get("on_track"))
-        self._phase1_handoff_speed_ready = bool(snapshot.get("speed_ready"))
-        self._phase1_handoff_not_falling_short = bool(snapshot.get("not_falling_short"))
-        self._phase1_handoff_centered = bool(snapshot.get("centered"))
-        self._phase1_handoff_inside_target = bool(snapshot.get("inside_target"))
+        if self._setup_prev_fuel is not None:
+            self._setup_phase_fuel_consumed += max(0.0, self._setup_prev_fuel - cur_fuel)
+        self._setup_prev_pos = cur_pos
+        self._setup_prev_fuel = cur_fuel
 
     def _capture_zem_setup_gate(self, game, snapshot: dict[str, Any]) -> None:
-        self._phase1_snapshot_kind = "zem_zev"
         self._zem_setup_gate_done = bool(snapshot.get("setup_gate_done"))
         self._zem_setup_gate_time = self._to_optional_float(snapshot.get("setup_gate_time"))
-        self._zem_setup_gate_altitude = self._to_optional_float(
-            snapshot.get("setup_gate_altitude")
-        )
+        self._zem_setup_gate_altitude = self._to_optional_float(snapshot.get("setup_gate_altitude"))
         self._zem_setup_gate_projected_dx = self._to_optional_float(
             snapshot.get("setup_gate_projected_dx")
         )
         self._zem_terminal_gate_done = bool(snapshot.get("terminal_gate_done"))
-        self._zem_terminal_gate_time = self._to_optional_float(
-            snapshot.get("terminal_gate_time")
-        )
+        self._zem_terminal_gate_time = self._to_optional_float(snapshot.get("terminal_gate_time"))
         self._zem_terminal_gate_altitude = self._to_optional_float(
             snapshot.get("terminal_gate_altitude")
         )
@@ -306,36 +222,36 @@ class SetupLevel(ScenarioLevel):
         self._zem_solve_ms_p90 = self._to_optional_float(snapshot.get("solve_ms_p90"))
         self._zem_fallback_frames = self._to_optional_float(snapshot.get("fallback_frames"))
 
-        if self._phase1_handoff_done or (not self._zem_setup_gate_done):
+        if self._setup_phase_done or (not self._zem_setup_gate_done):
             return
+
         actor = self.world.actors[0]
         trans = require_component(actor, Transform)
-        phys = require_component(actor, PhysicsState)
-        self._phase1_handoff_done = True
-        self._phase1_handoff_time = (
+        self._setup_phase_done = True
+        self._setup_phase_time = (
             self._zem_setup_gate_time
             if self._zem_setup_gate_time is not None
             else float(getattr(game, "_elapsed_time", 0.0))
         )
-        self._phase1_handoff_projected_dx = self._zem_setup_gate_projected_dx
-        self._phase1_handoff_altitude = self._zem_setup_gate_altitude
-        self._phase1_handoff_x = float(trans.pos.x)
-        self._phase1_handoff_y = float(trans.pos.y)
-        target_pos = getattr(self, "eval_target_pos", None)
-        if isinstance(target_pos, Vector2):
-            self._phase1_handoff_dx = float(target_pos.x) - self._phase1_handoff_x
-        self._phase1_handoff_vx = float(phys.vel.x)
-        self._phase1_handoff_vy_up = float(phys.vel.y)
-        self._phase1_handoff_speed = math.hypot(self._phase1_handoff_vx, self._phase1_handoff_vy_up)
-        self._phase1_handoff_horizontal_speed = abs(self._phase1_handoff_vx)
-        self._phase1_handoff_abs_angle_deg = abs(math.degrees(float(trans.rotation)))
+        self._setup_phase_altitude = (
+            self._zem_setup_gate_altitude
+            if self._zem_setup_gate_altitude is not None
+            else max(
+                0.0,
+                float(trans.pos.y)
+                - float(getattr(self, "eval_target_pos", Vector2(0.0, 0.0)).y),
+            )
+        )
+        self._setup_phase_projected_dx = self._zem_setup_gate_projected_dx
 
     def setup(self, game, seed: int) -> None:
         self._resolved_eval_mode = self._mode_for_run()
         self._reset_phase_eval_metrics()
+
         scenario_base = _SCENARIO_BY_NAME[self._eval_scenario_name]
         scenario_name_hash = sum(ord(ch) for ch in scenario_base.name)
         rng = random.Random(seed ^ (scenario_name_hash << 1))
+
         direction = -1.0 if rng.random() < 0.5 else 1.0
         radius = self._resolve_sample_value(scenario_base.radius, rng)
         angle_deviation_deg = self._resolve_sample_value(scenario_base.angle_deviation_deg, rng)
@@ -343,6 +259,7 @@ class SetupLevel(ScenarioLevel):
         entry_angle_rad = math.radians(entry_angle_deg)
         start_dx = direction * radius * math.cos(entry_angle_rad)
         start_dy = radius * math.sin(entry_angle_rad)
+
         self.scenario = _make_spec(
             name=scenario_base.name,
             start_dx=start_dx,
@@ -368,10 +285,9 @@ class SetupLevel(ScenarioLevel):
             spawn_clearance=start_dy,
             initial_vy_up=0.0,
         )
+
         trans.rotation = float(scenario_base.initial_angle)
-        initial_vx = 0.0
-        initial_vy_up = 0.0
-        phys.vel = Vector2(initial_vx, initial_vy_up)
+        phys.vel = Vector2(0.0, 0.0)
 
         engine = getattr(self, "engine", None)
         if engine is not None:
@@ -383,14 +299,11 @@ class SetupLevel(ScenarioLevel):
                     uid=actor.uid,
                 )
             if hasattr(engine, "set_lander_velocity"):
-                engine.set_lander_velocity(
-                    Vector2(initial_vx, initial_vy_up),
-                    uid=actor.uid,
-                )
+                engine.set_lander_velocity(Vector2(0.0, 0.0), uid=actor.uid)
 
-        self._phase1_prev_pos = Vector2(trans.pos)
+        self._setup_prev_pos = Vector2(trans.pos)
         tank = require_component(actor, FuelTank)
-        self._phase1_prev_fuel = float(tank.fuel)
+        self._setup_prev_fuel = float(tank.fuel)
         self._set_scenario_params(
             {
                 "radius": radius,
@@ -404,75 +317,41 @@ class SetupLevel(ScenarioLevel):
     def update(self, game, dt: float) -> None:
         _ = dt
         self._update_phase_metrics()
-        if self._phase1_handoff_done:
+        if self._setup_phase_done:
             return
-        snapshot = self._resolve_setup_snapshot(game)
-        if not isinstance(snapshot, dict):
-            return
-        kind = str(snapshot.get("kind") or "")
-        if kind == "zem_zev":
+        snapshot = self._resolve_zem_snapshot(game)
+        if isinstance(snapshot, dict):
             self._capture_zem_setup_gate(game, snapshot)
-        elif bool(snapshot.get("handoff_done")):
-            self._capture_handoff(game, snapshot)
 
     def should_end(self, game) -> bool:
-        if self._resolved_eval_mode == "focused" and self._phase1_handoff_done:
+        if self._resolved_eval_mode == "focused" and self._setup_phase_done:
             return True
         return super().should_end(game)
 
     def end(self, game):
         result = super().end(game)
-        setup_distance = self._phase1_setup_distance
-        setup_fuel = self._phase1_setup_fuel_consumed
-        fuel_per_distance = (setup_fuel / setup_distance) if setup_distance > 1e-9 else 0.0
+
+        setup_distance = self._setup_phase_distance
+        setup_fuel = self._setup_phase_fuel_consumed
+        setup_fuel_per_distance = (setup_fuel / setup_distance) if setup_distance > 1e-9 else 0.0
         setup_path_efficiency = None
         actor = self.world.actors[0]
-        trans = require_component(actor, Transform)
         start_pos = getattr(actor, "start_pos", None)
         target_pos = getattr(self, "eval_target_pos", None)
         if isinstance(start_pos, Vector2) and isinstance(target_pos, Vector2) and setup_distance > 1e-9:
             straight_line = math.hypot(target_pos.x - start_pos.x, target_pos.y - start_pos.y)
             setup_path_efficiency = min(1.0, straight_line / setup_distance)
-        if self._phase1_handoff_done and self._phase1_handoff_abs_angle_deg is None:
-            self._phase1_handoff_abs_angle_deg = abs(math.degrees(float(trans.rotation)))
 
         result["eval_mode"] = self._resolved_eval_mode
-        result["setup_handoff_done"] = self._phase1_handoff_done
-        result["setup_handoff_time"] = self._phase1_handoff_time
-        result["setup_handoff_projected_dx"] = self._phase1_handoff_projected_dx
-        result["setup_handoff_impact_x"] = self._phase1_handoff_impact_x
-        result["setup_handoff_target_x"] = self._phase1_handoff_target_x
-        result["setup_handoff_impact_error"] = (
-            self._phase1_handoff_current_impact_error
-            if self._phase1_handoff_current_impact_error is not None
-            else self._phase1_handoff_impact_error
-        )
-        result["setup_handoff_planned_impact_error"] = self._phase1_handoff_impact_error
-        result["setup_handoff_current_impact_x"] = self._phase1_handoff_current_impact_x
-        result["setup_handoff_current_target_x"] = self._phase1_handoff_current_target_x
-        result["setup_handoff_abs_angle_deg"] = self._phase1_handoff_abs_angle_deg
-        result["setup_handoff_x"] = self._phase1_handoff_x
-        result["setup_handoff_y"] = self._phase1_handoff_y
-        result["setup_handoff_dx"] = self._phase1_handoff_dx
-        result["setup_handoff_abs_dx"] = (
-            abs(self._phase1_handoff_dx)
-            if self._phase1_handoff_dx is not None
-            else None
-        )
-        result["setup_handoff_altitude"] = self._phase1_handoff_altitude
-        result["setup_handoff_vx"] = self._phase1_handoff_vx
-        result["setup_handoff_vy_up"] = self._phase1_handoff_vy_up
-        result["setup_handoff_speed"] = self._phase1_handoff_speed
-        result["setup_handoff_horizontal_speed"] = self._phase1_handoff_horizontal_speed
-        result["setup_handoff_on_track"] = self._phase1_handoff_on_track
-        result["setup_handoff_speed_ready"] = self._phase1_handoff_speed_ready
-        result["setup_handoff_not_falling_short"] = self._phase1_handoff_not_falling_short
-        result["setup_handoff_centered"] = self._phase1_handoff_centered
-        result["setup_handoff_inside_target"] = self._phase1_handoff_inside_target
-        result["setup_distance"] = setup_distance
-        result["setup_fuel_consumed"] = setup_fuel
-        result["setup_fuel_per_distance"] = fuel_per_distance
-        result["setup_path_efficiency"] = setup_path_efficiency
+        result["setup_phase_done"] = self._setup_phase_done
+        result["setup_phase_time"] = self._setup_phase_time
+        result["setup_phase_altitude"] = self._setup_phase_altitude
+        result["setup_phase_projected_dx"] = self._setup_phase_projected_dx
+        result["setup_phase_distance"] = setup_distance
+        result["setup_phase_fuel_consumed"] = setup_fuel
+        result["setup_phase_fuel_per_distance"] = setup_fuel_per_distance
+        result["setup_phase_path_efficiency"] = setup_path_efficiency
+
         result["zem_setup_gate_done"] = self._zem_setup_gate_done
         result["zem_setup_gate_time"] = self._zem_setup_gate_time
         result["zem_setup_gate_altitude"] = self._zem_setup_gate_altitude
@@ -487,14 +366,10 @@ class SetupLevel(ScenarioLevel):
         result["zem_fallback_frames"] = self._zem_fallback_frames
 
         if self._resolved_eval_mode == "focused":
-            state = str(result.get("state", "unknown"))
-            if self._phase1_snapshot_kind == "zem_zev":
-                success = bool(self._zem_setup_gate_done)
-                result["eval_phase"] = "zem_setup_gate"
-            else:
-                success = bool(self._phase1_handoff_done)
-                result["eval_phase"] = "setup_phase"
+            success = bool(self._setup_phase_done)
+            result["eval_phase"] = "zem_setup_gate"
             result["success"] = success
+            state = str(result.get("state", "unknown"))
             result["failure_mode"] = "none" if success else state
         return result
 

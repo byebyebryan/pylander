@@ -7,15 +7,15 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 - Running the game / CLI / headless / batch: [`../README.md`](../README.md)
 - Bot development framework + API: [`overview.md`](overview.md)
 
-## Bot phases
+## Controllers and levels
 
-- `plunge`: [`plunge.md`](plunge.md)
-- `flare`: [`flare.md`](flare.md)
-- `zem_zev`: [`zem_zev.md`](zem_zev.md)
-- `zem full-envelope`: [`zem_full_envelope.md`](zem_full_envelope.md)
-- `coast`: [`coast.md`](coast.md)
-- `setup`: [`setup.md`](setup.md)
-- `launch`: [`launch.md`](launch.md)
+- Unified optimizer bot: [`zem_zev.md`](zem_zev.md)
+- Terminal benchmark bot: [`plunge.md`](plunge.md)
+- Scenario levels:
+  - `flare`: [`flare.md`](flare.md)
+  - `coast`: [`coast.md`](coast.md)
+  - `setup`: [`setup.md`](setup.md)
+  - `launch`: [`launch.md`](launch.md)
 
 ## Artifacts
 

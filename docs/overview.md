@@ -1,59 +1,33 @@
 # Bot development framework
 
-Pylander bot work is organized as a **phase-oriented pipeline**. The goal is to keep each tuning loop small, measurable, and debuggable.
+Pylander bot work is now centered on a unified in-flight controller (`zem_zev`) plus a dedicated terminal benchmark bot (`plunge`).
 
-## Why phases?
+## Control model
 
-Complex landing behavior can be tuned either with explicit phase handoffs or a single optimizer core:
+- `zem_zev`: optimizer-first coupled 2-axis guidance used by default in `launch`, `setup`, `coast`, and `flare`.
+- `plunge`: terminal-only benchmark bot for vertical burn timing and touchdown behavior.
 
-- `zem_zev`: unified coupled 2-axis guidance used by default in `setup`, `coast`, and `flare` levels
-- `setup` (legacy): establish a good approach trajectory and hand off to `coast`
-- `coast` (legacy): run at most one flip-arc correction burn and decide when to hand off to `flare`
-- `flare` (legacy): terminal 2-axis convergence and touchdown
-- `plunge`: vertical-only sandbox for burn timing + touchdown (no upstream handoff required)
-- `launch`: pad-to-pad transfer wrapper (`upright clear -> zem_zev`) with pinned destination targeting
-
-Default in-flight chain:
-
-`zem_zev (setup -> coast -> terminal -> touchdown)`
-
-Legacy chain:
-
-`setup -> coast -> flare`
-
-`plunge` is intentionally standalone.
-
-`launch` reuses the unified `zem_zev` controller after an upright takeoff clear.
-
-Legacy ownership handoff remains explicit (`setup -> coast -> flare`).
-The unified `zem_zev` path does not require inter-bot handoffs during in-flight guidance.
-
-```mermaid
-flowchart LR
-  zem[zem_zev]
-  zem --> touchdown[touchdown]
-  setup[setup (legacy)] --> coast[coast (legacy)] --> flare[flare (legacy)] --> touchdown
-  launch[launch] --> zem
-  plunge[plunge] --> touchdown
-```
+The in-flight path is a single owner with internal phases (`setup -> coast -> terminal -> touchdown`), not inter-bot runtime handoffs.
 
 ## How to iterate
 
-- Prefer headless mode for iteration:
+- Prefer headless mode while tuning:
   - `uv run python main.py <level> --headless`
 - Fix `--seed` and `--scenario` while tuning one change.
-- Use `--quick-benchmark` to catch regressions early (one median setup per scenario, seed `0`).
-- In full batch mode, range-enabled scenarios auto-sample seeds `0-9` when `--batch-seeds` is omitted; fixed scenarios run once.
+- Use `--quick-benchmark` to catch regressions early.
+- In full batch mode, ranged scenarios auto-run seeds `0-9` when `--batch-seeds` is omitted.
 
 ## What to measure
 
-Most phases rely on the same run-end metrics (emitted by the game loop and summarized in batch mode):
+Core metrics from game + batch aggregation:
 
 - Outcome: `state`, `success`, `landing_offset`
 - Efficiency: `fuel_consumed`, `fuel_per_distance`, `path_efficiency`
 - Timing: `time`, `time_to_first_land`
-
-Unified runs emit `zem_*` gate/solver metrics, while phased setup/coast runs emit `setup_handoff_*` and `coast_handoff_*`.
+- Unified optimizer telemetry: `zem_*` gate + solver fields
+- Focused stage coverage metrics:
+  - `setup_phase_*`
+  - `coast_phase_*`
 
 ## Where things live
 
@@ -67,62 +41,26 @@ Unified runs emit `zem_*` gate/solver metrics, while phased setup/coast runs emi
 
 ## Bot API (sensor/action)
 
-Bots control the lander by consuming sensors and emitting explicit actions.
+Implement `Bot.update(dt, passive, active) -> BotAction`.
 
-### Bot interface
-
-Implement `Bot.update(dt, passive, active) -> BotAction`:
-
-```python
-from core.bot import Bot, PassiveSensors, ActiveSensors, BotAction
-
-
-class MyBot(Bot):
-    def update(self, dt: float, passive: PassiveSensors, active: ActiveSensors) -> BotAction:
-        self.status = "idle"
-        return BotAction(target_thrust=0.0, target_angle=passive.angle, refuel=False)
-```
-
-### `PassiveSensors` (snapshot)
-
-`PassiveSensors` is a per-step snapshot:
-
-- Position: `x`, `y`
-- Terrain context: `altitude`, `terrain_y`, `terrain_slope`
-- Kinematics: `vx`, `vy_up`, `ax`, `ay_up`, `angle`
-- Vehicle state/resources: `mass`, `thrust_level`, `fuel`, `max_fuel`, `state`
-- Contacts: `radar_contacts`, `proximity`
-
-### `ActiveSensors` (callables)
-
-`ActiveSensors` provides optional queries during an update:
-
-- `raycast(dir_angle, max_range)`
-- `terrain_height(world_x, lod=0)`
-- `terrain_profile(x_start, x_end, samples=16, lod=0)`
-- `ballistic_trajectory(x, y, vx, vy_up, ...)`
-
-`ballistic_trajectory(...)` returns keys like:
-
-- Hit info: `hit`, `hit_x`, `hit_y`, `hit_time`
-- Impact velocities: `hit_vx`, `hit_vy_up`, `hit_speed`
-- Path info: `points`, `distance`, `duration`, `termination`
-
-### `BotAction` (outputs)
-
-Bots emit target-style actions:
+`BotAction` outputs are target-based:
 
 - `target_thrust`: `0..vehicle.max_thrust`
 - `target_angle`: radians (`0` = upright)
 - `refuel`: `True/False`
 - `status`: short UI/log string
-- `handoff_to`: optional next bot instance for explicit ownership transfer
-- `handoff_context`: optional transferable state payload (for example pinned target UID)
-- `active_bot`, `stage`: structured HUD labels (authoritative over status parsing when set)
+- `message`: optional transient text
 
-### Notes
+`PassiveSensors` includes pose, terrain context, kinematics, mass/fuel/thrust state, and radar/proximity readings.
+
+`ActiveSensors` supports:
+
+- `raycast(...)`
+- `terrain_height(...)`
+- `terrain_profile(...)`
+- `ballistic_trajectory(...)`
+
+Notes:
 
 - Bots should use the sensor/action API, not engine internals.
 - `ActiveSensors` is rebuilt per bot step and caches repeated ballistic queries within the step.
-- Runtime ownership transfer applies `handoff_to`, installs the new owner in `actor_bots`, and hydrates it with `handoff_context`.
-- Base hooks `export_handoff_context()` and `import_handoff_context()` provide deterministic cross-bot state carry.

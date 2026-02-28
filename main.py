@@ -17,11 +17,6 @@ from core.eval import (
 )
 from game import LanderGame
 from bots import create_bot, list_available_bots
-from bots.coast import list_behavior_names as list_coast_behaviors
-from bots.flare import list_behavior_names as list_flare_behaviors
-from bots.launch import list_behavior_names as list_launch_behaviors
-from bots.setup import list_behavior_names as list_setup_behaviors
-from bots.plunge import list_behavior_names as list_plunge_behaviors
 from levels import create_level, list_available_levels
 from landers import list_available_landers
 
@@ -30,7 +25,6 @@ from landers import list_available_landers
 class RunConfig:
     level_name: str
     bot_name: str | None
-    bot_behavior: str | None
     headless: bool
     batch: bool
     print_freq: int
@@ -66,17 +60,6 @@ def _format_list(title: str, items: list[str]) -> str:
 def _build_parser() -> argparse.ArgumentParser:
     levels = list_available_levels()
     bots = list_available_bots()
-    behavior_names = tuple(
-        sorted(
-            {
-                *list_plunge_behaviors(),
-                *list_flare_behaviors(),
-                *list_coast_behaviors(),
-                *list_launch_behaviors(),
-                *list_setup_behaviors(),
-            }
-        )
-    )
     landers = list_available_landers()
     default_level = "flat" if "flat" in levels else (levels[0] if levels else None)
 
@@ -106,15 +89,6 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=bots,
         default=None,
         help="Bot name (overrides level default bot)",
-    )
-    parser.add_argument(
-        "--bot-behavior",
-        choices=behavior_names,
-        default=None,
-        help=(
-            "Behavior profile for bots that support behavior switching "
-            f"(choices: {', '.join(behavior_names)})"
-        ),
     )
     parser.add_argument(
         "--headless",
@@ -246,7 +220,6 @@ def _parse_args(args: argparse.Namespace) -> RunConfig:
     return RunConfig(
         level_name=args.level_name,
         bot_name=args.bot,
-        bot_behavior=(args.bot_behavior.strip() if args.bot_behavior else None),
         headless=args.headless,
         batch=args.batch,
         print_freq=print_freq,
@@ -360,39 +333,22 @@ def _print_headless_results(result: dict) -> None:
         "zem_solve_ms_mean",
         "zem_solve_ms_p90",
         "zem_fallback_frames",
-        "coast_handoff_done",
-        "coast_handoff_time",
-        "coast_handoff_altitude",
-        "coast_handoff_dx",
-        "coast_handoff_abs_dx",
-        "coast_handoff_vx",
-        "coast_handoff_vy_up",
-        "coast_handoff_speed",
-        "coast_handoff_horizontal_speed",
-        "coast_handoff_vx_err",
-        "coast_handoff_t_fall",
-        "coast_handoff_abs_angle_deg",
-        "coast_setup_distance",
-        "coast_setup_fuel_consumed",
-        "coast_setup_fuel_per_distance",
-        "coast_setup_path_efficiency",
-        "setup_handoff_done",
-        "setup_handoff_time",
-        "setup_handoff_altitude",
-        "setup_handoff_dx",
-        "setup_handoff_abs_dx",
-        "setup_handoff_vx",
-        "setup_handoff_vy_up",
-        "setup_handoff_speed",
-        "setup_handoff_horizontal_speed",
-        "setup_handoff_projected_dx",
-        "setup_handoff_impact_error",
-        "setup_handoff_planned_impact_error",
-        "setup_handoff_abs_angle_deg",
-        "setup_distance",
-        "setup_fuel_consumed",
-        "setup_fuel_per_distance",
-        "setup_path_efficiency",
+        "coast_phase_done",
+        "coast_phase_time",
+        "coast_phase_altitude",
+        "coast_phase_projected_dx",
+        "coast_phase_distance",
+        "coast_phase_fuel_consumed",
+        "coast_phase_fuel_per_distance",
+        "coast_phase_path_efficiency",
+        "setup_phase_done",
+        "setup_phase_time",
+        "setup_phase_altitude",
+        "setup_phase_projected_dx",
+        "setup_phase_distance",
+        "setup_phase_fuel_consumed",
+        "setup_phase_fuel_per_distance",
+        "setup_phase_path_efficiency",
     ):
         if key in result:
             val = result[key]
@@ -598,20 +554,8 @@ def _run_once(
     _configure_level(level, config)
     run_bot_name = _resolve_run_bot_name(config, level)
     bot = create_bot(run_bot_name) if run_bot_name is not None else None
-    if config.bot_behavior is not None:
-        if bot is None:
-            raise ValueError("Bot behavior requires a bot (explicit --bot or level default)")
-        set_behavior = getattr(bot, "set_behavior", None)
-        if not callable(set_behavior):
-            raise ValueError(
-                f"Bot '{run_bot_name}' does not support --bot-behavior"
-            )
-        set_behavior(config.bot_behavior)
     if bot is not None and run_bot_name is not None:
         setattr(bot, "_bot_name", run_bot_name)
-        behavior = getattr(bot, "behavior", None)
-        if isinstance(behavior, str):
-            setattr(bot, "_bot_behavior", behavior)
     game = LanderGame(seed=seed, bot=bot, headless=config.headless, level=level)
     result = game.run(
         print_freq=config.print_freq,
@@ -620,8 +564,6 @@ def _run_once(
     )
     if run_bot_name is not None:
         result["_bot_name"] = run_bot_name
-    if config.bot_behavior is not None:
-        result["_bot_behavior"] = config.bot_behavior
     result["_level_name"] = run_name
     result["_scenario_name"] = getattr(level, "scenario_name", run_name)
     if config.headless and print_results:
@@ -644,9 +586,6 @@ def _run_once_record(
         print_results=False,
     )
     record_bot_name = str(result.get("_bot_name") or config.bot_name or "none")
-    record_bot_behavior = result.get("_bot_behavior") or config.bot_behavior
-    if record_bot_behavior:
-        record_bot_name = f"{record_bot_name}:{record_bot_behavior}"
     record_name = str(result.get("_level_name") or level_name)
     record_scenario_name = str(result.get("_scenario_name") or record_name)
     return normalize_run_result(
@@ -714,36 +653,20 @@ def _print_batch_summary(
             "zem_solve_ms_mean",
             "zem_solve_ms_p90",
             "zem_fallback_frames",
-            "coast_handoff_time",
-            "coast_handoff_altitude",
-            "coast_handoff_dx",
-            "coast_handoff_abs_dx",
-            "coast_handoff_vx",
-            "coast_handoff_vy_up",
-            "coast_handoff_speed",
-            "coast_handoff_horizontal_speed",
-            "coast_handoff_vx_err",
-            "coast_handoff_t_fall",
-            "coast_handoff_abs_angle_deg",
-            "coast_setup_distance",
-            "coast_setup_fuel_consumed",
-            "coast_setup_fuel_per_distance",
-            "coast_setup_path_efficiency",
-            "setup_handoff_time",
-            "setup_handoff_altitude",
-            "setup_handoff_dx",
-            "setup_handoff_abs_dx",
-            "setup_handoff_vx",
-            "setup_handoff_vy_up",
-            "setup_handoff_speed",
-            "setup_handoff_horizontal_speed",
-            "setup_handoff_impact_error",
-            "setup_handoff_planned_impact_error",
-            "setup_handoff_abs_angle_deg",
-            "setup_distance",
-            "setup_fuel_consumed",
-            "setup_fuel_per_distance",
-            "setup_path_efficiency",
+            "coast_phase_time",
+            "coast_phase_altitude",
+            "coast_phase_projected_dx",
+            "coast_phase_distance",
+            "coast_phase_fuel_consumed",
+            "coast_phase_fuel_per_distance",
+            "coast_phase_path_efficiency",
+            "setup_phase_time",
+            "setup_phase_altitude",
+            "setup_phase_projected_dx",
+            "setup_phase_distance",
+            "setup_phase_fuel_consumed",
+            "setup_phase_fuel_per_distance",
+            "setup_phase_path_efficiency",
         )
         printed = 0
         for metric in metric_order:
@@ -810,8 +733,6 @@ def _print_batch_summary(
 
 def _run_batch(config: RunConfig) -> int:
     batch_bot_name = config.bot_name or "level_default"
-    if config.bot_behavior:
-        batch_bot_name = f"{batch_bot_name}:{config.bot_behavior}"
     if not config.headless:
         raise ValueError("Batch mode requires --headless")
 
@@ -1016,9 +937,6 @@ def main() -> None:
         print(f"Running with bot {config.bot_name}")
     elif default_bot_name is not None:
         print(f"Running with bot {default_bot_name} (level default)")
-    if config.bot_behavior is not None:
-        print(f"Using bot behavior {config.bot_behavior}")
-
     try:
         result = _run_once(
             config,

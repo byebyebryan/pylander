@@ -2,166 +2,90 @@
 
 Implementation: [`bots/zem_zev.py`](../bots/zem_zev.py), [`bots/_optimizer_pdg.py`](../bots/_optimizer_pdg.py)
 
-`zem_zev` is an optimizer-first full-envelope guidance bot.
-It is now the default controller for `launch`, `setup`, `coast`, and `flare` levels.
-Legacy `setup` / `coast` / `flare` bots are still available for targeted experiments.
+`zem_zev` is the unified optimizer-first full-envelope guidance bot used by default in `launch`, `setup`, `coast`, and `flare`.
 
 ## Naming
 
-Both names appear in the wild:
+Both names appear in literature:
 
-- `ZEM/ZEV` (Zero-Effort-Miss / Zero-Effort-Velocity) — most common naming.
-- `ZEV/ZEM` — same terms reversed.
+- `ZEM/ZEV` (Zero-Effort-Miss / Zero-Effort-Velocity)
+- `ZEV/ZEM` (same terms reversed)
 
-In this repo we use `zem_zev` for consistency with bot naming.
+This repo uses `zem_zev` for consistency with bot naming.
 
-## Guidance design
+## Guidance model
 
-At each replan, the bot solves a finite-horizon trajectory optimization in acceleration space:
+At each replan, the bot solves a finite-horizon convex optimization in acceleration space.
 
-- State: `x, y, vx, vy` (with `vy` positive up).
-- Controls: `ax, ay` (thrust acceleration components).
-- Discrete dynamics:
-  - `x[k+1] = x[k] + vx[k] * dt + 0.5 * ax[k] * dt^2`
-  - `y[k+1] = y[k] + vy[k] * dt + 0.5 * (ay[k] - g) * dt^2`
-  - `vx[k+1] = vx[k] + ax[k] * dt`
-  - `vy[k+1] = vy[k] + (ay[k] - g) * dt`
+State:
 
-### Constraints
+- `x, y, vx, vy` (`vy` positive up)
 
-- Thrust non-negativity: `ay >= 0`.
-- Thrust magnitude cone: `sqrt(ax^2 + ay^2) <= a_max`.
-- Nominal-thrust envelope with OD reserve slack:
-  - `thrust_norm >= sqrt(ax^2 + ay^2)`
-  - `thrust_norm <= a_nom + od_slack`
-  - `0 <= od_slack <= (a_max - a_nom)`
-- Tilt cone: `|ax| <= tan(max_tilt) * ay`.
-- Soft terrain guard: `y >= target_y - 8`.
+Controls:
 
-These are all convex constraints, so the problem stays in QP/SOCP form and solves robustly with warm start.
+- `ax, ay` (thrust acceleration components)
 
-### Objective terms
+Discrete dynamics:
 
-The cost is fuel-first while still enforcing terminal accuracy:
+- `x[k+1] = x[k] + vx[k] * dt + 0.5 * ax[k] * dt^2`
+- `y[k+1] = y[k] + vy[k] * dt + 0.5 * (ay[k] - g) * dt^2`
+- `vx[k+1] = vx[k] + ax[k] * dt`
+- `vy[k+1] = vy[k] + (ay[k] - g) * dt`
 
-- Terminal error:
-  - `w_terminal_x * (x_N - target_x)^2`
-  - `w_terminal_y * (y_N - target_y)^2`
-  - `w_terminal_vx * vx_N^2`
-  - `w_terminal_vy * (vy_N - target_vy)^2`
-- Control shaping:
-  - effort (`ax, ay` norm-squared)
-  - smoothness (`delta ax, delta ay`)
-- Path shaping to linear references (`x_ref`, `y_ref`).
-- Fuel proxy:
-  - linear thrust cost on `thrust_norm`.
-- OD reserve penalty:
-  - linear + quadratic penalties on `od_slack`.
-- Penalties for:
-  - upward motion during descent,
-  - dropping below descent-floor schedule,
-  - asking below minimum-throttle-equivalent acceleration.
+## Constraints
 
-Current core MPC settings are in [`PDGOptimizerConfig`](../bots/_optimizer_pdg.py):
+- `ay >= 0`
+- `sqrt(ax^2 + ay^2) <= a_max`
+- nominal-first envelope with OD slack reserve
+- tilt cone: `|ax| <= tan(max_tilt) * ay`
+- soft terrain floor guard
 
-- horizons: `28` (short) and `36` (long)
-- step: `0.20 s`
-- solver: `CLARABEL` (fallback `SCS`)
+## Objective
 
-## Vertical speed schedule (braking envelope)
+Cost combines:
 
-Instead of a hand-tuned phase gate, the bot derives feasible descent speed from a braking envelope:
+- terminal state accuracy (`x/y/vx/vy`)
+- effort and smoothness penalties
+- path shaping references
+- fuel proxy (`thrust_norm`)
+- OD slack penalties
+- descent-floor and anti-upward-motion penalties
 
-- `v_limit(h) = sqrt(v_touch^2 + 2 * a_brake * h_eff)`
-- `h_eff = max(0, altitude - margin)`
-- `a_brake` uses available vertical braking authority with tilt and safety scaling.
+## Nominal-first braking schedule
 
-Then:
+Vertical targets are derived from a braking envelope using nominal thrust authority (`a_nom`), so OD is reserve by design.
 
-- terminal target speed = `target_ratio * v_limit`
-- descent floor speed = `floor_ratio * v_limit`
-- low-altitude and touchdown caps clamp both near the ground
-
-`zem_zev` now computes this schedule using nominal thrust authority (`a_nom`) so the
-plan is nominal-first by default, with OD treated as reserve inside the optimizer.
+This is why optimization is solved against nominal limits first and only uses OD when needed for robustness.
 
 ## Runtime loop
 
 Each frame:
 
-1. Replan at fixed rate (`replan_hz`) or on state-deviation triggers.
-2. Select long/short horizon from current altitude and estimated time-to-go.
-3. Track the current plan sample between replans.
-4. Convert planned acceleration to thrust + angle with tilt/rate limits.
-5. Use optimizer fallback only if solve is infeasible/error.
-6. Apply touchdown hard-cut when very low, very slow, and over-pad.
+1. update phase tracking (`setup`, `coast`, `terminal`, `touchdown`),
+2. replan on schedule or state-deviation trigger,
+3. track plan between replans,
+4. allocate acceleration to thrust+angle with tilt/rate limits,
+5. fallback only when optimizer result is infeasible.
 
-## Unified phase telemetry
+## Telemetry fields
 
-`zem_zev` publishes structured evaluation snapshots for staged benchmarking:
+`zem_zev` publishes:
 
 - `zem_setup_gate_done`, `zem_setup_gate_time`, `zem_setup_gate_altitude`, `zem_setup_gate_projected_dx`
 - `zem_terminal_gate_done`, `zem_terminal_gate_time`, `zem_terminal_gate_altitude`, `zem_terminal_gate_projected_dx`
 - `zem_solve_count`, `zem_solve_ms_mean`, `zem_solve_ms_p90`, `zem_fallback_frames`
 
-Focused eval behavior:
+Focused eval boundaries:
 
-- `setup --eval-mode focused` ends on `zem_setup_gate_done`
-- `coast --eval-mode focused` ends on `zem_terminal_gate_done`
+- `setup --eval-mode focused` -> `zem_setup_gate_done`
+- `coast --eval-mode focused` -> `zem_terminal_gate_done`
 
-Phased setup/coast runs emit `setup_handoff_*` / `coast_handoff_*`; unified runs rely on the `zem_*` schema.
+## Compute cost
 
-## Fresh comparison vs `flare` bot
+Solver load is controlled with phase-adaptive replanning:
 
-Benchmark command (same for both bots):
+- setup: lower replan rate, looser deviation thresholds
+- coast: medium replan rate
+- terminal: higher replan rate, tighter deviation thresholds
 
-```bash
-uv run python main.py flare --headless --batch \
-  --batch-scenarios shallow,shallower,mid,steep,steeper \
-  --batch-seeds 0-19 --batch-workers 8 --bot <flare|zem_zev>
-```
-
-Observed results (current branch, 100 runs each):
-
-| Metric | flare | zem_zev |
-| --- | --- | --- |
-| Success rate | 100% | 100% |
-| Time mean (s) | 21.99 | 20.31 |
-| Fuel mean | 25.87 | 21.50 |
-| Landing offset mean | 3.70 | 9.06 |
-| Overdrive fraction mean | 0.26 | 0.38 |
-
-Per-scenario mean time (s):
-
-| Scenario | flare | zem_zev |
-| --- | --- | --- |
-| shallower | 27.94 | 23.46 |
-| shallow | 19.12 | 20.88 |
-| mid | 20.14 | 19.01 |
-| steep | 20.96 | 19.04 |
-| steeper | 21.80 | 19.15 |
-
-Interpretation:
-
-- `zem_zev` now leads on fuel in this flare benchmark while keeping 100% success.
-- `zem_zev` still lands less centered than `flare`.
-- `zem_zev` remains somewhat faster overall, but the advantage is smaller than old OD-heavy tuning.
-- Fuel-first acceptance can be enforced with: `zem_zev_fuel <= flare_fuel + 1.5`.
-
-## Compute cost and batch throughput
-
-The optimizer increases per-run compute, but adaptive replanning limits overhead:
-
-- setup phase: lower replan frequency / looser deviation thresholds
-- coast phase: medium replan frequency
-- terminal phase: highest replan frequency / tightest thresholds
-
-For tuning loops, keep `--batch-workers` high and use reduced seed sets before full validation.
-
-## Practical tuning order
-
-1. Braking-envelope schedule (`braking_*`, `vy_*cap*`) for aggressiveness/safety.
-2. Horizon/discretization (`horizon_steps`, `step_dt`) for responsiveness vs compute.
-3. Terminal weights (`w_terminal_*`) for offset vs speed tradeoff.
-4. Descent-floor and fuel weights (`w_descent_floor`, `w_thrust_linear`, `w_overdrive_*`) for fuel/robustness balance.
-5. Replan thresholds (`replan_*_error`) for stability vs adaptation.
+Use `--batch-workers` for throughput when running large benchmark suites.

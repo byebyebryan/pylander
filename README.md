@@ -1,26 +1,22 @@
 # Pylander
 
-A classic Lunar Lander-inspired game with procedurally generated terrain, scoring system, and AI bot support.
+A retro-modern Lunar Lander-inspired game with deterministic simulation, procedural terrain, and bot-driven play.
 
 ## Docs
 
 - Start here: [`docs/README.md`](docs/README.md)
-- Bot dev framework + API: [`docs/overview.md`](docs/overview.md)
-- Phase docs: [`docs/plunge.md`](docs/plunge.md), [`docs/flare.md`](docs/flare.md), [`docs/zem_zev.md`](docs/zem_zev.md), [`docs/zem_full_envelope.md`](docs/zem_full_envelope.md), [`docs/coast.md`](docs/coast.md), [`docs/setup.md`](docs/setup.md), [`docs/launch.md`](docs/launch.md)
+- Bot framework + API: [`docs/overview.md`](docs/overview.md)
+- Bot docs: [`docs/plunge.md`](docs/plunge.md), [`docs/zem_zev.md`](docs/zem_zev.md)
+- Scenario docs: [`docs/flare.md`](docs/flare.md), [`docs/coast.md`](docs/coast.md), [`docs/setup.md`](docs/setup.md), [`docs/launch.md`](docs/launch.md)
 
 ## Features
 
-- Procedural terrain generation with simplex noise
-- Physics-based lander with fuel management
-- Credits-based landing targets (distance from start)
-- Refueling system (exchange credits for fuel)
-- Continuous gameplay (land, refuel, take off again)
-- AI bot interface for autonomous play
-- Unified plunge benchmark bot (`plunge`)
-- Dedicated flare benchmark level (`flare`) defaulting to unified optimizer bot (`zem_zev`)
-- Horizontal-control benchmark level (`coast`) defaulting to unified optimizer bot (`zem_zev`)
-- Setup benchmark level (`setup`) defaulting to unified optimizer bot (`zem_zev`)
-- Pad-to-pad launch transfer level (`launch`) defaulting to unified optimizer bot (`zem_zev`)
+- Procedural terrain generation (simplex)
+- Physics-based lander with fuel and overdrive
+- Credits, landing targets, and refueling loop
+- Headless deterministic evaluation + batch reports
+- Unified optimizer bot (`zem_zev`) for full-envelope flight
+- Terminal benchmark bot (`plunge`)
 
 ## Setup
 
@@ -30,195 +26,107 @@ uv sync
 
 ## Running
 
-Default level is `flat` when omitted. List all levels with `--help`.
+Default level is `flat` when omitted.
 
-### Human Mode
+### Human mode
+
 ```bash
 uv run python main.py
 ```
 
-### Bot Mode
-Watch an AI bot play using the sensor/action API:
-```bash
-# Canonical plunge benchmark level + bot
-uv run python main.py plunge
+### Bot mode
 
-# Pick a specific plunge scenario
+```bash
+# Unified full-envelope bot
+uv run python main.py flare --bot zem_zev
+uv run python main.py coast --bot zem_zev
+uv run python main.py setup --bot zem_zev
+uv run python main.py launch --bot zem_zev
+
+# Dedicated terminal bot
+uv run python main.py plunge --bot plunge
+```
+
+### Scenario selection
+
+```bash
+uv run python main.py coast --scenario mid_wide
+uv run python main.py setup --scenario steep_far
+uv run python main.py flare --scenario steep
 uv run python main.py plunge --scenario mid_normal
-
-# Terminal flare benchmark level + bot
-uv run python main.py flare
-
-# Run legacy flare bot explicitly
-uv run python main.py flare --bot flare
-
-# Pick a specific flare scenario
-uv run python main.py flare --scenario mid
-
-# Run unified ZEM/ZEV bot explicitly (same as flare default)
-uv run python main.py flare --bot zem_zev --scenario mid
-
-# Horizontal-control benchmark level + bot
-uv run python main.py coast
-
-# Run legacy coast bot explicitly
-uv run python main.py coast --bot coast
-
-# Pick a specific coast scenario
-uv run python main.py coast --scenario entry_steep_high
-
-# Setup benchmark level + bot
-uv run python main.py setup
-
-# Run legacy setup bot explicitly
-uv run python main.py setup --bot setup
-
-# Pick a specific setup scenario
-uv run python main.py setup --scenario air_steep
-
-# Run setup end-to-end (handoff + coast + terminal)
-uv run python main.py setup --eval-mode full
-
-# Pad-to-pad launch transfer level + bot
-uv run python main.py launch
-
-# Run wrapper launch bot explicitly (upright pad-clear then handoff)
-uv run python main.py launch --bot launch
-
-# Use plunge bot on other levels if desired
-uv run python main.py flat --bot plunge
 ```
 
-### Headless + batch evaluation
-
-Headless mode runs without graphics (faster, deterministic with a fixed seed):
+## Headless + batch evaluation
 
 ```bash
-# Single run
-uv run python main.py plunge --headless --seed 0
-```
+# Single deterministic run
+uv run python main.py flare --headless --seed 0 --bot zem_zev
 
-Useful flags:
+# Quick regression suite
+uv run python main.py plunge --headless --quick-benchmark --bot plunge
+uv run python main.py flare --headless --quick-benchmark --bot zem_zev
 
-- `--freq N` stats print frequency (`60` ~ once/sec, `1` every frame, `0` quiet)
-- `--steps N` max simulation steps
-- `--time S` max simulation time seconds (default `300`)
-- `--seed N` deterministic runs
-- `--scenario NAME` pick scenario
-- `--bot NAME` and `--bot-behavior NAME` override defaults
-- `--plot none|speed|thrust|all` save trajectory plot under `outputs/`
-
-Batch mode:
-
-```bash
-# Example batch
-uv run python main.py plunge --headless --batch \
-  --batch-seeds 0-19 \
-  --batch-json auto \
-  --batch-csv auto
-
-# Fast regression
-uv run python main.py plunge --headless --quick-benchmark
-
-# Coast-only mini benchmark (range-enabled scenarios auto-sample seeds)
+# Custom batch
 uv run python main.py coast --headless --batch \
-  --batch-levels coast \
-  --batch-scenarios entry_mid_low,entry_mid_high,entry_steep_high
+  --batch-seeds 0-19 \
+  --batch-scenarios shallow_tight,mid_wide,steep_wide \
+  --bot zem_zev
 ```
 
-Quick benchmark preset includes:
+Quick benchmark subsets:
 
 - `plunge`: `low_normal`, `mid_normal`, `high_normal`
 - `flare`: `shallow`, `mid`, `steep`
-- `coast`: `entry_mid_low`, `entry_mid_high`, `entry_steep_high`
-- `setup`: `air_mid`, `air_steep`
+- `coast`: `shallow_tight`, `mid_wide`, `steep_wide`
+- `setup`: `shallow_near`, `mid_far`, `steep_far`
 
-Staged eval (`--eval-mode focused|full`) is available for `flare`, `coast`, and `setup`.
-Quick benchmark runs one deterministic median sample per scenario (seed `0`).
+Focused eval (`--eval-mode focused`) is available for `flare`, `coast`, and `setup`.
 
-## Controls (Human Mode)
-
-- **W/UP**: Increase thrust
-- **S/DOWN**: Decrease thrust
-- **A/LEFT**: Rotate left (discrete steps, auto-snaps to 45° intervals)
-- **D/RIGHT**: Rotate right (discrete steps, auto-snaps to 45° intervals)
-- **F**: Refuel (when landed, costs 10 pts/fuel unit)
-- **T**: Toggle ballistic trajectory overlay
-- **R**: Reset game
-- **Q/ESC**: Quit
-
-## Bot development
-
-- Bot framework + API: [`docs/overview.md`](docs/overview.md)
-- Phase docs are listed in [`Scenario Levels`](#scenario-levels) below.
-
-## Scenario Levels
-
-Scenario docs:
-
-- `plunge`: [`docs/plunge.md`](docs/plunge.md)
-- `flare`: [`docs/flare.md`](docs/flare.md)
-- `zem_zev`: [`docs/zem_zev.md`](docs/zem_zev.md)
-- `coast`: [`docs/coast.md`](docs/coast.md)
-- `setup`: [`docs/setup.md`](docs/setup.md)
-- `launch`: [`docs/launch.md`](docs/launch.md)
-
-## Command Line Options
+## CLI summary
 
 ```bash
 uv run python main.py [level_name] [options]
 ```
 
-**Levels:** Run `uv run python main.py --help` to list (e.g. `flat`, `mountains`, `plunge`).
+### Bots
 
-**Bot names:** `plunge`, `flare`, `coast`, `setup`, `launch`, `zem_zev` (set via `--bot`; see `--help`). `zem_zev` is the optimizer-first unified full-envelope controller used by default on `launch`, `setup`, `coast`, and `flare` levels (see [`docs/zem_zev.md`](docs/zem_zev.md) and [`docs/zem_full_envelope.md`](docs/zem_full_envelope.md)).
+- `zem_zev`
+- `plunge`
 
-**Options:**
-- `--bot NAME` - Select bot (`plunge`, `flare`, `coast`, `setup`, `launch`, `zem_zev`)
-- `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `plunge` => `balanced`; `flare` => `flare`; `coast` => `coast`; `setup` => `setup`; `launch` => `launch`)
-- `--headless` - Run without graphics (requires bot)
-- `--freq N` - Print stats every N frames (60 ≈ 1/s; 0 = off)
-- `--steps N` - Limit simulation to N steps (headless)
-- `--time S` - Limit simulation to S seconds (headless, default 300)
-- `--plot none|speed|thrust|all` - Save trajectory plot (headless)
-- `--stop-on-crash`, `--stop-on-out-of-fuel`, `--stop-on-first-land` - End conditions
-- `--eval-mode auto|focused|full` - Evaluation mode for staged levels (`flare`, `coast`, and `setup` default to full when auto)
-- `--seed N` - Random seed
-- `--scenario NAME` - Select a level scenario (if supported)
-- `--lander NAME` - Lander variant (classic, differential, simple)
-- `--batch` - Enable batch runs (requires `--headless` + bot)
-- `--batch-seeds SPEC` - Seeds like `0-19` or `0,1,2,5`
-- `--batch-levels CSV` - Level names for batch suites
-- `--batch-scenarios CSV` - Scenario names for batch suites
-- `--batch-json PATH|auto` - Write JSON report
-- `--batch-csv PATH|auto` - Write CSV rows
-- `--batch-workers N` - Parallel worker processes for batch runs (default: auto = CPU count; `1` = sequential; effective workers are capped by CPU count and run count)
-- `--quick-benchmark` - Built-in cross-level core benchmark preset using median scenario values (`plunge` + `flare` + `coast` + `setup` subsets)
-- `--help`, `-h` - Show help message
+### Key options
 
-Batch mode defaults to `--freq 0` (quiet) for speed; pass `--freq` to enable per-run stats.
-Quiet mode disables per-step stats output, but batch progress lines still print.
-If `--batch-seeds` is omitted, range-enabled scenarios auto-run seeds `0-9`; fixed scenarios run once at seed `0`.
+- `--bot NAME`
+- `--headless`
+- `--freq N`
+- `--steps N`
+- `--time S`
+- `--plot none|speed|thrust|all`
+- `--stop-on-crash`
+- `--stop-on-out-of-fuel`
+- `--stop-on-first-land`
+- `--eval-mode auto|focused|full`
+- `--seed N`
+- `--scenario NAME`
+- `--lander NAME`
+- `--batch`
+- `--batch-seeds SPEC`
+- `--batch-levels CSV`
+- `--batch-scenarios CSV`
+- `--batch-json PATH|auto`
+- `--batch-csv PATH|auto`
+- `--batch-workers N`
+- `--quick-benchmark`
 
-Batch/headless eval records include `landing_offset` (absolute horizontal error from target center on landed runs).
+Run `uv run python main.py --help` to list available levels and full option descriptions.
 
-## Promotion Gates (Plunge Bot)
+## Controls (human mode)
 
-Moved to [`docs/plunge.md`](docs/plunge.md).
-
-## Game Mechanics
-
-### Credits
-- Each landing pad awards credits based on its distance from the start
-- Land successfully to collect credits
-- Pads turn yellow once collected
-
-### Landing Requirements
-- Speed < 15 m/s
-- Angle < 20° from vertical
-- Both legs on a landing pad
-
-### Refueling
-- When landed, hold F to refuel
-- Costs 10 credits per fuel unit
-- Refuels at 1 unit/second
+- `W`/`UP`: Increase thrust
+- `S`/`DOWN`: Decrease thrust
+- `A`/`LEFT`: Rotate left
+- `D`/`RIGHT`: Rotate right
+- `F`: Refuel (when landed)
+- `TAB`: Switch actor
+- `T`: Toggle ballistic path
+- `R`: Reset
+- `Q`/`ESC`: Quit
