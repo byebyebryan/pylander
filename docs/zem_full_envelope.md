@@ -6,12 +6,12 @@ This doc tracks how `zem_zev` is integrated into the full in-flight envelope.
 
 - `flare` level default bot: `zem_zev`
 - `coast` level default bot: `zem_zev`
-- `launch` level default bot: `zem_zev`
-- `ferry` remains a wrapper bot and hands off to `zem_zev` after pad clear
+- `setup` level default bot: `zem_zev`
+- `launch` remains a wrapper bot and hands off to `zem_zev` after pad clear
 
 Legacy phase bots remain available:
 
-- `launch` (legacy handoff setup)
+- `setup` (legacy handoff setup)
 - `coast` (legacy single-burn correction + flare handoff)
 - `flare` (legacy terminal controller)
 
@@ -26,7 +26,7 @@ Legacy phase bots remain available:
 
 The bot exposes two eval gates:
 
-- setup gate: early transfer-quality condition (`launch` focused boundary)
+- setup gate: early transfer-quality condition (`setup` focused boundary)
 - terminal gate: late burn-ready condition (`coast` focused boundary)
 
 ## Evaluation schema
@@ -46,14 +46,14 @@ Canonical unified fields:
 - `zem_solve_ms_p90`
 - `zem_fallback_frames`
 
-Compatibility fields are still emitted:
+Phased handoff fields:
 
-- `launch_handoff_*`
+- `setup_handoff_*`
 - `coast_handoff_*`
 
 ## Focused eval behavior
 
-- `launch --eval-mode focused`:
+- `setup --eval-mode focused`:
   - unified run success: `zem_setup_gate_done == True`
   - eval phase label: `zem_setup_gate`
 - `coast --eval-mode focused`:

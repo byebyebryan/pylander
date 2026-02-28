@@ -115,21 +115,21 @@ def _efficiency_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "coast_setup_fuel_consumed",
         "coast_setup_fuel_per_distance",
         "coast_setup_path_efficiency",
-        "launch_handoff_time",
-        "launch_handoff_altitude",
-        "launch_handoff_dx",
-        "launch_handoff_abs_dx",
-        "launch_handoff_vx",
-        "launch_handoff_vy_up",
-        "launch_handoff_speed",
-        "launch_handoff_horizontal_speed",
-        "launch_handoff_impact_error",
-        "launch_handoff_planned_impact_error",
-        "launch_handoff_abs_angle_deg",
-        "launch_setup_distance",
-        "launch_setup_fuel_consumed",
-        "launch_setup_fuel_per_distance",
-        "launch_setup_path_efficiency",
+        "setup_handoff_time",
+        "setup_handoff_altitude",
+        "setup_handoff_dx",
+        "setup_handoff_abs_dx",
+        "setup_handoff_vx",
+        "setup_handoff_vy_up",
+        "setup_handoff_speed",
+        "setup_handoff_horizontal_speed",
+        "setup_handoff_impact_error",
+        "setup_handoff_planned_impact_error",
+        "setup_handoff_abs_angle_deg",
+        "setup_distance",
+        "setup_fuel_consumed",
+        "setup_fuel_per_distance",
+        "setup_path_efficiency",
     )
     return {field: _metric_summary(records, field) for field in fields}
 
@@ -190,8 +190,8 @@ def normalize_run_result(
         "failure_mode": failure_mode,
         "eval_mode": result.get("eval_mode"),
         "eval_phase": result.get("eval_phase"),
-        "ferry_arrived": _to_optional_bool(result.get("ferry_arrived")),
-        "ferry_landed_site_uid": result.get("ferry_landed_site_uid"),
+        "launch_arrived": _to_optional_bool(result.get("launch_arrived")),
+        "launch_landed_site_uid": result.get("launch_landed_site_uid"),
         "zem_setup_gate_done": _to_optional_bool(result.get("zem_setup_gate_done")),
         "zem_setup_gate_time": _to_optional_float(result.get("zem_setup_gate_time")),
         "zem_setup_gate_altitude": _to_optional_float(
@@ -254,69 +254,69 @@ def normalize_run_result(
         "coast_setup_path_efficiency": _to_optional_float(
             result.get("coast_setup_path_efficiency")
         ),
-        "launch_handoff_done": _to_optional_bool(result.get("launch_handoff_done")),
-        "launch_handoff_time": _to_optional_float(result.get("launch_handoff_time")),
-        "launch_handoff_x": _to_optional_float(result.get("launch_handoff_x")),
-        "launch_handoff_y": _to_optional_float(result.get("launch_handoff_y")),
-        "launch_handoff_dx": _to_optional_float(result.get("launch_handoff_dx")),
-        "launch_handoff_abs_dx": _to_optional_float(result.get("launch_handoff_abs_dx")),
-        "launch_handoff_altitude": _to_optional_float(
-            result.get("launch_handoff_altitude")
+        "setup_handoff_done": _to_optional_bool(result.get("setup_handoff_done")),
+        "setup_handoff_time": _to_optional_float(result.get("setup_handoff_time")),
+        "setup_handoff_x": _to_optional_float(result.get("setup_handoff_x")),
+        "setup_handoff_y": _to_optional_float(result.get("setup_handoff_y")),
+        "setup_handoff_dx": _to_optional_float(result.get("setup_handoff_dx")),
+        "setup_handoff_abs_dx": _to_optional_float(result.get("setup_handoff_abs_dx")),
+        "setup_handoff_altitude": _to_optional_float(
+            result.get("setup_handoff_altitude")
         ),
-        "launch_handoff_vx": _to_optional_float(result.get("launch_handoff_vx")),
-        "launch_handoff_vy_up": _to_optional_float(result.get("launch_handoff_vy_up")),
-        "launch_handoff_speed": _to_optional_float(result.get("launch_handoff_speed")),
-        "launch_handoff_horizontal_speed": _to_optional_float(
-            result.get("launch_handoff_horizontal_speed")
+        "setup_handoff_vx": _to_optional_float(result.get("setup_handoff_vx")),
+        "setup_handoff_vy_up": _to_optional_float(result.get("setup_handoff_vy_up")),
+        "setup_handoff_speed": _to_optional_float(result.get("setup_handoff_speed")),
+        "setup_handoff_horizontal_speed": _to_optional_float(
+            result.get("setup_handoff_horizontal_speed")
         ),
-        "launch_handoff_projected_dx": _to_optional_float(
-            result.get("launch_handoff_projected_dx")
+        "setup_handoff_projected_dx": _to_optional_float(
+            result.get("setup_handoff_projected_dx")
         ),
-        "launch_handoff_impact_x": _to_optional_float(
-            result.get("launch_handoff_impact_x")
+        "setup_handoff_impact_x": _to_optional_float(
+            result.get("setup_handoff_impact_x")
         ),
-        "launch_handoff_target_x": _to_optional_float(
-            result.get("launch_handoff_target_x")
+        "setup_handoff_target_x": _to_optional_float(
+            result.get("setup_handoff_target_x")
         ),
-        "launch_handoff_impact_error": _to_optional_float(
-            result.get("launch_handoff_impact_error")
+        "setup_handoff_impact_error": _to_optional_float(
+            result.get("setup_handoff_impact_error")
         ),
-        "launch_handoff_planned_impact_error": _to_optional_float(
-            result.get("launch_handoff_planned_impact_error")
+        "setup_handoff_planned_impact_error": _to_optional_float(
+            result.get("setup_handoff_planned_impact_error")
         ),
-        "launch_handoff_current_impact_x": _to_optional_float(
-            result.get("launch_handoff_current_impact_x")
+        "setup_handoff_current_impact_x": _to_optional_float(
+            result.get("setup_handoff_current_impact_x")
         ),
-        "launch_handoff_current_target_x": _to_optional_float(
-            result.get("launch_handoff_current_target_x")
+        "setup_handoff_current_target_x": _to_optional_float(
+            result.get("setup_handoff_current_target_x")
         ),
-        "launch_handoff_abs_angle_deg": _to_optional_float(
-            result.get("launch_handoff_abs_angle_deg")
+        "setup_handoff_abs_angle_deg": _to_optional_float(
+            result.get("setup_handoff_abs_angle_deg")
         ),
-        "launch_handoff_on_track": _to_optional_bool(
-            result.get("launch_handoff_on_track")
+        "setup_handoff_on_track": _to_optional_bool(
+            result.get("setup_handoff_on_track")
         ),
-        "launch_handoff_speed_ready": _to_optional_bool(
-            result.get("launch_handoff_speed_ready")
+        "setup_handoff_speed_ready": _to_optional_bool(
+            result.get("setup_handoff_speed_ready")
         ),
-        "launch_handoff_not_falling_short": _to_optional_bool(
-            result.get("launch_handoff_not_falling_short")
+        "setup_handoff_not_falling_short": _to_optional_bool(
+            result.get("setup_handoff_not_falling_short")
         ),
-        "launch_handoff_centered": _to_optional_bool(
-            result.get("launch_handoff_centered")
+        "setup_handoff_centered": _to_optional_bool(
+            result.get("setup_handoff_centered")
         ),
-        "launch_handoff_inside_target": _to_optional_bool(
-            result.get("launch_handoff_inside_target")
+        "setup_handoff_inside_target": _to_optional_bool(
+            result.get("setup_handoff_inside_target")
         ),
-        "launch_setup_distance": _to_optional_float(result.get("launch_setup_distance")),
-        "launch_setup_fuel_consumed": _to_optional_float(
-            result.get("launch_setup_fuel_consumed")
+        "setup_distance": _to_optional_float(result.get("setup_distance")),
+        "setup_fuel_consumed": _to_optional_float(
+            result.get("setup_fuel_consumed")
         ),
-        "launch_setup_fuel_per_distance": _to_optional_float(
-            result.get("launch_setup_fuel_per_distance")
+        "setup_fuel_per_distance": _to_optional_float(
+            result.get("setup_fuel_per_distance")
         ),
-        "launch_setup_path_efficiency": _to_optional_float(
-            result.get("launch_setup_path_efficiency")
+        "setup_path_efficiency": _to_optional_float(
+            result.get("setup_path_efficiency")
         ),
     }
     for key, value in result.items():

@@ -1,91 +1,55 @@
 from __future__ import annotations
 
-import math
 import random
 from dataclasses import dataclass
-from typing import Any
 
-from core.components import FuelTank, PhysicsState, Transform
+import core.terrain as _terrain
+from core.components import CargoHold, Transform
 from core.ecs import require_component
 from core.level import Level
 from core.maths import Vector2
+from levels.common import PresetLevel, SiteSpec, get_mass
 from levels.scenario_common import (
     SampleRange,
-    ScenarioLevel,
-    ScenarioLevelSpec,
     has_randomized_values,
-    validate_scenario_recoverability,
+    resolve_sample_value,
 )
+
+_SOURCE_PAD_X = 0.0
 
 
 @dataclass(frozen=True)
 class LaunchScenario:
     name: str
-    base_angle_deg: float
-    radius: float | SampleRange
-    angle_deviation_deg: float | SampleRange
-    initial_angle: float = 0.0
-    cargo_mass: float = 0.0
+    dx: float | SampleRange
 
 
-_ANGLE_PROFILES: tuple[tuple[str, float], ...] = (
-    ("air_shallow", 15.0),
-    ("air_mid", 45.0),
-    ("air_steep", 75.0),
-)
-
-
-def _build_angle_scenario(name: str, base_angle_deg: float) -> LaunchScenario:
-    return LaunchScenario(
-        name=name,
-        base_angle_deg=float(base_angle_deg),
-        radius=SampleRange(700.0, 900.0),
-        angle_deviation_deg=SampleRange(-5.0, 5.0),
-    )
-
-
-_SCENARIOS: tuple[LaunchScenario, ...] = tuple(
-    _build_angle_scenario(name, angle_deg) for name, angle_deg in _ANGLE_PROFILES
+_SCENARIOS: tuple[LaunchScenario, ...] = (
+    LaunchScenario(name="near", dx=SampleRange(150.0, 250.0)),
+    LaunchScenario(name="mid", dx=SampleRange(300.0, 500.0)),
+    LaunchScenario(name="far", dx=SampleRange(600.0, 1000.0)),
 )
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "air_mid"
-_QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    "air_mid",
-    "air_steep",
-)
-_LAUNCH_EVAL_MODES: tuple[str, ...] = ("auto", "focused", "full")
-_LAUNCH_DEFAULT_EVAL_MODE = "full"
+_DEFAULT_SCENARIO = "mid"
+_QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = ("mid",)
 
 
-def _make_spec(*, name: str, start_dx: float, start_dy: float, cargo_mass: float) -> ScenarioLevelSpec:
-    return ScenarioLevelSpec(
-        name=name,
-        start_x=start_dx,
-        target_x=0.0,
-        spawn_clearance=start_dy,
-        terrain_kind="flat",
-        target_mode="flush_flatten",
-        target_offset_y=0.0,
-        target_size=110.0,
-        cargo_mass=cargo_mass,
-    )
+class LaunchLevel(PresetLevel):
+    """Two-pad flat transfer setup for repeated point-to-point launch runs."""
 
+    default_bot_name = "launch"
+    dynamic_site_enabled = False
 
-class LaunchLevel(ScenarioLevel):
-    default_bot_name = "zem_zev"
+    site_specs = ()
+    spawn_x = _SOURCE_PAD_X
+    spawn_clearance = 0.0
+    spawn_x_jitter = 0.0
+    site_x_jitter = 0.0
 
     def __init__(self) -> None:
         super().__init__()
         self._eval_scenario_name = _DEFAULT_SCENARIO
-        self._eval_mode_name = "auto"
-        self._resolved_eval_mode = _LAUNCH_DEFAULT_EVAL_MODE
-        self.scenario = _make_spec(
-            name=self._eval_scenario_name,
-            start_dx=0.0,
-            start_dy=800.0,
-            cargo_mass=0.0,
-        )
-        self._reset_phase_eval_metrics()
+        self._benchmark_random_mode = "sample"
 
     @staticmethod
     def list_batch_scenarios() -> list[str]:
@@ -102,400 +66,96 @@ class LaunchLevel(ScenarioLevel):
             raise ValueError(f"Unknown launch scenario '{name}'. Expected one of: {known}")
         self._eval_scenario_name = key
 
-    def set_eval_mode(self, name: str) -> None:
-        key = str(name).strip().lower()
-        if key not in _LAUNCH_EVAL_MODES:
-            known = ", ".join(_LAUNCH_EVAL_MODES)
-            raise ValueError(f"Unknown launch eval mode '{name}'. Expected one of: {known}")
-        self._eval_mode_name = key
+    def set_benchmark_mode(self, mode: str) -> None:
+        key = str(mode or "sample").strip().lower()
+        if key not in {"median", "sample"}:
+            raise ValueError(f"Unknown benchmark mode '{mode}'. Expected one of: median, sample")
+        self._benchmark_random_mode = key
 
     def scenario_has_randomized_fields(self, _name: str | None = None) -> bool:
         scenario = _SCENARIO_BY_NAME[self._eval_scenario_name]
-        return has_randomized_values((scenario.radius, scenario.angle_deviation_deg))
+        return has_randomized_values((scenario.dx,))
 
-    @staticmethod
-    def _to_optional_float(value: Any) -> float | None:
-        if value is None:
-            return None
-        try:
-            numeric = float(value)
-        except (TypeError, ValueError):
-            return None
-        if not math.isfinite(numeric):
-            return None
-        return numeric
-
-    @staticmethod
-    def _resolve_launch_snapshot(game) -> dict[str, Any] | None:
-        actor_bots = getattr(game, "actor_bots", {})
-        if not isinstance(actor_bots, dict):
-            return None
-        for bot in actor_bots.values():
-            get_snapshot = getattr(bot, "get_evaluation_snapshot", None)
-            if not callable(get_snapshot):
-                continue
-            try:
-                snapshot = get_snapshot()
-            except Exception:
-                continue
-            if not isinstance(snapshot, dict):
-                continue
-            kind = snapshot.get("kind")
-            if kind in {"launch", "zem_zev"} or "handoff_done" in snapshot:
-                return snapshot
-        return None
-
-    def _mode_for_run(self) -> str:
-        if self._eval_mode_name == "auto":
-            return _LAUNCH_DEFAULT_EVAL_MODE
-        return self._eval_mode_name
-
-    def _reset_phase_eval_metrics(self) -> None:
-        self._phase1_snapshot_kind: str | None = None
-        self._phase1_handoff_done = False
-        self._phase1_handoff_time = None
-        self._phase1_setup_distance = 0.0
-        self._phase1_setup_fuel_consumed = 0.0
-        self._phase1_prev_pos: Vector2 | None = None
-        self._phase1_prev_fuel: float | None = None
-        self._phase1_handoff_projected_dx = None
-        self._phase1_handoff_impact_x = None
-        self._phase1_handoff_target_x = None
-        self._phase1_handoff_impact_error = None
-        self._phase1_handoff_current_impact_x = None
-        self._phase1_handoff_current_target_x = None
-        self._phase1_handoff_current_impact_error = None
-        self._phase1_handoff_abs_angle_deg = None
-        self._phase1_handoff_x = None
-        self._phase1_handoff_y = None
-        self._phase1_handoff_dx = None
-        self._phase1_handoff_altitude = None
-        self._phase1_handoff_vx = None
-        self._phase1_handoff_vy_up = None
-        self._phase1_handoff_speed = None
-        self._phase1_handoff_horizontal_speed = None
-        self._phase1_handoff_on_track = None
-        self._phase1_handoff_speed_ready = None
-        self._phase1_handoff_not_falling_short = None
-        self._phase1_handoff_centered = None
-        self._phase1_handoff_inside_target = None
-        self._zem_setup_gate_done = False
-        self._zem_setup_gate_time = None
-        self._zem_setup_gate_altitude = None
-        self._zem_setup_gate_projected_dx = None
-        self._zem_terminal_gate_done = False
-        self._zem_terminal_gate_time = None
-        self._zem_terminal_gate_altitude = None
-        self._zem_terminal_gate_projected_dx = None
-        self._zem_solve_count = None
-        self._zem_solve_ms_mean = None
-        self._zem_solve_ms_p90 = None
-        self._zem_fallback_frames = None
-
-    def _update_phase_metrics(self) -> None:
-        if self._phase1_handoff_done:
-            return
-        actor = self.world.actors[0]
-        trans = require_component(actor, Transform)
-        tank = require_component(actor, FuelTank)
-        cur_pos = Vector2(trans.pos)
-        cur_fuel = float(tank.fuel)
-        if self._phase1_prev_pos is not None:
-            self._phase1_setup_distance += math.hypot(
-                cur_pos.x - self._phase1_prev_pos.x,
-                cur_pos.y - self._phase1_prev_pos.y,
-            )
-        if self._phase1_prev_fuel is not None:
-            self._phase1_setup_fuel_consumed += max(0.0, self._phase1_prev_fuel - cur_fuel)
-        self._phase1_prev_pos = cur_pos
-        self._phase1_prev_fuel = cur_fuel
-
-    def _capture_handoff(self, game, snapshot: dict[str, Any]) -> None:
-        if self._phase1_handoff_done:
-            return
-        self._phase1_snapshot_kind = "launch"
-        actor = self.world.actors[0]
-        trans = require_component(actor, Transform)
-        self._phase1_handoff_done = True
-        self._phase1_handoff_time = float(getattr(game, "_elapsed_time", 0.0))
-        self._phase1_handoff_projected_dx = self._to_optional_float(snapshot.get("projected_dx"))
-        self._phase1_handoff_impact_x = self._to_optional_float(snapshot.get("impact_x"))
-        self._phase1_handoff_target_x = self._to_optional_float(snapshot.get("target_x"))
-        self._phase1_handoff_impact_error = self._to_optional_float(snapshot.get("impact_error"))
-        self._phase1_handoff_current_impact_x = self._to_optional_float(
-            snapshot.get("current_impact_x")
-        )
-        self._phase1_handoff_current_target_x = self._to_optional_float(
-            snapshot.get("current_target_x")
-        )
-        self._phase1_handoff_current_impact_error = self._to_optional_float(
-            snapshot.get("current_impact_error")
-        )
-        if (
-            self._phase1_handoff_impact_error is None
-            and self._phase1_handoff_impact_x is not None
-            and self._phase1_handoff_target_x is not None
-        ):
-            self._phase1_handoff_impact_error = abs(
-                self._phase1_handoff_impact_x - self._phase1_handoff_target_x
-            )
-        if (
-            self._phase1_handoff_current_impact_error is None
-            and self._phase1_handoff_current_impact_x is not None
-            and self._phase1_handoff_current_target_x is not None
-        ):
-            self._phase1_handoff_current_impact_error = abs(
-                self._phase1_handoff_current_impact_x - self._phase1_handoff_current_target_x
-            )
-        angle_rad = self._to_optional_float(snapshot.get("angle_rad"))
-        if angle_rad is None:
-            angle_rad = float(trans.rotation)
-        self._phase1_handoff_abs_angle_deg = abs(math.degrees(angle_rad))
-        self._phase1_handoff_x = self._to_optional_float(snapshot.get("x"))
-        self._phase1_handoff_y = self._to_optional_float(snapshot.get("y"))
-        self._phase1_handoff_dx = self._to_optional_float(snapshot.get("dx"))
-        self._phase1_handoff_altitude = self._to_optional_float(snapshot.get("altitude"))
-        self._phase1_handoff_vx = self._to_optional_float(snapshot.get("vx"))
-        self._phase1_handoff_vy_up = self._to_optional_float(snapshot.get("vy_up"))
-        self._phase1_handoff_speed = self._to_optional_float(snapshot.get("speed"))
-        self._phase1_handoff_horizontal_speed = self._to_optional_float(
-            snapshot.get("horizontal_speed")
-        )
-        if (
-            self._phase1_handoff_speed is None
-            and self._phase1_handoff_vx is not None
-            and self._phase1_handoff_vy_up is not None
-        ):
-            self._phase1_handoff_speed = math.hypot(
-                self._phase1_handoff_vx,
-                self._phase1_handoff_vy_up,
-            )
-        if (
-            self._phase1_handoff_horizontal_speed is None
-            and self._phase1_handoff_vx is not None
-        ):
-            self._phase1_handoff_horizontal_speed = abs(self._phase1_handoff_vx)
-        self._phase1_handoff_on_track = bool(snapshot.get("on_track"))
-        self._phase1_handoff_speed_ready = bool(snapshot.get("speed_ready"))
-        self._phase1_handoff_not_falling_short = bool(snapshot.get("not_falling_short"))
-        self._phase1_handoff_centered = bool(snapshot.get("centered"))
-        self._phase1_handoff_inside_target = bool(snapshot.get("inside_target"))
-
-    def _capture_zem_setup_gate(self, game, snapshot: dict[str, Any]) -> None:
-        self._phase1_snapshot_kind = "zem_zev"
-        self._zem_setup_gate_done = bool(snapshot.get("setup_gate_done"))
-        self._zem_setup_gate_time = self._to_optional_float(snapshot.get("setup_gate_time"))
-        self._zem_setup_gate_altitude = self._to_optional_float(
-            snapshot.get("setup_gate_altitude")
-        )
-        self._zem_setup_gate_projected_dx = self._to_optional_float(
-            snapshot.get("setup_gate_projected_dx")
-        )
-        self._zem_terminal_gate_done = bool(snapshot.get("terminal_gate_done"))
-        self._zem_terminal_gate_time = self._to_optional_float(
-            snapshot.get("terminal_gate_time")
-        )
-        self._zem_terminal_gate_altitude = self._to_optional_float(
-            snapshot.get("terminal_gate_altitude")
-        )
-        self._zem_terminal_gate_projected_dx = self._to_optional_float(
-            snapshot.get("terminal_gate_projected_dx")
-        )
-        self._zem_solve_count = self._to_optional_float(snapshot.get("solve_count"))
-        self._zem_solve_ms_mean = self._to_optional_float(snapshot.get("solve_ms_mean"))
-        self._zem_solve_ms_p90 = self._to_optional_float(snapshot.get("solve_ms_p90"))
-        self._zem_fallback_frames = self._to_optional_float(snapshot.get("fallback_frames"))
-
-        if self._phase1_handoff_done or (not self._zem_setup_gate_done):
-            return
-        actor = self.world.actors[0]
-        trans = require_component(actor, Transform)
-        phys = require_component(actor, PhysicsState)
-        self._phase1_handoff_done = True
-        self._phase1_handoff_time = (
-            self._zem_setup_gate_time
-            if self._zem_setup_gate_time is not None
-            else float(getattr(game, "_elapsed_time", 0.0))
-        )
-        self._phase1_handoff_projected_dx = self._zem_setup_gate_projected_dx
-        self._phase1_handoff_altitude = self._zem_setup_gate_altitude
-        self._phase1_handoff_x = float(trans.pos.x)
-        self._phase1_handoff_y = float(trans.pos.y)
-        target_pos = getattr(self, "eval_target_pos", None)
-        if isinstance(target_pos, Vector2):
-            self._phase1_handoff_dx = float(target_pos.x) - self._phase1_handoff_x
-        self._phase1_handoff_vx = float(phys.vel.x)
-        self._phase1_handoff_vy_up = float(phys.vel.y)
-        self._phase1_handoff_speed = math.hypot(self._phase1_handoff_vx, self._phase1_handoff_vy_up)
-        self._phase1_handoff_horizontal_speed = abs(self._phase1_handoff_vx)
-        self._phase1_handoff_abs_angle_deg = abs(math.degrees(float(trans.rotation)))
+    def _build_base_terrain(self, _seed: int):
+        return _terrain.LodGridGenerator(lambda _x: 0.0)
 
     def setup(self, game, seed: int) -> None:
-        self._resolved_eval_mode = self._mode_for_run()
-        self._reset_phase_eval_metrics()
-        scenario_base = _SCENARIO_BY_NAME[self._eval_scenario_name]
-        scenario_name_hash = sum(ord(ch) for ch in scenario_base.name)
+        scenario = _SCENARIO_BY_NAME[self._eval_scenario_name]
+        scenario_name_hash = sum(ord(ch) for ch in scenario.name)
         rng = random.Random(seed ^ (scenario_name_hash << 1))
-        direction = -1.0 if rng.random() < 0.5 else 1.0
-        radius = self._resolve_sample_value(scenario_base.radius, rng)
-        angle_deviation_deg = self._resolve_sample_value(scenario_base.angle_deviation_deg, rng)
-        entry_angle_deg = float(scenario_base.base_angle_deg) + angle_deviation_deg
-        entry_angle_rad = math.radians(entry_angle_deg)
-        start_dx = direction * radius * math.cos(entry_angle_rad)
-        start_dy = radius * math.sin(entry_angle_rad)
-        self.scenario = _make_spec(
-            name=scenario_base.name,
-            start_dx=start_dx,
-            start_dy=start_dy,
-            cargo_mass=float(scenario_base.cargo_mass),
+        dest_dx = resolve_sample_value(
+            scenario.dx,
+            mode="median" if self._benchmark_random_mode == "median" else "sample",
+            rng=rng,
+        )
+        dest_x = _SOURCE_PAD_X + dest_dx
+        self.site_specs = (
+            SiteSpec(
+                uid="launch_site_source",
+                x=_SOURCE_PAD_X,
+                size=110.0,
+                award=100.0,
+                fuel_price=8.0,
+            ),
+            SiteSpec(
+                uid="launch_site_dest",
+                x=dest_x,
+                size=110.0,
+                award=100.0,
+                fuel_price=8.0,
+            ),
         )
         super().setup(game, seed)
-
         actor = self.world.actors[0]
-        target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
-        trans = require_component(actor, Transform)
-        phys = require_component(actor, PhysicsState)
-        start_pos = Vector2(
-            float(target_pos.x) + start_dx,
-            float(target_pos.y) + start_dy,
-        )
-        trans.pos = Vector2(start_pos)
-        actor.start_pos = Vector2(start_pos)
-
-        validate_scenario_recoverability(
-            actor,
-            scenario_name=scenario_base.name,
-            spawn_clearance=start_dy,
-            initial_vy_up=0.0,
-        )
-        trans.rotation = float(scenario_base.initial_angle)
-        initial_vx = 0.0
-        initial_vy_up = 0.0
-        phys.vel = Vector2(initial_vx, initial_vy_up)
-
+        cargo = actor.get_component(CargoHold)
+        if cargo is not None:
+            cargo.cargo_mass = 0.0
         engine = getattr(self, "engine", None)
-        if engine is not None:
-            if hasattr(engine, "teleport_lander"):
-                engine.teleport_lander(
-                    Vector2(trans.pos),
-                    angle=trans.rotation,
-                    clear_velocity=False,
-                    uid=actor.uid,
-                )
-            if hasattr(engine, "set_lander_velocity"):
-                engine.set_lander_velocity(
-                    Vector2(initial_vx, initial_vy_up),
-                    uid=actor.uid,
-                )
-
-        self._phase1_prev_pos = Vector2(trans.pos)
-        tank = require_component(actor, FuelTank)
-        self._phase1_prev_fuel = float(tank.fuel)
-        self._set_scenario_params(
+        if engine is not None and hasattr(engine, "set_lander_mass"):
+            engine.set_lander_mass(get_mass(actor), uid=actor.uid)
+        setattr(self, "scenario_name", scenario.name)
+        setattr(
+            self,
+            "_scenario_params",
             {
-                "radius": radius,
-                "entry_angle_deg": entry_angle_deg,
-                "angle_deviation_deg": angle_deviation_deg,
-                "direction": direction,
-            }
+                "dx": dest_dx,
+            },
         )
-        setattr(self, "scenario_name", scenario_base.name)
+        dest_site = self.sites.get_site("launch_site_dest")
+        if dest_site is not None:
+            setattr(self, "eval_target_pos", Vector2(dest_site.x, dest_site.y))
 
-    def update(self, game, dt: float) -> None:
-        _ = dt
-        self._update_phase_metrics()
-        if self._phase1_handoff_done:
-            return
-        snapshot = self._resolve_launch_snapshot(game)
-        if not isinstance(snapshot, dict):
-            return
-        kind = str(snapshot.get("kind") or "")
-        if kind == "zem_zev":
-            self._capture_zem_setup_gate(game, snapshot)
-        elif bool(snapshot.get("handoff_done")):
-            self._capture_handoff(game, snapshot)
-
-    def should_end(self, game) -> bool:
-        if self._resolved_eval_mode == "focused" and self._phase1_handoff_done:
-            return True
-        return super().should_end(game)
+    def _resolve_landed_site_uid(self, landed_x: float) -> str | None:
+        best_uid: str | None = None
+        best_distance = float("inf")
+        for spec in self.site_specs:
+            half = 0.5 * float(spec.size)
+            distance = abs(float(landed_x) - float(spec.x))
+            if distance <= half + 1e-6:
+                return spec.uid
+            if distance < best_distance:
+                best_distance = distance
+                best_uid = spec.uid
+        return best_uid
 
     def end(self, game):
         result = super().end(game)
-        setup_distance = self._phase1_setup_distance
-        setup_fuel = self._phase1_setup_fuel_consumed
-        fuel_per_distance = (setup_fuel / setup_distance) if setup_distance > 1e-9 else 0.0
-        setup_path_efficiency = None
-        actor = self.world.actors[0]
-        trans = require_component(actor, Transform)
-        start_pos = getattr(actor, "start_pos", None)
-        target_pos = getattr(self, "eval_target_pos", None)
-        if isinstance(start_pos, Vector2) and isinstance(target_pos, Vector2) and setup_distance > 1e-9:
-            straight_line = math.hypot(target_pos.x - start_pos.x, target_pos.y - start_pos.y)
-            setup_path_efficiency = min(1.0, straight_line / setup_distance)
-        if self._phase1_handoff_done and self._phase1_handoff_abs_angle_deg is None:
-            self._phase1_handoff_abs_angle_deg = abs(math.degrees(float(trans.rotation)))
-
-        result["eval_mode"] = self._resolved_eval_mode
-        result["launch_handoff_done"] = self._phase1_handoff_done
-        result["launch_handoff_time"] = self._phase1_handoff_time
-        result["launch_handoff_projected_dx"] = self._phase1_handoff_projected_dx
-        result["launch_handoff_impact_x"] = self._phase1_handoff_impact_x
-        result["launch_handoff_target_x"] = self._phase1_handoff_target_x
-        result["launch_handoff_impact_error"] = (
-            self._phase1_handoff_current_impact_error
-            if self._phase1_handoff_current_impact_error is not None
-            else self._phase1_handoff_impact_error
-        )
-        result["launch_handoff_planned_impact_error"] = self._phase1_handoff_impact_error
-        result["launch_handoff_current_impact_x"] = self._phase1_handoff_current_impact_x
-        result["launch_handoff_current_target_x"] = self._phase1_handoff_current_target_x
-        result["launch_handoff_abs_angle_deg"] = self._phase1_handoff_abs_angle_deg
-        result["launch_handoff_x"] = self._phase1_handoff_x
-        result["launch_handoff_y"] = self._phase1_handoff_y
-        result["launch_handoff_dx"] = self._phase1_handoff_dx
-        result["launch_handoff_abs_dx"] = (
-            abs(self._phase1_handoff_dx)
-            if self._phase1_handoff_dx is not None
-            else None
-        )
-        result["launch_handoff_altitude"] = self._phase1_handoff_altitude
-        result["launch_handoff_vx"] = self._phase1_handoff_vx
-        result["launch_handoff_vy_up"] = self._phase1_handoff_vy_up
-        result["launch_handoff_speed"] = self._phase1_handoff_speed
-        result["launch_handoff_horizontal_speed"] = self._phase1_handoff_horizontal_speed
-        result["launch_handoff_on_track"] = self._phase1_handoff_on_track
-        result["launch_handoff_speed_ready"] = self._phase1_handoff_speed_ready
-        result["launch_handoff_not_falling_short"] = self._phase1_handoff_not_falling_short
-        result["launch_handoff_centered"] = self._phase1_handoff_centered
-        result["launch_handoff_inside_target"] = self._phase1_handoff_inside_target
-        result["launch_setup_distance"] = setup_distance
-        result["launch_setup_fuel_consumed"] = setup_fuel
-        result["launch_setup_fuel_per_distance"] = fuel_per_distance
-        result["launch_setup_path_efficiency"] = setup_path_efficiency
-        result["zem_setup_gate_done"] = self._zem_setup_gate_done
-        result["zem_setup_gate_time"] = self._zem_setup_gate_time
-        result["zem_setup_gate_altitude"] = self._zem_setup_gate_altitude
-        result["zem_setup_gate_projected_dx"] = self._zem_setup_gate_projected_dx
-        result["zem_terminal_gate_done"] = self._zem_terminal_gate_done
-        result["zem_terminal_gate_time"] = self._zem_terminal_gate_time
-        result["zem_terminal_gate_altitude"] = self._zem_terminal_gate_altitude
-        result["zem_terminal_gate_projected_dx"] = self._zem_terminal_gate_projected_dx
-        result["zem_solve_count"] = self._zem_solve_count
-        result["zem_solve_ms_mean"] = self._zem_solve_ms_mean
-        result["zem_solve_ms_p90"] = self._zem_solve_ms_p90
-        result["zem_fallback_frames"] = self._zem_fallback_frames
-
-        if self._resolved_eval_mode == "focused":
-            state = str(result.get("state", "unknown"))
-            if self._phase1_snapshot_kind == "zem_zev":
-                success = bool(self._zem_setup_gate_done)
-                result["eval_phase"] = "zem_setup_gate"
-            else:
-                success = bool(self._phase1_handoff_done)
-                result["eval_phase"] = "launch_setup"
-            result["success"] = success
-            result["failure_mode"] = "none" if success else state
+        state = str(result.get("state", "unknown"))
+        landed_uid: str | None = None
+        if state == "landed":
+            actor = self.world.actors[0]
+            trans = require_component(actor, Transform)
+            landed_uid = self._resolve_landed_site_uid(float(trans.pos.x))
+        launch_arrived = state == "landed" and landed_uid == "launch_site_dest"
+        result["launch_arrived"] = launch_arrived
+        result["launch_landed_site_uid"] = landed_uid
+        result["success"] = launch_arrived
+        if launch_arrived:
+            result["failure_mode"] = "none"
+        elif state == "landed":
+            result["failure_mode"] = "wrong_pad"
+        else:
+            result["failure_mode"] = state
         return result
 
 

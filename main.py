@@ -20,6 +20,7 @@ from bots import create_bot, list_available_bots
 from bots.coast import list_behavior_names as list_coast_behaviors
 from bots.flare import list_behavior_names as list_flare_behaviors
 from bots.launch import list_behavior_names as list_launch_behaviors
+from bots.setup import list_behavior_names as list_setup_behaviors
 from bots.plunge import list_behavior_names as list_plunge_behaviors
 from levels import create_level, list_available_levels
 from landers import list_available_landers
@@ -72,6 +73,7 @@ def _build_parser() -> argparse.ArgumentParser:
                 *list_flare_behaviors(),
                 *list_coast_behaviors(),
                 *list_launch_behaviors(),
+                *list_setup_behaviors(),
             }
         )
     )
@@ -344,8 +346,8 @@ def _print_headless_results(result: dict) -> None:
         "fuel_per_distance",
         "spawn_to_target_distance",
         "path_efficiency",
-        "ferry_arrived",
-        "ferry_landed_site_uid",
+        "launch_arrived",
+        "launch_landed_site_uid",
         "zem_setup_gate_done",
         "zem_setup_gate_time",
         "zem_setup_gate_altitude",
@@ -374,23 +376,23 @@ def _print_headless_results(result: dict) -> None:
         "coast_setup_fuel_consumed",
         "coast_setup_fuel_per_distance",
         "coast_setup_path_efficiency",
-        "launch_handoff_done",
-        "launch_handoff_time",
-        "launch_handoff_altitude",
-        "launch_handoff_dx",
-        "launch_handoff_abs_dx",
-        "launch_handoff_vx",
-        "launch_handoff_vy_up",
-        "launch_handoff_speed",
-        "launch_handoff_horizontal_speed",
-        "launch_handoff_projected_dx",
-        "launch_handoff_impact_error",
-        "launch_handoff_planned_impact_error",
-        "launch_handoff_abs_angle_deg",
-        "launch_setup_distance",
-        "launch_setup_fuel_consumed",
-        "launch_setup_fuel_per_distance",
-        "launch_setup_path_efficiency",
+        "setup_handoff_done",
+        "setup_handoff_time",
+        "setup_handoff_altitude",
+        "setup_handoff_dx",
+        "setup_handoff_abs_dx",
+        "setup_handoff_vx",
+        "setup_handoff_vy_up",
+        "setup_handoff_speed",
+        "setup_handoff_horizontal_speed",
+        "setup_handoff_projected_dx",
+        "setup_handoff_impact_error",
+        "setup_handoff_planned_impact_error",
+        "setup_handoff_abs_angle_deg",
+        "setup_distance",
+        "setup_fuel_consumed",
+        "setup_fuel_per_distance",
+        "setup_path_efficiency",
     ):
         if key in result:
             val = result[key]
@@ -454,7 +456,7 @@ def _parse_name_csv(spec: str) -> list[str]:
 
 
 def _list_quick_benchmark_levels() -> list[str]:
-    preferred = ["plunge", "flare", "coast", "launch"]
+    preferred = ["plunge", "flare", "coast", "setup"]
     available = set(list_available_levels())
     return [name for name in preferred if name in available]
 
@@ -727,21 +729,21 @@ def _print_batch_summary(
             "coast_setup_fuel_consumed",
             "coast_setup_fuel_per_distance",
             "coast_setup_path_efficiency",
-            "launch_handoff_time",
-            "launch_handoff_altitude",
-            "launch_handoff_dx",
-            "launch_handoff_abs_dx",
-            "launch_handoff_vx",
-            "launch_handoff_vy_up",
-            "launch_handoff_speed",
-            "launch_handoff_horizontal_speed",
-            "launch_handoff_impact_error",
-            "launch_handoff_planned_impact_error",
-            "launch_handoff_abs_angle_deg",
-            "launch_setup_distance",
-            "launch_setup_fuel_consumed",
-            "launch_setup_fuel_per_distance",
-            "launch_setup_path_efficiency",
+            "setup_handoff_time",
+            "setup_handoff_altitude",
+            "setup_handoff_dx",
+            "setup_handoff_abs_dx",
+            "setup_handoff_vx",
+            "setup_handoff_vy_up",
+            "setup_handoff_speed",
+            "setup_handoff_horizontal_speed",
+            "setup_handoff_impact_error",
+            "setup_handoff_planned_impact_error",
+            "setup_handoff_abs_angle_deg",
+            "setup_distance",
+            "setup_fuel_consumed",
+            "setup_fuel_per_distance",
+            "setup_path_efficiency",
         )
         printed = 0
         for metric in metric_order:

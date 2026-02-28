@@ -14,8 +14,8 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 - `zem_zev`: [`zem_zev.md`](zem_zev.md)
 - `zem full-envelope`: [`zem_full_envelope.md`](zem_full_envelope.md)
 - `coast`: [`coast.md`](coast.md)
+- `setup`: [`setup.md`](setup.md)
 - `launch`: [`launch.md`](launch.md)
-- `ferry`: [`ferry.md`](ferry.md)
 
 ## Artifacts
 

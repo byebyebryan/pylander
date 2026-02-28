@@ -3,8 +3,8 @@
 Implementation: [`bots/zem_zev.py`](../bots/zem_zev.py), [`bots/_optimizer_pdg.py`](../bots/_optimizer_pdg.py)
 
 `zem_zev` is an optimizer-first full-envelope guidance bot.
-It is now the default in-flight controller for `launch`, `coast`, and `flare` levels.
-Legacy `launch` / `coast` / `flare` bots are still available for targeted experiments.
+It is now the default in-flight controller for `setup`, `coast`, and `flare` levels.
+Legacy `setup` / `coast` / `flare` bots are still available for targeted experiments.
 
 ## Naming
 
@@ -106,10 +106,10 @@ Each frame:
 
 Focused eval behavior:
 
-- `launch --eval-mode focused` ends on `zem_setup_gate_done`
+- `setup --eval-mode focused` ends on `zem_setup_gate_done`
 - `coast --eval-mode focused` ends on `zem_terminal_gate_done`
 
-Legacy handoff metrics (`launch_handoff_*`, `coast_handoff_*`) are still emitted for compatibility, but `zem_*` is the canonical schema for unified runs.
+Phased setup/coast runs emit `setup_handoff_*` / `coast_handoff_*`; unified runs rely on the `zem_*` schema.
 
 ## Fresh comparison vs `flare` bot
 

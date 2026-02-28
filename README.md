@@ -6,7 +6,7 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 
 - Start here: [`docs/README.md`](docs/README.md)
 - Bot dev framework + API: [`docs/overview.md`](docs/overview.md)
-- Phase docs: [`docs/plunge.md`](docs/plunge.md), [`docs/flare.md`](docs/flare.md), [`docs/zem_zev.md`](docs/zem_zev.md), [`docs/zem_full_envelope.md`](docs/zem_full_envelope.md), [`docs/coast.md`](docs/coast.md), [`docs/launch.md`](docs/launch.md), [`docs/ferry.md`](docs/ferry.md)
+- Phase docs: [`docs/plunge.md`](docs/plunge.md), [`docs/flare.md`](docs/flare.md), [`docs/zem_zev.md`](docs/zem_zev.md), [`docs/zem_full_envelope.md`](docs/zem_full_envelope.md), [`docs/coast.md`](docs/coast.md), [`docs/setup.md`](docs/setup.md), [`docs/launch.md`](docs/launch.md)
 
 ## Features
 
@@ -19,8 +19,8 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 - Unified plunge benchmark bot (`plunge`)
 - Dedicated flare benchmark level (`flare`) defaulting to unified optimizer bot (`zem_zev`)
 - Horizontal-control benchmark level (`coast`) defaulting to unified optimizer bot (`zem_zev`)
-- Launch setup benchmark level (`launch`) defaulting to unified optimizer bot (`zem_zev`)
-- Pad-to-pad ferry benchmark level (`ferry`) with transfer wrapper bot (`ferry`) that hands off to `zem_zev`
+- Setup benchmark level (`setup`) defaulting to unified optimizer bot (`zem_zev`)
+- Pad-to-pad launch transfer level (`launch`) with wrapper bot (`launch`) that hands off to `zem_zev`
 
 ## Setup
 
@@ -67,20 +67,20 @@ uv run python main.py coast --bot coast
 # Pick a specific coast scenario
 uv run python main.py coast --scenario entry_steep_high
 
-# Launch setup benchmark level + bot
+# Setup benchmark level + bot
+uv run python main.py setup
+
+# Run legacy setup bot explicitly
+uv run python main.py setup --bot setup
+
+# Pick a specific setup scenario
+uv run python main.py setup --scenario air_steep
+
+# Run setup end-to-end (handoff + coast + terminal)
+uv run python main.py setup --eval-mode full
+
+# Pad-to-pad launch transfer level + bot
 uv run python main.py launch
-
-# Run legacy launch bot explicitly
-uv run python main.py launch --bot launch
-
-# Pick a specific launch scenario
-uv run python main.py launch --scenario air_steep
-
-# Run launch end-to-end (handoff + coast + terminal)
-uv run python main.py launch --eval-mode full
-
-# Pad-to-pad ferry level + bot
-uv run python main.py ferry
 
 # Use plunge bot on other levels if desired
 uv run python main.py flat --bot plunge
@@ -128,9 +128,9 @@ Quick benchmark preset includes:
 - `plunge`: `low_normal`, `mid_normal`, `high_normal`
 - `flare`: `shallow`, `mid`, `steep`
 - `coast`: `entry_mid_low`, `entry_mid_high`, `entry_steep_high`
-- `launch`: `air_mid`, `air_steep`
+- `setup`: `air_mid`, `air_steep`
 
-Staged eval (`--eval-mode focused|full`) is available for `flare`, `coast`, and `launch`.
+Staged eval (`--eval-mode focused|full`) is available for `flare`, `coast`, and `setup`.
 Quick benchmark runs one deterministic median sample per scenario (seed `0`).
 
 ## Controls (Human Mode)
@@ -157,8 +157,8 @@ Scenario docs:
 - `flare`: [`docs/flare.md`](docs/flare.md)
 - `zem_zev`: [`docs/zem_zev.md`](docs/zem_zev.md)
 - `coast`: [`docs/coast.md`](docs/coast.md)
+- `setup`: [`docs/setup.md`](docs/setup.md)
 - `launch`: [`docs/launch.md`](docs/launch.md)
-- `ferry`: [`docs/ferry.md`](docs/ferry.md)
 
 ## Command Line Options
 
@@ -168,18 +168,18 @@ uv run python main.py [level_name] [options]
 
 **Levels:** Run `uv run python main.py --help` to list (e.g. `flat`, `mountains`, `plunge`).
 
-**Bot names:** `plunge`, `flare`, `coast`, `launch`, `ferry`, `zem_zev` (set via `--bot`; see `--help`). `zem_zev` is the optimizer-first unified in-flight controller used by default on `launch`, `coast`, and `flare` levels (see [`docs/zem_zev.md`](docs/zem_zev.md) and [`docs/zem_full_envelope.md`](docs/zem_full_envelope.md)).
+**Bot names:** `plunge`, `flare`, `coast`, `setup`, `launch`, `zem_zev` (set via `--bot`; see `--help`). `zem_zev` is the optimizer-first unified in-flight controller used by default on `setup`, `coast`, and `flare` levels (see [`docs/zem_zev.md`](docs/zem_zev.md) and [`docs/zem_full_envelope.md`](docs/zem_full_envelope.md)).
 
 **Options:**
-- `--bot NAME` - Select bot (`plunge`, `flare`, `coast`, `launch`, `ferry`, `zem_zev`)
-- `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `plunge` => `balanced`; `flare` => `flare`; `coast` => `coast`; `launch` => `launch`; `ferry` => `ferry`)
+- `--bot NAME` - Select bot (`plunge`, `flare`, `coast`, `setup`, `launch`, `zem_zev`)
+- `--bot-behavior NAME` - Behavior profile for bots that support it (examples: `plunge` => `balanced`; `flare` => `flare`; `coast` => `coast`; `setup` => `setup`; `launch` => `launch`)
 - `--headless` - Run without graphics (requires bot)
 - `--freq N` - Print stats every N frames (60 ≈ 1/s; 0 = off)
 - `--steps N` - Limit simulation to N steps (headless)
 - `--time S` - Limit simulation to S seconds (headless, default 300)
 - `--plot none|speed|thrust|all` - Save trajectory plot (headless)
 - `--stop-on-crash`, `--stop-on-out-of-fuel`, `--stop-on-first-land` - End conditions
-- `--eval-mode auto|focused|full` - Evaluation mode for staged levels (`flare`, `coast`, and `launch` default to full when auto)
+- `--eval-mode auto|focused|full` - Evaluation mode for staged levels (`flare`, `coast`, and `setup` default to full when auto)
 - `--seed N` - Random seed
 - `--scenario NAME` - Select a level scenario (if supported)
 - `--lander NAME` - Lander variant (classic, differential, simple)
@@ -190,7 +190,7 @@ uv run python main.py [level_name] [options]
 - `--batch-json PATH|auto` - Write JSON report
 - `--batch-csv PATH|auto` - Write CSV rows
 - `--batch-workers N` - Parallel worker processes for batch runs (default: auto = CPU count; `1` = sequential; effective workers are capped by CPU count and run count)
-- `--quick-benchmark` - Built-in cross-level core benchmark preset using median scenario values (`plunge` + `flare` + `coast` + `launch` subsets)
+- `--quick-benchmark` - Built-in cross-level core benchmark preset using median scenario values (`plunge` + `flare` + `coast` + `setup` subsets)
 - `--help`, `-h` - Show help message
 
 Batch mode defaults to `--freq 0` (quiet) for speed; pass `--freq` to enable per-run stats.

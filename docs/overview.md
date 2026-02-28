@@ -6,12 +6,12 @@ Pylander bot work is organized as a **phase-oriented pipeline**. The goal is to 
 
 Complex landing behavior can be tuned either with explicit phase handoffs or a single optimizer core:
 
-- `zem_zev`: unified coupled 2-axis guidance used by default in `launch`, `coast`, and `flare` levels
-- `launch` (legacy): establish a good approach trajectory and hand off to `coast`
+- `zem_zev`: unified coupled 2-axis guidance used by default in `setup`, `coast`, and `flare` levels
+- `setup` (legacy): establish a good approach trajectory and hand off to `coast`
 - `coast` (legacy): run at most one flip-arc correction burn and decide when to hand off to `flare`
 - `flare` (legacy): terminal 2-axis convergence and touchdown
 - `plunge`: vertical-only sandbox for burn timing + touchdown (no upstream handoff required)
-- `ferry`: pad-to-pad transfer wrapper (`upright clear -> zem_zev`) with pinned destination targeting
+- `launch`: pad-to-pad transfer wrapper (`upright clear -> zem_zev`) with pinned destination targeting
 
 Default in-flight chain:
 
@@ -19,21 +19,21 @@ Default in-flight chain:
 
 Legacy chain:
 
-`launch -> coast -> flare`
+`setup -> coast -> flare`
 
 `plunge` is intentionally standalone.
 
-`ferry` reuses the unified `zem_zev` controller after an upright takeoff clear.
+`launch` reuses the unified `zem_zev` controller after an upright takeoff clear.
 
-Legacy ownership handoff remains explicit (`launch -> coast -> flare`).
+Legacy ownership handoff remains explicit (`setup -> coast -> flare`).
 The unified `zem_zev` path does not require inter-bot handoffs during in-flight guidance.
 
 ```mermaid
 flowchart LR
   zem[zem_zev]
   zem --> touchdown[touchdown]
-  launch[launch (legacy)] --> coast[coast (legacy)] --> flare[flare (legacy)] --> touchdown
-  ferry[ferry] --> zem
+  setup[setup (legacy)] --> coast[coast (legacy)] --> flare[flare (legacy)] --> touchdown
+  launch[launch] --> zem
   plunge[plunge] --> touchdown
 ```
 
@@ -53,7 +53,7 @@ Most phases rely on the same run-end metrics (emitted by the game loop and summa
 - Efficiency: `fuel_consumed`, `fuel_per_distance`, `path_efficiency`
 - Timing: `time`, `time_to_first_land`
 
-Unified runs emit `zem_*` gate/solver metrics, while legacy phased runs keep `coast_handoff_*` and `launch_handoff_*`.
+Unified runs emit `zem_*` gate/solver metrics, while phased setup/coast runs emit `setup_handoff_*` and `coast_handoff_*`.
 
 ## Where things live
 

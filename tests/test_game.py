@@ -9,7 +9,7 @@ import main as main_module
 import pytest
 import bots.coast as coast_module
 import bots.flare as flare_module
-import bots.launch as launch_module
+import bots.setup as setup_bot_module
 from bots._coast_tracking import (
     COAST_POLICY,
     CoastCourseConfig,
@@ -28,10 +28,10 @@ from bots import create_bot, list_available_bots
 from bots.coast import should_handoff_to_flare
 from bots.flare import FlareBot
 from bots.plunge import PlungeBot
-from bots.launch import (
-    LaunchBot,
-    apply_launch_setup_guidance,
-    resolve_launch_behavior,
+from bots.setup import (
+    SetupBot,
+    apply_setup_guidance,
+    resolve_setup_behavior,
     should_handoff_to_coast,
 )
 from core.config import GRAVITY
@@ -70,7 +70,7 @@ DRIFT_POLICY = COAST_POLICY
 DriftCourseConfig = CoastCourseConfig
 TransferSetupConfig = LaunchSetupConfig
 apply_drift_guidance = apply_coast_guidance
-apply_transfer_setup_guidance = apply_launch_setup_guidance
+apply_transfer_setup_guidance = apply_setup_guidance
 should_handoff_to_drift = should_handoff_to_coast
 
 
@@ -83,8 +83,8 @@ def resolve_drift_behavior(behavior: str):
 
 
 def resolve_transfer_behavior(behavior: str):
-    mapped = "launch" if behavior == "transfer" else behavior
-    key, policy, cfg, setup_cfg = resolve_launch_behavior(mapped)
+    mapped = "setup" if behavior == "transfer" else behavior
+    key, policy, cfg, setup_cfg = resolve_setup_behavior(mapped)
     if behavior == "transfer":
         return "transfer", policy, cfg, setup_cfg
     return key, policy, cfg, setup_cfg
@@ -96,7 +96,7 @@ def test_bot_registry_exposes_expected_bots() -> None:
     assert "flare" in bots
     assert "coast" in bots
     assert "launch" in bots
-    assert "ferry" in bots
+    assert "setup" in bots
     assert "zem_zev" in bots
     assert "_drop_core" not in bots
     assert "_drift_core" not in bots
@@ -109,13 +109,13 @@ def test_bot_registry_exposes_expected_bots() -> None:
     flare_bot = create_bot("flare")
     coast_bot = create_bot("coast")
     launch_bot = create_bot("launch")
-    ferry_bot = create_bot("ferry")
+    setup_bot = create_bot("setup")
     zem_zev_bot = create_bot("zem_zev")
     assert plunge_bot.__class__.__name__ == "PlungeBot"
     assert flare_bot.__class__.__name__ == "FlareBot"
     assert coast_bot.__class__.__name__ == "CoastBot"
+    assert setup_bot.__class__.__name__ == "SetupBot"
     assert launch_bot.__class__.__name__ == "LaunchBot"
-    assert ferry_bot.__class__.__name__ == "FerryBot"
     assert zem_zev_bot.__class__.__name__ == "ZemZevBot"
 
 
@@ -141,10 +141,10 @@ def test_rate_limit_angle_command_respects_linear_limit_when_not_wrapping() -> N
     assert limited == pytest.approx(0.5)
 
 
-def _make_ferry_contacts() -> list[RadarContact]:
+def _make_launch_contacts() -> list[RadarContact]:
     return [
         RadarContact(
-            uid="ferry_site_source",
+            uid="launch_site_source",
             x=0.0,
             y=0.0,
             size=110.0,
@@ -156,7 +156,7 @@ def _make_ferry_contacts() -> list[RadarContact]:
             info=None,
         ),
         RadarContact(
-            uid="ferry_site_dest",
+            uid="launch_site_dest",
             x=800.0,
             y=0.0,
             size=110.0,
@@ -170,10 +170,10 @@ def _make_ferry_contacts() -> list[RadarContact]:
     ]
 
 
-def _make_ferry_contacts_from_dest() -> list[RadarContact]:
+def _make_launch_contacts_from_dest() -> list[RadarContact]:
     return [
         RadarContact(
-            uid="ferry_site_dest",
+            uid="launch_site_dest",
             x=800.0,
             y=0.0,
             size=110.0,
@@ -185,7 +185,7 @@ def _make_ferry_contacts_from_dest() -> list[RadarContact]:
             info=None,
         ),
         RadarContact(
-            uid="ferry_site_source",
+            uid="launch_site_source",
             x=0.0,
             y=0.0,
             size=110.0,
@@ -199,7 +199,7 @@ def _make_ferry_contacts_from_dest() -> list[RadarContact]:
     ]
 
 
-def _make_ferry_passive(
+def _make_launch_passive(
     *,
     state: str,
     altitude: float,
@@ -226,12 +226,12 @@ def _make_ferry_passive(
     )
 
 
-def test_ferry_bot_keeps_upright_takeoff_until_pad_clear() -> None:
-    bot = create_bot("ferry")
-    contacts = _make_ferry_contacts()
-    landed = _make_ferry_passive(state="landed", altitude=4.0, contacts=contacts)
+def test_launch_bot_keeps_upright_takeoff_until_pad_clear() -> None:
+    bot = create_bot("launch")
+    contacts = _make_launch_contacts()
+    landed = _make_launch_passive(state="landed", altitude=4.0, contacts=contacts)
     action_landed = bot.update(1.0 / 60.0, landed, active=SimpleNamespace())
-    assert action_landed.status == "ferry:takeoff_upright"
+    assert action_landed.status == "launch:takeoff_upright"
     assert action_landed.target_angle == pytest.approx(0.0)
     assert action_landed.target_thrust > 0.0
 
@@ -239,97 +239,97 @@ def test_ferry_bot_keeps_upright_takeoff_until_pad_clear() -> None:
         raise AssertionError("delegate update should not run before pad clear")
 
     bot._delegate.update = _unexpected_delegate  # type: ignore[attr-defined]
-    low_alt = _make_ferry_passive(state="flying", altitude=4.5, contacts=contacts)
+    low_alt = _make_launch_passive(state="flying", altitude=4.5, contacts=contacts)
     action_low_alt = bot.update(1.0 / 60.0, low_alt, active=SimpleNamespace())
-    assert action_low_alt.status == "ferry:clear_pad"
+    assert action_low_alt.status == "launch:clear_pad"
     assert action_low_alt.target_angle == pytest.approx(0.0)
     assert action_low_alt.target_thrust > 0.0
 
 
-def test_ferry_bot_hands_off_to_launch_once_pad_is_clear() -> None:
-    bot = create_bot("ferry")
-    contacts = _make_ferry_contacts()
-    landed = _make_ferry_passive(state="landed", altitude=4.0, contacts=contacts)
+def test_launch_bot_hands_off_to_launch_once_pad_is_clear() -> None:
+    bot = create_bot("launch")
+    contacts = _make_launch_contacts()
+    landed = _make_launch_passive(state="landed", altitude=4.0, contacts=contacts)
     bot.update(1.0 / 60.0, landed, active=SimpleNamespace())
-    clear_alt = _make_ferry_passive(state="flying", altitude=130.0, contacts=contacts)
+    clear_alt = _make_launch_passive(state="flying", altitude=130.0, contacts=contacts)
     action = bot.update(1.0 / 60.0, clear_alt, active=SimpleNamespace())
     selected = pick_target(clear_alt, pinned_uid=bot._delegate.pinned_target_uid)
-    assert bot._delegate.pinned_target_uid == "ferry_site_dest"
+    assert bot._delegate.pinned_target_uid == "launch_site_dest"
     assert selected is not None
-    assert selected.uid == "ferry_site_dest"
+    assert selected.uid == "launch_site_dest"
     assert action.handoff_to is bot._delegate
-    assert action.status == "ferry:handoff_launch"
-    assert action.active_bot == "launch"
+    assert action.status == "launch:handoff_zem"
+    assert action.active_bot == "zem_zev"
     assert action.stage == "handoff"
 
 
-def test_ferry_bot_handoff_keeps_destination_target_pinned() -> None:
-    bot = create_bot("ferry")
-    contacts = _make_ferry_contacts()
-    landed = _make_ferry_passive(state="landed", altitude=4.0, contacts=contacts)
+def test_launch_bot_handoff_keeps_destination_target_pinned() -> None:
+    bot = create_bot("launch")
+    contacts = _make_launch_contacts()
+    landed = _make_launch_passive(state="landed", altitude=4.0, contacts=contacts)
     bot.update(1.0 / 60.0, landed, active=SimpleNamespace())
-    high_alt = _make_ferry_passive(state="flying", altitude=140.0, contacts=contacts)
+    high_alt = _make_launch_passive(state="flying", altitude=140.0, contacts=contacts)
     action = bot.update(1.0 / 60.0, high_alt, active=SimpleNamespace())
     selected = pick_target(high_alt, pinned_uid=bot._delegate.pinned_target_uid)
-    assert bot._delegate.pinned_target_uid == "ferry_site_dest"
+    assert bot._delegate.pinned_target_uid == "launch_site_dest"
     assert selected is not None
-    assert selected.uid == "ferry_site_dest"
+    assert selected.uid == "launch_site_dest"
     assert action.handoff_to is bot._delegate
 
 
-def test_ferry_bot_stays_landed_after_reaching_destination() -> None:
-    bot = create_bot("ferry")
-    source_contacts = _make_ferry_contacts()
-    landed_source = _make_ferry_passive(state="landed", altitude=4.0, contacts=source_contacts)
+def test_launch_bot_stays_landed_after_reaching_destination() -> None:
+    bot = create_bot("launch")
+    source_contacts = _make_launch_contacts()
+    landed_source = _make_launch_passive(state="landed", altitude=4.0, contacts=source_contacts)
     bot.update(1.0 / 60.0, landed_source, active=SimpleNamespace())
-    enroute = _make_ferry_passive(state="flying", altitude=140.0, contacts=source_contacts)
+    enroute = _make_launch_passive(state="flying", altitude=140.0, contacts=source_contacts)
     handoff = bot.update(1.0 / 60.0, enroute, active=SimpleNamespace())
-    assert handoff.status == "ferry:handoff_launch"
+    assert handoff.status == "launch:handoff_zem"
 
-    dest_contacts = _make_ferry_contacts_from_dest()
-    landed_dest = _make_ferry_passive(state="landed", altitude=4.0, contacts=dest_contacts)
+    dest_contacts = _make_launch_contacts_from_dest()
+    landed_dest = _make_launch_passive(state="landed", altitude=4.0, contacts=dest_contacts)
     first = bot.update(1.0 / 60.0, landed_dest, active=SimpleNamespace())
     second = bot.update(1.0 / 60.0, landed_dest, active=SimpleNamespace())
 
-    assert first.status == "ferry:arrived"
+    assert first.status == "launch:arrived"
     assert first.target_thrust == pytest.approx(0.0)
     assert first.target_angle == pytest.approx(0.0)
-    assert second.status == "ferry:arrived"
+    assert second.status == "launch:arrived"
     assert second.target_thrust == pytest.approx(0.0)
     assert second.target_angle == pytest.approx(0.0)
 
 
-def test_ferry_bot_clears_arrived_if_it_lands_away_from_destination() -> None:
-    bot = create_bot("ferry")
-    source_contacts = _make_ferry_contacts()
-    landed_source = _make_ferry_passive(state="landed", altitude=4.0, contacts=source_contacts)
+def test_launch_bot_clears_arrived_if_it_lands_away_from_destination() -> None:
+    bot = create_bot("launch")
+    source_contacts = _make_launch_contacts()
+    landed_source = _make_launch_passive(state="landed", altitude=4.0, contacts=source_contacts)
     bot.update(1.0 / 60.0, landed_source, active=SimpleNamespace())
-    enroute_from_source = _make_ferry_passive(
+    enroute_from_source = _make_launch_passive(
         state="flying",
         altitude=140.0,
         contacts=source_contacts,
     )
     bot.update(1.0 / 60.0, enroute_from_source, active=SimpleNamespace())
 
-    dest_contacts = _make_ferry_contacts_from_dest()
-    landed_dest = _make_ferry_passive(state="landed", altitude=4.0, contacts=dest_contacts)
+    dest_contacts = _make_launch_contacts_from_dest()
+    landed_dest = _make_launch_passive(state="landed", altitude=4.0, contacts=dest_contacts)
     arrived = bot.update(1.0 / 60.0, landed_dest, active=SimpleNamespace())
-    assert arrived.status == "ferry:arrived"
+    assert arrived.status == "launch:arrived"
 
-    enroute_from_dest = _make_ferry_passive(state="flying", altitude=140.0, contacts=dest_contacts)
+    enroute_from_dest = _make_launch_passive(state="flying", altitude=140.0, contacts=dest_contacts)
     bot.update(1.0 / 60.0, enroute_from_dest, active=SimpleNamespace())
 
-    landed_source_again = _make_ferry_passive(
+    landed_source_again = _make_launch_passive(
         state="landed",
         altitude=4.0,
         contacts=source_contacts,
     )
     action = bot.update(1.0 / 60.0, landed_source_again, active=SimpleNamespace())
-    assert action.status == "ferry:takeoff_upright"
+    assert action.status == "launch:takeoff_upright"
 
 
 def test_launch_bot_emits_ownership_handoff_to_coast(monkeypatch) -> None:
-    bot = LaunchBot()
+    bot = SetupBot()
     bot.set_pinned_target_uid("launch_target")
     bot._setup_handoff_done = True
 
@@ -342,10 +342,10 @@ def test_launch_bot_emits_ownership_handoff_to_coast(monkeypatch) -> None:
         )
 
     monkeypatch.setattr(coast_module.CoastBot, "update", _stub_super_update)
-    passive = _make_ferry_passive(
+    passive = _make_launch_passive(
         state="flying",
         altitude=150.0,
-        contacts=_make_ferry_contacts(),
+        contacts=_make_launch_contacts(),
     )
     action = bot.update(1.0 / 60.0, passive, active=SimpleNamespace())
 
@@ -382,10 +382,10 @@ def test_coast_bot_emits_ownership_handoff_to_flare_when_gate_is_done(monkeypatc
         return guidance, projection
 
     monkeypatch.setattr(bot, "_guidance", _stub_guidance)
-    passive = _make_ferry_passive(
+    passive = _make_launch_passive(
         state="flying",
         altitude=120.0,
-        contacts=_make_ferry_contacts(),
+        contacts=_make_launch_contacts(),
     )
     action = bot.update(1.0 / 60.0, passive, active=SimpleNamespace())
 
@@ -400,7 +400,7 @@ def test_coast_bot_emits_ownership_handoff_to_flare_when_gate_is_done(monkeypatc
 
 def test_coast_forces_flare_handoff_when_terminal_burn_requested(monkeypatch) -> None:
     bot = create_bot("coast")
-    bot.set_pinned_target_uid("ferry_site_dest")
+    bot.set_pinned_target_uid("launch_site_dest")
     guidance = GuidanceTargets(
         phase="coast",
         vertical_mode="terminal_burn",
@@ -447,10 +447,10 @@ def test_coast_forces_flare_handoff_when_terminal_burn_requested(monkeypatch) ->
 
     monkeypatch.setattr(coast_module, "should_handoff_to_flare", _stub_handoff)
 
-    passive = _make_ferry_passive(
+    passive = _make_launch_passive(
         state="flying",
         altitude=130.0,
-        contacts=_make_ferry_contacts(),
+        contacts=_make_launch_contacts(),
     )
     passive = replace(passive, vx=22.0, vy_up=-15.0, angle=2.3)
     action = bot.update(1.0 / 60.0, passive, active=SimpleNamespace())
@@ -462,7 +462,7 @@ def test_coast_forces_flare_handoff_when_terminal_burn_requested(monkeypatch) ->
 
 def test_coast_terminal_takeover_waits_for_terminal_readiness(monkeypatch) -> None:
     bot = create_bot("coast")
-    bot.set_pinned_target_uid("ferry_site_dest")
+    bot.set_pinned_target_uid("launch_site_dest")
     guidance = GuidanceTargets(
         phase="coast",
         vertical_mode="terminal_burn",
@@ -507,10 +507,10 @@ def test_coast_terminal_takeover_waits_for_terminal_readiness(monkeypatch) -> No
     monkeypatch.setattr(coast_module, "estimate_ballistic_projection", _stub_projection)
     monkeypatch.setattr(coast_module, "should_handoff_to_flare", _stub_handoff)
 
-    passive = _make_ferry_passive(
+    passive = _make_launch_passive(
         state="flying",
         altitude=280.0,
-        contacts=_make_ferry_contacts(),
+        contacts=_make_launch_contacts(),
     )
     passive = replace(passive, vx=22.0, vy_up=-5.0, angle=2.3)
     action = bot.update(1.0 / 60.0, passive, active=SimpleNamespace())
@@ -523,7 +523,7 @@ def test_coast_terminal_takeover_allows_handoff_when_inside_target_even_without_
     monkeypatch,
 ) -> None:
     bot = create_bot("coast")
-    bot.set_pinned_target_uid("ferry_site_dest")
+    bot.set_pinned_target_uid("launch_site_dest")
     guidance = GuidanceTargets(
         phase="coast",
         vertical_mode="terminal_burn",
@@ -569,10 +569,10 @@ def test_coast_terminal_takeover_allows_handoff_when_inside_target_even_without_
     monkeypatch.setattr(coast_module, "estimate_ballistic_projection", _stub_projection)
     monkeypatch.setattr(coast_module, "should_handoff_to_flare", _stub_handoff)
 
-    passive = _make_ferry_passive(
+    passive = _make_launch_passive(
         state="flying",
         altitude=180.0,
-        contacts=_make_ferry_contacts(),
+        contacts=_make_launch_contacts(),
     )
     passive = replace(passive, vx=18.0, vy_up=-14.0, angle=2.3)
     action = bot.update(1.0 / 60.0, passive, active=SimpleNamespace())
@@ -2519,7 +2519,7 @@ def test_resolve_transfer_behavior_exposes_single_profile() -> None:
     key, _, _, _ = resolve_transfer_behavior("transfer")
     assert key == "transfer"
     with pytest.raises(ValueError):
-        resolve_transfer_behavior("ferry")
+        resolve_transfer_behavior("launch")
     with pytest.raises(ValueError):
         resolve_transfer_behavior("accuracy")
 
@@ -2551,8 +2551,8 @@ def test_apply_transfer_setup_guidance_uses_dedicated_sideburn_phase() -> None:
         vx=0.0,
         vy_up=-1.0,
     )
-    assert adjusted.phase == "launch_setup_sideburn"
-    assert adjusted.vertical_mode == "launch_sideburn"
+    assert adjusted.phase == "setup_sideburn"
+    assert adjusted.vertical_mode == "setup_sideburn"
     assert adjusted.vy_sp == pytest.approx(-2.0)
 
 
@@ -2577,8 +2577,8 @@ def test_apply_transfer_setup_guidance_uses_thrust_backed_side_burn_for_non_clim
         vx=0.0,
         vy_up=0.0,
     )
-    assert adjusted.phase == "launch_setup_sideburn"
-    assert adjusted.vertical_mode == "launch_sideburn"
+    assert adjusted.phase == "setup_sideburn"
+    assert adjusted.vertical_mode == "setup_sideburn"
     assert adjusted.vy_sp == pytest.approx(-1.6)
     assert abs(adjusted.vx_sp) >= setup_cfg.setup_vx_floor
 
@@ -2829,7 +2829,7 @@ def test_should_handoff_to_drift_low_altitude_still_requires_speed_ready(monkeyp
             used_sensor=False,
         )
 
-    monkeypatch.setattr(launch_module, "estimate_ballistic_projection", _fake_projection)
+    monkeypatch.setattr(setup_bot_module, "estimate_ballistic_projection", _fake_projection)
     handoff = should_handoff_to_drift(
         guidance,
         cfg,
@@ -2845,7 +2845,7 @@ def test_should_handoff_to_drift_low_altitude_still_requires_speed_ready(monkeyp
 
 
 def test_transfer_bot_guidance_handoff_uses_drift_guidance_function(monkeypatch) -> None:
-    bot = LaunchBot()
+    bot = SetupBot()
     bot._setup_cfg = replace(  # force quick handoff in this narrow unit test
         bot._setup_cfg,
         handoff_projected_dx_ratio=2.0,
@@ -2902,7 +2902,7 @@ def test_transfer_bot_guidance_handoff_uses_drift_guidance_function(monkeypatch)
         calls.append((vx, vy_up))
         return replace(guidance, phase="coast_handoff")
 
-    monkeypatch.setattr(launch_module, "apply_coast_guidance", _fake_apply)
+    monkeypatch.setattr(setup_bot_module, "apply_coast_guidance", _fake_apply)
 
     first_guidance = bot._guidance(
         passive,
@@ -2911,7 +2911,7 @@ def test_transfer_bot_guidance_handoff_uses_drift_guidance_function(monkeypatch)
         max_throttle=1.6,
         ramp_up=1.1,
     )
-    assert first_guidance.phase == "launch_setup_sideburn"
+    assert first_guidance.phase == "setup_sideburn"
     assert calls == []
 
     second_guidance = bot._guidance(
@@ -2926,10 +2926,10 @@ def test_transfer_bot_guidance_handoff_uses_drift_guidance_function(monkeypatch)
 
 
 def test_transfer_sideburn_allocation_targets_near_full_rotation() -> None:
-    bot = LaunchBot()
+    bot = SetupBot()
     bot._last_guidance = GuidanceTargets(
-        phase="launch_setup_sideburn",
-        vertical_mode="launch_sideburn",
+        phase="setup_sideburn",
+        vertical_mode="setup_sideburn",
         vx_sp=8.0,
         vy_sp=-2.2,
         dx=200.0,
@@ -2962,17 +2962,17 @@ def test_transfer_sideburn_allocation_targets_near_full_rotation() -> None:
         a_up_sp=0.0,
         alt=300.0,
         dx=200.0,
-        vertical_mode="launch_sideburn",
+        vertical_mode="setup_sideburn",
     )
     assert abs(action.target_angle) >= 0.95
     assert action.target_thrust >= bot._setup_cfg.setup_sideburn_min_thrust
 
 
 def test_transfer_sideburn_allocation_keeps_thrust_while_sensor_miss_is_outside_cone() -> None:
-    bot = LaunchBot()
+    bot = SetupBot()
     bot._last_guidance = GuidanceTargets(
-        phase="launch_setup_sideburn",
-        vertical_mode="launch_sideburn",
+        phase="setup_sideburn",
+        vertical_mode="setup_sideburn",
         vx_sp=0.0,
         vy_sp=-2.2,
         dx=220.0,
@@ -3017,18 +3017,18 @@ def test_transfer_sideburn_allocation_keeps_thrust_while_sensor_miss_is_outside_
         a_up_sp=0.0,
         alt=320.0,
         dx=220.0,
-        vertical_mode="launch_sideburn",
+        vertical_mode="setup_sideburn",
     )
     bot._active_sensors = None
     assert action.target_thrust >= bot._setup_cfg.setup_sideburn_min_thrust
 
 
 def test_transfer_sideburn_allocation_keeps_thrust_when_inside_cone_outside_target() -> None:
-    bot = LaunchBot()
+    bot = SetupBot()
     bot._last_target_size = 110.0
     bot._last_guidance = GuidanceTargets(
-        phase="launch_setup_sideburn",
-        vertical_mode="launch_sideburn",
+        phase="setup_sideburn",
+        vertical_mode="setup_sideburn",
         vx_sp=0.0,
         vy_sp=-2.2,
         dx=80.0,
@@ -3073,18 +3073,18 @@ def test_transfer_sideburn_allocation_keeps_thrust_when_inside_cone_outside_targ
         a_up_sp=0.0,
         alt=250.0,
         dx=80.0,
-        vertical_mode="launch_sideburn",
+        vertical_mode="setup_sideburn",
     )
     bot._active_sensors = None
     assert action.target_thrust >= bot._setup_cfg.setup_sideburn_min_thrust
 
 
 def test_launch_sideburn_direction_lock_prevents_mid_setup_reversal(monkeypatch) -> None:
-    bot = LaunchBot()
+    bot = SetupBot()
     bot._last_target_size = 110.0
     bot._last_guidance = GuidanceTargets(
-        phase="launch_setup_sideburn",
-        vertical_mode="launch_sideburn",
+        phase="setup_sideburn",
+        vertical_mode="setup_sideburn",
         vx_sp=8.0,
         vy_sp=-2.2,
         dx=180.0,
@@ -3130,7 +3130,7 @@ def test_launch_sideburn_direction_lock_prevents_mid_setup_reversal(monkeypatch)
     def _fake_projection(*_args, **_kwargs):
         return projections.pop(0)
 
-    monkeypatch.setattr(launch_module, "estimate_ballistic_projection", _fake_projection)
+    monkeypatch.setattr(setup_bot_module, "estimate_ballistic_projection", _fake_projection)
 
     first = bot._allocate_controls(
         dt=1.0,
@@ -3139,7 +3139,7 @@ def test_launch_sideburn_direction_lock_prevents_mid_setup_reversal(monkeypatch)
         a_up_sp=0.0,
         alt=260.0,
         dx=180.0,
-        vertical_mode="launch_sideburn",
+        vertical_mode="setup_sideburn",
     )
     assert bot._setup_direction == pytest.approx(1.0)
     assert first.target_angle > 0.0
@@ -3151,14 +3151,14 @@ def test_launch_sideburn_direction_lock_prevents_mid_setup_reversal(monkeypatch)
         a_up_sp=0.0,
         alt=260.0,
         dx=180.0,
-        vertical_mode="launch_sideburn",
+        vertical_mode="setup_sideburn",
     )
     assert bot._setup_direction == pytest.approx(1.0)
     assert second.target_angle > 0.0
 
 
 def test_launch_handoff_waits_for_prograde_alignment(monkeypatch) -> None:
-    bot = LaunchBot()
+    bot = SetupBot()
     bot._setup_phase_seen = True
     bot._setup_burn_active = False
     bot._setup_burn_complete = True
@@ -3208,8 +3208,8 @@ def test_launch_handoff_waits_for_prograde_alignment(monkeypatch) -> None:
     def _fake_coast_guidance(guidance: GuidanceTargets, *_args, **_kwargs):
         return replace(guidance, phase="coast_handoff")
 
-    monkeypatch.setattr(launch_module, "should_handoff_to_coast", _fake_handoff_gate)
-    monkeypatch.setattr(launch_module, "apply_coast_guidance", _fake_coast_guidance)
+    monkeypatch.setattr(setup_bot_module, "should_handoff_to_coast", _fake_handoff_gate)
+    monkeypatch.setattr(setup_bot_module, "apply_coast_guidance", _fake_coast_guidance)
 
     first = bot._guidance(
         passive,
@@ -3219,7 +3219,7 @@ def test_launch_handoff_waits_for_prograde_alignment(monkeypatch) -> None:
         ramp_up=1.1,
     )
     assert bot._setup_handoff_done is False
-    assert first.phase == "launch_setup_sideburn"
+    assert first.phase == "setup_sideburn"
 
     aligned = replace(passive, angle=prograde)
     second = bot._guidance(
@@ -3234,7 +3234,7 @@ def test_launch_handoff_waits_for_prograde_alignment(monkeypatch) -> None:
 
 
 def test_launch_stops_thrust_after_setup_burn_while_waiting_prograde() -> None:
-    bot = LaunchBot()
+    bot = SetupBot()
     bot._setup_phase_seen = True
     bot._setup_burn_complete = True
     bot._setup_handoff_done = False
@@ -3264,14 +3264,14 @@ def test_launch_stops_thrust_after_setup_burn_while_waiting_prograde() -> None:
         a_up_sp=0.0,
         alt=180.0,
         dx=60.0,
-        vertical_mode="launch_sideburn",
+        vertical_mode="setup_sideburn",
     )
     assert action.target_thrust == pytest.approx(0.0)
     assert action.target_angle == pytest.approx(math.atan2(16.0, -4.0))
 
 
 def test_launch_marks_setup_burn_complete_on_overshoot(monkeypatch) -> None:
-    bot = LaunchBot()
+    bot = SetupBot()
     bot._setup_phase_seen = True
     bot._setup_burn_active = True
     bot._setup_burn_complete = False
@@ -3320,11 +3320,11 @@ def test_launch_marks_setup_burn_complete_on_overshoot(monkeypatch) -> None:
         return projection
 
     def _fake_setup_guidance(guidance: GuidanceTargets, *_args, **_kwargs):
-        return replace(guidance, phase="launch_setup_sideburn", vertical_mode="launch_sideburn")
+        return replace(guidance, phase="setup_sideburn", vertical_mode="setup_sideburn")
 
-    monkeypatch.setattr(launch_module, "estimate_ballistic_projection", _fake_projection)
-    monkeypatch.setattr(launch_module, "apply_launch_setup_guidance", _fake_setup_guidance)
-    monkeypatch.setattr(launch_module, "should_handoff_to_coast", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(setup_bot_module, "estimate_ballistic_projection", _fake_projection)
+    monkeypatch.setattr(setup_bot_module, "apply_setup_guidance", _fake_setup_guidance)
+    monkeypatch.setattr(setup_bot_module, "should_handoff_to_coast", lambda *_args, **_kwargs: False)
 
     guidance = bot._guidance(
         passive,
@@ -3336,7 +3336,7 @@ def test_launch_marks_setup_burn_complete_on_overshoot(monkeypatch) -> None:
     assert bot._setup_burn_active is False
     assert bot._setup_burn_complete is True
     assert bot._setup_handoff_done is False
-    assert guidance.phase == "launch_setup_sideburn"
+    assert guidance.phase == "setup_sideburn"
 
 
 def test_coast_handoff_to_flare_requires_consecutive_pass_frames() -> None:
@@ -3991,7 +3991,7 @@ class _HandoffOnceBot(Bot):
                 handoff_to=self._next_bot,
                 handoff_context={
                     "evaluation_snapshot": {
-                        "kind": "launch",
+                        "kind": "setup",
                         "handoff_done": True,
                     }
                 },
@@ -4315,7 +4315,7 @@ def test_game_handoff_replaces_owner_and_transfers_context() -> None:
 
     assert game.actor_bots["actor_bot"] is successor
     assert successor.seen_target_uid == "handoff_target"
-    assert successor.seen_snapshot_kind == "launch"
+    assert successor.seen_snapshot_kind == "setup"
     thrust, angle, refuel = controls["actor_bot"]
     assert thrust == pytest.approx(0.33)
     assert angle == pytest.approx(0.0)
@@ -4463,8 +4463,8 @@ def test_level_registry_includes_named_presets() -> None:
     assert "plunge" in level_names
     assert "flare" in level_names
     assert "coast" in level_names
+    assert "setup" in level_names
     assert "launch" in level_names
-    assert "ferry" in level_names
     assert {"drift", "transfer"}.isdisjoint(set(level_names))
     assert "level_1" not in level_names
 
@@ -4476,7 +4476,7 @@ def test_cli_defaults_to_flat_when_omitted() -> None:
 
 
 def test_scenario_levels_reject_unknown_scenario_name() -> None:
-    for level_name in ("plunge", "flare", "coast", "launch", "ferry"):
+    for level_name in ("plunge", "flare", "coast", "setup", "launch"):
         level = create_level_by_name(level_name)
         with pytest.raises(ValueError):
             level.set_eval_scenario("not_a_real_scenario_name")
@@ -4877,7 +4877,7 @@ def test_drift_scenario_applies_default_cargo_mass() -> None:
 
 
 def test_transfer_level_lists_expected_scenarios() -> None:
-    level = create_level_by_name("launch")
+    level = create_level_by_name("setup")
     list_scenarios = getattr(level, "list_batch_scenarios", None)
     assert callable(list_scenarios)
     assert set(list_scenarios()) == {
@@ -4888,7 +4888,7 @@ def test_transfer_level_lists_expected_scenarios() -> None:
 
 
 def test_transfer_level_lists_expected_quick_benchmark_scenarios() -> None:
-    level = create_level_by_name("launch")
+    level = create_level_by_name("setup")
     list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
     assert callable(list_quick_scenarios)
     assert list_quick_scenarios() == [
@@ -4898,7 +4898,7 @@ def test_transfer_level_lists_expected_quick_benchmark_scenarios() -> None:
 
 
 def test_transfer_scenario_direction_is_deterministic_for_seed() -> None:
-    level_a = create_level_by_name("launch")
+    level_a = create_level_by_name("setup")
     level_a.set_eval_scenario("air_mid")
     game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=31)
     trans_a = game_a.actors[0].get_component(Transform)
@@ -4906,7 +4906,7 @@ def test_transfer_scenario_direction_is_deterministic_for_seed() -> None:
     assert trans_a is not None
     assert phys_a is not None
 
-    level_b = create_level_by_name("launch")
+    level_b = create_level_by_name("setup")
     level_b.set_eval_scenario("air_mid")
     game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=31)
     trans_b = game_b.actors[0].get_component(Transform)
@@ -4920,7 +4920,7 @@ def test_transfer_scenario_direction_is_deterministic_for_seed() -> None:
 
 
 def test_transfer_scenario_starts_upright_at_rest_on_circle_arc() -> None:
-    level = create_level_by_name("launch")
+    level = create_level_by_name("setup")
     level.set_eval_scenario("air_steep")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=17)
     actor = game.actors[0]
@@ -4937,7 +4937,7 @@ def test_transfer_scenario_starts_upright_at_rest_on_circle_arc() -> None:
 
 
 def test_transfer_scenario_applies_empty_cargo_mass() -> None:
-    level = create_level_by_name("launch")
+    level = create_level_by_name("setup")
     level.set_eval_scenario("air_mid")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=11)
     actor = game.actors[0]
@@ -4951,9 +4951,9 @@ def test_launch_level_lists_expected_scenarios() -> None:
     list_scenarios = getattr(level, "list_batch_scenarios", None)
     assert callable(list_scenarios)
     assert list_scenarios() == [
-        "air_shallow",
-        "air_mid",
-        "air_steep",
+        "near",
+        "mid",
+        "far",
     ]
 
 
@@ -4962,35 +4962,27 @@ def test_launch_level_lists_expected_quick_benchmark_scenarios() -> None:
     list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
     assert callable(list_quick_scenarios)
     assert list_quick_scenarios() == [
-        "air_mid",
-        "air_steep",
+        "mid",
     ]
 
 
 def test_launch_scenario_direction_is_deterministic_for_seed() -> None:
     level_a = create_level_by_name("launch")
-    level_a.set_eval_scenario("air_steep")
-    game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=29)
-    trans_a = game_a.actors[0].get_component(Transform)
-    phys_a = game_a.actors[0].get_component(PhysicsState)
-    assert trans_a is not None
-    assert phys_a is not None
+    level_a.set_eval_scenario("mid")
+    LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=29)
+    dest_site_a = level_a.sites.get_site("launch_site_dest")
+    assert dest_site_a is not None
 
     level_b = create_level_by_name("launch")
-    level_b.set_eval_scenario("air_steep")
-    game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=29)
-    trans_b = game_b.actors[0].get_component(Transform)
-    phys_b = game_b.actors[0].get_component(PhysicsState)
-    assert trans_b is not None
-    assert phys_b is not None
-
-    assert trans_a.pos.x == pytest.approx(trans_b.pos.x)
-    assert phys_a.vel.x == pytest.approx(phys_b.vel.x)
-    assert phys_a.vel.y == pytest.approx(phys_b.vel.y)
+    level_b.set_eval_scenario("mid")
+    LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=29)
+    dest_site_b = level_b.sites.get_site("launch_site_dest")
+    assert dest_site_b is not None
+    assert dest_site_a.x == pytest.approx(dest_site_b.x)
 
 
-def test_ferry_level_spawns_on_source_pad_with_two_sites_and_empty_cargo() -> None:
-    level = create_level_by_name("ferry")
+def test_launch_level_spawns_on_source_pad_with_two_sites_and_empty_cargo() -> None:
+    level = create_level_by_name("launch")
     level.set_eval_scenario("mid")
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=5)
 
@@ -5045,7 +5037,7 @@ def test_resolve_batch_plan_uses_quick_benchmark_cross_level_suite() -> None:
     )
     seeds, levels = _resolve_batch_plan(config)
     assert seeds == [0]
-    assert levels == ["plunge", "flare", "coast", "launch"]
+    assert levels == ["plunge", "flare", "coast", "setup"]
 
 
 def test_eval_aggregate_summary_shape() -> None:
@@ -5100,8 +5092,8 @@ def test_eval_aggregate_summary_shape() -> None:
 def test_eval_aggregate_uses_explicit_success_for_non_landing_stage() -> None:
     records = [
         normalize_run_result(
-            bot_name="launch",
-            level_name="launch",
+            bot_name="setup",
+            level_name="setup",
             scenario="air_mid",
             seed=3,
             result={
@@ -5110,11 +5102,11 @@ def test_eval_aggregate_uses_explicit_success_for_non_landing_stage() -> None:
                 "success": True,
                 "failure_mode": "none",
                 "eval_mode": "focused",
-                "eval_phase": "launch_setup",
-                "launch_handoff_time": 6.0,
-                "launch_handoff_impact_error": 4.0,
-                "launch_setup_distance": 180.0,
-                "launch_setup_fuel_consumed": 12.0,
+                "eval_phase": "setup_phase",
+                "setup_handoff_time": 6.0,
+                "setup_handoff_impact_error": 4.0,
+                "setup_distance": 180.0,
+                "setup_fuel_consumed": 12.0,
             },
         )
     ]
@@ -5371,7 +5363,7 @@ def test_drift_focused_eval_fails_when_handoff_projection_is_out_of_bounds(monke
 def test_transfer_focused_eval_stops_on_handoff_and_marks_success(monkeypatch) -> None:
     def _handoff_snapshot(_game):
         return {
-            "kind": "launch",
+            "kind": "setup",
             "handoff_done": True,
             "projected_dx": 2.0,
             "impact_x": 7.0,
@@ -5387,35 +5379,35 @@ def test_transfer_focused_eval_stops_on_handoff_and_marks_success(monkeypatch) -
             "inside_target": True,
         }
 
-    level = create_level_by_name("launch")
+    level = create_level_by_name("setup")
     level.set_eval_mode("focused")
     monkeypatch.setattr(
         level.__class__,
-        "_resolve_launch_snapshot",
+        "_resolve_setup_snapshot",
         staticmethod(_handoff_snapshot),
     )
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=19)
     result = game.run(print_freq=0, max_steps=60)
     assert result["eval_mode"] == "focused"
-    assert result["eval_phase"] == "launch_setup"
+    assert result["eval_phase"] == "setup_phase"
     assert result["success"] is True
     assert result["failure_mode"] == "none"
-    assert result["launch_handoff_done"] is True
-    assert result["launch_handoff_impact_error"] == pytest.approx(0.4)
-    assert result["launch_handoff_planned_impact_error"] == pytest.approx(4.0)
-    assert "launch_handoff_current_impact_error" not in result
+    assert result["setup_handoff_done"] is True
+    assert result["setup_handoff_impact_error"] == pytest.approx(0.4)
+    assert result["setup_handoff_planned_impact_error"] == pytest.approx(4.0)
+    assert "setup_handoff_current_impact_error" not in result
     assert result["state"] == "flying"
 
 
 def test_transfer_full_eval_does_not_end_on_handoff(monkeypatch) -> None:
     def _handoff_snapshot(_game):
-        return {"kind": "launch", "handoff_done": True}
+        return {"kind": "setup", "handoff_done": True}
 
-    level = create_level_by_name("launch")
+    level = create_level_by_name("setup")
     level.set_eval_mode("full")
     monkeypatch.setattr(
         level.__class__,
-        "_resolve_launch_snapshot",
+        "_resolve_setup_snapshot",
         staticmethod(_handoff_snapshot),
     )
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=23)
@@ -5427,26 +5419,26 @@ def test_transfer_focused_eval_without_handoff_keeps_handoff_angle_empty(
     monkeypatch,
 ) -> None:
     def _no_handoff_snapshot(_game):
-        return {"kind": "launch", "handoff_done": False}
+        return {"kind": "setup", "handoff_done": False}
 
-    level = create_level_by_name("launch")
+    level = create_level_by_name("setup")
     level.set_eval_mode("focused")
     monkeypatch.setattr(
         level.__class__,
-        "_resolve_launch_snapshot",
+        "_resolve_setup_snapshot",
         staticmethod(_no_handoff_snapshot),
     )
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=31)
     result = game.run(print_freq=0, max_steps=1)
     assert result["eval_mode"] == "focused"
-    assert result["launch_handoff_done"] is False
-    assert result["launch_handoff_abs_angle_deg"] is None
+    assert result["setup_handoff_done"] is False
+    assert result["setup_handoff_abs_angle_deg"] is None
 
 
-def test_ferry_focused_eval_stops_on_handoff_and_marks_success(monkeypatch) -> None:
+def test_setup_focused_eval_stops_on_handoff_and_marks_success(monkeypatch) -> None:
     def _handoff_snapshot(_game):
         return {
-            "kind": "launch",
+            "kind": "setup",
             "handoff_done": True,
             "projected_dx": 3.0,
             "impact_x": 8.0,
@@ -5462,33 +5454,33 @@ def test_ferry_focused_eval_stops_on_handoff_and_marks_success(monkeypatch) -> N
             "inside_target": True,
         }
 
-    level = create_level_by_name("launch")
+    level = create_level_by_name("setup")
     level.set_eval_mode("focused")
     monkeypatch.setattr(
         level.__class__,
-        "_resolve_launch_snapshot",
+        "_resolve_setup_snapshot",
         staticmethod(_handoff_snapshot),
     )
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=21)
     result = game.run(print_freq=0, max_steps=60)
     assert result["eval_mode"] == "focused"
-    assert result["eval_phase"] == "launch_setup"
+    assert result["eval_phase"] == "setup_phase"
     assert result["success"] is True
     assert result["failure_mode"] == "none"
-    assert result["launch_handoff_done"] is True
-    assert result["launch_handoff_impact_error"] == pytest.approx(0.1)
+    assert result["setup_handoff_done"] is True
+    assert result["setup_handoff_impact_error"] == pytest.approx(0.1)
     assert result["state"] == "flying"
 
 
-def test_ferry_full_eval_does_not_end_on_handoff(monkeypatch) -> None:
+def test_setup_full_eval_does_not_end_on_handoff(monkeypatch) -> None:
     def _handoff_snapshot(_game):
-        return {"kind": "launch", "handoff_done": True}
+        return {"kind": "setup", "handoff_done": True}
 
-    level = create_level_by_name("launch")
+    level = create_level_by_name("setup")
     level.set_eval_mode("full")
     monkeypatch.setattr(
         level.__class__,
-        "_resolve_launch_snapshot",
+        "_resolve_setup_snapshot",
         staticmethod(_handoff_snapshot),
     )
     game = LanderGame(level=level, bot=_PassiveBot(), headless=True, seed=25)
@@ -5585,11 +5577,11 @@ def test_hud_bot_active_falls_back_to_bot_name_when_status_has_no_prefix() -> No
 
 def test_hud_prefers_structured_display_state_over_status_prefix_chain() -> None:
     class _StatusBot:
-        _bot_name = "ferry"
+        _bot_name = "launch"
 
         @staticmethod
         def get_status() -> str:
-            return "ferry:launch:coast dx:  12.3"
+            return "launch:launch:coast dx:  12.3"
 
         @staticmethod
         def get_display_state() -> dict[str, str]:
@@ -5601,7 +5593,7 @@ def test_hud_prefers_structured_display_state_over_status_prefix_chain() -> None
 
     lines = hud._build_info_lines(level, actor, bot=_StatusBot())
     assert "BOT ACTIVE: coast    STAGE: terminal_burn" in lines
-    assert "BOT STATUS: ferry:launch:coast dx:  12.3" in lines
+    assert "BOT STATUS: launch:launch:coast dx:  12.3" in lines
 
 
 def test_hud_ignores_status_attribute_when_get_status_returns_non_string() -> None:
@@ -5946,11 +5938,11 @@ def test_run_batch_quick_benchmark_uses_cross_level_core_suite(monkeypatch) -> N
             if level_name == "coast" and scenario is not None
         }
     )
-    launch_scenarios = sorted(
+    setup_scenarios = sorted(
         {
             scenario
             for _seed, level_name, scenario in seen_runs
-            if level_name == "launch" and scenario is not None
+            if level_name == "setup" and scenario is not None
         }
     )
     assert plunge_scenarios == [
@@ -5968,7 +5960,7 @@ def test_run_batch_quick_benchmark_uses_cross_level_core_suite(monkeypatch) -> N
         "entry_mid_low",
         "entry_steep_high",
     ]
-    assert launch_scenarios == [
+    assert setup_scenarios == [
         "air_mid",
         "air_steep",
     ]
