@@ -4,30 +4,36 @@ Pylander bot work is organized as a **phase-oriented pipeline**. The goal is to 
 
 ## Why phases?
 
-Complex landing behavior is easier to tune when each bot solves one job well and hands off cleanly:
+Complex landing behavior can be tuned either with explicit phase handoffs or a single optimizer core:
 
-- `launch`: establish a good approach trajectory and hand off to `coast`
-- `coast`: run at most one flip-arc correction burn and decide when to hand off to `flare`
-- `flare`: terminal 2-axis convergence and touchdown
+- `zem_zev`: unified coupled 2-axis guidance used by default in `launch`, `coast`, and `flare` levels
+- `launch` (legacy): establish a good approach trajectory and hand off to `coast`
+- `coast` (legacy): run at most one flip-arc correction burn and decide when to hand off to `flare`
+- `flare` (legacy): terminal 2-axis convergence and touchdown
 - `plunge`: vertical-only sandbox for burn timing + touchdown (no upstream handoff required)
-- `ferry`: pad-to-pad transfer wrapper (`upright clear -> launch -> coast -> flare`) with pinned destination targeting
+- `ferry`: pad-to-pad transfer wrapper (`upright clear -> zem_zev`) with pinned destination targeting
 
-Main chain:
+Default in-flight chain:
+
+`zem_zev (setup -> coast -> terminal -> touchdown)`
+
+Legacy chain:
 
 `launch -> coast -> flare`
 
 `plunge` is intentionally standalone.
 
-`ferry` reuses the launch/coast/flare chain after an upright takeoff clear.
+`ferry` reuses the unified `zem_zev` controller after an upright takeoff clear.
 
-Ownership handoff is explicit: when a phase completes, runtime control owner switches to the next bot (not nested delegation).
-The handoff also carries shared context so downstream phases keep continuity (for example pinned target UID and handoff snapshots).
+Legacy ownership handoff remains explicit (`launch -> coast -> flare`).
+The unified `zem_zev` path does not require inter-bot handoffs during in-flight guidance.
 
 ```mermaid
 flowchart LR
-  launch[launch] --> coast[coast] --> flare[flare]
-  flare --> touchdown[touchdown]
-  ferry[ferry] --> launch
+  zem[zem_zev]
+  zem --> touchdown[touchdown]
+  launch[launch (legacy)] --> coast[coast (legacy)] --> flare[flare (legacy)] --> touchdown
+  ferry[ferry] --> zem
   plunge[plunge] --> touchdown
 ```
 
@@ -47,7 +53,7 @@ Most phases rely on the same run-end metrics (emitted by the game loop and summa
 - Efficiency: `fuel_consumed`, `fuel_per_distance`, `path_efficiency`
 - Timing: `time`, `time_to_first_land`
 
-Staged phases (currently `coast` and `launch`) also emit handoff/setup snapshots as `coast_handoff_*` and `launch_handoff_*`.
+Unified runs emit `zem_*` gate/solver metrics, while legacy phased runs keep `coast_handoff_*` and `launch_handoff_*`.
 
 ## Where things live
 
@@ -120,4 +126,3 @@ Bots emit target-style actions:
 - `ActiveSensors` is rebuilt per bot step and caches repeated ballistic queries within the step.
 - Runtime ownership transfer applies `handoff_to`, installs the new owner in `actor_bots`, and hydrates it with `handoff_context`.
 - Base hooks `export_handoff_context()` and `import_handoff_context()` provide deterministic cross-bot state carry.
-

@@ -111,7 +111,7 @@ def _make_spec(*, name: str, start_dx: float, start_dy: float, cargo_mass: float
 
 
 class FlareLevel(ScenarioLevel):
-    default_bot_name = "flare"
+    default_bot_name = "zem_zev"
 
     def __init__(self) -> None:
         super().__init__()

@@ -6,7 +6,7 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 
 - Start here: [`docs/README.md`](docs/README.md)
 - Bot dev framework + API: [`docs/overview.md`](docs/overview.md)
-- Phase docs: [`docs/plunge.md`](docs/plunge.md), [`docs/flare.md`](docs/flare.md), [`docs/zem_zev.md`](docs/zem_zev.md), [`docs/coast.md`](docs/coast.md), [`docs/launch.md`](docs/launch.md), [`docs/ferry.md`](docs/ferry.md)
+- Phase docs: [`docs/plunge.md`](docs/plunge.md), [`docs/flare.md`](docs/flare.md), [`docs/zem_zev.md`](docs/zem_zev.md), [`docs/zem_full_envelope.md`](docs/zem_full_envelope.md), [`docs/coast.md`](docs/coast.md), [`docs/launch.md`](docs/launch.md), [`docs/ferry.md`](docs/ferry.md)
 
 ## Features
 
@@ -17,10 +17,10 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 - Continuous gameplay (land, refuel, take off again)
 - AI bot interface for autonomous play
 - Unified plunge benchmark bot (`plunge`)
-- Dedicated flare benchmark level (`flare`) with terminal-phase bot (`flare`)
-- Horizontal-control benchmark level (`coast`) with coast-first bot (`coast`)
-- Launch setup benchmark level (`launch`) with setup+handoff bot (`launch`)
-- Pad-to-pad ferry benchmark level (`ferry`) with launch-derived ferry bot (`ferry`)
+- Dedicated flare benchmark level (`flare`) defaulting to unified optimizer bot (`zem_zev`)
+- Horizontal-control benchmark level (`coast`) defaulting to unified optimizer bot (`zem_zev`)
+- Launch setup benchmark level (`launch`) defaulting to unified optimizer bot (`zem_zev`)
+- Pad-to-pad ferry benchmark level (`ferry`) with transfer wrapper bot (`ferry`) that hands off to `zem_zev`
 
 ## Setup
 
@@ -49,20 +49,29 @@ uv run python main.py plunge --scenario mid_normal
 # Terminal flare benchmark level + bot
 uv run python main.py flare
 
+# Run legacy flare bot explicitly
+uv run python main.py flare --bot flare
+
 # Pick a specific flare scenario
 uv run python main.py flare --scenario mid
 
-# Run unified ZEM/ZEV bot on flare
+# Run unified ZEM/ZEV bot explicitly (same as flare default)
 uv run python main.py flare --bot zem_zev --scenario mid
 
 # Horizontal-control benchmark level + bot
 uv run python main.py coast
+
+# Run legacy coast bot explicitly
+uv run python main.py coast --bot coast
 
 # Pick a specific coast scenario
 uv run python main.py coast --scenario entry_steep_high
 
 # Launch setup benchmark level + bot
 uv run python main.py launch
+
+# Run legacy launch bot explicitly
+uv run python main.py launch --bot launch
 
 # Pick a specific launch scenario
 uv run python main.py launch --scenario air_steep
@@ -159,7 +168,7 @@ uv run python main.py [level_name] [options]
 
 **Levels:** Run `uv run python main.py --help` to list (e.g. `flat`, `mountains`, `plunge`).
 
-**Bot names:** `plunge`, `flare`, `coast`, `launch`, `ferry`, `zem_zev` (set via `--bot`; see `--help`). `zem_zev` is an optimizer-first ZEM/ZEV terminal controller usable as a `flare` replacement (see [`docs/zem_zev.md`](docs/zem_zev.md)).
+**Bot names:** `plunge`, `flare`, `coast`, `launch`, `ferry`, `zem_zev` (set via `--bot`; see `--help`). `zem_zev` is the optimizer-first unified in-flight controller used by default on `launch`, `coast`, and `flare` levels (see [`docs/zem_zev.md`](docs/zem_zev.md) and [`docs/zem_full_envelope.md`](docs/zem_full_envelope.md)).
 
 **Options:**
 - `--bot NAME` - Select bot (`plunge`, `flare`, `coast`, `launch`, `ferry`, `zem_zev`)

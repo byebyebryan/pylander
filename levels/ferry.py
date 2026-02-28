@@ -4,7 +4,8 @@ import random
 from dataclasses import dataclass
 
 import core.terrain as _terrain
-from core.components import CargoHold
+from core.components import CargoHold, Transform
+from core.ecs import require_component
 from core.level import Level
 from core.maths import Vector2
 from levels.common import PresetLevel, SiteSpec, get_mass
@@ -123,6 +124,39 @@ class FerryLevel(PresetLevel):
         dest_site = self.sites.get_site("ferry_site_dest")
         if dest_site is not None:
             setattr(self, "eval_target_pos", Vector2(dest_site.x, dest_site.y))
+
+    def _resolve_landed_site_uid(self, landed_x: float) -> str | None:
+        best_uid: str | None = None
+        best_distance = float("inf")
+        for spec in self.site_specs:
+            half = 0.5 * float(spec.size)
+            distance = abs(float(landed_x) - float(spec.x))
+            if distance <= half + 1e-6:
+                return spec.uid
+            if distance < best_distance:
+                best_distance = distance
+                best_uid = spec.uid
+        return best_uid
+
+    def end(self, game):
+        result = super().end(game)
+        state = str(result.get("state", "unknown"))
+        landed_uid: str | None = None
+        if state == "landed":
+            actor = self.world.actors[0]
+            trans = require_component(actor, Transform)
+            landed_uid = self._resolve_landed_site_uid(float(trans.pos.x))
+        ferry_arrived = state == "landed" and landed_uid == "ferry_site_dest"
+        result["ferry_arrived"] = ferry_arrived
+        result["ferry_landed_site_uid"] = landed_uid
+        result["success"] = ferry_arrived
+        if ferry_arrived:
+            result["failure_mode"] = "none"
+        elif state == "landed":
+            result["failure_mode"] = "wrong_pad"
+        else:
+            result["failure_mode"] = state
+        return result
 
 
 def create_level() -> Level:

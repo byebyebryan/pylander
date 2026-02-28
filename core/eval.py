@@ -88,6 +88,16 @@ def _efficiency_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "path_efficiency",
         "time",
         "time_to_first_land",
+        "zem_setup_gate_time",
+        "zem_setup_gate_altitude",
+        "zem_setup_gate_projected_dx",
+        "zem_terminal_gate_time",
+        "zem_terminal_gate_altitude",
+        "zem_terminal_gate_projected_dx",
+        "zem_solve_count",
+        "zem_solve_ms_mean",
+        "zem_solve_ms_p90",
+        "zem_fallback_frames",
         "coast_handoff_time",
         "coast_handoff_altitude",
         "coast_handoff_dx",
@@ -180,6 +190,28 @@ def normalize_run_result(
         "failure_mode": failure_mode,
         "eval_mode": result.get("eval_mode"),
         "eval_phase": result.get("eval_phase"),
+        "ferry_arrived": _to_optional_bool(result.get("ferry_arrived")),
+        "ferry_landed_site_uid": result.get("ferry_landed_site_uid"),
+        "zem_setup_gate_done": _to_optional_bool(result.get("zem_setup_gate_done")),
+        "zem_setup_gate_time": _to_optional_float(result.get("zem_setup_gate_time")),
+        "zem_setup_gate_altitude": _to_optional_float(
+            result.get("zem_setup_gate_altitude")
+        ),
+        "zem_setup_gate_projected_dx": _to_optional_float(
+            result.get("zem_setup_gate_projected_dx")
+        ),
+        "zem_terminal_gate_done": _to_optional_bool(result.get("zem_terminal_gate_done")),
+        "zem_terminal_gate_time": _to_optional_float(result.get("zem_terminal_gate_time")),
+        "zem_terminal_gate_altitude": _to_optional_float(
+            result.get("zem_terminal_gate_altitude")
+        ),
+        "zem_terminal_gate_projected_dx": _to_optional_float(
+            result.get("zem_terminal_gate_projected_dx")
+        ),
+        "zem_solve_count": _to_optional_float(result.get("zem_solve_count")),
+        "zem_solve_ms_mean": _to_optional_float(result.get("zem_solve_ms_mean")),
+        "zem_solve_ms_p90": _to_optional_float(result.get("zem_solve_ms_p90")),
+        "zem_fallback_frames": _to_optional_float(result.get("zem_fallback_frames")),
         "coast_handoff_done": _to_optional_bool(result.get("coast_handoff_done")),
         "coast_handoff_time": _to_optional_float(result.get("coast_handoff_time")),
         "coast_handoff_x": _to_optional_float(result.get("coast_handoff_x")),

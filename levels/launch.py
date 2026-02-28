@@ -72,7 +72,7 @@ def _make_spec(*, name: str, start_dx: float, start_dy: float, cargo_mass: float
 
 
 class LaunchLevel(ScenarioLevel):
-    default_bot_name = "launch"
+    default_bot_name = "zem_zev"
 
     def __init__(self) -> None:
         super().__init__()
@@ -140,7 +140,8 @@ class LaunchLevel(ScenarioLevel):
                 continue
             if not isinstance(snapshot, dict):
                 continue
-            if snapshot.get("kind") == "launch" or "handoff_done" in snapshot:
+            kind = snapshot.get("kind")
+            if kind in {"launch", "zem_zev"} or "handoff_done" in snapshot:
                 return snapshot
         return None
 
@@ -150,6 +151,7 @@ class LaunchLevel(ScenarioLevel):
         return self._eval_mode_name
 
     def _reset_phase_eval_metrics(self) -> None:
+        self._phase1_snapshot_kind: str | None = None
         self._phase1_handoff_done = False
         self._phase1_handoff_time = None
         self._phase1_setup_distance = 0.0
@@ -177,6 +179,18 @@ class LaunchLevel(ScenarioLevel):
         self._phase1_handoff_not_falling_short = None
         self._phase1_handoff_centered = None
         self._phase1_handoff_inside_target = None
+        self._zem_setup_gate_done = False
+        self._zem_setup_gate_time = None
+        self._zem_setup_gate_altitude = None
+        self._zem_setup_gate_projected_dx = None
+        self._zem_terminal_gate_done = False
+        self._zem_terminal_gate_time = None
+        self._zem_terminal_gate_altitude = None
+        self._zem_terminal_gate_projected_dx = None
+        self._zem_solve_count = None
+        self._zem_solve_ms_mean = None
+        self._zem_solve_ms_p90 = None
+        self._zem_fallback_frames = None
 
     def _update_phase_metrics(self) -> None:
         if self._phase1_handoff_done:
@@ -199,6 +213,7 @@ class LaunchLevel(ScenarioLevel):
     def _capture_handoff(self, game, snapshot: dict[str, Any]) -> None:
         if self._phase1_handoff_done:
             return
+        self._phase1_snapshot_kind = "launch"
         actor = self.world.actors[0]
         trans = require_component(actor, Transform)
         self._phase1_handoff_done = True
@@ -265,6 +280,55 @@ class LaunchLevel(ScenarioLevel):
         self._phase1_handoff_not_falling_short = bool(snapshot.get("not_falling_short"))
         self._phase1_handoff_centered = bool(snapshot.get("centered"))
         self._phase1_handoff_inside_target = bool(snapshot.get("inside_target"))
+
+    def _capture_zem_setup_gate(self, game, snapshot: dict[str, Any]) -> None:
+        self._phase1_snapshot_kind = "zem_zev"
+        self._zem_setup_gate_done = bool(snapshot.get("setup_gate_done"))
+        self._zem_setup_gate_time = self._to_optional_float(snapshot.get("setup_gate_time"))
+        self._zem_setup_gate_altitude = self._to_optional_float(
+            snapshot.get("setup_gate_altitude")
+        )
+        self._zem_setup_gate_projected_dx = self._to_optional_float(
+            snapshot.get("setup_gate_projected_dx")
+        )
+        self._zem_terminal_gate_done = bool(snapshot.get("terminal_gate_done"))
+        self._zem_terminal_gate_time = self._to_optional_float(
+            snapshot.get("terminal_gate_time")
+        )
+        self._zem_terminal_gate_altitude = self._to_optional_float(
+            snapshot.get("terminal_gate_altitude")
+        )
+        self._zem_terminal_gate_projected_dx = self._to_optional_float(
+            snapshot.get("terminal_gate_projected_dx")
+        )
+        self._zem_solve_count = self._to_optional_float(snapshot.get("solve_count"))
+        self._zem_solve_ms_mean = self._to_optional_float(snapshot.get("solve_ms_mean"))
+        self._zem_solve_ms_p90 = self._to_optional_float(snapshot.get("solve_ms_p90"))
+        self._zem_fallback_frames = self._to_optional_float(snapshot.get("fallback_frames"))
+
+        if self._phase1_handoff_done or (not self._zem_setup_gate_done):
+            return
+        actor = self.world.actors[0]
+        trans = require_component(actor, Transform)
+        phys = require_component(actor, PhysicsState)
+        self._phase1_handoff_done = True
+        self._phase1_handoff_time = (
+            self._zem_setup_gate_time
+            if self._zem_setup_gate_time is not None
+            else float(getattr(game, "_elapsed_time", 0.0))
+        )
+        self._phase1_handoff_projected_dx = self._zem_setup_gate_projected_dx
+        self._phase1_handoff_altitude = self._zem_setup_gate_altitude
+        self._phase1_handoff_x = float(trans.pos.x)
+        self._phase1_handoff_y = float(trans.pos.y)
+        target_pos = getattr(self, "eval_target_pos", None)
+        if isinstance(target_pos, Vector2):
+            self._phase1_handoff_dx = float(target_pos.x) - self._phase1_handoff_x
+        self._phase1_handoff_vx = float(phys.vel.x)
+        self._phase1_handoff_vy_up = float(phys.vel.y)
+        self._phase1_handoff_speed = math.hypot(self._phase1_handoff_vx, self._phase1_handoff_vy_up)
+        self._phase1_handoff_horizontal_speed = abs(self._phase1_handoff_vx)
+        self._phase1_handoff_abs_angle_deg = abs(math.degrees(float(trans.rotation)))
 
     def setup(self, game, seed: int) -> None:
         self._resolved_eval_mode = self._mode_for_run()
@@ -345,7 +409,10 @@ class LaunchLevel(ScenarioLevel):
         snapshot = self._resolve_launch_snapshot(game)
         if not isinstance(snapshot, dict):
             return
-        if bool(snapshot.get("handoff_done")):
+        kind = str(snapshot.get("kind") or "")
+        if kind == "zem_zev":
+            self._capture_zem_setup_gate(game, snapshot)
+        elif bool(snapshot.get("handoff_done")):
             self._capture_handoff(game, snapshot)
 
     def should_end(self, game) -> bool:
@@ -406,11 +473,27 @@ class LaunchLevel(ScenarioLevel):
         result["launch_setup_fuel_consumed"] = setup_fuel
         result["launch_setup_fuel_per_distance"] = fuel_per_distance
         result["launch_setup_path_efficiency"] = setup_path_efficiency
+        result["zem_setup_gate_done"] = self._zem_setup_gate_done
+        result["zem_setup_gate_time"] = self._zem_setup_gate_time
+        result["zem_setup_gate_altitude"] = self._zem_setup_gate_altitude
+        result["zem_setup_gate_projected_dx"] = self._zem_setup_gate_projected_dx
+        result["zem_terminal_gate_done"] = self._zem_terminal_gate_done
+        result["zem_terminal_gate_time"] = self._zem_terminal_gate_time
+        result["zem_terminal_gate_altitude"] = self._zem_terminal_gate_altitude
+        result["zem_terminal_gate_projected_dx"] = self._zem_terminal_gate_projected_dx
+        result["zem_solve_count"] = self._zem_solve_count
+        result["zem_solve_ms_mean"] = self._zem_solve_ms_mean
+        result["zem_solve_ms_p90"] = self._zem_solve_ms_p90
+        result["zem_fallback_frames"] = self._zem_fallback_frames
 
         if self._resolved_eval_mode == "focused":
             state = str(result.get("state", "unknown"))
-            success = bool(self._phase1_handoff_done)
-            result["eval_phase"] = "launch_setup"
+            if self._phase1_snapshot_kind == "zem_zev":
+                success = bool(self._zem_setup_gate_done)
+                result["eval_phase"] = "zem_setup_gate"
+            else:
+                success = bool(self._phase1_handoff_done)
+                result["eval_phase"] = "launch_setup"
             result["success"] = success
             result["failure_mode"] = "none" if success else state
         return result

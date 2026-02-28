@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from bots._ballistics import estimate_ballistic_projection
 from bots._bot_math import clamp, engine_profile, finite_altitude, rate_limit_angle_command, stable
 from bots._optimizer_pdg import PDGOptimizer, PDGOptimizerConfig, PDGPlan
 from bots._targeting import pick_target, target_half_width
@@ -21,11 +22,21 @@ _GRAVITY_MAG = abs(float(GRAVITY))
 @dataclass(frozen=True)
 class ZemZevConfig:
     # Receding horizon scheduling
-    replan_hz: float = 6.0
-    replan_dx_error: float = 24.0
-    replan_dy_error: float = 18.0
-    replan_vx_error: float = 4.0
-    replan_vy_error: float = 4.0
+    replan_hz_setup: float = 2.5
+    replan_hz_coast: float = 4.0
+    replan_hz_terminal: float = 7.0
+    replan_dx_error_setup: float = 48.0
+    replan_dy_error_setup: float = 30.0
+    replan_vx_error_setup: float = 7.0
+    replan_vy_error_setup: float = 7.0
+    replan_dx_error_coast: float = 32.0
+    replan_dy_error_coast: float = 22.0
+    replan_vx_error_coast: float = 5.0
+    replan_vy_error_coast: float = 5.0
+    replan_dx_error_terminal: float = 24.0
+    replan_dy_error_terminal: float = 18.0
+    replan_vx_error_terminal: float = 4.0
+    replan_vy_error_terminal: float = 4.0
     fallback_hold_steps: int = 12
     long_horizon_altitude: float = 120.0
     long_horizon_time_to_go: float = 6.0
@@ -62,6 +73,19 @@ class ZemZevConfig:
     emergency_vy: float = 12.0
     emergency_alt: float = 220.0
 
+    # Telemetry gates for focused launch/coast evals and phase tracking
+    setup_gate_projected_dx_abs: float = 60.0
+    setup_gate_projected_dx_target_ratio: float = 1.1
+    setup_gate_vx_track_abs: float = 4.0
+    setup_gate_vx_track_ratio: float = 0.20
+    setup_gate_vy_up_max: float = -1.0
+    terminal_gate_t_fall_s: float = 4.5
+    terminal_gate_projected_dx_abs: float = 18.0
+    terminal_gate_projected_dx_target_ratio: float = 0.4
+    terminal_gate_vy_up_max: float = -4.0
+    touchdown_phase_altitude: float = 4.0
+    touchdown_phase_speed: float = 2.5
+
 
 class ZemZevBot(Bot):
     def __init__(self, behavior: str = "zem_zev") -> None:
@@ -81,6 +105,23 @@ class ZemZevBot(Bot):
         self._fallback_steps_remaining = 0
         self._last_solve_ms = 0.0
         self._last_solver_status = ""
+        self._solve_count = 0
+        self._solve_ms_sum = 0.0
+        self._solve_ms_samples: list[float] = []
+        self._fallback_frames = 0
+
+        self._elapsed_time_s = 0.0
+        self._active_phase = "setup"
+        self._setup_gate_done = False
+        self._setup_gate_time: float | None = None
+        self._setup_gate_altitude: float | None = None
+        self._setup_gate_projected_dx: float | None = None
+        self._terminal_gate_done = False
+        self._terminal_gate_time: float | None = None
+        self._terminal_gate_altitude: float | None = None
+        self._terminal_gate_projected_dx: float | None = None
+        self._last_projection_dx: float | None = None
+        self._last_projection_t_fall: float | None = None
 
         self.set_behavior(behavior)
 
@@ -103,10 +144,42 @@ class ZemZevBot(Bot):
         self._last_solve_ms = 0.0
         self._last_solver_status = ""
         self._last_target_half = 55.0
+        self._solve_count = 0
+        self._solve_ms_sum = 0.0
+        self._solve_ms_samples = []
+        self._fallback_frames = 0
+        self._elapsed_time_s = 0.0
+        self._active_phase = "setup"
+        self._setup_gate_done = False
+        self._setup_gate_time = None
+        self._setup_gate_altitude = None
+        self._setup_gate_projected_dx = None
+        self._terminal_gate_done = False
+        self._terminal_gate_time = None
+        self._terminal_gate_altitude = None
+        self._terminal_gate_projected_dx = None
+        self._last_projection_dx = None
+        self._last_projection_t_fall = None
 
     @property
     def behavior(self) -> str:
         return self._behavior
+
+    @staticmethod
+    def _percentile(values: list[float], p: float) -> float:
+        if not values:
+            return 0.0
+        sorted_values = sorted(values)
+        if len(sorted_values) == 1:
+            return sorted_values[0]
+        clamped = clamp(float(p), 0.0, 1.0)
+        idx = (len(sorted_values) - 1) * clamped
+        lo = int(idx)
+        hi = min(lo + 1, len(sorted_values) - 1)
+        if lo == hi:
+            return sorted_values[lo]
+        frac = idx - lo
+        return (sorted_values[lo] * (1.0 - frac)) + (sorted_values[hi] * frac)
 
     def _braking_speed_limit(self, alt: float, max_thrust_accel: float, max_tilt: float) -> float:
         cfg = self._cfg
@@ -152,7 +225,11 @@ class ZemZevBot(Bot):
         idx = int(self._plan_elapsed / step_dt)
         return max(0, min(len(self._plan.ax) - 1, idx))
 
-    def _select_optimizer(self, *, alt: float, vy_up: float) -> PDGOptimizer:
+    def _select_optimizer(self, *, phase: str, alt: float, vy_up: float) -> PDGOptimizer:
+        if phase in ("setup", "coast"):
+            return self._optimizer_long
+        if phase == "terminal":
+            return self._optimizer_short
         cfg = self._cfg
         down_speed = max(0.0, -float(vy_up))
         t_go = float("inf") if down_speed <= 1e-3 else (max(0.0, alt) / down_speed)
@@ -160,20 +237,53 @@ class ZemZevBot(Bot):
             return self._optimizer_long
         return self._optimizer_short
 
-    def _state_deviation_requires_replan(self, passive: PassiveSensors) -> bool:
+    def _replan_policy_for_phase(self, phase: str) -> tuple[float, float, float, float, float]:
+        cfg = self._cfg
+        if phase == "setup":
+            return (
+                cfg.replan_hz_setup,
+                cfg.replan_dx_error_setup,
+                cfg.replan_dy_error_setup,
+                cfg.replan_vx_error_setup,
+                cfg.replan_vy_error_setup,
+            )
+        if phase == "terminal":
+            return (
+                cfg.replan_hz_terminal,
+                cfg.replan_dx_error_terminal,
+                cfg.replan_dy_error_terminal,
+                cfg.replan_vx_error_terminal,
+                cfg.replan_vy_error_terminal,
+            )
+        return (
+            cfg.replan_hz_coast,
+            cfg.replan_dx_error_coast,
+            cfg.replan_dy_error_coast,
+            cfg.replan_vx_error_coast,
+            cfg.replan_vy_error_coast,
+        )
+
+    def _state_deviation_requires_replan(
+        self,
+        passive: PassiveSensors,
+        *,
+        dx_err_lim: float,
+        dy_err_lim: float,
+        vx_err_lim: float,
+        vy_err_lim: float,
+    ) -> bool:
         if self._plan is None or not self._plan.feasible:
             return True
         idx = self._plan_index()
-        cfg = self._cfg
         err_x = abs(float(passive.x) - float(self._plan.x[idx]))
         err_y = abs(float(passive.y) - float(self._plan.y[idx]))
         err_vx = abs(float(passive.vx) - float(self._plan.vx[idx]))
         err_vy = abs(float(passive.vy_up) - float(self._plan.vy[idx]))
         return (
-            err_x > cfg.replan_dx_error
-            or err_y > cfg.replan_dy_error
-            or err_vx > cfg.replan_vx_error
-            or err_vy > cfg.replan_vy_error
+            err_x > dx_err_lim
+            or err_y > dy_err_lim
+            or err_vx > vx_err_lim
+            or err_vy > vy_err_lim
         )
 
     def _solve_plan(
@@ -185,6 +295,7 @@ class ZemZevBot(Bot):
         max_thrust_accel: float,
         min_thrust_accel: float,
         nominal_thrust_accel: float,
+        phase: str,
     ) -> PDGPlan | None:
         alt = max(0.0, finite_altitude(passive))
         target_x = float(passive.x) + dx
@@ -193,7 +304,7 @@ class ZemZevBot(Bot):
         # Nominal-first schedule: OD is reserve, not baseline burn design.
         target_vy = self._desired_terminal_vy(alt, nominal_thrust_accel, max_tilt)
         descent_floor_vy = self._descent_floor_vy(alt, nominal_thrust_accel, max_tilt)
-        optimizer = self._select_optimizer(alt=alt, vy_up=float(passive.vy_up))
+        optimizer = self._select_optimizer(phase=phase, alt=alt, vy_up=float(passive.vy_up))
 
         plan = optimizer.solve(
             x=float(passive.x),
@@ -213,7 +324,79 @@ class ZemZevBot(Bot):
         if plan is not None:
             self._last_solve_ms = float(plan.solve_time_ms)
             self._last_solver_status = str(plan.status)
+            self._solve_count += 1
+            self._solve_ms_sum += self._last_solve_ms
+            self._solve_ms_samples.append(self._last_solve_ms)
         return plan
+
+    def _update_phase_tracking(
+        self,
+        *,
+        passive: PassiveSensors,
+        dx: float,
+        alt: float,
+        active: ActiveSensors,
+    ) -> None:
+        cfg = self._cfg
+        projection = estimate_ballistic_projection(
+            dx=dx,
+            alt=alt,
+            vx=float(passive.vx),
+            vy_up=float(passive.vy_up),
+            x=float(passive.x),
+            y=float(passive.y),
+            active=active,
+            clearance=0.0,
+        )
+        projected_dx = float(projection.projected_dx)
+        t_fall = max(0.0, float(projection.t_fall))
+        self._last_projection_dx = projected_dx
+        self._last_projection_t_fall = t_fall
+
+        track_vx = dx / max(0.75, t_fall)
+        setup_dx_limit = max(
+            cfg.setup_gate_projected_dx_abs,
+            cfg.setup_gate_projected_dx_target_ratio * self._last_target_half,
+        )
+        setup_vx_limit = max(
+            cfg.setup_gate_vx_track_abs,
+            cfg.setup_gate_vx_track_ratio * abs(track_vx),
+        )
+        setup_ready = (
+            abs(projected_dx) <= setup_dx_limit
+            and abs(float(passive.vx) - track_vx) <= setup_vx_limit
+            and float(passive.vy_up) <= cfg.setup_gate_vy_up_max
+        )
+        if setup_ready and (not self._setup_gate_done):
+            self._setup_gate_done = True
+            self._setup_gate_time = self._elapsed_time_s
+            self._setup_gate_altitude = alt
+            self._setup_gate_projected_dx = projected_dx
+
+        terminal_dx_limit = max(
+            cfg.terminal_gate_projected_dx_abs,
+            cfg.terminal_gate_projected_dx_target_ratio * self._last_target_half,
+        )
+        terminal_ready = (
+            t_fall <= cfg.terminal_gate_t_fall_s
+            and abs(projected_dx) <= terminal_dx_limit
+            and float(passive.vy_up) <= cfg.terminal_gate_vy_up_max
+        )
+        if terminal_ready and (not self._terminal_gate_done):
+            self._terminal_gate_done = True
+            self._terminal_gate_time = self._elapsed_time_s
+            self._terminal_gate_altitude = alt
+            self._terminal_gate_projected_dx = projected_dx
+
+        speed = math.hypot(float(passive.vx), float(passive.vy_up))
+        if alt <= cfg.touchdown_phase_altitude and speed <= cfg.touchdown_phase_speed:
+            self._active_phase = "touchdown"
+        elif self._terminal_gate_done or terminal_ready:
+            self._active_phase = "terminal"
+        elif self._setup_gate_done or setup_ready:
+            self._active_phase = "coast"
+        else:
+            self._active_phase = "setup"
 
     def _command_from_plan(
         self,
@@ -336,6 +519,16 @@ class ZemZevBot(Bot):
             dy = -max(0.0, finite_altitude(passive))
 
         alt = max(0.0, finite_altitude(passive))
+        self._elapsed_time_s += max(0.0, float(dt))
+        self._update_phase_tracking(
+            passive=passive,
+            dx=dx,
+            alt=alt,
+            active=active,
+        )
+        replan_hz, dx_err_lim, dy_err_lim, vx_err_lim, vy_err_lim = self._replan_policy_for_phase(
+            self._active_phase
+        )
 
         self._replan_timer -= max(0.0, dt)
         self._plan_elapsed += max(0.0, dt)
@@ -344,7 +537,13 @@ class ZemZevBot(Bot):
             self._plan is None
             or not self._plan.feasible
             or self._replan_timer <= 0.0
-            or self._state_deviation_requires_replan(passive)
+            or self._state_deviation_requires_replan(
+                passive,
+                dx_err_lim=dx_err_lim,
+                dy_err_lim=dy_err_lim,
+                vx_err_lim=vx_err_lim,
+                vy_err_lim=vy_err_lim,
+            )
         )
 
         solved_now = False
@@ -357,11 +556,12 @@ class ZemZevBot(Bot):
                 max_thrust_accel=max_thrust_accel,
                 min_thrust_accel=min_thrust_accel,
                 nominal_thrust_accel=nominal_thrust_accel,
+                phase=self._active_phase,
             )
             if plan is not None and plan.feasible:
                 self._plan = plan
                 self._plan_elapsed = 0.0
-                self._replan_timer = 1.0 / max(1e-3, self._cfg.replan_hz)
+                self._replan_timer = 1.0 / max(1e-3, replan_hz)
                 self._fallback_steps_remaining = int(self._cfg.fallback_hold_steps)
             else:
                 if self._fallback_steps_remaining > 0 and self._plan is not None and self._plan.feasible:
@@ -380,17 +580,42 @@ class ZemZevBot(Bot):
             max_thrust_accel=max_thrust_accel,
         )
 
-        phase = "opt"
+        phase = self._active_phase
+        mode = "opt"
         if self._plan is None or not self._plan.feasible:
-            phase = "fallback"
+            mode = "fallback"
+            self._fallback_frames += 1
         action.status = (
-            f"zem_zev:{phase} dx:{stable(dx, 1):6.1f} "
+            f"zem_zev:{mode} ph:{phase} dx:{stable(dx, 1):6.1f} "
             f"vx:{stable(passive.vx, 1):5.1f} vy:{stable(passive.vy_up, 1):5.1f} "
             f"rp:{int(solved_now)} slv:{stable(self._last_solve_ms, 1):4.1f}ms "
             f"st:{self._last_solver_status}"
         )
         self.status = action.status
         return action
+
+    def get_evaluation_snapshot(self) -> dict[str, float | int | bool | str | None]:
+        solve_ms_mean = 0.0
+        if self._solve_count > 0:
+            solve_ms_mean = self._solve_ms_sum / max(1, self._solve_count)
+        return {
+            "kind": "zem_zev",
+            "phase": self._active_phase,
+            "projected_dx": self._last_projection_dx,
+            "t_fall": self._last_projection_t_fall,
+            "setup_gate_done": self._setup_gate_done,
+            "setup_gate_time": self._setup_gate_time,
+            "setup_gate_altitude": self._setup_gate_altitude,
+            "setup_gate_projected_dx": self._setup_gate_projected_dx,
+            "terminal_gate_done": self._terminal_gate_done,
+            "terminal_gate_time": self._terminal_gate_time,
+            "terminal_gate_altitude": self._terminal_gate_altitude,
+            "terminal_gate_projected_dx": self._terminal_gate_projected_dx,
+            "solve_count": self._solve_count,
+            "solve_ms_mean": solve_ms_mean,
+            "solve_ms_p90": self._percentile(self._solve_ms_samples, 0.9),
+            "fallback_frames": self._fallback_frames,
+        }
 
 
 

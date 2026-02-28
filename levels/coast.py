@@ -99,7 +99,7 @@ def _make_spec(*, name: str, start_dx: float, start_dy: float, cargo_mass: float
 
 
 class CoastLevel(ScenarioLevel):
-    default_bot_name = "coast"
+    default_bot_name = "zem_zev"
 
     def __init__(self) -> None:
         super().__init__()
@@ -175,7 +175,7 @@ class CoastLevel(ScenarioLevel):
             if not isinstance(snapshot, dict):
                 continue
             kind = snapshot.get("kind")
-            if kind == "coast" or (kind is None and "handoff_done" in snapshot):
+            if kind in {"coast", "zem_zev"} or (kind is None and "handoff_done" in snapshot):
                 return snapshot
         return None
 
@@ -185,6 +185,7 @@ class CoastLevel(ScenarioLevel):
         return self._eval_mode_name
 
     def _reset_phase_eval_metrics(self) -> None:
+        self._phase1_snapshot_kind: str | None = None
         self._phase1_handoff_done = False
         self._phase1_handoff_time = None
         self._phase1_setup_distance = 0.0
@@ -211,6 +212,18 @@ class CoastLevel(ScenarioLevel):
         self._phase1_handoff_sensor_used = None
         self._phase1_handoff_vx_err = None
         self._phase1_handoff_t_fall = None
+        self._zem_setup_gate_done = False
+        self._zem_setup_gate_time = None
+        self._zem_setup_gate_altitude = None
+        self._zem_setup_gate_projected_dx = None
+        self._zem_terminal_gate_done = False
+        self._zem_terminal_gate_time = None
+        self._zem_terminal_gate_altitude = None
+        self._zem_terminal_gate_projected_dx = None
+        self._zem_solve_count = None
+        self._zem_solve_ms_mean = None
+        self._zem_solve_ms_p90 = None
+        self._zem_fallback_frames = None
 
     def _update_phase_metrics(self) -> None:
         if self._phase1_handoff_done:
@@ -233,6 +246,7 @@ class CoastLevel(ScenarioLevel):
     def _capture_handoff(self, game, snapshot: dict[str, Any]) -> None:
         if self._phase1_handoff_done:
             return
+        self._phase1_snapshot_kind = "coast"
         actor = self.world.actors[0]
         trans = require_component(actor, Transform)
         self._phase1_handoff_done = True
@@ -276,6 +290,55 @@ class CoastLevel(ScenarioLevel):
         self._phase1_handoff_sensor_used = bool(snapshot.get("sensor_used"))
         self._phase1_handoff_vx_err = self._to_optional_float(snapshot.get("vx_err"))
         self._phase1_handoff_t_fall = self._to_optional_float(snapshot.get("t_fall"))
+
+    def _capture_zem_terminal_gate(self, game, snapshot: dict[str, Any]) -> None:
+        self._phase1_snapshot_kind = "zem_zev"
+        self._zem_setup_gate_done = bool(snapshot.get("setup_gate_done"))
+        self._zem_setup_gate_time = self._to_optional_float(snapshot.get("setup_gate_time"))
+        self._zem_setup_gate_altitude = self._to_optional_float(
+            snapshot.get("setup_gate_altitude")
+        )
+        self._zem_setup_gate_projected_dx = self._to_optional_float(
+            snapshot.get("setup_gate_projected_dx")
+        )
+        self._zem_terminal_gate_done = bool(snapshot.get("terminal_gate_done"))
+        self._zem_terminal_gate_time = self._to_optional_float(
+            snapshot.get("terminal_gate_time")
+        )
+        self._zem_terminal_gate_altitude = self._to_optional_float(
+            snapshot.get("terminal_gate_altitude")
+        )
+        self._zem_terminal_gate_projected_dx = self._to_optional_float(
+            snapshot.get("terminal_gate_projected_dx")
+        )
+        self._zem_solve_count = self._to_optional_float(snapshot.get("solve_count"))
+        self._zem_solve_ms_mean = self._to_optional_float(snapshot.get("solve_ms_mean"))
+        self._zem_solve_ms_p90 = self._to_optional_float(snapshot.get("solve_ms_p90"))
+        self._zem_fallback_frames = self._to_optional_float(snapshot.get("fallback_frames"))
+
+        if self._phase1_handoff_done or (not self._zem_terminal_gate_done):
+            return
+        actor = self.world.actors[0]
+        trans = require_component(actor, Transform)
+        phys = require_component(actor, PhysicsState)
+        self._phase1_handoff_done = True
+        self._phase1_handoff_time = (
+            self._zem_terminal_gate_time
+            if self._zem_terminal_gate_time is not None
+            else float(getattr(game, "_elapsed_time", 0.0))
+        )
+        self._phase1_handoff_projected_dx = self._zem_terminal_gate_projected_dx
+        self._phase1_handoff_altitude = self._zem_terminal_gate_altitude
+        self._phase1_handoff_x = float(trans.pos.x)
+        self._phase1_handoff_y = float(trans.pos.y)
+        target_pos = getattr(self, "eval_target_pos", None)
+        if isinstance(target_pos, Vector2):
+            self._phase1_handoff_dx = float(target_pos.x) - self._phase1_handoff_x
+        self._phase1_handoff_vx = float(phys.vel.x)
+        self._phase1_handoff_vy_up = float(phys.vel.y)
+        self._phase1_handoff_speed = math.hypot(self._phase1_handoff_vx, self._phase1_handoff_vy_up)
+        self._phase1_handoff_horizontal_speed = abs(self._phase1_handoff_vx)
+        self._phase1_handoff_abs_angle_deg = abs(math.degrees(float(trans.rotation)))
 
     def setup(self, game, seed: int) -> None:
         self._resolved_eval_mode = self._mode_for_run()
@@ -375,7 +438,10 @@ class CoastLevel(ScenarioLevel):
         snapshot = self._resolve_coast_snapshot(game)
         if not isinstance(snapshot, dict):
             return
-        if bool(snapshot.get("handoff_done")):
+        kind = str(snapshot.get("kind") or "")
+        if kind == "zem_zev":
+            self._capture_zem_terminal_gate(game, snapshot)
+        elif bool(snapshot.get("handoff_done")):
             self._capture_handoff(game, snapshot)
 
     def should_end(self, game) -> bool:
@@ -432,21 +498,39 @@ class CoastLevel(ScenarioLevel):
         result["coast_setup_fuel_consumed"] = setup_fuel
         result["coast_setup_fuel_per_distance"] = fuel_per_distance
         result["coast_setup_path_efficiency"] = setup_path_efficiency
+        result["zem_setup_gate_done"] = self._zem_setup_gate_done
+        result["zem_setup_gate_time"] = self._zem_setup_gate_time
+        result["zem_setup_gate_altitude"] = self._zem_setup_gate_altitude
+        result["zem_setup_gate_projected_dx"] = self._zem_setup_gate_projected_dx
+        result["zem_terminal_gate_done"] = self._zem_terminal_gate_done
+        result["zem_terminal_gate_time"] = self._zem_terminal_gate_time
+        result["zem_terminal_gate_altitude"] = self._zem_terminal_gate_altitude
+        result["zem_terminal_gate_projected_dx"] = self._zem_terminal_gate_projected_dx
+        result["zem_solve_count"] = self._zem_solve_count
+        result["zem_solve_ms_mean"] = self._zem_solve_ms_mean
+        result["zem_solve_ms_p90"] = self._zem_solve_ms_p90
+        result["zem_fallback_frames"] = self._zem_fallback_frames
         if self._resolved_eval_mode == "focused":
             state = str(result.get("state", "unknown"))
-            projected_dx_ok = (
-                self._phase1_handoff_projected_dx is not None
-                and abs(self._phase1_handoff_projected_dx) <= _FOCUSED_SUCCESS_PROJECTED_DX_MAX
-            )
-            success = bool(self._phase1_handoff_done) and bool(projected_dx_ok)
-            result["eval_phase"] = "coast_setup"
-            result["success"] = success
-            result["coast_success_projected_dx_max"] = _FOCUSED_SUCCESS_PROJECTED_DX_MAX
-            result["failure_mode"] = (
-                "none"
-                if success
-                else ("projection_out_of_bounds" if self._phase1_handoff_done else state)
-            )
+            if self._phase1_snapshot_kind == "zem_zev":
+                success = bool(self._zem_terminal_gate_done)
+                result["eval_phase"] = "zem_terminal_gate"
+                result["success"] = success
+                result["failure_mode"] = "none" if success else state
+            else:
+                projected_dx_ok = (
+                    self._phase1_handoff_projected_dx is not None
+                    and abs(self._phase1_handoff_projected_dx) <= _FOCUSED_SUCCESS_PROJECTED_DX_MAX
+                )
+                success = bool(self._phase1_handoff_done) and bool(projected_dx_ok)
+                result["eval_phase"] = "coast_setup"
+                result["success"] = success
+                result["coast_success_projected_dx_max"] = _FOCUSED_SUCCESS_PROJECTED_DX_MAX
+                result["failure_mode"] = (
+                    "none"
+                    if success
+                    else ("projection_out_of_bounds" if self._phase1_handoff_done else state)
+                )
         return result
 
 

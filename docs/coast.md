@@ -1,6 +1,6 @@
 # Coast phase
 
-`coast` is the efficiency-first correction phase between `launch` setup and `flare` terminal control.
+`coast` is the horizontal-correction scenario. Default control now uses unified `zem_zev`; the legacy `coast` bot remains available for explicit coast->flare handoff studies.
 
 ## Phase contract
 
@@ -11,6 +11,13 @@
 - `flare` owns terminal burn and touchdown execution.
 
 ## Control model
+
+Default (`zem_zev`):
+
+- Single in-flight owner with coupled 2-axis optimizer guidance.
+- Focused eval ends at `zem_terminal_gate_done`.
+
+Legacy (`coast` bot):
 
 Coast now uses a single-burn model tied to the mandatory prograde->retrograde flip.
 
@@ -98,7 +105,8 @@ Setup flow:
 - `--eval-mode focused`: end at coast handoff boundary
 - `--eval-mode full`: continue downstream (handoff + terminal)
 
-Focused mode success is measured by projected impact quality at handoff (`coast_handoff_projected_dx`), along with setup/handoff metrics (`coast_setup_*`, `coast_handoff_*`) via [`core/eval.py`](../core/eval.py).
+Unified focused runs emit `zem_terminal_*` metrics.
+Legacy coast bot focused runs continue using `coast_setup_*` / `coast_handoff_*`.
 
 For coast-only regression checks, use a coast-only batch (instead of cross-level quick benchmark):
 
@@ -107,4 +115,3 @@ uv run python main.py coast --headless --batch \
   --batch-levels coast \
   --batch-scenarios entry_mid_low,entry_mid_high,entry_steep_high
 ```
-

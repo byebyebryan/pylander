@@ -1,8 +1,8 @@
-"""Pad-to-pad ferry bot: upright liftoff, then launch/coast/flare stack."""
+"""Pad-to-pad ferry bot: upright liftoff, then unified zem_zev control."""
 
 from __future__ import annotations
 
-from bots.launch import LaunchBot
+from bots.zem_zev import ZemZevBot
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors, VehicleInfo
 from core.sensor import RadarContact
 
@@ -14,7 +14,7 @@ _TAKEOFF_THRUST_TARGET = 0.9
 class FerryBot(Bot):
     def __init__(self, behavior: str = "ferry") -> None:
         super().__init__()
-        self._delegate = LaunchBot(behavior="launch")
+        self._delegate = ZemZevBot(behavior="zem_zev")
         self._behavior = "ferry"
         self._source_site_uid: str | None = None
         self._destination_site_uid: str | None = None
@@ -42,7 +42,7 @@ class FerryBot(Bot):
         self._arrived = False
         self.set_pinned_target_uid(None)
         self._delegate.set_pinned_target_uid(None)
-        self._delegate.set_behavior("launch")
+        self._delegate.set_behavior("zem_zev")
 
     def _takeoff_thrust(self) -> float:
         max_thrust = 1.6
@@ -95,7 +95,7 @@ class FerryBot(Bot):
             return landed_uid == self._destination_site_uid
         return any(contact.uid == self._destination_site_uid for contact in contacts)
 
-    def _handoff_to_launch_action(self) -> BotAction:
+    def _handoff_to_zem_action(self) -> BotAction:
         action = BotAction(
             target_thrust=self._takeoff_thrust(),
             target_angle=0.0,
@@ -154,7 +154,7 @@ class FerryBot(Bot):
             return action
         if passive.state in ("landed", "flying"):
             if passive.state == "landed":
-                self._delegate.set_behavior("launch")
+                self._delegate.set_behavior("zem_zev")
                 self._pad_clear = False
                 action = BotAction(
                     target_thrust=self._takeoff_thrust(),
@@ -177,10 +177,10 @@ class FerryBot(Bot):
                     self.status = action.status
                     return action
                 # Hand off once clear of the departure pad.
-                self._delegate.set_behavior("launch")
+                self._delegate.set_behavior("zem_zev")
                 self._pad_clear = True
-                return self._handoff_to_launch_action()
-            return self._handoff_to_launch_action()
+                return self._handoff_to_zem_action()
+            return self._handoff_to_zem_action()
         action = BotAction(
             target_thrust=0.0,
             target_angle=float(passive.angle),

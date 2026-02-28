@@ -20,15 +20,21 @@ Defined in [`levels/ferry.py`](../levels/ferry.py):
 
 Implementation: [`bots/ferry.py`](../bots/ferry.py)
 
-`ferry` is a transfer wrapper with ferry-specific setup/target ownership, then explicit ownership handoff into the `launch -> coast -> flare` chain:
+`ferry` is a transfer wrapper with ferry-specific setup/target ownership, then explicit ownership handoff into `zem_zev`:
 
 1. **Source lock:** on initial landed frame, record source pad UID.
 2. **Destination select:** choose the non-source pad as destination and pin that UID.
 3. **Vertical clear:** thrust upright until `altitude > 100`.
-4. **Launch handoff:** emit ownership transfer to `LaunchBot` once clear, carrying pinned target context.
+4. **Controller handoff:** emit ownership transfer to `zem_zev` once clear, carrying pinned target context.
 5. **Arrival hold:** if landed on destination, output `ferry:arrived` with zero thrust/angle.
 
 If it later lands on a non-destination pad, arrival latch is cleared and normal ferry flow resumes.
+
+Run-end scoring now includes:
+
+- `ferry_arrived` (boolean success gate)
+- `ferry_landed_site_uid`
+- `failure_mode="wrong_pad"` when landed on a non-destination pad
 
 ## Commands
 

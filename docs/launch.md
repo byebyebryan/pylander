@@ -1,6 +1,6 @@
 # Launch phase
 
-`launch` is the setup phase between static spawn and `coast`: build a usable ballistic path quickly, then hand off.
+`launch` is the setup-focused scenario. Default control now uses unified `zem_zev`; the legacy `launch` bot remains available for phase-handoff experiments.
 
 ## Phase contract
 
@@ -38,6 +38,13 @@ Defaults:
 
 ## Bot ownership and flow
 
+Default (`zem_zev`):
+
+- Single in-flight owner with internal phases (`setup -> coast -> terminal`).
+- Focused eval ends at `zem_setup_gate_done`.
+
+Legacy (`launch` bot):
+
 - Launch bot: [`bots/launch.py`](../bots/launch.py)
 - Shared launch setup helpers: [`bots/_launch_setup.py`](../bots/_launch_setup.py)
 - Shared sideburn shaping: [`bots/_sideburn_control.py`](../bots/_sideburn_control.py)
@@ -63,10 +70,10 @@ Handoff semantics:
 - `--eval-mode focused`: stop at launch->coast handoff
 - `--eval-mode full`: continue through coast and terminal
 
-Focused runs emit setup/handoff metrics (`launch_setup_*`, `launch_handoff_*`) via [`core/eval.py`](../core/eval.py).
+Focused runs with unified control emit `zem_setup_*` metrics.
+Legacy launch bot runs still emit `launch_setup_*` / `launch_handoff_*`.
 
 Common commands:
 
 - `uv run python main.py launch --headless --quick-benchmark`
 - `uv run python main.py launch --headless --batch --batch-scenarios air_shallow,air_mid,air_steep`
-

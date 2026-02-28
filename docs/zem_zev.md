@@ -2,8 +2,9 @@
 
 Implementation: [`bots/zem_zev.py`](../bots/zem_zev.py), [`bots/_optimizer_pdg.py`](../bots/_optimizer_pdg.py)
 
-`zem_zev` is an optimizer-first terminal guidance bot for the `flare` level family.
-It replaces the legacy phase-heavy ZEM/ZEV variant with a single receding-horizon convex solve that couples horizontal and vertical control in one plan.
+`zem_zev` is an optimizer-first full-envelope guidance bot.
+It is now the default in-flight controller for `launch`, `coast`, and `flare` levels.
+Legacy `launch` / `coast` / `flare` bots are still available for targeted experiments.
 
 ## Naming
 
@@ -95,6 +96,21 @@ Each frame:
 5. Use optimizer fallback only if solve is infeasible/error.
 6. Apply touchdown hard-cut when very low, very slow, and over-pad.
 
+## Unified phase telemetry
+
+`zem_zev` publishes structured evaluation snapshots for staged benchmarking:
+
+- `zem_setup_gate_done`, `zem_setup_gate_time`, `zem_setup_gate_altitude`, `zem_setup_gate_projected_dx`
+- `zem_terminal_gate_done`, `zem_terminal_gate_time`, `zem_terminal_gate_altitude`, `zem_terminal_gate_projected_dx`
+- `zem_solve_count`, `zem_solve_ms_mean`, `zem_solve_ms_p90`, `zem_fallback_frames`
+
+Focused eval behavior:
+
+- `launch --eval-mode focused` ends on `zem_setup_gate_done`
+- `coast --eval-mode focused` ends on `zem_terminal_gate_done`
+
+Legacy handoff metrics (`launch_handoff_*`, `coast_handoff_*`) are still emitted for compatibility, but `zem_*` is the canonical schema for unified runs.
+
 ## Fresh comparison vs `flare` bot
 
 Benchmark command (same for both bots):
@@ -134,8 +150,13 @@ Interpretation:
 
 ## Compute cost and batch throughput
 
-The optimizer increases per-run compute, but batch parallelism amortizes it well.
-For tuning loops, keep `--batch-workers` high and use reduced seed sets before full 100-run validation.
+The optimizer increases per-run compute, but adaptive replanning limits overhead:
+
+- setup phase: lower replan frequency / looser deviation thresholds
+- coast phase: medium replan frequency
+- terminal phase: highest replan frequency / tightest thresholds
+
+For tuning loops, keep `--batch-workers` high and use reduced seed sets before full validation.
 
 ## Practical tuning order
 
