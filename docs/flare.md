@@ -36,7 +36,26 @@ where `R in [700,900]`, `theta_dev in [-5deg,+5deg]`, `T in [10,12]`, and `g = a
 Defaults:
 
 - Default scenario: `mid`
-- Quick benchmark subset: `shallower`, `mid`, `steeper`
+- Quick benchmark subset: `shallow`, `mid`, `steep`
+
+## Eval modes
+
+`flare` supports staged evaluation:
+
+- `--eval-mode full` (default): full entry-to-touchdown run from far arc spawn.
+- `--eval-mode focused`: trims passive ballistic coast and starts closer to a terminal-burn-relevant state.
+
+Focused mode keeps the same sampled scenario family but shifts the initial state along the same ballistic path, reducing runtime for terminal-guidance tuning loops.
+
+## Scenario validity checks
+
+Flare setup now rejects sampled starts that are physically too late for a credible recovery window.
+
+- Existing vertical recoverability check is still applied.
+- Flare-specific check enforces minimum time/altitude braking margins.
+- In `focused` mode, starts must also be genuinely descending (`downspeed >= 8 m/s`).
+
+Invalid candidates are resampled (bounded attempts) and fail fast with a clear error if no valid state is found.
 
 ## Evaluation goals and metrics
 
@@ -56,6 +75,7 @@ Common eval commands:
 
 - `uv run python main.py flare --headless --quick-benchmark`
 - `uv run python main.py flare --headless --batch --batch-scenarios shallower,shallow,mid,steep,steeper`
+- `uv run python main.py flare --headless --eval-mode focused --batch --batch-scenarios shallow,mid,steep --batch-seeds 0-9`
 
 ## Flare bot: detailed control flow
 
@@ -250,8 +270,8 @@ import matplotlib.pyplot as plt
 from core.config import GRAVITY
 from levels import flare as flare_level
 
-R = float(flare_level._SPAWN_RADIUS)
-T = float(flare_level._TARGET_FLIGHT_TIME_S)
+R = 800.0  # midpoint of radius range [700, 900]
+T = 11.0   # midpoint of flight-time range [10, 12]
 profiles = tuple(flare_level._ANGLE_PROFILES)
 g = abs(float(GRAVITY))
 out = Path("docs/assets/flare_entry_ballistic_profiles.png")

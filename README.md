@@ -117,11 +117,11 @@ uv run python main.py coast --headless --batch \
 Quick benchmark preset includes:
 
 - `plunge`: `low_normal`, `mid_normal`, `high_normal`
-- `flare`: `shallower`, `mid`, `steeper`
+- `flare`: `shallow`, `mid`, `steep`
 - `coast`: `entry_mid_low`, `entry_mid_high`, `entry_steep_high`
 - `launch`: `air_mid`, `air_steep`
 
-Staged eval (`--eval-mode focused|full`) is mainly for `coast` and `launch`.
+Staged eval (`--eval-mode focused|full`) is available for `flare`, `coast`, and `launch`.
 Quick benchmark runs one deterministic median sample per scenario (seed `0`).
 
 ## Controls (Human Mode)
@@ -170,7 +170,7 @@ uv run python main.py [level_name] [options]
 - `--time S` - Limit simulation to S seconds (headless, default 300)
 - `--plot none|speed|thrust|all` - Save trajectory plot (headless)
 - `--stop-on-crash`, `--stop-on-out-of-fuel`, `--stop-on-first-land` - End conditions
-- `--eval-mode auto|focused|full` - Evaluation mode for staged levels (`coast` and `launch` default to full when auto)
+- `--eval-mode auto|focused|full` - Evaluation mode for staged levels (`flare`, `coast`, and `launch` default to full when auto)
 - `--seed N` - Random seed
 - `--scenario NAME` - Select a level scenario (if supported)
 - `--lander NAME` - Lander variant (classic, differential, simple)

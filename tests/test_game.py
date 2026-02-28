@@ -4587,10 +4587,18 @@ def test_flare_level_lists_expected_quick_benchmark_scenarios() -> None:
     list_quick_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
     assert callable(list_quick_scenarios)
     assert list_quick_scenarios() == [
-        "shallower",
+        "shallow",
         "mid",
-        "steeper",
+        "steep",
     ]
+
+
+def test_flare_level_rejects_unknown_eval_mode() -> None:
+    level = create_level_by_name("flare")
+    set_eval_mode = getattr(level, "set_eval_mode", None)
+    assert callable(set_eval_mode)
+    with pytest.raises(ValueError, match="Unknown flare eval mode"):
+        set_eval_mode("not_real")
 
 
 def test_flare_scenario_direction_is_deterministic_for_seed() -> None:
@@ -4647,6 +4655,62 @@ def test_flare_matrix_scenario_starts_on_center_hit_ballistic_path() -> None:
     retrograde_angle = math.atan2(-float(phys.vel.x), -float(phys.vel.y))
     angle_error = abs((retrograde_angle - float(trans.rotation) + math.pi) % (2.0 * math.pi) - math.pi)
     assert angle_error == pytest.approx(0.0, abs=1e-6)
+
+
+def test_flare_focused_eval_starts_closer_and_descending() -> None:
+    seed = 17
+
+    level_full = create_level_by_name("flare")
+    level_full.set_eval_scenario("shallow")
+    level_full.set_eval_mode("full")
+    game_full = LanderGame(level=level_full, bot=_PassiveBot(), headless=True, seed=seed)
+    trans_full = game_full.actors[0].get_component(Transform)
+    phys_full = game_full.actors[0].get_component(PhysicsState)
+    assert trans_full is not None
+    assert phys_full is not None
+
+    level_focused = create_level_by_name("flare")
+    level_focused.set_eval_scenario("shallow")
+    level_focused.set_eval_mode("focused")
+    game_focused = LanderGame(level=level_focused, bot=_PassiveBot(), headless=True, seed=seed)
+    trans_focused = game_focused.actors[0].get_component(Transform)
+    phys_focused = game_focused.actors[0].get_component(PhysicsState)
+    assert trans_focused is not None
+    assert phys_focused is not None
+
+    focused_params = getattr(level_focused, "_scenario_params", {})
+    assert focused_params.get("eval_mode") == "focused"
+    assert float(focused_params.get("trim_time_s", 0.0)) > 0.0
+    assert float(focused_params.get("tgo_start_s", 0.0)) < float(
+        focused_params.get("target_flight_time_s", 0.0)
+    )
+    assert trans_focused.pos.y < trans_full.pos.y
+    assert phys_focused.vel.y <= -8.0
+
+
+def test_flare_focused_eval_is_deterministic_for_seed() -> None:
+    level_a = create_level_by_name("flare")
+    level_a.set_eval_scenario("mid")
+    level_a.set_eval_mode("focused")
+    game_a = LanderGame(level=level_a, bot=_PassiveBot(), headless=True, seed=23)
+    trans_a = game_a.actors[0].get_component(Transform)
+    phys_a = game_a.actors[0].get_component(PhysicsState)
+    assert trans_a is not None
+    assert phys_a is not None
+
+    level_b = create_level_by_name("flare")
+    level_b.set_eval_scenario("mid")
+    level_b.set_eval_mode("focused")
+    game_b = LanderGame(level=level_b, bot=_PassiveBot(), headless=True, seed=23)
+    trans_b = game_b.actors[0].get_component(Transform)
+    phys_b = game_b.actors[0].get_component(PhysicsState)
+    assert trans_b is not None
+    assert phys_b is not None
+
+    assert trans_a.pos.x == pytest.approx(trans_b.pos.x)
+    assert trans_a.pos.y == pytest.approx(trans_b.pos.y)
+    assert phys_a.vel.x == pytest.approx(phys_b.vel.x)
+    assert phys_a.vel.y == pytest.approx(phys_b.vel.y)
 
 
 def test_drift_level_lists_expected_scenarios() -> None:
@@ -5896,8 +5960,8 @@ def test_run_batch_quick_benchmark_uses_cross_level_core_suite(monkeypatch) -> N
     ]
     assert flare_scenarios == [
         "mid",
-        "shallower",
-        "steeper",
+        "shallow",
+        "steep",
     ]
     assert coast_scenarios == [
         "entry_mid_high",
