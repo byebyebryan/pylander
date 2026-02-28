@@ -38,6 +38,8 @@ Discrete dynamics:
 - `vx[k+1] = vx[k] + ax[k] * dt`
 - `vy[k+1] = vy[k] + (ay[k] - g) * dt`
 
+`g` is parameterized from runtime gravity (`core.config.GRAVITY` magnitude), not hardcoded.
+
 ## Constraints
 
 - `ay >= 0`
@@ -57,6 +59,8 @@ Cost combines:
 - OD slack penalties
 - descent-floor and anti-upward-motion penalties
 
+Terminal x-error is deadbanded by pad half-width (corridor): inside-pad centering is lightly penalized compared to outside-pad miss.
+
 ## Nominal-first braking schedule
 
 Vertical targets are derived from a braking envelope using nominal thrust authority (`a_nom`), so OD is reserve by design.
@@ -72,6 +76,13 @@ Each frame:
 3. track plan between replans,
 4. allocate acceleration to thrust+angle with tilt/rate limits,
 5. fallback only when optimizer result is infeasible.
+
+Reference path shaping uses an altitude-adaptive two-phase profile:
+
+- high altitude: lateral correction first with shallow y-ref progression,
+- later horizon: stronger descent toward target y.
+
+Throttle allocation includes simple on/off hysteresis to reduce min-throttle chatter near cutoff.
 
 ## Telemetry fields
 
