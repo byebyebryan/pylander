@@ -30,6 +30,10 @@ At each replan, the bot solves a finite-horizon trajectory optimization in accel
 
 - Thrust non-negativity: `ay >= 0`.
 - Thrust magnitude cone: `sqrt(ax^2 + ay^2) <= a_max`.
+- Nominal-thrust envelope with OD reserve slack:
+  - `thrust_norm >= sqrt(ax^2 + ay^2)`
+  - `thrust_norm <= a_nom + od_slack`
+  - `0 <= od_slack <= (a_max - a_nom)`
 - Tilt cone: `|ax| <= tan(max_tilt) * ay`.
 - Soft terrain guard: `y >= target_y - 8`.
 
@@ -37,7 +41,7 @@ These are all convex constraints, so the problem stays in QP/SOCP form and solve
 
 ### Objective terms
 
-The cost mixes terminal accuracy, smoothness, and progress:
+The cost is fuel-first while still enforcing terminal accuracy:
 
 - Terminal error:
   - `w_terminal_x * (x_N - target_x)^2`
@@ -48,15 +52,18 @@ The cost mixes terminal accuracy, smoothness, and progress:
   - effort (`ax, ay` norm-squared)
   - smoothness (`delta ax, delta ay`)
 - Path shaping to linear references (`x_ref`, `y_ref`).
+- Fuel proxy:
+  - linear thrust cost on `thrust_norm`.
+- OD reserve penalty:
+  - linear + quadratic penalties on `od_slack`.
 - Penalties for:
   - upward motion during descent,
   - dropping below descent-floor schedule,
   - asking below minimum-throttle-equivalent acceleration.
-- Progress bias terms to avoid hovery local minima.
 
 Current core MPC settings are in [`PDGOptimizerConfig`](../bots/_optimizer_pdg.py):
 
-- horizon: `28` steps
+- horizons: `28` (short) and `36` (long)
 - step: `0.20 s`
 - solver: `CLARABEL` (fallback `SCS`)
 
@@ -74,17 +81,19 @@ Then:
 - descent floor speed = `floor_ratio * v_limit`
 - low-altitude and touchdown caps clamp both near the ground
 
-This keeps a generalizable “descend fast when margin exists, brake decisively late” behavior without scenario-specific phase heuristics.
+`zem_zev` now computes this schedule using nominal thrust authority (`a_nom`) so the
+plan is nominal-first by default, with OD treated as reserve inside the optimizer.
 
 ## Runtime loop
 
 Each frame:
 
 1. Replan at fixed rate (`replan_hz`) or on state-deviation triggers.
-2. Track the current plan sample between replans.
-3. Convert planned acceleration to thrust + angle with tilt/rate limits.
-4. Use optimizer fallback only if solve is infeasible/error.
-5. Apply touchdown hard-cut when very low, very slow, and over-pad.
+2. Select long/short horizon from current altitude and estimated time-to-go.
+3. Track the current plan sample between replans.
+4. Convert planned acceleration to thrust + angle with tilt/rate limits.
+5. Use optimizer fallback only if solve is infeasible/error.
+6. Apply touchdown hard-cut when very low, very slow, and over-pad.
 
 ## Fresh comparison vs `flare` bot
 
@@ -101,41 +110,37 @@ Observed results (current branch, 100 runs each):
 | Metric | flare | zem_zev |
 | --- | --- | --- |
 | Success rate | 100% | 100% |
-| Time mean (s) | 20.95 | 16.51 |
-| Fuel mean | 24.63 | 36.88 |
-| Landing offset mean | 4.19 | 18.30 |
+| Time mean (s) | 21.99 | 20.31 |
+| Fuel mean | 25.87 | 21.50 |
+| Landing offset mean | 3.70 | 9.06 |
+| Overdrive fraction mean | 0.26 | 0.38 |
 
 Per-scenario mean time (s):
 
 | Scenario | flare | zem_zev |
 | --- | --- | --- |
-| shallower | 22.52 | 17.23 |
-| shallow | 19.33 | 16.27 |
-| mid | 19.80 | 15.99 |
-| steep | 21.24 | 16.51 |
-| steeper | 21.86 | 16.57 |
+| shallower | 27.94 | 23.46 |
+| shallow | 19.12 | 20.88 |
+| mid | 20.14 | 19.01 |
+| steep | 20.96 | 19.04 |
+| steeper | 21.80 | 19.15 |
 
 Interpretation:
 
-- `zem_zev` is currently much faster to touchdown across all flare scenarios.
-- `flare` remains notably better on fuel and touchdown centering.
-- If objective priority is decisive high-energy descent timing, `zem_zev` currently wins.
-- If objective priority is precision economy, `flare` still leads.
+- `zem_zev` now leads on fuel in this flare benchmark while keeping 100% success.
+- `zem_zev` still lands less centered than `flare`.
+- `zem_zev` remains somewhat faster overall, but the advantage is smaller than old OD-heavy tuning.
+- Fuel-first acceptance can be enforced with: `zem_zev_fuel <= flare_fuel + 1.5`.
 
 ## Compute cost and batch throughput
 
 The optimizer increases per-run compute, but batch parallelism amortizes it well.
-
-Same 100-run workload (`flare` scenarios above, bot=`zem_zev`):
-
-- `--batch-workers 1`: `127.54s`
-- `--batch-workers 8`: `23.27s`
-- Speedup: about `5.5x`
+For tuning loops, keep `--batch-workers` high and use reduced seed sets before full 100-run validation.
 
 ## Practical tuning order
 
 1. Braking-envelope schedule (`braking_*`, `vy_*cap*`) for aggressiveness/safety.
 2. Horizon/discretization (`horizon_steps`, `step_dt`) for responsiveness vs compute.
 3. Terminal weights (`w_terminal_*`) for offset vs speed tradeoff.
-4. Descent-floor and progress weights (`w_descent_floor`, `w_downspeed_progress`) for hover avoidance.
+4. Descent-floor and fuel weights (`w_descent_floor`, `w_thrust_linear`, `w_overdrive_*`) for fuel/robustness balance.
 5. Replan thresholds (`replan_*_error`) for stability vs adaptation.

@@ -552,6 +552,8 @@ class LanderGame:
         prev_fuel = float(initial_tank.fuel)
         distance_flown = 0.0
         fuel_consumed = 0.0
+        overdrive_time = 0.0
+        overdrive_excess = 0.0
         controls_by_uid: dict[str, ControlTuple | None] = {}
         state_before: dict[str, str] = {}
 
@@ -631,9 +633,16 @@ class LanderGame:
             else:
                 trans = require_component(active_actor, Transform)
                 tank = require_component(active_actor, FuelTank)
+                eng = require_component(active_actor, Engine)
                 step_distance = math.hypot(trans.pos.x - prev_pos.x, trans.pos.y - prev_pos.y)
                 distance_flown += step_distance
                 fuel_consumed += max(0.0, prev_fuel - float(tank.fuel))
+                throttle = max(0.0, float(eng.thrust_level))
+                if throttle > 1.0:
+                    dt_used = max(0.0, float(frame_dt))
+                    over = throttle - 1.0
+                    overdrive_time += dt_used
+                    overdrive_excess += over * dt_used
                 prev_pos = Vector2(trans.pos)
                 prev_fuel = float(tank.fuel)
 
@@ -659,6 +668,8 @@ class LanderGame:
         self._crash_count = crash_count
         self._distance_flown = distance_flown
         self._fuel_consumed = fuel_consumed
+        self._overdrive_time = overdrive_time
+        self._overdrive_excess = overdrive_excess
         result = self.level.end(self)
         final_actor = self.get_active_actor()
         final_trans = require_component(final_actor, Transform)
@@ -666,6 +677,7 @@ class LanderGame:
         elapsed_time = max(0.0, float(timers.elapsed_time))
         avg_speed = (distance_flown / elapsed_time) if elapsed_time > 1e-9 else 0.0
         fuel_per_distance = (fuel_consumed / distance_flown) if distance_flown > 1e-9 else 0.0
+        overdrive_fraction = (overdrive_time / elapsed_time) if elapsed_time > 1e-9 else 0.0
         spawn_to_target_distance = None
         path_efficiency = None
         landing_offset = None
@@ -683,6 +695,9 @@ class LanderGame:
         result.setdefault("fuel_consumed", fuel_consumed)
         result.setdefault("fuel_remaining", float(final_tank.fuel))
         result.setdefault("fuel_per_distance", fuel_per_distance)
+        result.setdefault("overdrive_time", overdrive_time)
+        result.setdefault("overdrive_fraction", overdrive_fraction)
+        result.setdefault("overdrive_excess", overdrive_excess)
         result.setdefault("spawn_to_target_distance", spawn_to_target_distance)
         result.setdefault("path_efficiency", path_efficiency)
         result.setdefault("landing_offset", landing_offset)

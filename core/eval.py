@@ -82,6 +82,9 @@ def _efficiency_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
         "fuel_consumed",
         "fuel_remaining",
         "fuel_per_distance",
+        "overdrive_time",
+        "overdrive_fraction",
+        "overdrive_excess",
         "path_efficiency",
         "time",
         "time_to_first_land",
@@ -165,6 +168,9 @@ def normalize_run_result(
         "avg_speed": _to_float(result.get("avg_speed", 0.0), 0.0),
         "fuel_consumed": _to_float(result.get("fuel_consumed", 0.0), 0.0),
         "fuel_per_distance": _to_float(result.get("fuel_per_distance", 0.0), 0.0),
+        "overdrive_time": _to_float(result.get("overdrive_time", 0.0), 0.0),
+        "overdrive_fraction": _to_float(result.get("overdrive_fraction", 0.0), 0.0),
+        "overdrive_excess": _to_float(result.get("overdrive_excess", 0.0), 0.0),
         "path_efficiency": _to_optional_float(result.get("path_efficiency")),
         "time_to_first_land": _to_optional_float(result.get("time_to_first_land")),
         "spawn_to_target_distance": _to_optional_float(
@@ -413,4 +419,3 @@ def write_csv_records(path: str | Path, records: list[dict[str, Any]]) -> Path:
         for record in records:
             writer.writerow(record)
     return out
-

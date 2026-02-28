@@ -17,7 +17,7 @@ import numpy as np
 
 @dataclass(frozen=True)
 class PDGOptimizerConfig:
-    horizon_steps: int = 28
+    horizon_steps: int = 36
     step_dt: float = 0.20
     solver: str = "CLARABEL"
     solver_max_iters: int = 140
@@ -26,18 +26,21 @@ class PDGOptimizerConfig:
     w_terminal_x: float = 26.0
     w_terminal_y: float = 34.0
     w_terminal_vx: float = 15.0
-    w_terminal_vy: float = 4.0
-    w_effort: float = 0.025
-    w_smooth: float = 0.10
+    w_terminal_vy: float = 3.0
+    w_effort: float = 0.020
+    w_smooth: float = 0.12
     w_path_x: float = 0.030
     w_path_y: float = 0.015
     w_upward_vy: float = 1.20
 
     # Soft floor around minimum thrust acceleration (convex hinge penalty)
     w_min_accel: float = 0.16
-    w_descent_floor: float = 0.28
-    w_altitude_progress: float = 0.90
-    w_downspeed_progress: float = 0.45
+    w_descent_floor: float = 0.24
+    w_altitude_progress: float = 0.00
+    w_downspeed_progress: float = 0.00
+    w_thrust_linear: float = 0.12
+    w_overdrive_linear: float = 1.40
+    w_overdrive_quadratic: float = 6.00
 
 
 @dataclass(frozen=True)
@@ -46,6 +49,7 @@ class PDGPlan:
     status: str
     solve_time_ms: float
     objective: float
+    step_dt: float
     ax: tuple[float, ...]
     ay: tuple[float, ...]
     x: tuple[float, ...]
@@ -69,6 +73,7 @@ class PDGPlan:
             status=self.status,
             solve_time_ms=self.solve_time_ms,
             objective=self.objective,
+            step_dt=self.step_dt,
             ax=_shift(self.ax),
             ay=_shift(self.ay),
             x=_shift_state(self.x),
@@ -101,6 +106,7 @@ class PDGOptimizer:
         self._target_vy: cp.Parameter | None = None
         self._a_max: cp.Parameter | None = None
         self._a_min: cp.Parameter | None = None
+        self._a_nom: cp.Parameter | None = None
         self._tilt_tan: cp.Parameter | None = None
         self._x_ref: cp.Parameter | None = None
         self._y_ref: cp.Parameter | None = None
@@ -131,10 +137,13 @@ class PDGOptimizer:
         target_vy = cp.Parameter()
         a_max = cp.Parameter(nonneg=True)
         a_min = cp.Parameter(nonneg=True)
+        a_nom = cp.Parameter(nonneg=True)
         tilt_tan = cp.Parameter(nonneg=True)
         x_ref = cp.Parameter(n + 1)
         y_ref = cp.Parameter(n + 1)
         vy_floor = cp.Parameter()
+        thrust_norm = cp.Variable(n, nonneg=True)
+        od_slack = cp.Variable(n, nonneg=True)
 
         constraints: list[cp.Expression] = [
             x[0] == x0,
@@ -154,6 +163,9 @@ class PDGOptimizer:
                     ay[k] >= 0.0,
                     cp.norm(cp.hstack([ax[k], ay[k]]), 2) <= a_max,
                     cp.abs(ax[k]) <= tilt_tan * ay[k],
+                    thrust_norm[k] >= cp.norm(cp.hstack([ax[k], ay[k]]), 2),
+                    thrust_norm[k] <= a_nom + od_slack[k],
+                    od_slack[k] <= (a_max - a_nom),
                 ]
             )
 
@@ -183,6 +195,9 @@ class PDGOptimizer:
             + (0.02 * path)
             + (cfg.w_altitude_progress * cp.sum(y[:-1] - target_y))
             + (cfg.w_downspeed_progress * cp.sum(vy[:-1]))
+            + (cfg.w_thrust_linear * cp.sum(thrust_norm))
+            + (cfg.w_overdrive_linear * cp.sum(od_slack))
+            + (cfg.w_overdrive_quadratic * cp.sum_squares(od_slack))
         )
 
         self._problem = cp.Problem(objective, constraints)
@@ -203,6 +218,7 @@ class PDGOptimizer:
         self._target_vy = target_vy
         self._a_max = a_max
         self._a_min = a_min
+        self._a_nom = a_nom
         self._tilt_tan = tilt_tan
         self._x_ref = x_ref
         self._y_ref = y_ref
@@ -220,6 +236,7 @@ class PDGOptimizer:
         target_vy: float,
         max_thrust_accel: float,
         min_thrust_accel: float,
+        nominal_thrust_accel: float,
         max_tilt_rad: float,
         descent_floor_vy: float,
         warm_start: PDGPlan | None,
@@ -238,6 +255,10 @@ class PDGOptimizer:
         self._target_vy.value = float(target_vy)
         self._a_max.value = max(0.1, float(max_thrust_accel))
         self._a_min.value = max(0.0, float(min_thrust_accel))
+        self._a_nom.value = min(
+            max(0.1, float(max_thrust_accel)),
+            max(0.1, float(nominal_thrust_accel)),
+        )
         self._tilt_tan.value = max(1e-3, math.tan(max(0.02, float(max_tilt_rad))))
         self._vy_floor.value = float(descent_floor_vy)
 
@@ -283,6 +304,7 @@ class PDGOptimizer:
                     status="solve_error",
                     solve_time_ms=dt_ms,
                     objective=float("inf"),
+                    step_dt=float(self._cfg.step_dt),
                     ax=tuple(0.0 for _ in range(n)),
                     ay=tuple(0.0 for _ in range(n)),
                     x=tuple(float(x) for _ in range(n + 1)),
@@ -299,6 +321,7 @@ class PDGOptimizer:
                 status=status,
                 solve_time_ms=dt_ms,
                 objective=float("inf"),
+                step_dt=float(self._cfg.step_dt),
                 ax=tuple(0.0 for _ in range(n)),
                 ay=tuple(0.0 for _ in range(n)),
                 x=tuple(float(x) for _ in range(n + 1)),
@@ -322,6 +345,7 @@ class PDGOptimizer:
             status=status,
             solve_time_ms=dt_ms,
             objective=obj_val,
+            step_dt=float(self._cfg.step_dt),
             ax=tuple(float(v) for v in ax_val),
             ay=tuple(float(v) for v in ay_val),
             x=tuple(float(v) for v in x_val),

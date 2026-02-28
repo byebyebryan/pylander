@@ -27,6 +27,8 @@ class ZemZevConfig:
     replan_vx_error: float = 4.0
     replan_vy_error: float = 4.0
     fallback_hold_steps: int = 12
+    long_horizon_altitude: float = 120.0
+    long_horizon_time_to_go: float = 6.0
 
     # Attitude/allocator limits
     max_tilt: float = 0.78
@@ -65,7 +67,8 @@ class ZemZevBot(Bot):
     def __init__(self, behavior: str = "zem_zev") -> None:
         super().__init__()
         self._cfg = ZemZevConfig()
-        self._optimizer = PDGOptimizer(PDGOptimizerConfig())
+        self._optimizer_short = PDGOptimizer(PDGOptimizerConfig(horizon_steps=28))
+        self._optimizer_long = PDGOptimizer(PDGOptimizerConfig(horizon_steps=36))
 
         self._behavior = "zem_zev"
         self._prev_angle_cmd = 0.0
@@ -145,9 +148,17 @@ class ZemZevBot(Bot):
     def _plan_index(self) -> int:
         if self._plan is None:
             return 0
-        step_dt = max(1e-3, float(self._optimizer._cfg.step_dt))
+        step_dt = max(1e-3, float(self._plan.step_dt))
         idx = int(self._plan_elapsed / step_dt)
         return max(0, min(len(self._plan.ax) - 1, idx))
+
+    def _select_optimizer(self, *, alt: float, vy_up: float) -> PDGOptimizer:
+        cfg = self._cfg
+        down_speed = max(0.0, -float(vy_up))
+        t_go = float("inf") if down_speed <= 1e-3 else (max(0.0, alt) / down_speed)
+        if alt >= cfg.long_horizon_altitude or t_go >= cfg.long_horizon_time_to_go:
+            return self._optimizer_long
+        return self._optimizer_short
 
     def _state_deviation_requires_replan(self, passive: PassiveSensors) -> bool:
         if self._plan is None or not self._plan.feasible:
@@ -173,15 +184,18 @@ class ZemZevBot(Bot):
         dy: float,
         max_thrust_accel: float,
         min_thrust_accel: float,
+        nominal_thrust_accel: float,
     ) -> PDGPlan | None:
         alt = max(0.0, finite_altitude(passive))
         target_x = float(passive.x) + dx
         target_y = float(passive.y) + dy
         max_tilt = self._resolve_max_tilt(alt, dx, float(passive.vx))
-        target_vy = self._desired_terminal_vy(alt, max_thrust_accel, max_tilt)
-        descent_floor_vy = self._descent_floor_vy(alt, max_thrust_accel, max_tilt)
+        # Nominal-first schedule: OD is reserve, not baseline burn design.
+        target_vy = self._desired_terminal_vy(alt, nominal_thrust_accel, max_tilt)
+        descent_floor_vy = self._descent_floor_vy(alt, nominal_thrust_accel, max_tilt)
+        optimizer = self._select_optimizer(alt=alt, vy_up=float(passive.vy_up))
 
-        plan = self._optimizer.solve(
+        plan = optimizer.solve(
             x=float(passive.x),
             y=float(passive.y),
             vx=float(passive.vx),
@@ -191,6 +205,7 @@ class ZemZevBot(Bot):
             target_vy=target_vy,
             max_thrust_accel=max_thrust_accel,
             min_thrust_accel=min_thrust_accel,
+            nominal_thrust_accel=nominal_thrust_accel,
             max_tilt_rad=max_tilt,
             descent_floor_vy=descent_floor_vy,
             warm_start=self._plan,
@@ -258,16 +273,30 @@ class ZemZevBot(Bot):
             dt,
             max_rate=cfg.angle_rate,
         )
-        self._prev_angle_cmd = angle_cmd
 
         mass = max(0.5, float(passive.mass))
         thrust_acc = math.hypot(a_x, max(0.0, a_y))
         thrust = (mass * thrust_acc) / max(max_power, 1e-3)
         thrust = clamp(thrust, 0.0, max_throttle)
+        idle_angle_target: float | None = None
         if thrust <= (cfg.throttle_off_threshold_scale * min_throttle):
             thrust = 0.0
+            if alt > cfg.touchdown_zero_alt and abs(float(passive.vx)) > 0.5:
+                idle_angle_target = clamp(
+                    math.copysign(max_tilt_now, -float(passive.vx)),
+                    -max_tilt_now,
+                    max_tilt_now,
+                )
         elif thrust > 0.0:
             thrust = max(min_throttle, thrust)
+        if idle_angle_target is not None:
+            angle_cmd = rate_limit_angle_command(
+                idle_angle_target,
+                self._prev_angle_cmd,
+                dt,
+                max_rate=cfg.angle_rate,
+            )
+        self._prev_angle_cmd = angle_cmd
 
         return BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)
 
@@ -291,8 +320,10 @@ class ZemZevBot(Bot):
         max_power, min_throttle, max_throttle, _ramp_up = engine_profile(self.vehicle_info)
         mass = max(0.5, float(passive.mass))
         max_force = max_power * max_throttle
+        nominal_force = max_power * min(1.0, max_throttle)
         min_force = max_power * min_throttle
         max_thrust_accel = max(0.1, max_force / mass)
+        nominal_thrust_accel = max(0.1, nominal_force / mass)
         min_thrust_accel = max(0.0, min_force / mass)
 
         target = pick_target(passive, pinned_uid=self.pinned_target_uid)
@@ -325,6 +356,7 @@ class ZemZevBot(Bot):
                 dy=dy,
                 max_thrust_accel=max_thrust_accel,
                 min_thrust_accel=min_thrust_accel,
+                nominal_thrust_accel=nominal_thrust_accel,
             )
             if plan is not None and plan.feasible:
                 self._plan = plan
