@@ -3,6 +3,11 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Protocol, Any, Callable
+
+from core.bot_queries import (
+    BotQuery,
+    BotQueryResults,
+)
 from core.sensor import RadarContact, ProximityContact
 from core.terrain import sample_ballistic_trajectory
 
@@ -189,6 +194,34 @@ class Bot(ABC):
     def get_evaluation_snapshot(self) -> dict[str, Any] | None:
         """Return optional structured evaluation state for the current frame."""
         return None
+
+
+class QueryBot(Bot, ABC):
+    """Optional two-stage bot API for batched active sensor queries."""
+
+    @abstractmethod
+    def plan(self, dt: float, passive: PassiveSensors) -> list[BotQuery]:
+        """Declare active sensor queries required for this tick."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def act(
+        self,
+        dt: float,
+        passive: PassiveSensors,
+        results: BotQueryResults,
+    ) -> BotAction:
+        """Produce action from passive sensors plus evaluated query results."""
+        raise NotImplementedError
+
+    def update(
+        self, dt: float, passive: PassiveSensors, active: ActiveSensors
+    ) -> BotAction:
+        _ = dt, passive, active
+        raise RuntimeError(
+            "QueryBot.update() should not be called directly; "
+            "use plan()/act() via the game query loop."
+        )
 
 
 class _ActiveSensorImpl:

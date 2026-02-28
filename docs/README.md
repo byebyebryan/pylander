@@ -11,6 +11,7 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 
 - Unified optimizer bot: [`zem_zev.md`](zem_zev.md)
 - Terminal benchmark bot: [`plunge.md`](plunge.md)
+- Query API + profiling details: [`overview.md`](overview.md)
 - Scenario levels:
   - `flare`: [`flare.md`](flare.md)
   - `coast`: [`coast.md`](coast.md)

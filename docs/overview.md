@@ -64,3 +64,60 @@ Notes:
 
 - Bots should use the sensor/action API, not engine internals.
 - `ActiveSensors` is rebuilt per bot step and caches repeated ballistic queries within the step.
+
+## QueryBot API (batched active sensors)
+
+For new bots, you can use the optional two-stage API:
+
+- `plan(dt, passive) -> list[BotQuery]`
+- `act(dt, passive, results) -> BotAction`
+
+`QueryBot` runs in the game loop as:
+
+1. build passive sensors
+2. call `plan(...)`
+3. evaluate requested active queries in one batch
+4. call `act(...)`
+
+Supported queries (`core/bot_queries.py`):
+
+- `BotQueryRaycast`
+- `BotQueryTerrainProfile`
+- `BotQueryBallistic`
+
+Results are keyed by query `id` and returned as typed payloads:
+
+- `RaycastResult`
+- `TerrainProfileResult`
+- `BallisticResult`
+
+Batch evaluator behavior:
+
+- duplicate query IDs are rejected
+- ballistic requests are deduped per tick by input tuple
+- cached ballistic results are cloned per query ID so bots can safely mutate local copies
+
+Backward compatibility:
+
+- Existing bots keep using `Bot.update(..., active)` unchanged.
+- Only bots that subclass `QueryBot` use the batched query path.
+
+Demo implementation:
+
+- [`bots/query_demo.py`](../bots/query_demo.py)
+
+## Bot-loop profiling
+
+Headless runs can emit timing breakdowns with env vars:
+
+- `PYLANDER_BOT_PROFILE=1`
+- `PYLANDER_BOT_PROFILE_INTERVAL_S=<seconds>` (default `5.0`)
+
+Reported buckets:
+
+- passive sensor build time
+- legacy active sensor build time
+- query evaluation time (query bots)
+- bot update time (`update` or `plan+act`)
+
+Final run result also includes `bot_profile_*` summary fields.

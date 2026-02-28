@@ -5,7 +5,9 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
-from core.bot import Bot, BotAction, PassiveSensors, VehicleInfo, _ActiveSensorImpl
+from time import perf_counter
+
+from core.bot import Bot, BotAction, PassiveSensors, QueryBot, VehicleInfo, _ActiveSensorImpl
 from core.components import (
     ActorControlRole,
     CargoHold,
@@ -29,7 +31,8 @@ from core.level import Level
 from core.maths import Range1D, Vector2, clearance_above_terrain
 from core.terrain import estimate_terrain_slope, sample_terrain_height
 from runtime.bootstrap import create_systems
-from runtime.metrics import RunMetricsTracker
+from runtime.bot_query_eval import evaluate_bot_queries
+from runtime.metrics import BotLoopProfiler, RunMetricsTracker
 from ui.renderer import Renderer
 from utils.input import InputHandler
 from utils.plot import Plotter
@@ -245,6 +248,7 @@ class LanderGame:
         self.bot = bot
         self.level = level
         seed = random.randint(0, 1000000) if seed is None else seed
+        self._bot_profiler = BotLoopProfiler.from_env(headless=headless)
 
         if headless and not bot:
             raise ValueError("Headless mode requires a bot")
@@ -478,6 +482,9 @@ class LanderGame:
 
             self._update_physics_steps(timers)
             bot_controls = self._update_bot_steps(timers)
+            if self._bot_profiler.enabled:
+                for line in self._bot_profiler.maybe_report_lines(timers.elapsed_time):
+                    print(line)
 
             if user_controls is not None:
                 self._bot_override_timer = self.bot_override_delay
@@ -553,6 +560,7 @@ class LanderGame:
             elapsed_time=timers.elapsed_time,
             final_actor=final_actor,
         )
+        self._bot_profiler.apply_to_result(result)
         plot_extras = self.plotter.finalize()
         if plot_extras:
             result.update(plot_extras)
@@ -639,6 +647,7 @@ class LanderGame:
     def _update_bot_steps(self, timers: LoopTimers) -> dict[str, ControlTuple | None]:
         bot_controls_by_uid: dict[str, ControlTuple | None] = {}
         bot_dt = timers.bot_dt
+        profiler = self._bot_profiler
         while timers.should_step_bot():
             timers.consume_bot()
             if self.actor_bots:
@@ -650,16 +659,64 @@ class LanderGame:
                     ls = actor.get_component(LanderState)
                     if ls is None or ls.state not in ("flying", "landed"):
                         continue
-                    passive_sensors = _build_passive_sensors(actor, self.terrain)
-                    active_sensors = _build_active_sensors(
-                        actor, self.engine_adapter, self.terrain
-                    )
                     current_bot = self.actor_bots.get(uid, bot)
-                    action: BotAction = current_bot.update(
-                        bot_dt,
-                        passive_sensors,
-                        active_sensors,
-                    )
+                    profiler.record_tick(uid)
+
+                    t0 = perf_counter() if profiler.enabled else 0.0
+                    passive_sensors = _build_passive_sensors(actor, self.terrain)
+                    if profiler.enabled:
+                        profiler.record_passive_build(uid, perf_counter() - t0)
+
+                    if isinstance(current_bot, QueryBot):
+                        update_s = 0.0
+                        t_plan = perf_counter() if profiler.enabled else 0.0
+                        raw_queries = current_bot.plan(bot_dt, passive_sensors)
+                        queries = list(raw_queries or [])
+                        if profiler.enabled:
+                            update_s += perf_counter() - t_plan
+
+                        t_eval = perf_counter() if profiler.enabled else 0.0
+                        query_results, batch_stats = evaluate_bot_queries(
+                            actor,
+                            self.engine_adapter,
+                            self.terrain,
+                            queries,
+                        )
+                        if profiler.enabled:
+                            profiler.record_query_eval(
+                                uid,
+                                perf_counter() - t_eval,
+                                query_total=batch_stats.total,
+                                query_raycast=batch_stats.raycast,
+                                query_terrain_profile=batch_stats.terrain_profile,
+                                query_ballistic=batch_stats.ballistic,
+                            )
+
+                        t_act = perf_counter() if profiler.enabled else 0.0
+                        action: BotAction = current_bot.act(
+                            bot_dt,
+                            passive_sensors,
+                            query_results,
+                        )
+                        if profiler.enabled:
+                            update_s += perf_counter() - t_act
+                            profiler.record_bot_update(uid, update_s)
+                    else:
+                        t_active = perf_counter() if profiler.enabled else 0.0
+                        active_sensors = _build_active_sensors(
+                            actor, self.engine_adapter, self.terrain
+                        )
+                        if profiler.enabled:
+                            profiler.record_active_build(uid, perf_counter() - t_active)
+
+                        t_update = perf_counter() if profiler.enabled else 0.0
+                        action = current_bot.update(
+                            bot_dt,
+                            passive_sensors,
+                            active_sensors,
+                        )
+                        if profiler.enabled:
+                            profiler.record_bot_update(uid, perf_counter() - t_update)
                     bot_controls_by_uid[uid] = (
                         action.target_thrust,
                         action.target_angle,

@@ -17,6 +17,7 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 - Headless deterministic evaluation + benchmark reports
 - Unified optimizer bot (`zem_zev`) for full-envelope flight
 - Terminal benchmark bot (`plunge`)
+- Query-API demo bot (`query_demo`) for batched sensor requests
 
 ## Setup
 
@@ -53,6 +54,7 @@ uv run python main.py play flat --bot zem_zev
 uv run python main.py run flare --bot zem_zev --seed 0
 uv run python main.py run coast --bot zem_zev --scenario mid_wide --seed 3
 uv run python main.py run plunge --bot plunge --scenario mid_normal --seed 0
+uv run python main.py run flare --bot query_demo --seed 0
 ```
 
 ### Benchmark batch (`bench`)
@@ -114,6 +116,25 @@ Focused eval (`--eval-mode focused`) is available for `flare`, `coast`, and `set
 - `--json PATH|auto`
 - `--csv PATH|auto`
 - `--eval-mode auto|focused|full`
+
+## Bot profiling and query API
+
+The game loop now supports lightweight bot-loop profiling in headless mode:
+
+```bash
+PYLANDER_BOT_PROFILE=1 uv run python main.py run flare --bot zem_zev --seed 0
+```
+
+Optional interval override (seconds):
+
+```bash
+PYLANDER_BOT_PROFILE=1 PYLANDER_BOT_PROFILE_INTERVAL_S=2 \
+  uv run python main.py run flare --bot query_demo --seed 0
+```
+
+Profiled timing covers passive sensor build, active sensor build (legacy bots), query evaluation (query bots), and bot update time.
+
+See [`docs/overview.md`](docs/overview.md) for the new `QueryBot plan/act` interface and query payload types.
 
 ## Controls (interactive)
 

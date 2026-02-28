@@ -18,6 +18,7 @@ from ui.hud import HudOverlay
 def test_bot_registry_exposes_only_supported_bots() -> None:
     bots = list_available_bots()
     assert "plunge" in bots
+    assert "query_demo" in bots
     assert "zem_zev" in bots
     assert "coast" not in bots
     assert "flare" not in bots
@@ -25,8 +26,10 @@ def test_bot_registry_exposes_only_supported_bots() -> None:
     assert "launch" not in bots
 
     plunge_bot = create_bot("plunge")
+    query_demo_bot = create_bot("query_demo")
     zem_bot = create_bot("zem_zev")
     assert plunge_bot.__class__.__name__ == "PlungeBot"
+    assert query_demo_bot.__class__.__name__ == "QueryDemoBot"
     assert zem_bot.__class__.__name__ == "ZemZevBot"
 
 
