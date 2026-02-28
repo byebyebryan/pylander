@@ -377,6 +377,7 @@ class ZemZevBot(QueryBot):
             max_tilt_rad=max_tilt,
             descent_floor_vy=descent_floor_vy,
             gravity_mag=_GRAVITY_MAG,
+            pad_half_width=self._last_target_half,
             warm_start=self._plan,
         )
         if plan is not None:

@@ -112,6 +112,7 @@ class PDGOptimizer:
         self._y_ref: cp.Parameter | None = None
         self._vy_floor: cp.Parameter | None = None
         self._g_param: cp.Parameter | None = None
+        self._x_tol: cp.Parameter | None = None
 
         self._build_problem()
 
@@ -143,6 +144,7 @@ class PDGOptimizer:
         x_ref = cp.Parameter(n + 1)
         y_ref = cp.Parameter(n + 1)
         vy_floor = cp.Parameter()
+        x_tol = cp.Parameter(nonneg=True)
         thrust_norm = cp.Variable(n, nonneg=True)
         od_slack = cp.Variable(n, nonneg=True)
 
@@ -179,7 +181,8 @@ class PDGOptimizer:
         min_accel_soft = cp.sum_squares(cp.pos(a_min - ay))
 
         terminal = (
-            cfg.w_terminal_x * cp.square(x[n] - target_x)
+            # Penalize only outside the pad corridor to avoid over-centering waste.
+            cfg.w_terminal_x * cp.square(cp.pos(cp.abs(x[n] - target_x) - x_tol))
             + cfg.w_terminal_y * cp.square(y[n] - target_y)
             + cfg.w_terminal_vx * cp.square(vx[n])
             + cfg.w_terminal_vy * cp.square(vy[n] - target_vy)
@@ -226,6 +229,7 @@ class PDGOptimizer:
         self._y_ref = y_ref
         self._vy_floor = vy_floor
         self._g_param = g_param
+        self._x_tol = x_tol
 
     def solve(
         self,
@@ -243,6 +247,7 @@ class PDGOptimizer:
         max_tilt_rad: float,
         descent_floor_vy: float,
         gravity_mag: float,
+        pad_half_width: float,
         warm_start: PDGPlan | None,
     ) -> PDGPlan | None:
         if self._problem is None:
@@ -266,6 +271,7 @@ class PDGOptimizer:
         self._tilt_tan.value = max(1e-3, math.tan(max(0.02, float(max_tilt_rad))))
         self._vy_floor.value = float(descent_floor_vy)
         self._g_param.value = max(0.0, float(gravity_mag))
+        self._x_tol.value = max(0.0, float(pad_half_width))
 
         x_ref = np.linspace(float(x), float(target_x), n + 1)
         y_ref = np.linspace(float(y), float(target_y), n + 1)
