@@ -42,6 +42,12 @@ class PDGOptimizerConfig:
     w_overdrive_linear: float = 1.40
     w_overdrive_quadratic: float = 6.00
 
+    # Altitude-adaptive reference profile (lateral-first then descend).
+    ref_hold_frac_min: float = 0.30
+    ref_hold_frac_max: float = 0.62
+    ref_altitude_scale: float = 320.0
+    ref_hold_descent_ratio: float = 0.12
+
 
 @dataclass(frozen=True)
 class PDGPlan:
@@ -113,8 +119,42 @@ class PDGOptimizer:
         self._vy_floor: cp.Parameter | None = None
         self._g_param: cp.Parameter | None = None
         self._x_tol: cp.Parameter | None = None
+        self._descent_floor_scale: cp.Parameter | None = None
 
         self._build_problem()
+
+    def _reference_profiles(
+        self,
+        *,
+        x: float,
+        y: float,
+        target_x: float,
+        target_y: float,
+        altitude_hint: float,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        cfg = self._cfg
+        n = int(cfg.horizon_steps)
+        x_ref = np.linspace(float(x), float(target_x), n + 1)
+
+        if n <= 1:
+            y_ref = np.linspace(float(y), float(target_y), n + 1)
+            return x_ref, y_ref
+
+        alt_alpha = np.clip(float(altitude_hint) / max(1e-6, cfg.ref_altitude_scale), 0.0, 1.0)
+        hold_frac = float(
+            cfg.ref_hold_frac_min
+            + ((cfg.ref_hold_frac_max - cfg.ref_hold_frac_min) * alt_alpha)
+        )
+        hold_steps = int(np.clip(round(hold_frac * n), 1, n - 1))
+
+        y_start = float(y)
+        y_goal = float(target_y)
+        y_hold = y_start + ((y_goal - y_start) * float(cfg.ref_hold_descent_ratio))
+
+        y_ref = np.empty(n + 1, dtype=float)
+        y_ref[: hold_steps + 1] = np.linspace(y_start, y_hold, hold_steps + 1)
+        y_ref[hold_steps:] = np.linspace(y_hold, y_goal, (n - hold_steps) + 1)
+        return x_ref, y_ref
 
     def _build_problem(self) -> None:
         cfg = self._cfg
@@ -145,6 +185,7 @@ class PDGOptimizer:
         y_ref = cp.Parameter(n + 1)
         vy_floor = cp.Parameter()
         x_tol = cp.Parameter(nonneg=True)
+        descent_floor_scale = cp.Parameter(nonneg=True)
         thrust_norm = cp.Variable(n, nonneg=True)
         od_slack = cp.Variable(n, nonneg=True)
 
@@ -195,7 +236,7 @@ class PDGOptimizer:
             + (cfg.w_path_x * cp.sum_squares(x - x_ref))
             + (cfg.w_path_y * cp.sum_squares(y - y_ref))
             + (cfg.w_upward_vy * upward_penalty)
-            + (cfg.w_descent_floor * descent_floor_penalty)
+            + ((cfg.w_descent_floor * descent_floor_scale) * descent_floor_penalty)
             + (cfg.w_min_accel * min_accel_soft)
             + (0.02 * path)
             + (cfg.w_altitude_progress * cp.sum(y[:-1] - target_y))
@@ -230,6 +271,7 @@ class PDGOptimizer:
         self._vy_floor = vy_floor
         self._g_param = g_param
         self._x_tol = x_tol
+        self._descent_floor_scale = descent_floor_scale
 
     def solve(
         self,
@@ -248,6 +290,8 @@ class PDGOptimizer:
         descent_floor_vy: float,
         gravity_mag: float,
         pad_half_width: float,
+        altitude_hint: float,
+        descent_floor_weight_scale: float = 1.0,
         warm_start: PDGPlan | None,
     ) -> PDGPlan | None:
         if self._problem is None:
@@ -272,9 +316,15 @@ class PDGOptimizer:
         self._vy_floor.value = float(descent_floor_vy)
         self._g_param.value = max(0.0, float(gravity_mag))
         self._x_tol.value = max(0.0, float(pad_half_width))
+        self._descent_floor_scale.value = max(0.0, float(descent_floor_weight_scale))
 
-        x_ref = np.linspace(float(x), float(target_x), n + 1)
-        y_ref = np.linspace(float(y), float(target_y), n + 1)
+        x_ref, y_ref = self._reference_profiles(
+            x=float(x),
+            y=float(y),
+            target_x=float(target_x),
+            target_y=float(target_y),
+            altitude_hint=max(0.0, float(altitude_hint)),
+        )
         self._x_ref.value = x_ref
         self._y_ref.value = y_ref
 
