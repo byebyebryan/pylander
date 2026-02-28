@@ -5,7 +5,13 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from bots._ballistics import ballistic_time_to_impact, estimate_ballistic_projection
+from bots._ballistics import (
+    BallisticProjection,
+    ballistic_time_to_impact_from_result,
+    build_projection_query,
+    build_time_to_impact_query,
+    estimate_ballistic_projection_from_result,
+)
 from bots._bot_math import (
     clamp,
     engine_profile,
@@ -16,7 +22,8 @@ from bots._bot_math import (
     vehicle_limits,
 )
 from bots._targeting import pick_target
-from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
+from core.bot import Bot, BotAction, PassiveSensors, QueryBot
+from core.bot_queries import BotQuery, BotQueryResults
 from core.sensor import RadarContact
 
 
@@ -51,9 +58,11 @@ class PlungePolicy:
 
 
 BALANCED_PLUNGE_POLICY = PlungePolicy()
+_QUERY_TTI = "plunge_tti"
+_QUERY_PROJECTION = "plunge_projection"
 
 
-class PlungeBot(Bot):
+class PlungeBot(QueryBot):
     def __init__(self, behavior: str = "balanced") -> None:
         super().__init__()
         self._policy = BALANCED_PLUNGE_POLICY
@@ -200,23 +209,12 @@ class PlungeBot(Bot):
         max_force: float,
         max_throttle: float,
         ramp_up: float,
-        active: ActiveSensors | None = None,
+        projection: BallisticProjection,
+        time_to_impact: float,
+        impact_source: str,
     ) -> GuidanceTargets:
         alt = finite_altitude(passive)
         dx = float(target.x) - float(passive.x)
-        projection = estimate_ballistic_projection(
-            dx=dx,
-            alt=alt,
-            vx=passive.vx,
-            vy_up=passive.vy_up,
-            x=passive.x,
-            y=passive.y,
-            active=active,
-            clearance=0.0,
-            segment_length=20.0,
-            max_points=192,
-            min_t_fall=0.0,
-        )
         track_dx = projection.projected_dx
         _, up_acc_max = vehicle_limits(passive, max_force)
 
@@ -233,7 +231,6 @@ class PlungeBot(Bot):
         burn_margin = 2.1 + (0.12 * max(0.0, abs(track_dx) - self._policy.align_band))
         burn_altitude = stop_distance + spool_distance + burn_margin
 
-        time_to_impact, impact_source = ballistic_time_to_impact(passive, active)
         time_to_brake = spool_time + (speed_to_kill / max(1e-3, up_acc_max))
         time_buffer = 0.15
         if impact_source == "sensor":
@@ -285,11 +282,35 @@ class PlungeBot(Bot):
             burn_altitude=burn_altitude,
         )
 
-    def update(
+    def plan(self, dt: float, passive: PassiveSensors) -> list[BotQuery]:
+        _ = dt
+        if passive.state != "flying":
+            return []
+        queries: list[BotQuery] = [build_time_to_impact_query(passive, query_id=_QUERY_TTI)]
+        target = pick_target(passive, pinned_uid=self.pinned_target_uid)
+        if target is None:
+            return queries
+        projection_query = build_projection_query(
+            query_id=_QUERY_PROJECTION,
+            dx=float(target.x) - float(passive.x),
+            alt=finite_altitude(passive),
+            vx=passive.vx,
+            vy_up=passive.vy_up,
+            x=passive.x,
+            y=passive.y,
+            clearance=0.0,
+            segment_length=20.0,
+            max_points=192,
+        )
+        if projection_query is not None:
+            queries.append(projection_query)
+        return queries
+
+    def act(
         self,
         dt: float,
         passive: PassiveSensors,
-        active: ActiveSensors,
+        results: BotQueryResults,
     ) -> BotAction:
         if passive.state in ("landed", "crashed", "out_of_fuel"):
             self._ballistic_debug_summary = ""
@@ -305,12 +326,13 @@ class PlungeBot(Bot):
         max_power, min_throttle, max_throttle, ramp_up = self._engine_profile()
         max_force = max_power * max_throttle
         _, up_acc_max = vehicle_limits(passive, max_force)
+        tti_result = results.get(_QUERY_TTI)
+        time_to_impact, impact_source = ballistic_time_to_impact_from_result(passive, tti_result)
 
         target = pick_target(passive, pinned_uid=self.pinned_target_uid)
         if target is None:
-            t_impact, impact_source = ballistic_time_to_impact(passive, active)
             self._ballistic_debug_summary = (
-                f"ball tti:{stable(t_impact, 1):4.1f} "
+                f"ball tti:{stable(time_to_impact, 1):4.1f} "
                 f"src:{'s' if impact_source == 'sensor' else 'a'} "
                 "burn:0"
             )
@@ -339,13 +361,24 @@ class PlungeBot(Bot):
             self.status = action.status
             return action
 
+        projection = estimate_ballistic_projection_from_result(
+            dx=float(target.x) - float(passive.x),
+            alt=finite_altitude(passive),
+            vx=passive.vx,
+            vy_up=passive.vy_up,
+            x=passive.x,
+            result=results.get(_QUERY_PROJECTION),
+            min_t_fall=0.0,
+        )
         guidance = self._guidance(
             passive,
             target,
             max_force=max_force,
             max_throttle=max_throttle,
             ramp_up=ramp_up,
-            active=active,
+            projection=projection,
+            time_to_impact=time_to_impact,
+            impact_source=impact_source,
         )
         if guidance.vertical_mode == "coast" and abs(guidance.dx) <= self._policy.coast_horiz_deadband:
             a_x_sp = 0.0

@@ -9,14 +9,20 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from bots._ballistics import estimate_ballistic_projection
+from bots._ballistics import (
+    BallisticProjection,
+    build_projection_query,
+    estimate_ballistic_projection_from_result,
+)
 from bots._bot_math import clamp, engine_profile, finite_altitude, rate_limit_angle_command, stable
 from bots._optimizer_pdg import PDGOptimizer, PDGOptimizerConfig, PDGPlan
 from bots._targeting import pick_target, target_half_width
-from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
+from core.bot import Bot, BotAction, PassiveSensors, QueryBot
+from core.bot_queries import BotQuery, BotQueryResults
 from core.config import GRAVITY
 
 _GRAVITY_MAG = abs(float(GRAVITY))
+_QUERY_PROJECTION = "zem_projection"
 
 
 @dataclass(frozen=True)
@@ -95,7 +101,7 @@ class ZemZevConfig:
     launch_takeoff_thrust: float = 0.9
 
 
-class ZemZevBot(Bot):
+class ZemZevBot(QueryBot):
     def __init__(self, behavior: str = "zem_zev") -> None:
         super().__init__()
         self._cfg = ZemZevConfig()
@@ -386,19 +392,9 @@ class ZemZevBot(Bot):
         passive: PassiveSensors,
         dx: float,
         alt: float,
-        active: ActiveSensors,
+        projection: BallisticProjection,
     ) -> None:
         cfg = self._cfg
-        projection = estimate_ballistic_projection(
-            dx=dx,
-            alt=alt,
-            vx=float(passive.vx),
-            vy_up=float(passive.vy_up),
-            x=float(passive.x),
-            y=float(passive.y),
-            active=active,
-            clearance=0.0,
-        )
         projected_dx = float(projection.projected_dx)
         t_fall = max(0.0, float(projection.t_fall))
         self._last_projection_dx = projected_dx
@@ -565,11 +561,34 @@ class ZemZevBot(Bot):
 
         return BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)
 
-    def update(
+    def plan(self, dt: float, passive: PassiveSensors) -> list[BotQuery]:
+        _ = dt
+        if passive.state != "flying":
+            return []
+        target = self._resolve_target_contact(passive)
+        if target is not None:
+            dx = float(target.x) - float(passive.x)
+        else:
+            dx = 0.0
+        query = build_projection_query(
+            query_id=_QUERY_PROJECTION,
+            dx=dx,
+            alt=max(0.0, finite_altitude(passive)),
+            vx=float(passive.vx),
+            vy_up=float(passive.vy_up),
+            x=float(passive.x),
+            y=float(passive.y),
+            clearance=0.0,
+        )
+        if query is None:
+            return []
+        return [query]
+
+    def act(
         self,
         dt: float,
         passive: PassiveSensors,
-        active: ActiveSensors,
+        results: BotQueryResults,
     ) -> BotAction:
         if passive.state == "crashed":
             self._reset_state()
@@ -652,11 +671,19 @@ class ZemZevBot(Bot):
             dy = -max(0.0, finite_altitude(passive))
 
         self._elapsed_time_s += max(0.0, float(dt))
+        projection = estimate_ballistic_projection_from_result(
+            dx=dx,
+            alt=alt,
+            vx=float(passive.vx),
+            vy_up=float(passive.vy_up),
+            x=float(passive.x),
+            result=results.get(_QUERY_PROJECTION),
+        )
         self._update_phase_tracking(
             passive=passive,
             dx=dx,
             alt=alt,
-            active=active,
+            projection=projection,
         )
         replan_hz, dx_err_lim, dy_err_lim, vx_err_lim, vy_err_lim = self._replan_policy_for_phase(
             self._active_phase

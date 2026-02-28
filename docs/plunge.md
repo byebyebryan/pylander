@@ -2,6 +2,12 @@
 
 `plunge` is the terminal-only benchmark: burn timing, flare, and touchdown without upstream trajectory setup complexity.
 
+Implementation note:
+
+- `plunge` uses the `QueryBot` `plan/act` API.
+- Each tick it requests batched ballistic queries for time-to-impact and target projection.
+- Guidance/control law remains the same; only sensor plumbing moved from per-call `ActiveSensors` to batched query results.
+
 ## Scenario setup
 
 Defined in [`levels/plunge.py`](../levels/plunge.py):

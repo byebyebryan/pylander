@@ -4,6 +4,12 @@ Implementation: [`bots/zem_zev.py`](../bots/zem_zev.py), [`bots/_optimizer_pdg.p
 
 `zem_zev` is the unified optimizer-first full-envelope guidance bot used by default in `launch`, `setup`, `coast`, and `flare`.
 
+Implementation note:
+
+- `zem_zev` uses the `QueryBot` `plan/act` API.
+- Phase tracking consumes a batched ballistic projection query result each tick.
+- Optimizer/replan/control allocation behavior is unchanged; only active-sensor integration moved to explicit queries.
+
 ## Naming
 
 Both names appear in literature:

@@ -3,6 +3,13 @@ from __future__ import annotations
 import pytest
 
 from bots import create_bot
+from bots._ballistics import (
+    BallisticProjection,
+    ballistic_time_to_impact,
+    ballistic_time_to_impact_from_result,
+    estimate_ballistic_projection,
+    estimate_ballistic_projection_from_result,
+)
 from core.bot import BotAction, PassiveSensors, QueryBot
 from core.bot_queries import (
     BallisticResult,
@@ -172,3 +179,144 @@ def test_query_demo_bot_runs_headless_with_query_metrics(monkeypatch: pytest.Mon
     assert result["bot_profile_enabled"] is True
     assert result["bot_profile_ticks"] > 0
     assert result["bot_profile_query_total"] > 0
+
+
+def test_ballistic_projection_decoder_matches_legacy_for_sensor_hit() -> None:
+    passive = PassiveSensors(
+        x=10.0,
+        y=200.0,
+        altitude=200.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=15.0,
+        vy_up=-30.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=1200.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    fake_result = BallisticResult(
+        points=[(10.0, 200.0), (20.0, 160.0)],
+        hit=True,
+        hit_x=60.0,
+        hit_y=0.0,
+        hit_time=2.8,
+        hit_vx=15.0,
+        hit_vy_up=-45.0,
+        hit_speed=47.0,
+        distance=180.0,
+        duration=2.8,
+        termination="terrain",
+    )
+
+    decoded = estimate_ballistic_projection_from_result(
+        dx=20.0,
+        alt=passive.altitude,
+        vx=passive.vx,
+        vy_up=passive.vy_up,
+        x=passive.x,
+        result=fake_result,
+    )
+    assert isinstance(decoded, BallisticProjection)
+    assert decoded.used_sensor is True
+    assert decoded.target_x == pytest.approx(30.0)
+    assert decoded.projected_dx == pytest.approx(-30.0)
+    assert decoded.t_fall == pytest.approx(2.8)
+
+
+def test_ballistic_time_to_impact_decoder_falls_back_without_hit() -> None:
+    passive = PassiveSensors(
+        x=0.0,
+        y=150.0,
+        altitude=150.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-10.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=1000.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    t_result, src = ballistic_time_to_impact_from_result(
+        passive,
+        BallisticResult(
+            points=[(0.0, 150.0)],
+            hit=False,
+            hit_x=None,
+            hit_y=None,
+            hit_time=None,
+            hit_vx=None,
+            hit_vy_up=None,
+            hit_speed=None,
+            distance=0.0,
+            duration=0.0,
+            termination="max_distance",
+        ),
+    )
+    t_legacy, src_legacy = ballistic_time_to_impact(passive, active=None)
+    assert src == "analytic"
+    assert src_legacy == "analytic"
+    assert t_result == pytest.approx(t_legacy)
+
+
+def test_projection_decoder_falls_back_without_result_like_legacy() -> None:
+    projection = estimate_ballistic_projection_from_result(
+        dx=80.0,
+        alt=120.0,
+        vx=10.0,
+        vy_up=-15.0,
+        x=25.0,
+        result=None,
+    )
+    legacy = estimate_ballistic_projection(
+        dx=80.0,
+        alt=120.0,
+        vx=10.0,
+        vy_up=-15.0,
+        x=25.0,
+        y=120.0,
+        active=None,
+        clearance=0.0,
+    )
+    assert projection.projected_dx == pytest.approx(legacy.projected_dx)
+    assert projection.t_fall == pytest.approx(legacy.t_fall)
+    assert projection.used_sensor is False
+
+
+def test_plunge_and_zem_bots_use_query_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("PYLANDER_BOT_PROFILE", "1")
+
+    plunge = create_bot("plunge")
+    assert isinstance(plunge, QueryBot)
+    plunge_game = LanderGame(
+        level=create_level_by_name("plunge"),
+        seed=0,
+        bot=plunge,
+        headless=True,
+    )
+    plunge_result = plunge_game.run(print_freq=0, max_steps=40, max_time=20.0)
+    assert plunge_result["bot_profile_query_total"] > 0
+
+    zem = create_bot("zem_zev")
+    assert isinstance(zem, QueryBot)
+    zem_game = LanderGame(
+        level=create_level_by_name("flare"),
+        seed=0,
+        bot=zem,
+        headless=True,
+    )
+    zem_result = zem_game.run(print_freq=0, max_steps=40, max_time=20.0)
+    assert zem_result["bot_profile_query_total"] > 0

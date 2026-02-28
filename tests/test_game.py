@@ -6,6 +6,7 @@ import app.run_batch as run_batch_module
 from app.cli import build_parser, parse_command
 from app.config import BenchCommand, BenchSettings, RunCommand
 from bots import create_bot, list_available_bots
+from core.bot import QueryBot
 from core.components import PhysicsState, Transform
 from core.ecs import require_component
 from core.eval import aggregate_eval_records, normalize_run_result
@@ -31,6 +32,9 @@ def test_bot_registry_exposes_only_supported_bots() -> None:
     assert plunge_bot.__class__.__name__ == "PlungeBot"
     assert query_demo_bot.__class__.__name__ == "QueryDemoBot"
     assert zem_bot.__class__.__name__ == "ZemZevBot"
+    assert isinstance(plunge_bot, QueryBot)
+    assert isinstance(query_demo_bot, QueryBot)
+    assert isinstance(zem_bot, QueryBot)
 
 
 def test_level_registry_still_includes_phase_levels() -> None:

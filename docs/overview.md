@@ -79,6 +79,12 @@ For new bots, you can use the optional two-stage API:
 3. evaluate requested active queries in one batch
 4. call `act(...)`
 
+Current built-in bots on this interface:
+
+- `query_demo`
+- `plunge`
+- `zem_zev`
+
 Supported queries (`core/bot_queries.py`):
 
 - `BotQueryRaycast`
@@ -99,7 +105,7 @@ Batch evaluator behavior:
 
 Backward compatibility:
 
-- Existing bots keep using `Bot.update(..., active)` unchanged.
+- Existing external/custom bots can keep using `Bot.update(..., active)` unchanged.
 - Only bots that subclass `QueryBot` use the batched query path.
 
 Demo implementation:
