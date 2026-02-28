@@ -6,7 +6,7 @@ A classic Lunar Lander-inspired game with procedurally generated terrain, scorin
 
 - Start here: [`docs/README.md`](docs/README.md)
 - Bot dev framework + API: [`docs/overview.md`](docs/overview.md)
-- Phase docs: [`docs/plunge.md`](docs/plunge.md), [`docs/flare.md`](docs/flare.md), [`docs/coast.md`](docs/coast.md), [`docs/launch.md`](docs/launch.md), [`docs/ferry.md`](docs/ferry.md)
+- Phase docs: [`docs/plunge.md`](docs/plunge.md), [`docs/flare.md`](docs/flare.md), [`docs/zem_zev.md`](docs/zem_zev.md), [`docs/coast.md`](docs/coast.md), [`docs/launch.md`](docs/launch.md), [`docs/ferry.md`](docs/ferry.md)
 
 ## Features
 
@@ -146,6 +146,7 @@ Scenario docs:
 
 - `plunge`: [`docs/plunge.md`](docs/plunge.md)
 - `flare`: [`docs/flare.md`](docs/flare.md)
+- `zem_zev`: [`docs/zem_zev.md`](docs/zem_zev.md)
 - `coast`: [`docs/coast.md`](docs/coast.md)
 - `launch`: [`docs/launch.md`](docs/launch.md)
 - `ferry`: [`docs/ferry.md`](docs/ferry.md)
@@ -158,7 +159,7 @@ uv run python main.py [level_name] [options]
 
 **Levels:** Run `uv run python main.py --help` to list (e.g. `flat`, `mountains`, `plunge`).
 
-**Bot names:** `plunge`, `flare`, `coast`, `launch`, `ferry`, `zem_zev` (set via `--bot`; see `--help`). `zem_zev` is a phased ZEM/ZEV terminal controller usable as a `flare` replacement (see [`docs/flare.md`](docs/flare.md)).
+**Bot names:** `plunge`, `flare`, `coast`, `launch`, `ferry`, `zem_zev` (set via `--bot`; see `--help`). `zem_zev` is an optimizer-first ZEM/ZEV terminal controller usable as a `flare` replacement (see [`docs/zem_zev.md`](docs/zem_zev.md)).
 
 **Options:**
 - `--bot NAME` - Select bot (`plunge`, `flare`, `coast`, `launch`, `ferry`, `zem_zev`)

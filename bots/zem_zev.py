@@ -1,15 +1,7 @@
-"""Phased ZEM/ZEV powered-descent bot.
+"""Optimizer-first powered descent bot (ZEM/ZEV replacement).
 
-Three-phase terminal controller:
-  preflare_coast  -> retrograde coast, engine off, wait for feasibility gate
-  terminal_burn   -> ZEM/ZEV 2-axis guidance with feasibility-root ignition
-  touchdown       -> low-alt settle and engine cutoff
-
-The flare gate uses a 1-D feasibility root-find: compute the thrust
-acceleration magnitude the ZEM/ZEV law would request at the current state
-and compare it against engine limits.  When the required accel first
-crosses into the feasible band (accounting for min-thrust floor and
-hysteresis), the bot commits to terminal burn.
+This version uses a receding-horizon convex optimizer to generate coupled
+horizontal/vertical thrust commands from a single objective each replan cycle.
 """
 
 from __future__ import annotations
@@ -17,18 +9,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from bots._ballistics import (
-    BallisticProjection,
-    ballistic_time_to_impact,
-    estimate_ballistic_projection,
-)
-from bots._bot_math import (
-    clamp,
-    engine_profile,
-    finite_altitude,
-    rate_limit_angle_command,
-    stable,
-)
+from bots._bot_math import clamp, engine_profile, finite_altitude, rate_limit_angle_command, stable
+from bots._optimizer_pdg import PDGOptimizer, PDGOptimizerConfig, PDGPlan
 from bots._targeting import pick_target, target_half_width
 from core.bot import ActiveSensors, Bot, BotAction, PassiveSensors
 from core.config import GRAVITY
@@ -36,142 +18,67 @@ from core.config import GRAVITY
 _GRAVITY_MAG = abs(float(GRAVITY))
 
 
-# ---------------------------------------------------------------------------
-# Config
-# ---------------------------------------------------------------------------
-
 @dataclass(frozen=True)
 class ZemZevConfig:
-    # ZEM/ZEV gains (standard proportional form: a = Kp/t² ZEM + Kv/t ZEV)
-    # Vertical gains are aggressive (need to stop quickly); lateral gains
-    # are moderate so the controller doesn't demand impossible corrections
-    # at large miss distances.
-    zem_pos_gain_x: float = 3.0
-    zem_pos_gain_y: float = 6.0
-    zev_vel_gain_x: float = 1.8
-    zev_vel_gain_y: float = 3.6
+    # Receding horizon scheduling
+    replan_hz: float = 6.0
+    replan_dx_error: float = 24.0
+    replan_dy_error: float = 18.0
+    replan_vx_error: float = 4.0
+    replan_vy_error: float = 4.0
+    fallback_hold_steps: int = 12
 
-    # Gain-schedule floor: bounds effective Kp/t² and Kv/t at short
-    # prediction horizons.  ZEM/ZEV miss terms still use real t_go.
-    t_go_floor: float = 1.0
-
-    # Desired touchdown vertical speed schedule
-    vy_target_base: float = 0.25
-    vy_target_sqrt_gain: float = 0.07
-    vy_target_min: float = 0.25
-    vy_target_max: float = 2.4
-
-    # Anti-hover: prevent stalling when still far from pad
-    anti_hover_alt: float = 24.0
-    anti_hover_dx: float = 24.0
-    anti_hover_vy_min: float = 1.0
-
-    # Lateral accel caps
-    net_ax_cap: float = 8.8
-    net_ax_cap_low_alt: float = 4.2
-    net_ax_cap_low_alt_threshold: float = 22.0
-
-    # Vertical accel cap
-    thrust_ay_cap: float = 22.0
-
-    # Tilt limits (terminal needs more authority for lateral correction)
+    # Attitude/allocator limits
     max_tilt: float = 0.78
     max_tilt_low_alt: float = 0.18
     max_tilt_low_alt_far: float = 0.34
     low_alt_tilt_alt: float = 20.0
     low_alt_tilt_dx: float = 12.0
     low_alt_tilt_vx: float = 2.4
-
-    # Angle rate limit
     angle_rate: float = 2.4
-    angle_rate_coast: float = 2.8
+    throttle_off_threshold_scale: float = 0.85
 
-    # Retrograde coast attitude
-    retrograde_hold_speed_min: float = 3.0
-    retrograde_hold_max_tilt: float = 1.28
+    # Braking-envelope vertical speed schedule (time-optimal leaning).
+    braking_alt_margin: float = 6.0
+    braking_tilt_scale: float = 1.00
+    braking_accel_safety: float = 0.58
+    braking_min_speed: float = 1.2
+    braking_max_speed: float = 55.0
+    braking_target_ratio: float = 0.48
+    braking_floor_ratio: float = 0.22
+    vy_low_alt_cap_alt: float = 40.0
+    vy_low_alt_cap: float = 9.5
+    vy_touch_cap_alt: float = 8.0
+    vy_touch_cap: float = 2.4
 
-    # Touchdown cutoff thresholds
-    touchdown_alt: float = 4.0
-    touchdown_entry_dx: float = 8.0
-    touchdown_entry_vx: float = 2.0
+    # Touchdown cut
     touchdown_zero_alt: float = 2.4
-    touchdown_zero_dx: float = 7.0
     touchdown_zero_vx: float = 0.55
-    touchdown_zero_vy: float = 0.9
-    touchdown_descent_base: float = 0.48
-    touchdown_descent_gain: float = 0.09
-    touchdown_descent_min: float = 0.45
-    touchdown_descent_max: float = 1.10
+    touchdown_zero_vy: float = 0.95
 
-    # Emergency brake
+    # Safety brake when descent rate is critical
     emergency_vy: float = 12.0
-    emergency_alt: float = 240.0
+    emergency_alt: float = 220.0
 
-    # Stopping-distance brake
-    stop_margin: float = 3.5
-    brake_gain: float = 0.4
-
-    # Feasibility gate
-    gate_accel_margin: float = 0.85
-    gate_commit_hold_frames: int = 6
-    gate_min_down_speed: float = 0.6
-    # Lateral miss → earlier ignition: burn_alt += lateral_gate_gain * |projected_dx|
-    gate_lateral_gain: float = 0.25
-    gate_lateral_deadband: float = 15.0
-    # Shallow-entry guard: trigger terminal once horizontal stopping room is
-    # nearly exhausted while still traveling toward the pad.
-    gate_lateral_stop_ax_scale: float = 0.90
-    gate_lateral_stop_margin: float = 8.0
-    gate_lateral_stop_vx_min: float = 8.0
-    gate_lateral_stop_alt_max: float = 320.0
-
-    # Damping: measured-accel feedback
-    ax_damping: float = 0.10
-
-    # Low-alt lateral gain taper
-    low_alt_gain_taper_alt: float = 8.0
-    low_alt_gain_taper_min: float = 0.35
-
-    # Lateral deadband near touchdown
-    lateral_deadband_alt: float = 6.0
-    lateral_deadband_dx: float = 3.0
-
-    # Terminal descent speed floor
-    terminal_min_sink_vy: float = 1.2
-    terminal_min_sink_gain: float = 0.30
-    terminal_sink_base: float = 0.45
-    terminal_sink_alt_gain: float = 0.11
-    terminal_sink_dx_gain: float = 3.0
-    terminal_sink_min: float = 0.7
-    terminal_sink_max: float = 9.2
-    terminal_sink_high_alt: float = 160.0
-    terminal_sink_high_alt_max: float = 11.5
-
-    # Anti-hover near ground in terminal
-    terminal_hover_cap_gain: float = 0.22
-
-    # Projection parameters
-    projection_segment_length: float = 20.0
-    projection_max_points: int = 192
-
-
-# ---------------------------------------------------------------------------
-# Bot
-# ---------------------------------------------------------------------------
 
 class ZemZevBot(Bot):
     def __init__(self, behavior: str = "zem_zev") -> None:
         super().__init__()
         self._cfg = ZemZevConfig()
+        self._optimizer = PDGOptimizer(PDGOptimizerConfig())
+
         self._behavior = "zem_zev"
         self._prev_angle_cmd = 0.0
         self._angle_cmd_initialized = False
-        self._debug_summary = ""
-        self._phase = "preflare_coast"
-        self._gate_hold = 0
-        self._last_t_go = 1.0
-        self._last_projected_dx = 0.0
         self._last_target_half = 55.0
+
+        self._plan: PDGPlan | None = None
+        self._plan_elapsed = 0.0
+        self._replan_timer = 0.0
+        self._fallback_steps_remaining = 0
+        self._last_solve_ms = 0.0
+        self._last_solver_status = ""
+
         self.set_behavior(behavior)
 
     def set_behavior(self, behavior: str) -> None:
@@ -186,247 +93,183 @@ class ZemZevBot(Bot):
     def _reset_state(self) -> None:
         self._prev_angle_cmd = 0.0
         self._angle_cmd_initialized = False
-        self._debug_summary = ""
-        self._phase = "preflare_coast"
-        self._gate_hold = 0
-        self._last_t_go = 1.0
-        self._last_projected_dx = 0.0
+        self._plan = None
+        self._plan_elapsed = 0.0
+        self._replan_timer = 0.0
+        self._fallback_steps_remaining = 0
+        self._last_solve_ms = 0.0
+        self._last_solver_status = ""
         self._last_target_half = 55.0
 
     @property
     def behavior(self) -> str:
         return self._behavior
 
-    # -- helpers --
-
-    def _ballistic_clearance(self) -> float:
-        if self.vehicle_info is None:
-            return 0.0
-        return max(0.0, 0.5 * float(self.vehicle_info.height))
-
-    def _project(
-        self,
-        passive: PassiveSensors,
-        active: ActiveSensors,
-        dx: float,
-    ) -> BallisticProjection:
+    def _braking_speed_limit(self, alt: float, max_thrust_accel: float, max_tilt: float) -> float:
         cfg = self._cfg
-        alt = max(0.0, finite_altitude(passive))
-        return estimate_ballistic_projection(
-            dx=dx,
-            alt=alt,
-            vx=passive.vx,
-            vy_up=passive.vy_up,
-            x=passive.x,
-            y=passive.y,
-            active=active,
-            clearance=self._ballistic_clearance(),
-            segment_length=cfg.projection_segment_length,
-            max_points=int(cfg.projection_max_points),
+        alt_eff = max(0.0, alt - cfg.braking_alt_margin)
+        tilt_eff = cfg.braking_tilt_scale * max_tilt
+        vertical_brake = max(
+            0.7,
+            cfg.braking_accel_safety * ((max_thrust_accel * math.cos(tilt_eff)) - _GRAVITY_MAG),
+        )
+        speed = math.sqrt(max(0.0, (cfg.vy_touch_cap * cfg.vy_touch_cap) + (2.0 * vertical_brake * alt_eff)))
+        return clamp(speed, cfg.braking_min_speed, cfg.braking_max_speed)
+
+    def _desired_terminal_vy(self, alt: float, max_thrust_accel: float, max_tilt: float) -> float:
+        cfg = self._cfg
+        vy_mag = cfg.braking_target_ratio * self._braking_speed_limit(alt, max_thrust_accel, max_tilt)
+        if alt <= cfg.vy_low_alt_cap_alt:
+            vy_mag = min(vy_mag, cfg.vy_low_alt_cap)
+        if alt <= cfg.vy_touch_cap_alt:
+            vy_mag = min(vy_mag, cfg.vy_touch_cap)
+        return -max(cfg.braking_min_speed, vy_mag)
+
+    def _descent_floor_vy(self, alt: float, max_thrust_accel: float, max_tilt: float) -> float:
+        cfg = self._cfg
+        vy_mag = cfg.braking_floor_ratio * self._braking_speed_limit(alt, max_thrust_accel, max_tilt)
+        if alt <= cfg.vy_low_alt_cap_alt:
+            vy_mag = min(vy_mag, cfg.vy_low_alt_cap + 1.2)
+        if alt <= cfg.vy_touch_cap_alt:
+            vy_mag = min(vy_mag, cfg.vy_touch_cap + 0.3)
+        return -max(cfg.braking_min_speed, vy_mag)
+
+    def _resolve_max_tilt(self, alt: float, dx: float, vx: float) -> float:
+        cfg = self._cfg
+        if alt < cfg.low_alt_tilt_alt:
+            if abs(dx) <= cfg.low_alt_tilt_dx and abs(vx) <= cfg.low_alt_tilt_vx:
+                return cfg.max_tilt_low_alt
+            return cfg.max_tilt_low_alt_far
+        return cfg.max_tilt
+
+    def _plan_index(self) -> int:
+        if self._plan is None:
+            return 0
+        step_dt = max(1e-3, float(self._optimizer._cfg.step_dt))
+        idx = int(self._plan_elapsed / step_dt)
+        return max(0, min(len(self._plan.ax) - 1, idx))
+
+    def _state_deviation_requires_replan(self, passive: PassiveSensors) -> bool:
+        if self._plan is None or not self._plan.feasible:
+            return True
+        idx = self._plan_index()
+        cfg = self._cfg
+        err_x = abs(float(passive.x) - float(self._plan.x[idx]))
+        err_y = abs(float(passive.y) - float(self._plan.y[idx]))
+        err_vx = abs(float(passive.vx) - float(self._plan.vx[idx]))
+        err_vy = abs(float(passive.vy_up) - float(self._plan.vy[idx]))
+        return (
+            err_x > cfg.replan_dx_error
+            or err_y > cfg.replan_dy_error
+            or err_vx > cfg.replan_vx_error
+            or err_vy > cfg.replan_vy_error
         )
 
-    def _desired_terminal_vy(self, alt: float, dx: float, vx: float) -> float:
-        cfg = self._cfg
-        vy_mag = clamp(
-            cfg.vy_target_base + (cfg.vy_target_sqrt_gain * math.sqrt(max(0.0, alt))),
-            cfg.vy_target_min,
-            cfg.vy_target_max,
-        )
-        if alt <= cfg.anti_hover_alt and (abs(dx) > cfg.anti_hover_dx or abs(vx) > 2.0):
-            vy_mag = max(vy_mag, cfg.anti_hover_vy_min)
-        return -vy_mag
-
-    # -- feasibility gate --
-
-    @staticmethod
-    def _zem_zev_vertical_accel(
-        dy: float,
-        vy: float,
-        vy_target: float,
-        t_go: float,
-        kp_y: float,
-        kv_y: float,
-    ) -> float:
-        """Vertical ZEM/ZEV acceleration command at given state."""
-        g = _GRAVITY_MAG
-        t2 = max(1e-6, t_go * t_go)
-        t1 = max(1e-6, t_go)
-        zem_y = dy - vy * t_go + 0.5 * g * t2
-        zev_y = vy_target - (vy - g * t_go)
-        return (kp_y / t2) * zem_y + (kv_y / t1) * zev_y
-
-    def _feasibility_gate(
+    def _solve_plan(
         self,
         *,
-        alt: float,
-        dy: float,
-        vy: float,
-        vy_target: float,
-        t_go: float,
-        up_acc_max: float,
-        min_accel: float,
-        down_speed: float,
+        passive: PassiveSensors,
         dx: float,
-        vx: float,
-        projected_dx: float,
-        thrust_level: float,
+        dy: float,
+        max_thrust_accel: float,
+        min_thrust_accel: float,
+    ) -> PDGPlan | None:
+        alt = max(0.0, finite_altitude(passive))
+        target_x = float(passive.x) + dx
+        target_y = float(passive.y) + dy
+        max_tilt = self._resolve_max_tilt(alt, dx, float(passive.vx))
+        target_vy = self._desired_terminal_vy(alt, max_thrust_accel, max_tilt)
+        descent_floor_vy = self._descent_floor_vy(alt, max_thrust_accel, max_tilt)
+
+        plan = self._optimizer.solve(
+            x=float(passive.x),
+            y=float(passive.y),
+            vx=float(passive.vx),
+            vy=float(passive.vy_up),
+            target_x=target_x,
+            target_y=target_y,
+            target_vy=target_vy,
+            max_thrust_accel=max_thrust_accel,
+            min_thrust_accel=min_thrust_accel,
+            max_tilt_rad=max_tilt,
+            descent_floor_vy=descent_floor_vy,
+            warm_start=self._plan,
+        )
+        if plan is not None:
+            self._last_solve_ms = float(plan.solve_time_ms)
+            self._last_solver_status = str(plan.status)
+        return plan
+
+    def _command_from_plan(
+        self,
+        *,
+        dt: float,
+        passive: PassiveSensors,
+        dx: float,
+        alt: float,
+        max_power: float,
+        min_throttle: float,
         max_throttle: float,
-        ramp_up: float,
-    ) -> bool:
-        """Return True when vertical ZEM/ZEV burn is feasible and should start.
-
-        Gates on vertical axis only — lateral corrections are handled by
-        tilt during the burn. Also triggers on stopping-distance safety
-        (including engine spool-up margin), with extra altitude margin
-        proportional to lateral miss so shallow entries fire the burn
-        earlier.
-        """
+        max_thrust_accel: float,
+    ) -> BotAction:
         cfg = self._cfg
-        if down_speed < cfg.gate_min_down_speed:
-            return False
 
-        ay_req = self._zem_zev_vertical_accel(
-            dy, vy, vy_target, t_go,
-            cfg.zem_pos_gain_y, cfg.zev_vel_gain_y,
-        )
-        available = _GRAVITY_MAG + up_acc_max
-        vert_feasible = (
-            ay_req >= min_accel
-            and ay_req <= available * (1.0 / cfg.gate_accel_margin)
-        )
-
-        # Stopping-distance gate with spool-up and lateral-miss margins
-        nominal_throttle = min(1.0, max_throttle)
-        spool_time = max(
-            0.0, nominal_throttle - max(0.0, thrust_level)
-        ) / max(1e-3, ramp_up)
-        spool_distance = down_speed * spool_time + 0.5 * _GRAVITY_MAG * spool_time * spool_time
-        flare_speed = clamp(0.45 + 0.11 * alt, 0.7, 6.0)
-        speed_to_kill = max(0.0, down_speed - flare_speed)
-        stop_distance = (speed_to_kill * speed_to_kill) / (2.0 * max(1e-3, up_acc_max))
-        lateral_margin = cfg.gate_lateral_gain * max(
-            0.0, abs(projected_dx) - cfg.gate_lateral_deadband
-        )
-        stop_gate = alt <= (stop_distance + spool_distance + cfg.stop_margin + lateral_margin)
-
-        # Horizontal stopping-room gate for shallow entries. A pure vertical
-        # gate can commit too late when horizontal speed is still high.
-        lateral_stop_gate = False
-        abs_vx = abs(vx)
+        # Touchdown hard cut when essentially settled.
         if (
-            abs_vx >= cfg.gate_lateral_stop_vx_min
-            and (dx * vx) > 0.0
-            and alt <= cfg.gate_lateral_stop_alt_max
+            alt <= cfg.touchdown_zero_alt
+            and abs(dx) <= self._last_target_half
+            and abs(float(passive.vx)) <= cfg.touchdown_zero_vx
+            and abs(float(passive.vy_up)) <= cfg.touchdown_zero_vy
         ):
-            lateral_ax = max(0.6, cfg.net_ax_cap * cfg.gate_lateral_stop_ax_scale)
-            lateral_stop_distance = (abs_vx * abs_vx) / (2.0 * max(1e-3, lateral_ax))
-            lateral_spool_distance = abs_vx * spool_time
-            lateral_stop_gate = (
-                abs(dx)
-                <= (lateral_stop_distance + lateral_spool_distance + cfg.gate_lateral_stop_margin)
+            angle_cmd = rate_limit_angle_command(
+                0.0, self._prev_angle_cmd, dt, max_rate=cfg.angle_rate
             )
+            self._prev_angle_cmd = angle_cmd
+            return BotAction(target_thrust=0.0, target_angle=0.0, refuel=False)
 
-        # Emergency: must commit if falling fast at moderate altitude
-        emergency = down_speed >= cfg.emergency_vy and alt <= cfg.emergency_alt
+        if self._plan is None or not self._plan.feasible:
+            # Optimizer-first fallback: aggressive vertical brake with light lateral damping.
+            vx = float(passive.vx)
+            vy = float(passive.vy_up)
+            down_speed = max(0.0, -vy)
+            a_y = _GRAVITY_MAG + (0.72 * max_thrust_accel)
+            if down_speed >= cfg.emergency_vy and alt <= cfg.emergency_alt:
+                a_y = _GRAVITY_MAG + max_thrust_accel
+            a_y = clamp(a_y, 0.0, _GRAVITY_MAG + max_thrust_accel)
+            a_x = clamp((-0.55 * vx) + (-0.04 * dx), -7.0, 7.0)
+        else:
+            idx = self._plan_index()
+            a_x = float(self._plan.ax[idx])
+            a_y = float(self._plan.ay[idx])
 
-        return vert_feasible or stop_gate or lateral_stop_gate or emergency
+            # keep commands physical before allocation
+            a_y = clamp(a_y, 0.0, max_thrust_accel)
+            max_tilt = self._resolve_max_tilt(alt, dx, float(passive.vx))
+            tilt_tan = math.tan(max_tilt)
+            a_x = clamp(a_x, -tilt_tan * max(0.2, a_y), tilt_tan * max(0.2, a_y))
 
-    # -- ZEM/ZEV thrust accel --
+        # Convert accel command to actuator targets.
+        max_tilt_now = self._resolve_max_tilt(alt, dx, float(passive.vx))
+        angle_target = math.atan2(a_x, max(0.2, a_y))
+        angle_target = clamp(angle_target, -max_tilt_now, max_tilt_now)
+        angle_cmd = rate_limit_angle_command(
+            angle_target,
+            self._prev_angle_cmd,
+            dt,
+            max_rate=cfg.angle_rate,
+        )
+        self._prev_angle_cmd = angle_cmd
 
-    def _zem_zev_thrust_accel(
-        self,
-        passive: PassiveSensors,
-        *,
-        dx: float,
-        dy: float,
-        t_go: float,
-    ) -> tuple[float, float, float, float]:
-        cfg = self._cfg
-        g = _GRAVITY_MAG
-        vx = float(passive.vx)
-        vy = float(passive.vy_up)
-        alt = max(0.0, finite_altitude(passive))
-        vy_target = self._desired_terminal_vy(alt, dx, vx)
+        mass = max(0.5, float(passive.mass))
+        thrust_acc = math.hypot(a_x, max(0.0, a_y))
+        thrust = (mass * thrust_acc) / max(max_power, 1e-3)
+        thrust = clamp(thrust, 0.0, max_throttle)
+        if thrust <= (cfg.throttle_off_threshold_scale * min_throttle):
+            thrust = 0.0
+        elif thrust > 0.0:
+            thrust = max(min_throttle, thrust)
 
-        t_eff = max(cfg.t_go_floor, t_go)
-        t2 = t_eff * t_eff
-        t1 = t_eff
-
-        zem_x = dx - vx * t_go
-        zem_y = dy - vy * t_go + 0.5 * g * t_go * t_go
-        zev_x = -vx
-        zev_y = vy_target - (vy - g * t_go)
-
-        ax_cmd = (cfg.zem_pos_gain_x / t2) * zem_x + (cfg.zev_vel_gain_x / t1) * zev_x
-        ay_cmd = (cfg.zem_pos_gain_y / t2) * zem_y + (cfg.zev_vel_gain_y / t1) * zev_y
-
-        # Measured-accel damping
-        ax_cmd -= cfg.ax_damping * float(passive.ax)
-
-        # Low-alt gain taper
-        if alt < cfg.low_alt_gain_taper_alt:
-            taper = max(
-                cfg.low_alt_gain_taper_min,
-                alt / max(1.0, cfg.low_alt_gain_taper_alt),
-            )
-            ax_cmd *= taper
-
-        # Lateral deadband near touchdown
-        if alt < cfg.lateral_deadband_alt and abs(dx) < cfg.lateral_deadband_dx:
-            ax_cmd *= 0.3
-
-        ax_cap = cfg.net_ax_cap
-        if alt <= cfg.net_ax_cap_low_alt_threshold:
-            ax_cap = min(ax_cap, cfg.net_ax_cap_low_alt)
-        ax_cmd = clamp(ax_cmd, -ax_cap, ax_cap)
-        ay_cmd = clamp(ay_cmd, 0.0, cfg.thrust_ay_cap)
-        return ax_cmd, ay_cmd, zem_x, zev_x
-
-    # -- phase logic --
-
-    def _select_phase(
-        self,
-        *,
-        alt: float,
-        dx: float,
-        projected_dx: float,
-        vx: float,
-        gate_pass: bool,
-    ) -> str:
-        cfg = self._cfg
-
-        # Touchdown: low alt + low lateral error
-        if (
-            alt <= cfg.touchdown_alt
-            and abs(projected_dx) <= cfg.touchdown_entry_dx
-            and abs(vx) <= cfg.touchdown_entry_vx
-        ):
-            return "touchdown"
-
-        # Very low alt over pad -> force touchdown
-        if alt <= cfg.touchdown_zero_alt + 1.0 and abs(dx) <= self._last_target_half:
-            return "touchdown"
-
-        prev = self._phase
-
-        if prev == "preflare_coast":
-            if gate_pass:
-                self._gate_hold = cfg.gate_commit_hold_frames
-                return "terminal_burn"
-            return "preflare_coast"
-
-        if prev == "terminal_burn":
-            # Once committed, stay in terminal unless touchdown criteria met
-            if self._gate_hold > 0:
-                self._gate_hold -= 1
-            return "terminal_burn"
-
-        if prev == "touchdown":
-            return "touchdown"
-
-        return "preflare_coast"
-
-    # -- main update --
+        return BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)
 
     def update(
         self,
@@ -439,19 +282,18 @@ class ZemZevBot(Bot):
         if passive.state in ("landed", "crashed", "out_of_fuel"):
             action = BotAction(0.0, passive.angle, False, status=f"zem_zev:{passive.state}")
             self.status = action.status
-            self._debug_summary = ""
             return action
 
         if not self._angle_cmd_initialized:
             self._prev_angle_cmd = float(passive.angle)
             self._angle_cmd_initialized = True
 
-        max_power, min_throttle, max_throttle, _ = engine_profile(self.vehicle_info)
+        max_power, min_throttle, max_throttle, _ramp_up = engine_profile(self.vehicle_info)
         mass = max(0.5, float(passive.mass))
         max_force = max_power * max_throttle
-        up_acc_max = max(0.1, (max_force / mass) - _GRAVITY_MAG)
         min_force = max_power * min_throttle
-        min_accel = min_force / mass
+        max_thrust_accel = max(0.1, max_force / mass)
+        min_thrust_accel = max(0.0, min_force / mass)
 
         target = pick_target(passive, pinned_uid=self.pinned_target_uid)
         if target is not None:
@@ -462,282 +304,67 @@ class ZemZevBot(Bot):
             dx = 0.0
             dy = -max(0.0, finite_altitude(passive))
 
-        projection = self._project(passive, active, dx)
-        t_go = max(0.1, float(projection.t_fall))
-        projected_dx = float(projection.projected_dx)
-        self._last_t_go = t_go
-        self._last_projected_dx = projected_dx
-
         alt = max(0.0, finite_altitude(passive))
-        vx = float(passive.vx)
-        vy = float(passive.vy_up)
-        down_speed = max(0.0, -vy)
-        vy_target = self._desired_terminal_vy(alt, dx, vx)
 
-        gate_pass = self._feasibility_gate(
-            alt=alt, dy=dy, vy=vy, vy_target=vy_target,
-            t_go=t_go,
-            up_acc_max=up_acc_max,
-            min_accel=min_accel,
-            down_speed=down_speed,
+        self._replan_timer -= max(0.0, dt)
+        self._plan_elapsed += max(0.0, dt)
+
+        need_replan = (
+            self._plan is None
+            or not self._plan.feasible
+            or self._replan_timer <= 0.0
+            or self._state_deviation_requires_replan(passive)
+        )
+
+        solved_now = False
+        if need_replan:
+            solved_now = True
+            plan = self._solve_plan(
+                passive=passive,
+                dx=dx,
+                dy=dy,
+                max_thrust_accel=max_thrust_accel,
+                min_thrust_accel=min_thrust_accel,
+            )
+            if plan is not None and plan.feasible:
+                self._plan = plan
+                self._plan_elapsed = 0.0
+                self._replan_timer = 1.0 / max(1e-3, self._cfg.replan_hz)
+                self._fallback_steps_remaining = int(self._cfg.fallback_hold_steps)
+            else:
+                if self._fallback_steps_remaining > 0 and self._plan is not None and self._plan.feasible:
+                    self._fallback_steps_remaining -= 1
+                else:
+                    self._plan = None
+
+        action = self._command_from_plan(
+            dt=dt,
+            passive=passive,
             dx=dx,
-            vx=vx,
-            projected_dx=projected_dx,
-            thrust_level=float(passive.thrust_level),
+            alt=alt,
+            max_power=max_power,
+            min_throttle=min_throttle,
             max_throttle=max_throttle,
-            ramp_up=engine_profile(self.vehicle_info)[3],
+            max_thrust_accel=max_thrust_accel,
         )
 
-        phase = self._select_phase(
-            alt=alt, dx=dx, projected_dx=projected_dx, vx=vx,
-            gate_pass=gate_pass,
-        )
-        self._phase = phase
-
-        # --- control per phase ---
-
-        if phase == "preflare_coast":
-            action = self._coast_control(dt, passive, alt, dx, vx, vy, down_speed, up_acc_max,
-                                         max_power, min_throttle, max_throttle)
-        elif phase == "terminal_burn":
-            action = self._terminal_control(dt, passive, alt, dx, dy, t_go, projected_dx,
-                                            down_speed, up_acc_max,
-                                            max_power, min_throttle, max_throttle, mass)
-        else:
-            action = self._touchdown_control(dt, passive, alt, dx, vx, vy,
-                                             max_power, min_throttle, max_throttle, mass)
-
-        tti, tti_source = ballistic_time_to_impact(passive, active)
-        self._debug_summary = (
-            f"zem {phase[:4]} tgo:{stable(t_go, 2):4.1f} "
-            f"pdx:{stable(projected_dx, 1):5.1f} "
-            f"tti:{stable(tti, 1):4.1f}{tti_source[:1]}"
-        )
+        phase = "opt"
+        if self._plan is None or not self._plan.feasible:
+            phase = "fallback"
         action.status = (
             f"zem_zev:{phase} dx:{stable(dx, 1):6.1f} "
-            f"vx:{stable(vx, 1):5.1f} vy:{stable(vy, 1):5.1f}"
+            f"vx:{stable(passive.vx, 1):5.1f} vy:{stable(passive.vy_up, 1):5.1f} "
+            f"rp:{int(solved_now)} slv:{stable(self._last_solve_ms, 1):4.1f}ms "
+            f"st:{self._last_solver_status}"
         )
         self.status = action.status
         return action
 
-    # -- phase controllers --
-
-    def _coast_control(
-        self,
-        dt: float,
-        passive: PassiveSensors,
-        alt: float,
-        dx: float,
-        vx: float,
-        vy: float,
-        down_speed: float,
-        up_acc_max: float,
-        max_power: float,
-        min_throttle: float,
-        max_throttle: float,
-    ) -> BotAction:
-        """Preflare coast: engine off, retrograde attitude bias.
-
-        Emergency brake overrides if stopping distance is critical.
-        """
-        cfg = self._cfg
-
-        # Emergency brake check
-        flare_speed = clamp(0.45 + 0.11 * alt, 0.7, 6.0)
-        speed_to_kill = max(0.0, down_speed - flare_speed)
-        stop_distance = (speed_to_kill * speed_to_kill) / (2.0 * max(1e-3, up_acc_max))
-        need_brake = (
-            alt <= (stop_distance + cfg.stop_margin)
-            or (down_speed >= cfg.emergency_vy and alt <= cfg.emergency_alt)
-        )
-
-        if need_brake:
-            a_up = _GRAVITY_MAG + (cfg.brake_gain * up_acc_max)
-            if down_speed >= cfg.emergency_vy:
-                a_up = _GRAVITY_MAG + up_acc_max
-            mass = max(0.5, float(passive.mass))
-            thrust = (mass * a_up) / max(max_power, 1e-3)
-            thrust = clamp(thrust, 0.0, max_throttle)
-            if thrust > 0.0:
-                thrust = max(min_throttle, thrust)
-            angle_target = 0.0
-        else:
-            thrust = 0.0
-            # Retrograde attitude
-            speed_mag = math.hypot(vx, vy)
-            if speed_mag >= cfg.retrograde_hold_speed_min:
-                angle_target = math.atan2(-vx, -vy)
-                angle_target = clamp(
-                    angle_target,
-                    -cfg.retrograde_hold_max_tilt,
-                    cfg.retrograde_hold_max_tilt,
-                )
-            else:
-                angle_target = 0.0
-
-        angle_cmd = rate_limit_angle_command(
-            angle_target,
-            self._prev_angle_cmd,
-            dt,
-            max_rate=cfg.angle_rate_coast,
-        )
-        self._prev_angle_cmd = angle_cmd
-        return BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)
-
-    def _terminal_control(
-        self,
-        dt: float,
-        passive: PassiveSensors,
-        alt: float,
-        dx: float,
-        dy: float,
-        t_go: float,
-        projected_dx: float,
-        down_speed: float,
-        up_acc_max: float,
-        max_power: float,
-        min_throttle: float,
-        max_throttle: float,
-        mass: float,
-    ) -> BotAction:
-        """Terminal burn: full ZEM/ZEV 2-axis guidance."""
-        cfg = self._cfg
-
-        a_x, a_up, _, _ = self._zem_zev_thrust_accel(
-            passive, dx=dx, dy=dy, t_go=t_go,
-        )
-
-        # Stopping-distance safety brake
-        flare_speed = clamp(0.45 + 0.11 * alt, 0.7, 6.0)
-        speed_to_kill = max(0.0, down_speed - flare_speed)
-        stop_distance = (speed_to_kill * speed_to_kill) / (2.0 * max(1e-3, up_acc_max))
-        if alt <= (stop_distance + cfg.stop_margin):
-            a_up = max(a_up, _GRAVITY_MAG + (cfg.brake_gain * up_acc_max))
-        if down_speed >= cfg.emergency_vy and alt <= cfg.emergency_alt:
-            a_up = max(a_up, _GRAVITY_MAG + up_acc_max)
-        a_up = clamp(a_up, 0.0, _GRAVITY_MAG + up_acc_max)
-
-        # Prevent climb + force descent.  Target sink rate scales with
-        # altitude and lateral miss so the controller descends faster
-        # when far from target (fuel-saving) and gently near touchdown.
-        vy_now = float(passive.vy_up)
-        dx_mag = abs(dx)
-        miss_factor = clamp(dx_mag / 100.0, 0.0, 1.0)
-        sink_cap = cfg.terminal_sink_max
-        if alt > cfg.terminal_sink_high_alt:
-            sink_cap = max(sink_cap, cfg.terminal_sink_high_alt_max)
-        target_sink = -clamp(
-            cfg.terminal_sink_base
-            + (cfg.terminal_sink_alt_gain * alt)
-            + (cfg.terminal_sink_dx_gain * miss_factor),
-            cfg.terminal_sink_min,
-            sink_cap,
-        )
-        if vy_now > target_sink:
-            overshoot = vy_now - target_sink
-            a_up = min(a_up, _GRAVITY_MAG - 0.6 * overshoot)
-
-        # Tilt and angle
-        max_tilt = cfg.max_tilt
-        if alt < cfg.low_alt_tilt_alt:
-            if abs(dx) <= cfg.low_alt_tilt_dx and abs(float(passive.vx)) <= cfg.low_alt_tilt_vx:
-                max_tilt = cfg.max_tilt_low_alt
-            else:
-                max_tilt = cfg.max_tilt_low_alt_far
-
-        angle_target = math.atan2(a_x, max(0.2, a_up))
-        angle_target = clamp(angle_target, -max_tilt, max_tilt)
-        angle_cmd = rate_limit_angle_command(
-            angle_target,
-            self._prev_angle_cmd,
-            dt,
-            max_rate=cfg.angle_rate,
-        )
-        self._prev_angle_cmd = angle_cmd
-
-        # Thrust allocation
-        thrust_acc = math.hypot(a_x, max(0.0, a_up))
-        thrust = (mass * thrust_acc) / max(max_power, 1e-3)
-        thrust = clamp(thrust, 0.0, max_throttle)
-        if thrust > 0.0:
-            thrust = max(min_throttle, thrust)
-
-        return BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)
-
-    def _touchdown_control(
-        self,
-        dt: float,
-        passive: PassiveSensors,
-        alt: float,
-        dx: float,
-        vx: float,
-        vy: float,
-        max_power: float,
-        min_throttle: float,
-        max_throttle: float,
-        mass: float,
-    ) -> BotAction:
-        """Touchdown: gentle settle with engine cutoff when nearly still."""
-        cfg = self._cfg
-
-        # Touchdown cutoff
-        if (
-            alt < cfg.touchdown_zero_alt
-            and abs(dx) <= cfg.touchdown_zero_dx
-            and abs(vx) <= cfg.touchdown_zero_vx
-            and abs(vy) <= cfg.touchdown_zero_vy
-        ):
-            angle_cmd = rate_limit_angle_command(
-                0.0, self._prev_angle_cmd, dt, max_rate=cfg.angle_rate,
-            )
-            self._prev_angle_cmd = angle_cmd
-            return BotAction(target_thrust=0.0, target_angle=0.0, refuel=False)
-
-        vy_sp = -clamp(
-            cfg.touchdown_descent_base + cfg.touchdown_descent_gain * alt,
-            cfg.touchdown_descent_min,
-            cfg.touchdown_descent_max,
-        )
-        vy_err = vy_sp - vy
-        a_up = _GRAVITY_MAG + 0.38 * vy_err
-        if alt < 7.0:
-            a_up += 0.08
-        if alt < 3.0 and vy > -0.45:
-            a_up -= 0.12
-        a_up = clamp(a_up, 0.0, _GRAVITY_MAG + 3.0)
-
-        # Gentle lateral damp
-        a_x = clamp(-0.42 * vx - 0.10 * float(passive.ax), -1.2, 1.2)
-
-        max_tilt = min(cfg.max_tilt_low_alt, 0.12 if alt < 5.0 else 0.20)
-        angle_target = math.atan2(a_x, max(0.2, a_up))
-        angle_target = clamp(angle_target, -max_tilt, max_tilt)
-        angle_cmd = rate_limit_angle_command(
-            angle_target, self._prev_angle_cmd, dt, max_rate=cfg.angle_rate,
-        )
-        self._prev_angle_cmd = angle_cmd
-
-        thrust_acc = math.hypot(a_x, max(0.0, a_up))
-        thrust = (mass * thrust_acc) / max(max_power, 1e-3)
-        thrust = clamp(thrust, 0.0, max_throttle)
-        if thrust > 0.0:
-            thrust = max(min_throttle, thrust)
-
-        return BotAction(target_thrust=thrust, target_angle=angle_cmd, refuel=False)
-
-    # -- stats --
-
-    def get_headless_stats(self) -> str:
-        base = super().get_headless_stats()
-        if not self._debug_summary:
-            return base
-        if not base:
-            return self._debug_summary
-        return f"{base} {self._debug_summary}"
 
 
 def create_bot() -> Bot:
     return ZemZevBot()
+
 
 
 def list_behavior_names() -> tuple[str, ...]:

@@ -11,6 +11,7 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 
 - `plunge`: [`plunge.md`](plunge.md)
 - `flare`: [`flare.md`](flare.md)
+- `zem_zev`: [`zem_zev.md`](zem_zev.md)
 - `coast`: [`coast.md`](coast.md)
 - `launch`: [`launch.md`](launch.md)
 - `ferry`: [`ferry.md`](ferry.md)
@@ -19,4 +20,3 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 
 - Local run artifacts (JSON/CSV/plots) default to `outputs/` and are ignored by git.
 - Versioned docs images live in `docs/assets/`.
-

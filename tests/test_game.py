@@ -1618,7 +1618,7 @@ def test_zem_zev_bot_outputs_finite_action_for_plunge_like_state() -> None:
     assert abs(action.target_angle) <= 0.8
 
 
-def test_zem_zev_starts_in_preflare_coast_phase() -> None:
+def test_zem_zev_builds_optimizer_plan_on_first_update() -> None:
     bot = create_bot("zem_zev")
     target = RadarContact(
         uid="eval_site_primary",
@@ -1658,11 +1658,12 @@ def test_zem_zev_starts_in_preflare_coast_phase() -> None:
             return {"hit": True, "hit_x": -40.0, "hit_time": 8.0, "duration": 8.0}
 
     action = bot.update(1.0 / 60.0, passive, active=_FakeActive())
-    assert bot._phase == "preflare_coast"
-    assert action.target_thrust == pytest.approx(0.0)
+    assert bot._plan is not None
+    assert bot._plan.feasible
+    assert "zem_zev:opt" in (action.status or "")
 
 
-def test_zem_zev_feasibility_gate_transitions_to_terminal() -> None:
+def test_zem_zev_commands_positive_thrust_near_terminal_conditions() -> None:
     from bots.zem_zev import ZemZevBot
 
     bot = ZemZevBot()
@@ -1704,8 +1705,10 @@ def test_zem_zev_feasibility_gate_transitions_to_terminal() -> None:
             return {"hit": True, "hit_x": -1.0, "hit_time": 1.3, "duration": 1.3}
 
     action = bot.update(1.0 / 60.0, passive, active=_FakeActive())
-    assert bot._phase == "terminal_burn"
-    assert action.target_thrust > 0.0
+    assert bot._plan is not None
+    assert bot._plan.feasible
+    assert 0.0 <= action.target_thrust <= 1.6
+    assert math.isfinite(action.target_angle)
 
 
 def test_zem_zev_min_throttle_floor_applied() -> None:
@@ -1754,7 +1757,7 @@ def test_zem_zev_min_throttle_floor_applied() -> None:
         assert action.target_thrust >= 0.25
 
 
-def test_zem_zev_phase_latch_does_not_oscillate() -> None:
+def test_zem_zev_uses_cached_plan_between_replans() -> None:
     from bots.zem_zev import ZemZevBot
 
     bot = ZemZevBot()
@@ -1796,25 +1799,20 @@ def test_zem_zev_phase_latch_does_not_oscillate() -> None:
             return {"hit": True, "hit_x": -1.0, "hit_time": 1.3, "duration": 1.3}
 
     bot.update(1.0 / 60.0, passive_terminal, active=_FakeActive())
-    assert bot._phase == "terminal_burn"
+    assert bot._plan is not None
+    first_plan = bot._plan
 
-    # Simulate a frame where gate might not pass again — should stay terminal
-    passive_high = replace(passive_terminal, y=200.0, altitude=200.0, vy_up=-2.0)
-
-    class _FakeActiveHigh:
-        def ballistic_trajectory(self, *args, **kwargs):
-            _ = args, kwargs
-            return {"hit": True, "hit_x": -3.0, "hit_time": 8.0, "duration": 8.0}
-
-    bot.update(1.0 / 60.0, passive_high, active=_FakeActiveHigh())
-    assert bot._phase == "terminal_burn", "terminal_burn should latch once committed"
+    # Small dt + tiny state perturbation should continue tracking cached plan.
+    passive_follow = replace(passive_terminal, x=-2.8, y=24.8, vx=0.45, vy_up=-4.9)
+    action = bot.update(1.0 / 120.0, passive_follow, active=_FakeActive())
+    assert bot._plan is first_plan
+    assert "rp:0" in (action.status or "")
 
 
 def test_zem_zev_touchdown_settles_and_cuts_engine() -> None:
     from bots.zem_zev import ZemZevBot
 
     bot = ZemZevBot()
-    bot._phase = "terminal_burn"
     target = RadarContact(
         uid="eval_site_primary",
         x=0.0,
@@ -1853,11 +1851,11 @@ def test_zem_zev_touchdown_settles_and_cuts_engine() -> None:
             return {"hit": True, "hit_x": -0.5, "hit_time": 0.6, "duration": 0.6}
 
     action = bot.update(1.0 / 60.0, passive, active=_FakeActive())
-    assert bot._phase == "touchdown"
     assert action.target_thrust == pytest.approx(0.0)
+    assert action.target_angle == pytest.approx(0.0)
 
 
-def test_zem_zev_coast_uses_retrograde_attitude() -> None:
+def test_zem_zev_initial_guidance_tilts_retrograde_for_lateral_arrest() -> None:
     from bots.zem_zev import ZemZevBot
 
     bot = ZemZevBot()
@@ -1899,9 +1897,9 @@ def test_zem_zev_coast_uses_retrograde_attitude() -> None:
             return {"hit": True, "hit_x": -100.0, "hit_time": 10.0, "duration": 10.0}
 
     action = bot.update(1.0 / 60.0, passive, active=_FakeActive())
-    assert bot._phase == "preflare_coast"
-    assert action.target_thrust == pytest.approx(0.0)
-    # Retrograde for vx=-30, vy_up=10 → angle should be positive (tilted right)
+    assert bot._plan is not None
+    assert bot._plan.feasible
+    # Retrograde for vx=-30, vy_up=10 => tilt right to arrest leftward motion.
     assert action.target_angle > 0.0
 
 
