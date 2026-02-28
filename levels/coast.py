@@ -3,9 +3,8 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
-from typing import Any
 
-from core.components import FuelTank, PhysicsState, Transform
+from core.components import PhysicsState, Transform
 from core.ecs import require_component
 from core.level import Level
 from core.maths import Vector2
@@ -16,6 +15,7 @@ from levels.scenario_common import (
     has_randomized_values,
     validate_scenario_recoverability,
 )
+from levels.staged_eval import ZemStageEvalTracker
 
 
 @dataclass(frozen=True)
@@ -109,13 +109,16 @@ class CoastLevel(ScenarioLevel):
         self._eval_scenario_name = _DEFAULT_SCENARIO
         self._eval_mode_name = "auto"
         self._resolved_eval_mode = _COAST_DEFAULT_EVAL_MODE
+        self._stage_eval = ZemStageEvalTracker(
+            stage_prefix="coast",
+            completion_gate_prefix="terminal_gate",
+        )
         self.scenario = _make_spec(
             name=self._eval_scenario_name,
             start_dx=0.0,
             start_dy=800.0,
             cargo_mass=1800.0,
         )
-        self._reset_phase_eval_metrics()
 
     @staticmethod
     def list_batch_scenarios() -> list[str]:
@@ -150,127 +153,17 @@ class CoastLevel(ScenarioLevel):
             )
         )
 
-    @staticmethod
-    def _to_optional_float(value: Any) -> float | None:
-        if value is None:
-            return None
-        try:
-            numeric = float(value)
-        except (TypeError, ValueError):
-            return None
-        if not math.isfinite(numeric):
-            return None
-        return numeric
-
-    @staticmethod
-    def _resolve_zem_snapshot(game) -> dict[str, Any] | None:
-        actor_bots = getattr(game, "actor_bots", {})
-        if not isinstance(actor_bots, dict):
-            return None
-        for bot in actor_bots.values():
-            get_snapshot = getattr(bot, "get_evaluation_snapshot", None)
-            if not callable(get_snapshot):
-                continue
-            try:
-                snapshot = get_snapshot()
-            except Exception:
-                continue
-            if not isinstance(snapshot, dict):
-                continue
-            if str(snapshot.get("kind") or "") == "zem_zev":
-                return snapshot
-        return None
-
     def _mode_for_run(self) -> str:
         if self._eval_mode_name == "auto":
             return _COAST_DEFAULT_EVAL_MODE
         return self._eval_mode_name
 
-    def _reset_phase_eval_metrics(self) -> None:
-        self._coast_phase_done = False
-        self._coast_phase_time = None
-        self._coast_phase_altitude = None
-        self._coast_phase_projected_dx = None
-        self._coast_phase_distance = 0.0
-        self._coast_phase_fuel_consumed = 0.0
-        self._coast_prev_pos: Vector2 | None = None
-        self._coast_prev_fuel: float | None = None
-        self._zem_setup_gate_done = False
-        self._zem_setup_gate_time = None
-        self._zem_setup_gate_altitude = None
-        self._zem_setup_gate_projected_dx = None
-        self._zem_terminal_gate_done = False
-        self._zem_terminal_gate_time = None
-        self._zem_terminal_gate_altitude = None
-        self._zem_terminal_gate_projected_dx = None
-        self._zem_solve_count = None
-        self._zem_solve_ms_mean = None
-        self._zem_solve_ms_p90 = None
-        self._zem_fallback_frames = None
-
-    def _update_phase_metrics(self) -> None:
-        if self._coast_phase_done:
-            return
-        actor = self.world.actors[0]
-        trans = require_component(actor, Transform)
-        tank = require_component(actor, FuelTank)
-        cur_pos = Vector2(trans.pos)
-        cur_fuel = float(tank.fuel)
-        if self._coast_prev_pos is not None:
-            self._coast_phase_distance += math.hypot(
-                cur_pos.x - self._coast_prev_pos.x,
-                cur_pos.y - self._coast_prev_pos.y,
-            )
-        if self._coast_prev_fuel is not None:
-            self._coast_phase_fuel_consumed += max(0.0, self._coast_prev_fuel - cur_fuel)
-        self._coast_prev_pos = cur_pos
-        self._coast_prev_fuel = cur_fuel
-
-    def _capture_zem_terminal_gate(self, game, snapshot: dict[str, Any]) -> None:
-        self._zem_setup_gate_done = bool(snapshot.get("setup_gate_done"))
-        self._zem_setup_gate_time = self._to_optional_float(snapshot.get("setup_gate_time"))
-        self._zem_setup_gate_altitude = self._to_optional_float(snapshot.get("setup_gate_altitude"))
-        self._zem_setup_gate_projected_dx = self._to_optional_float(
-            snapshot.get("setup_gate_projected_dx")
-        )
-        self._zem_terminal_gate_done = bool(snapshot.get("terminal_gate_done"))
-        self._zem_terminal_gate_time = self._to_optional_float(snapshot.get("terminal_gate_time"))
-        self._zem_terminal_gate_altitude = self._to_optional_float(
-            snapshot.get("terminal_gate_altitude")
-        )
-        self._zem_terminal_gate_projected_dx = self._to_optional_float(
-            snapshot.get("terminal_gate_projected_dx")
-        )
-        self._zem_solve_count = self._to_optional_float(snapshot.get("solve_count"))
-        self._zem_solve_ms_mean = self._to_optional_float(snapshot.get("solve_ms_mean"))
-        self._zem_solve_ms_p90 = self._to_optional_float(snapshot.get("solve_ms_p90"))
-        self._zem_fallback_frames = self._to_optional_float(snapshot.get("fallback_frames"))
-
-        if self._coast_phase_done or (not self._zem_terminal_gate_done):
-            return
-
-        actor = self.world.actors[0]
-        trans = require_component(actor, Transform)
-        self._coast_phase_done = True
-        self._coast_phase_time = (
-            self._zem_terminal_gate_time
-            if self._zem_terminal_gate_time is not None
-            else float(getattr(game, "_elapsed_time", 0.0))
-        )
-        self._coast_phase_altitude = (
-            self._zem_terminal_gate_altitude
-            if self._zem_terminal_gate_altitude is not None
-            else max(
-                0.0,
-                float(trans.pos.y)
-                - float(getattr(self, "eval_target_pos", Vector2(0.0, 0.0)).y),
-            )
-        )
-        self._coast_phase_projected_dx = self._zem_terminal_gate_projected_dx
+    def _resolve_zem_snapshot(self, game):
+        return self._stage_eval.resolve_zem_snapshot(game)
 
     def setup(self, game, seed: int) -> None:
         self._resolved_eval_mode = self._mode_for_run()
-        self._reset_phase_eval_metrics()
+        self._stage_eval.reset()
 
         scenario_base = _SCENARIO_BY_NAME[self._eval_scenario_name]
         scenario_name_hash = sum(ord(ch) for ch in scenario_base.name)
@@ -343,9 +236,7 @@ class CoastLevel(ScenarioLevel):
             if hasattr(engine, "set_lander_velocity"):
                 engine.set_lander_velocity(Vector2(initial_vx, initial_vy_up), uid=actor.uid)
 
-        self._coast_prev_pos = Vector2(trans.pos)
-        tank = require_component(actor, FuelTank)
-        self._coast_prev_fuel = float(tank.fuel)
+        self._stage_eval.seed_motion_state(actor)
         self._set_scenario_params(
             {
                 "radius": radius,
@@ -362,61 +253,32 @@ class CoastLevel(ScenarioLevel):
 
     def update(self, game, dt: float) -> None:
         _ = dt
-        self._update_phase_metrics()
-        if self._coast_phase_done:
+        actor = self.world.actors[0]
+        self._stage_eval.update_motion(actor)
+        if self._stage_eval.phase_done:
             return
         snapshot = self._resolve_zem_snapshot(game)
         if isinstance(snapshot, dict):
-            self._capture_zem_terminal_gate(game, snapshot)
+            target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
+            self._stage_eval.capture_snapshot(game, actor, target_pos, snapshot)
 
     def should_end(self, game) -> bool:
-        if self._resolved_eval_mode == "focused" and self._coast_phase_done:
+        if self._stage_eval.should_end_focused(self._resolved_eval_mode):
             return True
         return super().should_end(game)
 
     def end(self, game):
         result = super().end(game)
-
-        coast_distance = self._coast_phase_distance
-        coast_fuel = self._coast_phase_fuel_consumed
-        coast_fuel_per_distance = (coast_fuel / coast_distance) if coast_distance > 1e-9 else 0.0
-        coast_path_efficiency = None
-        actor = self.world.actors[0]
-        start_pos = getattr(actor, "start_pos", None)
-        target_pos = getattr(self, "eval_target_pos", None)
-        if isinstance(start_pos, Vector2) and isinstance(target_pos, Vector2) and coast_distance > 1e-9:
-            straight_line = math.hypot(target_pos.x - start_pos.x, target_pos.y - start_pos.y)
-            coast_path_efficiency = min(1.0, straight_line / coast_distance)
-
         result["eval_mode"] = self._resolved_eval_mode
-        result["coast_phase_done"] = self._coast_phase_done
-        result["coast_phase_time"] = self._coast_phase_time
-        result["coast_phase_altitude"] = self._coast_phase_altitude
-        result["coast_phase_projected_dx"] = self._coast_phase_projected_dx
-        result["coast_phase_distance"] = coast_distance
-        result["coast_phase_fuel_consumed"] = coast_fuel
-        result["coast_phase_fuel_per_distance"] = coast_fuel_per_distance
-        result["coast_phase_path_efficiency"] = coast_path_efficiency
-
-        result["zem_setup_gate_done"] = self._zem_setup_gate_done
-        result["zem_setup_gate_time"] = self._zem_setup_gate_time
-        result["zem_setup_gate_altitude"] = self._zem_setup_gate_altitude
-        result["zem_setup_gate_projected_dx"] = self._zem_setup_gate_projected_dx
-        result["zem_terminal_gate_done"] = self._zem_terminal_gate_done
-        result["zem_terminal_gate_time"] = self._zem_terminal_gate_time
-        result["zem_terminal_gate_altitude"] = self._zem_terminal_gate_altitude
-        result["zem_terminal_gate_projected_dx"] = self._zem_terminal_gate_projected_dx
-        result["zem_solve_count"] = self._zem_solve_count
-        result["zem_solve_ms_mean"] = self._zem_solve_ms_mean
-        result["zem_solve_ms_p90"] = self._zem_solve_ms_p90
-        result["zem_fallback_frames"] = self._zem_fallback_frames
-
-        if self._resolved_eval_mode == "focused":
-            success = bool(self._coast_phase_done)
-            result["eval_phase"] = "zem_terminal_gate"
-            result["success"] = success
-            state = str(result.get("state", "unknown"))
-            result["failure_mode"] = "none" if success else state
+        actor = self.world.actors[0]
+        target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
+        self._stage_eval.apply_result(
+            result,
+            eval_mode=self._resolved_eval_mode,
+            eval_phase_name="zem_terminal_gate",
+            actor=actor,
+            target_pos=target_pos,
+        )
         return result
 
 

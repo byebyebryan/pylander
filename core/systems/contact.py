@@ -49,27 +49,53 @@ class ContactSystem(System):
         if site is not None and self._can_land_on_site(entity, site, half_w, half_h, dt):
             self._apply_landing(entity, site, half_h)
             return
-        # Use solver-reported impact speed so hard impacts cannot "escape" crash
-        # classification due to an immediate upward rebound in the same frame.
-        contact_speed = report.get("rel_speed", 0.0)
-        try:
-            contact_speed = float(contact_speed)
-        except (TypeError, ValueError):
-            contact_speed = 0.0
-        if not math.isfinite(contact_speed):
-            contact_speed = 0.0
-        if report.get("colliding") and contact_speed >= ls.safe_landing_velocity:
+
+        if self._is_unsafe_colliding_impact(report, ls.safe_landing_velocity):
             self._apply_crash(entity)
             return
+
         if site is not None and self._crossed_site_plane(entity, site, half_w, half_h, dt):
             self._apply_crash(entity)
             return
 
+        self._resolve_terrain_contact(entity, report, phys, trans, site, half_w, half_h, dt)
+
+    @staticmethod
+    def _impact_speed(report: dict) -> float:
+        raw_speed = report.get("rel_speed", 0.0)
+        try:
+            speed = float(raw_speed)
+        except (TypeError, ValueError):
+            speed = 0.0
+        if not math.isfinite(speed):
+            return 0.0
+        return speed
+
+    def _is_unsafe_colliding_impact(self, report: dict, safe_speed: float) -> bool:
+        # Use solver-reported impact speed so hard impacts cannot "escape" crash
+        # classification due to an immediate upward rebound in the same frame.
+        if not report.get("colliding"):
+            return False
+        return self._impact_speed(report) >= safe_speed
+
+    def _resolve_terrain_contact(
+        self,
+        entity: Entity,
+        report: dict,
+        phys: PhysicsState,
+        trans: Transform,
+        site,
+        half_w: float,
+        half_h: float,
+        dt: float,
+    ) -> None:
         # Terrain contact path: colliding while descending resolves as terrain landing/crash.
         if not report.get("colliding") or phys.vel.y > 0.0:
             return
-
         speed = phys.vel.length()
+        ls = entity.get_component(LanderState)
+        if ls is None:
+            return
         angle_ok = self._upright_angle_error(trans.rotation) < ls.safe_landing_angle
         speed_ok = speed < ls.safe_landing_velocity
 

@@ -37,9 +37,9 @@ Defaults:
 ## Commands
 
 ```bash
-uv run python main.py flare
-uv run python main.py flare --headless --quick-benchmark
-uv run python main.py flare --headless --batch --batch-scenarios shallower,shallow,mid,steep,steeper
+uv run python main.py play flare
+uv run python main.py bench flare --quick --bot zem_zev
+uv run python main.py bench flare --bot zem_zev --scenarios shallower,shallow,mid,steep,steeper
 ```
 
 ## Related docs

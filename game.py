@@ -28,17 +28,8 @@ from core.engine_adapter import EngineAdapter
 from core.level import Level
 from core.maths import Range1D, Vector2, clearance_above_terrain
 from core.terrain import estimate_terrain_slope, sample_terrain_height
-from core.systems.contact import ContactSystem
-from core.systems.control_routing import ControlRoutingSystem
-from core.systems.force_application import ForceApplicationSystem
-from core.systems.landing_site_motion import LandingSiteMotionSystem
-from core.systems.landing_site_projection import LandingSiteProjectionSystem
-from core.systems.physics_sync import PhysicsSyncSystem
-from core.systems.propulsion import PropulsionSystem
-from core.systems.refuel import RefuelSystem
-from core.systems.sensor_update import SensorUpdateSystem
-from core.systems.scripted_control import ScriptedControlSystem
-from core.systems.state_transition import StateTransitionSystem
+from runtime.bootstrap import create_systems
+from runtime.metrics import RunMetricsTracker
 from ui.renderer import Renderer
 from utils.input import InputHandler
 from utils.plot import Plotter
@@ -282,32 +273,24 @@ class LanderGame:
             self.ecs_world.add_entity(extra_entity)
         self._set_active_actor(self.active_player_actor_uid)
 
-        self.control_routing_system = ControlRoutingSystem()
-        self.state_transition_system = StateTransitionSystem()
-        self.scripted_control_system = ScriptedControlSystem()
-        self.landing_site_motion_system = LandingSiteMotionSystem()
-        self.landing_site_projection_system = LandingSiteProjectionSystem(self.sites)
-        self.refuel_system = RefuelSystem(self.sites)
-        self.propulsion_system = PropulsionSystem()
-        self.force_application_system = ForceApplicationSystem(self.engine_adapter)
-        self.physics_sync_system = PhysicsSyncSystem(self.engine_adapter)
-        self.contact_system = ContactSystem(self.engine_adapter, self.sites)
-        self.sensor_update_system = SensorUpdateSystem(self.terrain, self.sites)
-
-        for system in (
-            self.control_routing_system,
-            self.state_transition_system,
-            self.scripted_control_system,
-            self.landing_site_motion_system,
-            self.landing_site_projection_system,
-            self.refuel_system,
-            self.propulsion_system,
-            self.force_application_system,
-            self.physics_sync_system,
-            self.contact_system,
-            self.sensor_update_system,
-        ):
-            system.world = self.ecs_world
+        self.systems = create_systems(
+            self.ecs_world,
+            terrain=self.terrain,
+            sites=self.sites,
+            engine_adapter=self.engine_adapter,
+        )
+        # Compatibility aliases for internal methods.
+        self.control_routing_system = self.systems.control_routing
+        self.state_transition_system = self.systems.state_transition
+        self.scripted_control_system = self.systems.scripted_control
+        self.landing_site_motion_system = self.systems.landing_site_motion
+        self.landing_site_projection_system = self.systems.landing_site_projection
+        self.refuel_system = self.systems.refuel
+        self.propulsion_system = self.systems.propulsion
+        self.force_application_system = self.systems.force_application
+        self.physics_sync_system = self.systems.physics_sync
+        self.contact_system = self.systems.contact
+        self.sensor_update_system = self.systems.sensor_update
 
         self.bot_override_delay = 1.0
         self._bot_override_timer = 0.0
@@ -462,10 +445,6 @@ class LanderGame:
         physics_dt = 1.0 / PHYSICS_FPS
         bot_dt = 1.0 / BOT_FPS
         step_count = 0
-        landing_count = 0
-        crash_count = 0
-        time_to_first_land = None
-        prev_state = None
         frame_dt = 1.0 / TARGET_RENDERING_FPS
         timers = LoopTimers(physics_dt=physics_dt, bot_dt=bot_dt, frame_dt=frame_dt)
 
@@ -474,16 +453,13 @@ class LanderGame:
         self._elapsed_time = 0.0
         initial_actor = self.get_active_actor()
         initial_trans = require_component(initial_actor, Transform)
-        initial_tank = require_component(initial_actor, FuelTank)
         start_pos = Vector2(getattr(initial_actor, "start_pos", initial_trans.pos))
         eval_target_pos = _resolve_eval_target_pos(self.level, self.sites, start_pos)
-        prev_actor_uid = initial_actor.uid
-        prev_pos = Vector2(initial_trans.pos)
-        prev_fuel = float(initial_tank.fuel)
-        distance_flown = 0.0
-        fuel_consumed = 0.0
-        overdrive_time = 0.0
-        overdrive_excess = 0.0
+        metrics = RunMetricsTracker.from_actor(
+            initial_actor,
+            start_pos=start_pos,
+            eval_target_pos=eval_target_pos,
+        )
         controls_by_uid: dict[str, ControlTuple | None] = {}
         state_before: dict[str, str] = {}
 
@@ -554,38 +530,8 @@ class LanderGame:
                 self._print_headless_stats(timers)
 
             active_actor = self.get_active_actor()
-            if active_actor.uid != prev_actor_uid:
-                prev_actor_uid = active_actor.uid
-                trans = require_component(active_actor, Transform)
-                tank = require_component(active_actor, FuelTank)
-                prev_pos = Vector2(trans.pos)
-                prev_fuel = float(tank.fuel)
-            else:
-                trans = require_component(active_actor, Transform)
-                tank = require_component(active_actor, FuelTank)
-                eng = require_component(active_actor, Engine)
-                step_distance = math.hypot(trans.pos.x - prev_pos.x, trans.pos.y - prev_pos.y)
-                distance_flown += step_distance
-                fuel_consumed += max(0.0, prev_fuel - float(tank.fuel))
-                throttle = max(0.0, float(eng.thrust_level))
-                if throttle > 1.0:
-                    dt_used = max(0.0, float(frame_dt))
-                    over = throttle - 1.0
-                    overdrive_time += dt_used
-                    overdrive_excess += over * dt_used
-                prev_pos = Vector2(trans.pos)
-                prev_fuel = float(tank.fuel)
-
-            active_ls = require_component(active_actor, LanderState)
-            state = active_ls.state
-            if state != prev_state:
-                if state == "landed":
-                    landing_count += 1
-                    if time_to_first_land is None:
-                        time_to_first_land = timers.elapsed_time
-                elif state == "crashed":
-                    crash_count += 1
-                prev_state = state
+            metrics.update_for_actor(active_actor, dt_used=max(0.0, float(frame_dt)))
+            metrics.update_state_counters(active_actor, elapsed_time=timers.elapsed_time)
 
             if self.level.should_end(self):
                 break
@@ -594,44 +540,19 @@ class LanderGame:
             self.renderer.shutdown()
 
         self._elapsed_time = timers.elapsed_time
-        self._landing_count = landing_count
-        self._crash_count = crash_count
-        self._distance_flown = distance_flown
-        self._fuel_consumed = fuel_consumed
-        self._overdrive_time = overdrive_time
-        self._overdrive_excess = overdrive_excess
+        self._landing_count = metrics.landing_count
+        self._crash_count = metrics.crash_count
+        self._distance_flown = metrics.distance_flown
+        self._fuel_consumed = metrics.fuel_consumed
+        self._overdrive_time = metrics.overdrive_time
+        self._overdrive_excess = metrics.overdrive_excess
         result = self.level.end(self)
         final_actor = self.get_active_actor()
-        final_trans = require_component(final_actor, Transform)
-        final_tank = require_component(final_actor, FuelTank)
-        elapsed_time = max(0.0, float(timers.elapsed_time))
-        avg_speed = (distance_flown / elapsed_time) if elapsed_time > 1e-9 else 0.0
-        fuel_per_distance = (fuel_consumed / distance_flown) if distance_flown > 1e-9 else 0.0
-        overdrive_fraction = (overdrive_time / elapsed_time) if elapsed_time > 1e-9 else 0.0
-        spawn_to_target_distance = None
-        path_efficiency = None
-        landing_offset = None
-        if eval_target_pos is not None:
-            spawn_to_target_distance = math.hypot(
-                eval_target_pos.x - start_pos.x,
-                eval_target_pos.y - start_pos.y,
-            )
-            if result.get("state") == "landed":
-                landing_offset = abs(final_trans.pos.x - eval_target_pos.x)
-                if distance_flown > 1e-9:
-                    path_efficiency = min(1.0, spawn_to_target_distance / distance_flown)
-        result.setdefault("distance_flown", distance_flown)
-        result.setdefault("avg_speed", avg_speed)
-        result.setdefault("fuel_consumed", fuel_consumed)
-        result.setdefault("fuel_remaining", float(final_tank.fuel))
-        result.setdefault("fuel_per_distance", fuel_per_distance)
-        result.setdefault("overdrive_time", overdrive_time)
-        result.setdefault("overdrive_fraction", overdrive_fraction)
-        result.setdefault("overdrive_excess", overdrive_excess)
-        result.setdefault("spawn_to_target_distance", spawn_to_target_distance)
-        result.setdefault("path_efficiency", path_efficiency)
-        result.setdefault("landing_offset", landing_offset)
-        result.setdefault("time_to_first_land", time_to_first_land)
+        metrics.apply_to_result(
+            result,
+            elapsed_time=timers.elapsed_time,
+            final_actor=final_actor,
+        )
         plot_extras = self.plotter.finalize()
         if plot_extras:
             result.update(plot_extras)

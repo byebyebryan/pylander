@@ -88,4 +88,4 @@ Solver load is controlled with phase-adaptive replanning:
 - coast: medium replan rate
 - terminal: higher replan rate, tighter deviation thresholds
 
-Use `--batch-workers` for throughput when running large benchmark suites.
+Use `bench --workers N` for throughput when running large benchmark suites.

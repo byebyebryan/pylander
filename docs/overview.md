@@ -12,10 +12,10 @@ The in-flight path is a single owner with internal phases (`setup -> coast -> te
 ## How to iterate
 
 - Prefer headless mode while tuning:
-  - `uv run python main.py <level> --headless`
+  - `uv run python main.py run <level>`
 - Fix `--seed` and `--scenario` while tuning one change.
-- Use `--quick-benchmark` to catch regressions early.
-- In full batch mode, ranged scenarios auto-run seeds `0-9` when `--batch-seeds` is omitted.
+- Use `bench --quick` to catch regressions early.
+- In full benchmark mode, ranged scenarios auto-run seeds `0-9` when `--seeds` is omitted.
 
 ## What to measure
 

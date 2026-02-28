@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-import argparse
-
 import pytest
 
-import main as main_module
+import app.run_batch as run_batch_module
+from app.cli import build_parser, parse_command
+from app.config import BenchCommand, BenchSettings, RunCommand
 from bots import create_bot, list_available_bots
 from core.components import PhysicsState, Transform
 from core.ecs import require_component
 from core.eval import aggregate_eval_records, normalize_run_result
 from game import LanderGame
 from levels import create_level as create_level_by_name, list_available_levels
-from main import RunConfig, _parse_args, _parse_seed_spec, _resolve_batch_plan
+from app.run_batch import parse_seed_spec, resolve_benchmark_plan
 from ui.hud import HudOverlay
 
 
@@ -220,52 +220,46 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
 
 
 def test_parse_seed_spec_keeps_order_and_deduplicates() -> None:
-    assert _parse_seed_spec("0-2,2,5,4-3") == [0, 1, 2, 5, 4, 3]
+    assert parse_seed_spec("0-2,2,5,4-3") == [0, 1, 2, 5, 4, 3]
 
 
 def test_parse_args_drops_bot_behavior_support() -> None:
-    parser = main_module._build_parser()
-    args = parser.parse_args(["plunge", "--headless", "--bot", "plunge"])
-    config = _parse_args(args)
-    assert isinstance(config, RunConfig)
-    assert config.bot_name == "plunge"
-    assert not hasattr(config, "bot_behavior")
+    _parser, command = parse_command(["run", "plunge", "--bot", "plunge"])
+    assert isinstance(command, RunCommand)
+    assert command.run.bot_name == "plunge"
 
 
 def test_parser_rejects_removed_bot_behavior_flag() -> None:
-    parser = main_module._build_parser()
+    parser = build_parser()
     with pytest.raises(SystemExit):
-        parser.parse_args(["plunge", "--bot-behavior", "balanced"])
+        parser.parse_args(["run", "plunge", "--bot-behavior", "balanced"])
 
 
 def test_resolve_batch_plan_quick_benchmark_uses_expected_levels(monkeypatch) -> None:
-    config = RunConfig(
-        level_name="plunge",
+    config = BenchSettings(
         bot_name=None,
-        headless=True,
-        batch=False,
-        print_freq=0,
+        level_name="plunge",
+        level_names_csv=None,
+        seeds_csv=None,
+        scenarios_csv=None,
+        scenario_name=None,
+        lander_name=None,
+        eval_mode="auto",
+        quick=True,
+        workers=1,
         max_time=300.0,
         max_steps=None,
         plot_mode="none",
-        stop_on_crash=True,
-        stop_on_out_of_fuel=True,
-        stop_on_first_land=True,
-        seed=None,
-        lander_name=None,
-        batch_seeds=None,
-        batch_levels=None,
-        batch_json=None,
-        batch_csv=None,
-        quick_benchmark=True,
-        batch_workers=1,
-        eval_mode="auto",
-        scenario_name=None,
-        batch_scenarios=None,
+        json_path=None,
+        csv_path=None,
     )
 
-    monkeypatch.setattr(main_module, "_list_quick_benchmark_levels", lambda: ["plunge", "flare", "coast", "setup"])
-    seeds, levels = _resolve_batch_plan(config)
+    monkeypatch.setattr(
+        run_batch_module,
+        "list_quick_benchmark_levels",
+        lambda: ["plunge", "flare", "coast", "setup"],
+    )
+    seeds, levels = resolve_benchmark_plan(config)
     assert seeds == [0]
     assert levels == ["plunge", "flare", "coast", "setup"]
 
@@ -281,29 +275,20 @@ def test_hud_display_state_falls_back_to_status_parse() -> None:
 
 
 def test_parse_args_eval_mode_default_is_auto() -> None:
-    args = argparse.Namespace(
-        level_name="plunge",
-        bot=None,
-        headless=False,
-        batch=False,
-        freq=None,
-        time=None,
-        steps=None,
-        plot=None,
-        stop_on_crash=False,
-        stop_on_out_of_fuel=False,
-        stop_on_first_land=False,
-        eval_mode="auto",
-        seed=None,
-        scenario=None,
-        lander=None,
-        batch_seeds=None,
-        batch_levels=None,
-        batch_scenarios=None,
-        batch_json=None,
-        batch_csv=None,
-        quick_benchmark=False,
-        batch_workers=None,
-    )
-    config = _parse_args(args)
-    assert config.eval_mode == "auto"
+    _parser, command = parse_command(["run", "plunge"])
+    assert isinstance(command, RunCommand)
+    assert command.run.eval_mode == "auto"
+
+
+def test_cli_requires_subcommand() -> None:
+    parser = build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args([])
+
+
+def test_parse_bench_command_uses_expected_defaults() -> None:
+    _parser, command = parse_command(["bench", "plunge"])
+    assert isinstance(command, BenchCommand)
+    assert command.bench.level_name == "plunge"
+    assert command.bench.eval_mode == "auto"
+    assert command.bench.quick is False

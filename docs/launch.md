@@ -36,7 +36,7 @@ Run-end success fields:
 ## Commands
 
 ```bash
-uv run python main.py launch
-uv run python main.py launch --headless --seed 0
-uv run python main.py launch --headless --batch --batch-scenarios near,mid,far
+uv run python main.py play launch
+uv run python main.py run launch --seed 0 --bot zem_zev
+uv run python main.py bench launch --bot zem_zev --scenarios near,mid,far
 ```

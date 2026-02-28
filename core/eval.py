@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from core.eval_schema import EFFICIENCY_METRIC_FIELDS
+
 
 def _to_float(value: Any, default: float = 0.0) -> float:
     try:
@@ -75,45 +77,7 @@ def _metric_summary(records: list[dict[str, Any]], field: str) -> dict[str, Any]
 
 
 def _efficiency_summary(records: list[dict[str, Any]]) -> dict[str, Any]:
-    fields = (
-        "distance_flown",
-        "landing_offset",
-        "avg_speed",
-        "fuel_consumed",
-        "fuel_remaining",
-        "fuel_per_distance",
-        "overdrive_time",
-        "overdrive_fraction",
-        "overdrive_excess",
-        "path_efficiency",
-        "time",
-        "time_to_first_land",
-        "zem_setup_gate_time",
-        "zem_setup_gate_altitude",
-        "zem_setup_gate_projected_dx",
-        "zem_terminal_gate_time",
-        "zem_terminal_gate_altitude",
-        "zem_terminal_gate_projected_dx",
-        "zem_solve_count",
-        "zem_solve_ms_mean",
-        "zem_solve_ms_p90",
-        "zem_fallback_frames",
-        "setup_phase_time",
-        "setup_phase_altitude",
-        "setup_phase_projected_dx",
-        "setup_phase_distance",
-        "setup_phase_fuel_consumed",
-        "setup_phase_fuel_per_distance",
-        "setup_phase_path_efficiency",
-        "coast_phase_time",
-        "coast_phase_altitude",
-        "coast_phase_projected_dx",
-        "coast_phase_distance",
-        "coast_phase_fuel_consumed",
-        "coast_phase_fuel_per_distance",
-        "coast_phase_path_efficiency",
-    )
-    return {field: _metric_summary(records, field) for field in fields}
+    return {field: _metric_summary(records, field) for field in EFFICIENCY_METRIC_FIELDS}
 
 
 def normalize_run_result(

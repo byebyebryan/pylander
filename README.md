@@ -14,7 +14,7 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 - Procedural terrain generation (simplex)
 - Physics-based lander with fuel and overdrive
 - Credits, landing targets, and refueling loop
-- Headless deterministic evaluation + batch reports
+- Headless deterministic evaluation + benchmark reports
 - Unified optimizer bot (`zem_zev`) for full-envelope flight
 - Terminal benchmark bot (`plunge`)
 
@@ -24,53 +24,57 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 uv sync
 ```
 
+## Command model
+
+```bash
+uv run python main.py <command> [options]
+```
+
+Commands:
+
+- `play`: interactive rendered mode
+- `run`: single headless simulation run
+- `bench`: multi-run benchmark batch
+
+Run `uv run python main.py --help` for full help.
+
 ## Running
 
-Default level is `flat` when omitted.
-
-### Human mode
+### Interactive (`play`)
 
 ```bash
-uv run python main.py
+uv run python main.py play
+uv run python main.py play flat --bot zem_zev
 ```
 
-### Bot mode
+### Single headless run (`run`)
 
 ```bash
-# Unified full-envelope bot
-uv run python main.py flare --bot zem_zev
-uv run python main.py coast --bot zem_zev
-uv run python main.py setup --bot zem_zev
-uv run python main.py launch --bot zem_zev
-
-# Dedicated terminal bot
-uv run python main.py plunge --bot plunge
+uv run python main.py run flare --bot zem_zev --seed 0
+uv run python main.py run coast --bot zem_zev --scenario mid_wide --seed 3
+uv run python main.py run plunge --bot plunge --scenario mid_normal --seed 0
 ```
 
-### Scenario selection
+### Benchmark batch (`bench`)
 
 ```bash
-uv run python main.py coast --scenario mid_wide
-uv run python main.py setup --scenario steep_far
-uv run python main.py flare --scenario steep
-uv run python main.py plunge --scenario mid_normal
-```
+# Quick regression suite (fixed seeds/scenarios)
+uv run python main.py bench plunge --quick --workers 8
 
-## Headless + batch evaluation
+# Custom benchmark matrix
+uv run python main.py bench coast \
+  --bot zem_zev \
+  --seeds 0-19 \
+  --scenarios shallow_tight,mid_wide,steep_wide \
+  --workers 8
 
-```bash
-# Single deterministic run
-uv run python main.py flare --headless --seed 0 --bot zem_zev
-
-# Quick regression suite
-uv run python main.py plunge --headless --quick-benchmark --bot plunge
-uv run python main.py flare --headless --quick-benchmark --bot zem_zev
-
-# Custom batch
-uv run python main.py coast --headless --batch \
-  --batch-seeds 0-19 \
-  --batch-scenarios shallow_tight,mid_wide,steep_wide \
-  --bot zem_zev
+# Multi-level benchmark + reports
+uv run python main.py bench plunge \
+  --levels plunge,flare,coast,setup,launch \
+  --bot zem_zev \
+  --seeds 0-9 \
+  --json auto \
+  --csv auto
 ```
 
 Quick benchmark subsets:
@@ -82,44 +86,36 @@ Quick benchmark subsets:
 
 Focused eval (`--eval-mode focused`) is available for `flare`, `coast`, and `setup`.
 
-## CLI summary
+## Key options
 
-```bash
-uv run python main.py [level_name] [options]
-```
-
-### Bots
-
-- `zem_zev`
-- `plunge`
-
-### Key options
+### `play` / `run`
 
 - `--bot NAME`
-- `--headless`
-- `--freq N`
+- `--seed N`
+- `--scenario NAME`
+- `--lander NAME`
+- `--eval-mode auto|focused|full`
 - `--steps N`
 - `--time S`
 - `--plot none|speed|thrust|all`
 - `--stop-on-crash`
 - `--stop-on-out-of-fuel`
 - `--stop-on-first-land`
-- `--eval-mode auto|focused|full`
-- `--seed N`
+
+### `bench`
+
+- `--bot NAME`
+- `--levels CSV`
+- `--seeds SPEC`
+- `--scenarios CSV`
 - `--scenario NAME`
-- `--lander NAME`
-- `--batch`
-- `--batch-seeds SPEC`
-- `--batch-levels CSV`
-- `--batch-scenarios CSV`
-- `--batch-json PATH|auto`
-- `--batch-csv PATH|auto`
-- `--batch-workers N`
-- `--quick-benchmark`
+- `--quick`
+- `--workers N`
+- `--json PATH|auto`
+- `--csv PATH|auto`
+- `--eval-mode auto|focused|full`
 
-Run `uv run python main.py --help` to list available levels and full option descriptions.
-
-## Controls (human mode)
+## Controls (interactive)
 
 - `W`/`UP`: Increase thrust
 - `S`/`DOWN`: Decrease thrust

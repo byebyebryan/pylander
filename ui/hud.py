@@ -198,20 +198,13 @@ class HudOverlay:
         return active_bot, stage
 
     @staticmethod
-    def _clean_display_text(value: object) -> str | None:
-        if not isinstance(value, str):
-            return None
-        text = value.strip()
-        return text if text else None
-
-    @classmethod
     def _resolve_bot_display_state(
-        cls,
         bot,
         status: str,
     ) -> tuple[str | None, str | None]:
+        _ = bot
         if status:
-            return cls._parse_bot_status(status)
+            return HudOverlay._parse_bot_status(status)
         return None, None
 
     def _build_control_lines(self, lander) -> list[str]:

@@ -49,7 +49,7 @@ Metrics to watch:
 ## Commands
 
 ```bash
-uv run python main.py plunge
-uv run python main.py plunge --headless --scenario mid_normal --seed 0
-uv run python main.py plunge --headless --quick-benchmark
+uv run python main.py play plunge
+uv run python main.py run plunge --scenario mid_normal --seed 0 --bot plunge
+uv run python main.py bench plunge --quick --bot plunge
 ```

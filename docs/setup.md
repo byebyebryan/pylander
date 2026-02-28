@@ -48,7 +48,7 @@ Defaults:
 ## Commands
 
 ```bash
-uv run python main.py setup
-uv run python main.py setup --headless --quick-benchmark
-uv run python main.py setup --headless --batch --batch-scenarios shallow_near,mid_far,steep_far
+uv run python main.py play setup
+uv run python main.py bench setup --quick --bot zem_zev
+uv run python main.py bench setup --bot zem_zev --scenarios shallow_near,mid_far,steep_far
 ```

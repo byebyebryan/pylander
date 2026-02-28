@@ -49,7 +49,7 @@ Defaults:
 ## Commands
 
 ```bash
-uv run python main.py coast
-uv run python main.py coast --headless --quick-benchmark
-uv run python main.py coast --headless --batch --batch-scenarios shallow_tight,mid_wide,steep_wide
+uv run python main.py play coast
+uv run python main.py bench coast --quick --bot zem_zev
+uv run python main.py bench coast --bot zem_zev --scenarios shallow_tight,mid_wide,steep_wide
 ```
