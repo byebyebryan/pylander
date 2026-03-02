@@ -22,17 +22,14 @@ class ClimbScenario:
 
 
 _SCENARIOS: tuple[ClimbScenario, ...] = (
-    ClimbScenario(name="flat_low", terrain_kind="flat", target_dx=400.0, target_dy=200.0),
-    ClimbScenario(name="flat_mid", terrain_kind="flat", target_dx=400.0, target_dy=400.0),
-    ClimbScenario(name="flat_high", terrain_kind="flat", target_dx=400.0, target_dy=800.0),
     ClimbScenario(name="slope_low", terrain_kind="slope", target_dx=400.0, target_dy=200.0),
     ClimbScenario(name="slope_mid", terrain_kind="slope", target_dx=400.0, target_dy=400.0),
     ClimbScenario(name="slope_high", terrain_kind="slope", target_dx=400.0, target_dy=800.0),
 )
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "flat_mid"
+_DEFAULT_SCENARIO = "slope_mid"
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    "flat_mid",
+    "slope_low",
     "slope_mid",
     "slope_high",
 )
@@ -113,12 +110,8 @@ class ClimbLevel(PresetLevel):
 
     def _build_base_terrain(self, _seed: int):
         scenario = self._active_scenario()
-        if scenario.terrain_kind == "flat":
-            return _terrain.LodGridGenerator(lambda _x: 0.0)
-        if scenario.terrain_kind == "slope":
-            slope = self._scenario_slope(scenario)
-            return _terrain.LodGridGenerator(lambda x: slope * x)
-        raise ValueError(f"Unsupported climb terrain kind: {scenario.terrain_kind}")
+        slope = self._scenario_slope(scenario)
+        return _terrain.LodGridGenerator(lambda x: slope * x)
 
     def setup(self, game, seed: int) -> None:
         self._resolved_eval_mode = self._mode_for_run()
@@ -126,10 +119,8 @@ class ClimbLevel(PresetLevel):
 
         scenario = self._active_scenario()
         dest_x = _SOURCE_PAD_X + float(scenario.target_dx)
-        target_dy = float(scenario.target_dy)
         slope = self._scenario_slope(scenario)
-        target_on_supports = scenario.terrain_kind == "flat"
-        target_mode = "elevated_supports" if target_on_supports else "flush_flatten"
+        target_mode = "flush_flatten"
         self.site_specs = (
             SiteSpec(
                 uid="climb_site_source",
@@ -145,9 +136,9 @@ class ClimbLevel(PresetLevel):
                 award=100.0,
                 fuel_price=8.0,
                 terrain_mode=target_mode,
-                terrain_bound=not target_on_supports,
-                y_offset=target_dy if target_on_supports else 0.0,
-                support_height=max(20.0, target_dy) if target_on_supports else 40.0,
+                terrain_bound=True,
+                y_offset=0.0,
+                support_height=40.0,
             ),
         )
         super().setup(game, seed)

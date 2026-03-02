@@ -88,15 +88,12 @@ def test_setup_level_scenario_names_are_clean_and_prefixed_removed() -> None:
 def test_climb_level_scenario_names_are_clean_and_prefixed_removed() -> None:
     level = create_level_by_name("climb")
     assert level.list_batch_scenarios() == [
-        "flat_low",
-        "flat_mid",
-        "flat_high",
         "slope_low",
         "slope_mid",
         "slope_high",
     ]
     assert level.list_quick_benchmark_scenarios() == [
-        "flat_mid",
+        "slope_low",
         "slope_mid",
         "slope_high",
     ]
@@ -108,32 +105,19 @@ def test_climb_rejects_unknown_scenario() -> None:
         level.set_eval_scenario("bad")
 
 
-def test_climb_slope_target_is_terrain_bound_not_supports() -> None:
-    slope_level = create_level_by_name("climb")
-    slope_level.set_eval_scenario("slope_mid")
-    slope_game = LanderGame(level=slope_level, seed=0, bot=create_bot("zem_zev"), headless=True)
-    slope_target = next(
+def test_climb_target_is_terrain_bound_not_supports() -> None:
+    level = create_level_by_name("climb")
+    level.set_eval_scenario("slope_mid")
+    game = LanderGame(level=level, seed=0, bot=create_bot("zem_zev"), headless=True)
+    target = next(
         site
-        for site in slope_game.level.world.site_entities
+        for site in game.level.world.site_entities
         if site.uid == "climb_site_target"
     )
-    slope_shape = slope_target.get_component(LandingSite)
-    assert slope_shape is not None
-    assert slope_shape.terrain_mode == "flush_flatten"
-    assert slope_shape.terrain_bound is True
-
-    flat_level = create_level_by_name("climb")
-    flat_level.set_eval_scenario("flat_mid")
-    flat_game = LanderGame(level=flat_level, seed=0, bot=create_bot("zem_zev"), headless=True)
-    flat_target = next(
-        site
-        for site in flat_game.level.world.site_entities
-        if site.uid == "climb_site_target"
-    )
-    flat_shape = flat_target.get_component(LandingSite)
-    assert flat_shape is not None
-    assert flat_shape.terrain_mode == "elevated_supports"
-    assert flat_shape.terrain_bound is False
+    shape = target.get_component(LandingSite)
+    assert shape is not None
+    assert shape.terrain_mode == "flush_flatten"
+    assert shape.terrain_bound is True
 
 
 def test_setup_coast_and_climb_reject_unknown_eval_mode() -> None:

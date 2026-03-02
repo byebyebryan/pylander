@@ -85,7 +85,7 @@ Quick benchmark subsets:
 - `plunge`: `low_normal`, `mid_normal`, `high_normal`
 - `flare`: `shallow`, `mid`, `steep`
 - `coast`: `shallow_tight`, `mid_wide`, `steep_wide`
-- `climb`: `flat_mid`, `slope_mid`, `slope_high`
+- `climb`: `slope_low`, `slope_mid`, `slope_high`
 - `setup`: `shallow_near`, `mid_far`, `steep_far`
 
 Focused eval (`--eval-mode focused`) is available for `flare`, `coast`, `climb`, and `setup`.

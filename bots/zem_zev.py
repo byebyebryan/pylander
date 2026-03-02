@@ -49,13 +49,25 @@ class ZemZevConfig:
     high_alt_coast_vy_boost_alt: float = 220.0
     high_alt_coast_vy_boost_max: float = 1.03
     climb_context_dy_min: float = 120.0
-    climb_apex_margin_ratio: float = 0.22
-    climb_apex_margin_bias: float = 35.0
-    climb_apex_margin_min: float = 60.0
-    climb_apex_margin_max: float = 220.0
-    climb_floor_end_buffer: float = 40.0
-    climb_floor_ramp_cap: float = 260.0
-    climb_floor_ramp_dy_ratio: float = 0.65
+    climb_apex_margin_ratio: float = 0.14
+    climb_apex_margin_bias: float = 20.0
+    climb_apex_margin_min: float = 40.0
+    climb_apex_margin_max: float = 170.0
+    climb_apex_fade_dx_full_ratio: float = 0.70
+    climb_apex_fade_dx_zero_ratio: float = 0.18
+    climb_apex_crossed_scale: float = 0.12
+    climb_apex_correction_scale: float = 0.15
+    climb_floor_end_buffer: float = 30.0
+    climb_floor_ramp_cap: float = 240.0
+    climb_floor_ramp_dy_ratio: float = 0.50
+    climb_correction_dx: float = 160.0
+    climb_correction_target_y_buffer: float = 50.0
+    climb_correction_target_vy: float = 6.5
+    climb_correction_descent_floor_vy: float = 8.0
+    climb_correction_floor_cap: float = 70.0
+    climb_infeasible_replan_threshold: int = 3
+    climb_recovery_apex_scale: float = 0.55
+    climb_recovery_floor_scale: float = 0.45
 
     # Attitude/allocator limits
     max_tilt: float = 0.78
@@ -124,10 +136,12 @@ class ZemZevConfig:
     climb_fallback_lateral_vx_gain: float = 0.72
     climb_fallback_lateral_dx_gain: float = 0.06
     climb_fallback_vertical_gain: float = 0.50
+    climb_fallback_near_target_y_window: float = 120.0
+    climb_fallback_near_target_up_gain: float = 0.14
+    climb_fallback_near_target_downspeed_max: float = 9.0
     climb_support_brake_dx: float = 220.0
-    climb_support_clearance: float = 24.0
     climb_support_vertical_gain: float = 0.38
-    climb_support_release_dx: float = 14.0
+    climb_support_vy_up_max: float = 10.0
 
     # Launch-from-pad bootstrap when starting landed with a different target.
     launch_takeoff_clear_altitude: float = 10.0
@@ -140,7 +154,16 @@ class ZemZevBot(QueryBot):
         self._cfg = ZemZevConfig()
         self._optimizer_short = PDGOptimizer(PDGOptimizerConfig(horizon_steps=28))
         self._optimizer_long = PDGOptimizer(PDGOptimizerConfig(horizon_steps=36))
-        self._optimizer_climb = PDGOptimizer(PDGOptimizerConfig(horizon_steps=44))
+        self._optimizer_climb = PDGOptimizer(
+            PDGOptimizerConfig(
+                horizon_steps=44,
+                w_upward_vy=8.0,
+                w_terminal_vy=12.0,
+                w_smooth=0.18,
+                w_path_x=0.08,
+                w_path_y=0.005,
+            )
+        )
 
         self._behavior = "zem_zev"
         self._prev_angle_cmd = 0.0
@@ -179,6 +202,8 @@ class ZemZevBot(QueryBot):
         self._hover_time = 0.0
         self._dx_initial_sign = 0
         self._crossed_target = False
+        self._climb_dx_initial_abs = 0.0
+        self._climb_infeasible_streak = 0
         self._auto_target_uid: str | None = None
         self._launch_takeoff_active = False
 
@@ -230,6 +255,8 @@ class ZemZevBot(QueryBot):
         self._hover_time = 0.0
         self._dx_initial_sign = 0
         self._crossed_target = False
+        self._climb_dx_initial_abs = 0.0
+        self._climb_infeasible_streak = 0
 
     @staticmethod
     def _contact_distance(contact) -> float:
@@ -371,6 +398,32 @@ class ZemZevBot(QueryBot):
         ):
             self._hover_time += max(0.0, float(dt))
 
+    def _climb_dx_ratio(self, dx: float) -> float:
+        if self._climb_dx_initial_abs <= 1e-3:
+            return 1.0
+        return clamp(abs(float(dx)) / self._climb_dx_initial_abs, 0.0, 1.5)
+
+    def _climb_correction_mode(self, dx: float) -> bool:
+        if not self._climb_context_active:
+            return False
+        return self._crossed_target or abs(float(dx)) <= self._cfg.climb_correction_dx
+
+    def _climb_apex_scale(self, dx: float) -> float:
+        cfg = self._cfg
+        ratio = self._climb_dx_ratio(dx)
+        full = max(cfg.climb_apex_fade_dx_full_ratio, cfg.climb_apex_fade_dx_zero_ratio + 1e-3)
+        scale = clamp(
+            (ratio - cfg.climb_apex_fade_dx_zero_ratio)
+            / max(1e-3, full - cfg.climb_apex_fade_dx_zero_ratio),
+            0.0,
+            1.0,
+        )
+        if self._crossed_target:
+            scale *= cfg.climb_apex_crossed_scale
+        if self._climb_correction_mode(dx):
+            scale = min(scale, cfg.climb_apex_correction_scale)
+        return scale
+
     def _plan_index(self) -> int:
         if self._plan is None:
             return 0
@@ -469,34 +522,62 @@ class ZemZevBot(QueryBot):
         if climb_context:
             alt_guidance = max(0.0, float(passive.y) - target_y)
         target_y_plan = target_y
+        correction_mode = self._climb_correction_mode(dx)
         if climb_context and phase in ("setup", "coast"):
-            apex_margin = clamp(
+            apex_margin_base = clamp(
                 (self._cfg.climb_apex_margin_ratio * dy) + self._cfg.climb_apex_margin_bias,
                 self._cfg.climb_apex_margin_min,
                 self._cfg.climb_apex_margin_max,
             )
+            apex_scale = self._climb_apex_scale(dx)
+            if self._climb_infeasible_streak >= self._cfg.climb_infeasible_replan_threshold:
+                apex_scale *= self._cfg.climb_recovery_apex_scale
+            apex_margin = apex_margin_base * apex_scale
             target_y_plan += apex_margin
+            if correction_mode:
+                target_y_plan = min(
+                    target_y_plan,
+                    target_y + self._cfg.climb_correction_target_y_buffer,
+                )
         y_floor: float | tuple[float, float]
         if climb_context and phase in ("setup", "coast"):
             floor_start = float(passive.y) - 8.0
             floor_end_goal = target_y + self._cfg.climb_floor_end_buffer
-            floor_end_cap = float(passive.y) + max(
+            floor_cap_base = max(
                 self._cfg.climb_floor_ramp_cap,
-                self._cfg.climb_floor_ramp_dy_ratio * max(0.0, dy),
+                self._cfg.climb_floor_ramp_dy_ratio
+                * max(0.0, dy)
+                * max(0.25, self._climb_apex_scale(dx)),
             )
+            if self._climb_infeasible_streak >= self._cfg.climb_infeasible_replan_threshold:
+                floor_cap_base = max(90.0, self._cfg.climb_recovery_floor_scale * floor_cap_base)
+            floor_end_cap = float(passive.y) + floor_cap_base
+            if correction_mode:
+                floor_end_goal = min(
+                    floor_end_goal,
+                    target_y + self._cfg.climb_correction_floor_cap,
+                )
             floor_end = min(floor_end_goal, floor_end_cap)
             y_floor = (floor_start, floor_end)
         elif climb_context and phase == "terminal":
             y_floor = (float(passive.y) - 8.0, target_y - 8.0)
         else:
             y_floor = min(float(passive.y), target_y) - 8.0
-        max_tilt = self._resolve_max_tilt(alt_guidance, dx, float(passive.vx))
+        max_tilt = self._resolve_max_tilt(alt_terrain, dx, float(passive.vx))
         # Nominal-first schedule: OD is reserve, not baseline burn design.
         target_vy = self._desired_terminal_vy(alt_guidance, nominal_thrust_accel, max_tilt)
         descent_floor_vy = self._descent_floor_vy(alt_guidance, nominal_thrust_accel, max_tilt)
         if climb_context and phase == "terminal":
             target_vy = max(target_vy, -3.0)
             descent_floor_vy = max(descent_floor_vy, -4.0)
+        elif (
+            climb_context
+            and phase in ("setup", "coast")
+            and correction_mode
+            and (float(passive.y) + self._cfg.climb_correction_target_y_buffer >= target_y)
+        ):
+            target_vy = min(target_vy, -self._cfg.climb_correction_target_vy)
+            descent_floor_vy = min(descent_floor_vy, -self._cfg.climb_correction_descent_floor_vy)
         if phase in ("setup", "coast"):
             if alt_guidance > self._cfg.high_alt_coast_vy_boost_alt:
                 # Allow slightly faster commanded descent when far/high to reduce hover-like nibbling.
@@ -662,6 +743,13 @@ class ZemZevBot(QueryBot):
                 a_y = _GRAVITY_MAG + (0.72 * max_thrust_accel)
             if down_speed >= cfg.emergency_vy and alt <= cfg.emergency_alt:
                 a_y = _GRAVITY_MAG + max_thrust_accel
+            if (
+                self._climb_context_active
+                and self._climb_correction_mode(dx)
+                and abs(float(passive.y) - self._last_target_y) <= cfg.climb_fallback_near_target_y_window
+                and down_speed <= cfg.climb_fallback_near_target_downspeed_max
+            ):
+                a_y = min(a_y, _GRAVITY_MAG + (cfg.climb_fallback_near_target_up_gain * max_thrust_accel))
             a_y = clamp(a_y, 0.0, _GRAVITY_MAG + max_thrust_accel)
             if self._climb_context_active:
                 a_x = clamp(
@@ -689,9 +777,11 @@ class ZemZevBot(QueryBot):
             if (
                 alt_over_target < 0.0
                 and abs(dx) <= cfg.climb_support_brake_dx
+                and not self._crossed_target
             ):
                 a_x = clamp(-0.95 * float(passive.vx), -8.0, 8.0)
-                a_y = max(a_y, _GRAVITY_MAG + (cfg.climb_support_vertical_gain * max_thrust_accel))
+                if float(passive.vy_up) <= cfg.climb_support_vy_up_max:
+                    a_y = max(a_y, _GRAVITY_MAG + (cfg.climb_support_vertical_gain * max_thrust_accel))
 
         if (
             self._climb_context_active
@@ -898,11 +988,15 @@ class ZemZevBot(QueryBot):
             self._last_target_x = float(target.x)
             self._last_target_y = float(target.y)
             self._climb_context_active = self._climb_context_active or self._is_climb_context(dy)
+            if self._climb_context_active and self._climb_dx_initial_abs <= 1e-3:
+                self._climb_dx_initial_abs = max(1.0, abs(dx))
             self._last_target_half = target_half_width(getattr(target, "size", None))
         else:
             dx = 0.0
             dy = -max(0.0, finite_altitude(passive))
             self._climb_context_active = False
+            self._climb_dx_initial_abs = 0.0
+            self._climb_infeasible_streak = 0
 
         guidance_alt = alt_terrain
         if target is not None and self._climb_context_active:
@@ -966,7 +1060,10 @@ class ZemZevBot(QueryBot):
                 self._plan_elapsed = 0.0
                 self._replan_timer = 1.0 / max(1e-3, replan_hz)
                 self._fallback_steps_remaining = int(self._cfg.fallback_hold_steps)
+                self._climb_infeasible_streak = 0
             else:
+                if self._climb_context_active:
+                    self._climb_infeasible_streak += 1
                 if self._fallback_steps_remaining > 0 and self._plan is not None and self._plan.feasible:
                     self._fallback_steps_remaining -= 1
                 else:
@@ -977,7 +1074,7 @@ class ZemZevBot(QueryBot):
             passive=passive,
             dx=dx,
             dy=dy,
-            alt=guidance_alt,
+            alt=alt_terrain,
             max_power=max_power,
             min_throttle=min_throttle,
             max_throttle=max_throttle,
