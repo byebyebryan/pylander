@@ -445,6 +445,21 @@ class _FakeCollidingContactAdapter:
         _ = angle, clear_velocity
 
 
+class _FakeSideScrapeContactAdapter:
+    enabled = False
+
+    def get_contact_report(self) -> dict:
+        return {
+            "colliding": True,
+            "normal": (1.0, 0.0),
+            "rel_speed": 1.0,
+            "point": (0.0, 0.0),
+        }
+
+    def teleport_lander(self, _pos, angle=None, clear_velocity=True) -> None:
+        _ = angle, clear_velocity
+
+
 def test_refuel_system_transfers_fuel_and_spends_credits() -> None:
     entity = Entity()
     entity.add_component(LanderState(state="landed"))
@@ -736,6 +751,43 @@ def test_contact_system_crashes_on_high_speed_bounce_contact() -> None:
     projection.update(dt)
 
     system = ContactSystem(_FakeCollidingContactAdapter(rel_speed=45.0), model)
+    system.world = world
+    system.update(dt)
+
+    ls = lander.get_component(LanderState)
+    assert ls is not None
+    assert ls.state == "crashed"
+
+
+def test_contact_system_crashes_on_side_scrape_contact() -> None:
+    world = World()
+
+    lander = Entity(uid="lander")
+    lander.add_component(LanderState(state="flying"))
+    # Slow descending speed that would otherwise satisfy site landing checks.
+    lander.add_component(PhysicsState(vel=Vector2(0.0, -1.0)))
+    lander.add_component(Transform(pos=Vector2(0.0, 4.0), rotation=0.0))
+    lander.add_component(FuelTank())
+    lander.add_component(LanderGeometry(width=8.0, height=8.0))
+    lander.add_component(Wallet(credits=0.0))
+    lander.add_component(Engine())
+    world.add_entity(lander)
+
+    site = Entity(uid="site_plane")
+    site.add_component(Transform(pos=Vector2(0.0, 0.0)))
+    site.add_component(
+        LandingSite(size=40.0, terrain_mode="elevated_supports", terrain_bound=False)
+    )
+    site.add_component(LandingSiteEconomy(award=100.0, fuel_price=10.0))
+    world.add_entity(site)
+
+    model = LandingSiteSurfaceModel()
+    projection = LandingSiteProjectionSystem(model)
+    projection.world = world
+    dt = 1.0 / 60.0
+    projection.update(dt)
+
+    system = ContactSystem(_FakeSideScrapeContactAdapter(), model)
     system.world = world
     system.update(dt)
 

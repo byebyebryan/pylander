@@ -11,6 +11,8 @@ class ContactSystem(System):
     Replaces Lander.resolve_contact() / _apply_landing() / _apply_crash().
     """
 
+    _LANDING_NORMAL_MIN_Y = 0.65
+
     def __init__(self, engine_adapter, sites):
         super().__init__()
         self.engine_adapter = engine_adapter
@@ -46,8 +48,14 @@ class ContactSystem(System):
             nearby_sites = self.sites.get_sites(Range1D.from_center(trans.pos.x, half_w))
             site = nearby_sites[0] if nearby_sites else None
 
-        if site is not None and self._can_land_on_site(entity, site, half_w, half_h, dt):
+        if site is not None and self._can_land_on_site(
+            entity, site, half_w, half_h, dt, report=report
+        ):
             self._apply_landing(entity, site, half_h)
+            return
+
+        if report.get("colliding") and not self._is_landing_surface_contact(report):
+            self._apply_crash(entity)
             return
 
         if self._is_unsafe_colliding_impact(report, ls.safe_landing_velocity):
@@ -103,19 +111,29 @@ class ContactSystem(System):
             angle_ok
             and speed_ok
             and site is not None
-            and self._can_land_on_site(entity, site, half_w, half_h, dt)
+            and self._can_land_on_site(entity, site, half_w, half_h, dt, report=report)
         ):
             self._apply_landing(entity, site, half_h)
         else:
             self._apply_crash(entity)
 
     def _can_land_on_site(
-        self, entity: Entity, site, half_w: float, half_h: float, dt: float
+        self,
+        entity: Entity,
+        site,
+        half_w: float,
+        half_h: float,
+        dt: float,
+        *,
+        report: dict | None = None,
     ) -> bool:
         ls = entity.get_component(LanderState)
         phys = entity.get_component(PhysicsState)
         trans = entity.get_component(Transform)
         if ls is None or phys is None or trans is None:
+            return False
+
+        if report is not None and report.get("colliding") and not self._is_landing_surface_contact(report):
             return False
 
         if abs(trans.pos.x - site.x) > (site.size * 0.5 + half_w):
@@ -132,6 +150,18 @@ class ContactSystem(System):
         lander_bottom_y = trans.pos.y - half_h
         landing_band = max(2.0, abs(rel_vel.y) * max(dt, 1e-3) * 1.5 + 1.0)
         return abs(lander_bottom_y - site.y) <= landing_band
+
+    def _is_landing_surface_contact(self, report: dict) -> bool:
+        normal = report.get("normal")
+        if not isinstance(normal, (tuple, list)) or len(normal) < 2:
+            return False
+        try:
+            normal_y = float(normal[1])
+        except (TypeError, ValueError):
+            return False
+        if not math.isfinite(normal_y):
+            return False
+        return abs(normal_y) >= self._LANDING_NORMAL_MIN_Y
 
     def _crossed_site_plane(
         self, entity: Entity, site, half_w: float, half_h: float, dt: float
