@@ -64,6 +64,9 @@ def test_zem_solver_progress_and_fallback_cap_mid_flare() -> None:
     assert int(snapshot.get("solve_count") or 0) >= 5
     assert int(snapshot.get("fallback_frames") or 0) <= 2
     assert snapshot.get("phase") in {"setup", "coast", "terminal", "touchdown"}
+    assert isinstance(snapshot.get("clearance_margin"), (int, float))
+    assert isinstance(snapshot.get("clearance_scale"), (int, float))
+    assert isinstance(snapshot.get("clearance_active"), bool)
 
 
 def test_pdg_optimizer_solution_changes_with_runtime_gravity() -> None:

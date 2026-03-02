@@ -26,6 +26,9 @@ class ZemTelemetry:
     peak_alt_over_target: float | None = None
     lateral_overshoot: float | None = None
     hover_time: float | None = None
+    clearance_margin: float | None = None
+    clearance_scale: float | None = None
+    clearance_active: bool = False
 
 
 class ZemStageEvalTracker:
@@ -122,6 +125,9 @@ class ZemStageEvalTracker:
         self.zem.peak_alt_over_target = self.to_optional_float(snapshot.get("peak_alt_over_target"))
         self.zem.lateral_overshoot = self.to_optional_float(snapshot.get("lateral_overshoot"))
         self.zem.hover_time = self.to_optional_float(snapshot.get("hover_time"))
+        self.zem.clearance_margin = self.to_optional_float(snapshot.get("clearance_margin"))
+        self.zem.clearance_scale = self.to_optional_float(snapshot.get("clearance_scale"))
+        self.zem.clearance_active = bool(snapshot.get("clearance_active"))
 
     def capture_snapshot(self, game, actor, target_pos: Vector2, snapshot: dict[str, Any]) -> None:
         self._pull_zem_telemetry(snapshot)
@@ -186,6 +192,9 @@ class ZemStageEvalTracker:
         result["zem_peak_alt_over_target"] = self.zem.peak_alt_over_target
         result["zem_lateral_overshoot"] = self.zem.lateral_overshoot
         result["zem_hover_time"] = self.zem.hover_time
+        result["zem_clearance_margin"] = self.zem.clearance_margin
+        result["zem_clearance_scale"] = self.zem.clearance_scale
+        result["zem_clearance_active"] = self.zem.clearance_active
 
         if eval_mode == "focused":
             success = bool(self.phase_done)

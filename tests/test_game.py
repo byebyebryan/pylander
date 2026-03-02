@@ -266,6 +266,9 @@ def test_normalize_run_result_includes_new_phase_fields() -> None:
             "climb_phase_time": 5.5,
             "climb_phase_distance": 132.0,
             "climb_arrived": False,
+            "zem_clearance_margin": 72.0,
+            "zem_clearance_scale": 0.85,
+            "zem_clearance_active": True,
         },
     )
     assert record["success"] is True
@@ -277,6 +280,9 @@ def test_normalize_run_result_includes_new_phase_fields() -> None:
     assert record["climb_phase_time"] == pytest.approx(5.5)
     assert record["climb_phase_distance"] == pytest.approx(132.0)
     assert record["climb_arrived"] is False
+    assert record["zem_clearance_margin"] == pytest.approx(72.0)
+    assert record["zem_clearance_scale"] == pytest.approx(0.85)
+    assert record["zem_clearance_active"] is True
 
 
 def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
