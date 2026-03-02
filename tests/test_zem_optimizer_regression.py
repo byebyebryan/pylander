@@ -26,11 +26,12 @@ def _run_level(
     return result, bot
 
 
-def test_zem_smoke_flare_plunge_launch_seed0() -> None:
+def test_zem_smoke_flare_plunge_climb_launch_seed0() -> None:
     # Fast envelope smoke: verify stable in-flight behavior without crashes.
     cases = [
         ("flare", "mid", 20.0, 15.0),
         ("plunge", "mid_normal", 20.0, 10.0),
+        ("climb", "flat_mid", 25.0, 40.0),
         ("launch", "mid", 20.0, 25.0),
     ]
     for level_name, scenario, max_time, max_offset in cases:

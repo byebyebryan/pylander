@@ -501,7 +501,8 @@ class ZemZevBot(QueryBot):
             if down_speed >= cfg.emergency_vy and alt <= cfg.emergency_alt:
                 a_y = _GRAVITY_MAG + max_thrust_accel
             a_y = clamp(a_y, 0.0, _GRAVITY_MAG + max_thrust_accel)
-            a_x = clamp((-0.55 * vx) + (-0.04 * dx), -7.0, 7.0)
+            # dx is target_x - current_x, so positive dx should command positive lateral accel.
+            a_x = clamp((-0.55 * vx) + (0.04 * dx), -7.0, 7.0)
         else:
             idx = self._plan_index()
             a_x = float(self._plan.ax[idx])

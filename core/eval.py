@@ -138,6 +138,8 @@ def normalize_run_result(
         "eval_phase": result.get("eval_phase"),
         "launch_arrived": _to_optional_bool(result.get("launch_arrived")),
         "launch_landed_site_uid": result.get("launch_landed_site_uid"),
+        "climb_arrived": _to_optional_bool(result.get("climb_arrived")),
+        "climb_landed_site_uid": result.get("climb_landed_site_uid"),
         "zem_setup_gate_done": _to_optional_bool(result.get("zem_setup_gate_done")),
         "zem_setup_gate_time": _to_optional_float(result.get("zem_setup_gate_time")),
         "zem_setup_gate_altitude": _to_optional_float(
@@ -189,6 +191,22 @@ def normalize_run_result(
         ),
         "coast_phase_path_efficiency": _to_optional_float(
             result.get("coast_phase_path_efficiency")
+        ),
+        "climb_phase_done": _to_optional_bool(result.get("climb_phase_done")),
+        "climb_phase_time": _to_optional_float(result.get("climb_phase_time")),
+        "climb_phase_altitude": _to_optional_float(result.get("climb_phase_altitude")),
+        "climb_phase_projected_dx": _to_optional_float(
+            result.get("climb_phase_projected_dx")
+        ),
+        "climb_phase_distance": _to_optional_float(result.get("climb_phase_distance")),
+        "climb_phase_fuel_consumed": _to_optional_float(
+            result.get("climb_phase_fuel_consumed")
+        ),
+        "climb_phase_fuel_per_distance": _to_optional_float(
+            result.get("climb_phase_fuel_per_distance")
+        ),
+        "climb_phase_path_efficiency": _to_optional_float(
+            result.get("climb_phase_path_efficiency")
         ),
     }
     for key, value in result.items():

@@ -4,7 +4,7 @@ Pylander bot work is now centered on a unified in-flight controller (`zem_zev`) 
 
 ## Control model
 
-- `zem_zev`: optimizer-first coupled 2-axis guidance used by default in `launch`, `setup`, `coast`, and `flare`.
+- `zem_zev`: optimizer-first coupled 2-axis guidance used by default in `launch`, `setup`, `coast`, `climb`, and `flare`.
 - `plunge`: terminal-only benchmark bot for vertical burn timing and touchdown behavior.
 
 The in-flight path is a single owner with internal phases (`setup -> coast -> terminal -> touchdown`), not inter-bot runtime handoffs.
@@ -26,6 +26,7 @@ Core metrics from game + batch aggregation:
 - Timing: `time`, `time_to_first_land`
 - Unified optimizer telemetry: `zem_*` gate + solver fields
 - Focused stage coverage metrics:
+  - `climb_phase_*`
   - `setup_phase_*`
   - `coast_phase_*`
 

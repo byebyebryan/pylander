@@ -2,7 +2,7 @@
 
 Implementation: [`bots/zem_zev.py`](../bots/zem_zev.py), [`bots/_optimizer_pdg.py`](../bots/_optimizer_pdg.py)
 
-`zem_zev` is the unified optimizer-first full-envelope guidance bot used by default in `launch`, `setup`, `coast`, and `flare`.
+`zem_zev` is the unified optimizer-first full-envelope guidance bot used by default in `launch`, `setup`, `coast`, `climb`, and `flare`.
 
 Implementation note:
 
@@ -94,6 +94,7 @@ Throttle allocation includes simple on/off hysteresis to reduce min-throttle cha
 
 Focused eval boundaries:
 
+- `climb --eval-mode focused` -> `zem_setup_gate_done`
 - `setup --eval-mode focused` -> `zem_setup_gate_done`
 - `coast --eval-mode focused` -> `zem_terminal_gate_done`
 

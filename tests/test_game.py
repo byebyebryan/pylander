@@ -7,7 +7,7 @@ from app.cli import build_parser, parse_command
 from app.config import BenchCommand, BenchSettings, RunCommand
 from bots import create_bot, list_available_bots
 from core.bot import QueryBot
-from core.components import PhysicsState, Transform
+from core.components import LandingSite, PhysicsState, Transform
 from core.ecs import require_component
 from core.eval import aggregate_eval_records, normalize_run_result
 from game import LanderGame
@@ -39,7 +39,7 @@ def test_bot_registry_exposes_only_supported_bots() -> None:
 
 def test_level_registry_still_includes_phase_levels() -> None:
     levels = list_available_levels()
-    for name in ("plunge", "flare", "coast", "setup", "launch"):
+    for name in ("plunge", "flare", "coast", "climb", "setup", "launch"):
         assert name in levels
 
 
@@ -85,7 +85,58 @@ def test_setup_level_scenario_names_are_clean_and_prefixed_removed() -> None:
     ]
 
 
-def test_setup_and_coast_reject_unknown_eval_mode() -> None:
+def test_climb_level_scenario_names_are_clean_and_prefixed_removed() -> None:
+    level = create_level_by_name("climb")
+    assert level.list_batch_scenarios() == [
+        "flat_low",
+        "flat_mid",
+        "flat_high",
+        "slope_low",
+        "slope_mid",
+        "slope_high",
+    ]
+    assert level.list_quick_benchmark_scenarios() == [
+        "flat_mid",
+        "slope_mid",
+        "slope_high",
+    ]
+
+
+def test_climb_rejects_unknown_scenario() -> None:
+    level = create_level_by_name("climb")
+    with pytest.raises(ValueError, match="Unknown climb scenario"):
+        level.set_eval_scenario("bad")
+
+
+def test_climb_slope_target_is_terrain_bound_not_supports() -> None:
+    slope_level = create_level_by_name("climb")
+    slope_level.set_eval_scenario("slope_mid")
+    slope_game = LanderGame(level=slope_level, seed=0, bot=create_bot("zem_zev"), headless=True)
+    slope_target = next(
+        site
+        for site in slope_game.level.world.site_entities
+        if site.uid == "climb_site_target"
+    )
+    slope_shape = slope_target.get_component(LandingSite)
+    assert slope_shape is not None
+    assert slope_shape.terrain_mode == "flush_flatten"
+    assert slope_shape.terrain_bound is True
+
+    flat_level = create_level_by_name("climb")
+    flat_level.set_eval_scenario("flat_mid")
+    flat_game = LanderGame(level=flat_level, seed=0, bot=create_bot("zem_zev"), headless=True)
+    flat_target = next(
+        site
+        for site in flat_game.level.world.site_entities
+        if site.uid == "climb_site_target"
+    )
+    flat_shape = flat_target.get_component(LandingSite)
+    assert flat_shape is not None
+    assert flat_shape.terrain_mode == "elevated_supports"
+    assert flat_shape.terrain_bound is False
+
+
+def test_setup_coast_and_climb_reject_unknown_eval_mode() -> None:
     setup = create_level_by_name("setup")
     with pytest.raises(ValueError, match="Unknown setup eval mode"):
         setup.set_eval_mode("bad")
@@ -93,6 +144,10 @@ def test_setup_and_coast_reject_unknown_eval_mode() -> None:
     coast = create_level_by_name("coast")
     with pytest.raises(ValueError, match="Unknown coast eval mode"):
         coast.set_eval_mode("bad")
+
+    climb = create_level_by_name("climb")
+    with pytest.raises(ValueError, match="Unknown climb eval mode"):
+        climb.set_eval_mode("bad")
 
 
 def _spawn_state(level_name: str, scenario: str, seed: int) -> tuple[float, float, float, float, float]:
@@ -119,6 +174,10 @@ def test_setup_and_coast_scenarios_are_seed_deterministic() -> None:
     coast_a = _spawn_state("coast", "mid_tight", 42)
     coast_b = _spawn_state("coast", "mid_tight", 42)
     assert coast_a == pytest.approx(coast_b)
+
+    climb_a = _spawn_state("climb", "slope_mid", 42)
+    climb_b = _spawn_state("climb", "slope_mid", 42)
+    assert climb_a == pytest.approx(climb_b)
 
 
 def test_setup_focused_eval_uses_zem_gate_only(monkeypatch) -> None:
@@ -175,6 +234,32 @@ def test_coast_focused_eval_uses_zem_gate_only(monkeypatch) -> None:
     assert result["coast_phase_altitude"] == pytest.approx(88.0)
 
 
+def test_climb_focused_eval_uses_zem_gate_only(monkeypatch) -> None:
+    level = create_level_by_name("climb")
+    level.set_eval_mode("focused")
+    game = LanderGame(level=level, seed=0, bot=create_bot("zem_zev"), headless=True)
+
+    def _snapshot(_game):
+        return {
+            "kind": "zem_zev",
+            "setup_gate_done": True,
+            "setup_gate_time": 4.75,
+            "setup_gate_altitude": 145.0,
+            "setup_gate_projected_dx": 12.0,
+        }
+
+    monkeypatch.setattr(level, "_resolve_zem_snapshot", _snapshot)
+    level.update(game, 1.0 / 60.0)
+    assert level.should_end(game)
+
+    result = level.end(game)
+    assert result["eval_phase"] == "zem_setup_gate"
+    assert result["success"] is True
+    assert result["climb_phase_done"] is True
+    assert result["climb_phase_time"] == pytest.approx(4.75)
+    assert result["climb_phase_altitude"] == pytest.approx(145.0)
+
+
 def test_normalize_run_result_includes_new_phase_fields() -> None:
     record = normalize_run_result(
         bot_name="zem_zev",
@@ -193,6 +278,10 @@ def test_normalize_run_result_includes_new_phase_fields() -> None:
             "setup_phase_fuel_per_distance": 0.073,
             "coast_phase_done": False,
             "coast_phase_distance": 0.0,
+            "climb_phase_done": True,
+            "climb_phase_time": 5.5,
+            "climb_phase_distance": 132.0,
+            "climb_arrived": False,
         },
     )
     assert record["success"] is True
@@ -200,6 +289,10 @@ def test_normalize_run_result_includes_new_phase_fields() -> None:
     assert record["setup_phase_time"] == pytest.approx(6.0)
     assert record["setup_phase_distance"] == pytest.approx(150.0)
     assert record["coast_phase_done"] is False
+    assert record["climb_phase_done"] is True
+    assert record["climb_phase_time"] == pytest.approx(5.5)
+    assert record["climb_phase_distance"] == pytest.approx(132.0)
+    assert record["climb_arrived"] is False
 
 
 def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
@@ -264,11 +357,11 @@ def test_resolve_batch_plan_quick_benchmark_uses_expected_levels(monkeypatch) ->
     monkeypatch.setattr(
         run_batch_module,
         "list_quick_benchmark_levels",
-        lambda: ["plunge", "flare", "coast", "setup"],
+        lambda: ["plunge", "flare", "coast", "climb", "setup"],
     )
     seeds, levels = resolve_benchmark_plan(config)
     assert seeds == [0]
-    assert levels == ["plunge", "flare", "coast", "setup"]
+    assert levels == ["plunge", "flare", "coast", "climb", "setup"]
 
 
 def test_hud_display_state_falls_back_to_status_parse() -> None:

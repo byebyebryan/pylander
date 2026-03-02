@@ -15,6 +15,7 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 - Scenario levels:
   - `flare`: [`flare.md`](flare.md)
   - `coast`: [`coast.md`](coast.md)
+  - `climb`: [`climb.md`](climb.md)
   - `setup`: [`setup.md`](setup.md)
   - `launch`: [`launch.md`](launch.md)
 

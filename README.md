@@ -7,7 +7,7 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 - Start here: [`docs/README.md`](docs/README.md)
 - Bot framework + API: [`docs/overview.md`](docs/overview.md)
 - Bot docs: [`docs/plunge.md`](docs/plunge.md), [`docs/zem_zev.md`](docs/zem_zev.md)
-- Scenario docs: [`docs/flare.md`](docs/flare.md), [`docs/coast.md`](docs/coast.md), [`docs/setup.md`](docs/setup.md), [`docs/launch.md`](docs/launch.md)
+- Scenario docs: [`docs/flare.md`](docs/flare.md), [`docs/coast.md`](docs/coast.md), [`docs/climb.md`](docs/climb.md), [`docs/setup.md`](docs/setup.md), [`docs/launch.md`](docs/launch.md)
 
 ## Features
 
@@ -53,6 +53,7 @@ uv run python main.py play flat --bot zem_zev
 ```bash
 uv run python main.py run flare --bot zem_zev --seed 0
 uv run python main.py run coast --bot zem_zev --scenario mid_wide --seed 3
+uv run python main.py run climb --bot zem_zev --scenario slope_mid --seed 0
 uv run python main.py run plunge --bot plunge --scenario mid_normal --seed 0
 uv run python main.py run flare --bot query_demo --seed 0
 ```
@@ -72,7 +73,7 @@ uv run python main.py bench coast \
 
 # Multi-level benchmark + reports
 uv run python main.py bench plunge \
-  --levels plunge,flare,coast,setup,launch \
+  --levels plunge,flare,coast,climb,setup,launch \
   --bot zem_zev \
   --seeds 0-9 \
   --json auto \
@@ -84,9 +85,10 @@ Quick benchmark subsets:
 - `plunge`: `low_normal`, `mid_normal`, `high_normal`
 - `flare`: `shallow`, `mid`, `steep`
 - `coast`: `shallow_tight`, `mid_wide`, `steep_wide`
+- `climb`: `flat_mid`, `slope_mid`, `slope_high`
 - `setup`: `shallow_near`, `mid_far`, `steep_far`
 
-Focused eval (`--eval-mode focused`) is available for `flare`, `coast`, and `setup`.
+Focused eval (`--eval-mode focused`) is available for `flare`, `coast`, `climb`, and `setup`.
 
 ## Key options
 

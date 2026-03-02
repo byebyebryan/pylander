@@ -56,7 +56,7 @@ def parse_name_csv(spec: str) -> list[str]:
 
 
 def list_quick_benchmark_levels() -> list[str]:
-    preferred = ["plunge", "flare", "coast", "setup"]
+    preferred = ["plunge", "flare", "coast", "climb", "setup"]
     available = set(list_available_levels())
     return [name for name in preferred if name in available]
 
