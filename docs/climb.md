@@ -10,6 +10,12 @@
 
 Focused evaluation for this level ends at `zem_setup_gate_done`.
 
+Guidance note:
+
+- `zem_zev` handles climb with the same optimizer loop used on other levels.
+- There is currently no climb-specific trajectory shaping in `zem_zev`; climb is
+  a direct stress test of the generic setup controller.
+
 ## Scenario design
 
 Defined in [`levels/climb.py`](../levels/climb.py):
@@ -46,6 +52,12 @@ Additional `zem_zev` diagnostics exported for climb tuning:
 - `zem_peak_alt_over_target`
 - `zem_lateral_overshoot`
 - `zem_hover_time`
+- `zem_clearance_margin`
+- `zem_clearance_scale`
+- `zem_clearance_active`
+
+`zem_clearance_*` fields are retained for compatibility and are expected to be
+inactive (`0`/`False`) in the current generic-baseline configuration.
 
 ## Commands
 

@@ -126,17 +126,12 @@ class LaunchLevel(PresetLevel):
             setattr(self, "eval_target_pos", Vector2(dest_site.x, dest_site.y))
 
     def _resolve_landed_site_uid(self, landed_x: float) -> str | None:
-        best_uid: str | None = None
-        best_distance = float("inf")
         for spec in self.site_specs:
             half = 0.5 * float(spec.size)
             distance = abs(float(landed_x) - float(spec.x))
             if distance <= half + 1e-6:
                 return spec.uid
-            if distance < best_distance:
-                best_distance = distance
-                best_uid = spec.uid
-        return best_uid
+        return None
 
     def end(self, game):
         result = super().end(game)

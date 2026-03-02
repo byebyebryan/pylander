@@ -115,6 +115,8 @@ Focused eval (`--eval-mode focused`) is available for `flare`, `coast`, `climb`,
 - `--scenario NAME`
 - `--quick`
 - `--workers N`
+- If worker processes are unavailable in your environment, `bench` falls back to
+  sequential execution and prints a warning.
 - `--json PATH|auto`
 - `--csv PATH|auto`
 - `--eval-mode auto|focused|full`

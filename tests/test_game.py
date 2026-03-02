@@ -120,6 +120,26 @@ def test_climb_target_is_terrain_bound_not_supports() -> None:
     assert shape.terrain_bound is True
 
 
+def test_climb_landed_site_uid_requires_pad_overlap() -> None:
+    level = create_level_by_name("climb")
+    level.set_eval_scenario("slope_mid")
+    _game = LanderGame(level=level, seed=0, bot=create_bot("zem_zev"), headless=True)
+    target = next(spec for spec in level.site_specs if spec.uid == "climb_site_target")
+    half = 0.5 * float(target.size)
+    assert level._resolve_landed_site_uid(float(target.x)) == "climb_site_target"
+    assert level._resolve_landed_site_uid(float(target.x) + half + 2.0) is None
+
+
+def test_launch_landed_site_uid_requires_pad_overlap() -> None:
+    level = create_level_by_name("launch")
+    level.set_eval_scenario("mid")
+    _game = LanderGame(level=level, seed=0, bot=create_bot("zem_zev"), headless=True)
+    dest = next(spec for spec in level.site_specs if spec.uid == "launch_site_dest")
+    half = 0.5 * float(dest.size)
+    assert level._resolve_landed_site_uid(float(dest.x)) == "launch_site_dest"
+    assert level._resolve_landed_site_uid(float(dest.x) + half + 2.0) is None
+
+
 def test_setup_coast_and_climb_reject_unknown_eval_mode() -> None:
     setup = create_level_by_name("setup")
     with pytest.raises(ValueError, match="Unknown setup eval mode"):

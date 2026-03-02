@@ -296,7 +296,8 @@ def run_benchmark(cfg: BenchSettings) -> int:
         except Exception as exc:
             print(
                 f"Batch workers unavailable ({type(exc).__name__}: {exc}); "
-                "falling back to sequential execution."
+                "falling back to sequential execution. "
+                "Use --workers 1 to silence this in restricted environments."
             )
             records = _run_batch_sequential(
                 run_settings,

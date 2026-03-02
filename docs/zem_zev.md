@@ -77,6 +77,12 @@ Each frame:
 4. allocate acceleration to thrust+angle with tilt/rate limits,
 5. fallback only when optimizer result is infeasible.
 
+For uphill transfers, setup planning currently remains generic:
+
+- there is currently no climb-specific trajectory shaping;
+- climb behavior reflects the same generic setup/coast/terminal loop used on
+  other levels.
+
 Reference path shaping uses an altitude-adaptive two-phase profile:
 
 - high altitude: lateral correction first with shallow y-ref progression,
@@ -92,6 +98,10 @@ Throttle allocation includes simple on/off hysteresis to reduce min-throttle cha
 - `zem_terminal_gate_done`, `zem_terminal_gate_time`, `zem_terminal_gate_altitude`, `zem_terminal_gate_projected_dx`
 - `zem_solve_count`, `zem_solve_ms_mean`, `zem_solve_ms_p90`, `zem_fallback_frames`
 - `zem_peak_alt_over_target`, `zem_lateral_overshoot`, `zem_hover_time`
+- `zem_clearance_margin`, `zem_clearance_scale`, `zem_clearance_active`
+
+`zem_clearance_*` is retained for schema compatibility and is expected to remain
+inactive (`0`/`False`) in the current generic-baseline controller.
 
 Focused eval boundaries:
 
@@ -108,3 +118,5 @@ Solver load is controlled with phase-adaptive replanning:
 - terminal: higher replan rate, tighter deviation thresholds
 
 Use `bench --workers N` for throughput when running large benchmark suites.
+In restricted environments where process workers are blocked, benchmarking
+automatically falls back to sequential execution and prints a warning.
