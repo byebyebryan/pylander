@@ -75,6 +75,7 @@ def test_pdg_optimizer_solution_changes_with_runtime_gravity() -> None:
         vy=-20.0,
         target_x=80.0,
         target_y=0.0,
+        y_floor=-8.0,
         target_vy=-2.0,
         max_thrust_accel=22.0,
         min_thrust_accel=2.0,
@@ -92,3 +93,28 @@ def test_pdg_optimizer_solution_changes_with_runtime_gravity() -> None:
     assert earth_plan is not None and earth_plan.feasible
     # The acceleration profile should change when gravity changes materially.
     assert abs(float(moon_plan.vy[-1]) - float(earth_plan.vy[-1])) > 5.0
+
+
+def test_pdg_optimizer_uphill_target_is_feasible() -> None:
+    optimizer = PDGOptimizer(PDGOptimizerConfig(horizon_steps=36, step_dt=0.2))
+    plan = optimizer.solve(
+        x=0.0,
+        y=5.0,
+        vx=0.0,
+        vy=0.0,
+        target_x=400.0,
+        target_y=800.0,
+        y_floor=-3.0,
+        target_vy=-4.0,
+        max_thrust_accel=22.0,
+        min_thrust_accel=2.0,
+        nominal_thrust_accel=12.0,
+        max_tilt_rad=0.78,
+        descent_floor_vy=-8.0,
+        gravity_mag=1.62,
+        pad_half_width=55.0,
+        altitude_hint=5.0,
+        warm_start=None,
+    )
+    assert plan is not None
+    assert plan.feasible

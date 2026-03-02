@@ -109,6 +109,7 @@ class PDGOptimizer:
         self._vy0: cp.Parameter | None = None
         self._target_x: cp.Parameter | None = None
         self._target_y: cp.Parameter | None = None
+        self._y_floor: cp.Parameter | None = None
         self._target_vy: cp.Parameter | None = None
         self._a_max: cp.Parameter | None = None
         self._a_min: cp.Parameter | None = None
@@ -177,6 +178,7 @@ class PDGOptimizer:
         vy0 = cp.Parameter()
         target_x = cp.Parameter()
         target_y = cp.Parameter()
+        y_floor = cp.Parameter(n + 1)
         target_vy = cp.Parameter()
         a_max = cp.Parameter(nonneg=True)
         a_min = cp.Parameter(nonneg=True)
@@ -194,7 +196,7 @@ class PDGOptimizer:
             y[0] == y0,
             vx[0] == vx0,
             vy[0] == vy0,
-            y >= (target_y - 8.0),
+            y >= y_floor,
         ]
 
         for k in range(n):
@@ -261,6 +263,7 @@ class PDGOptimizer:
         self._vy0 = vy0
         self._target_x = target_x
         self._target_y = target_y
+        self._y_floor = y_floor
         self._target_vy = target_vy
         self._a_max = a_max
         self._a_min = a_min
@@ -281,6 +284,7 @@ class PDGOptimizer:
         vy: float,
         target_x: float,
         target_y: float,
+        y_floor: float | tuple[float, float] | list[float],
         target_vy: float,
         max_thrust_accel: float,
         min_thrust_accel: float,
@@ -303,6 +307,17 @@ class PDGOptimizer:
         self._vy0.value = float(vy)
         self._target_x.value = float(target_x)
         self._target_y.value = float(target_y)
+        if isinstance(y_floor, (int, float)):
+            y_floor_profile = np.full(n + 1, float(y_floor), dtype=float)
+        elif len(y_floor) == 2:
+            y_floor_profile = np.linspace(float(y_floor[0]), float(y_floor[1]), n + 1)
+        else:
+            y_floor_profile = np.asarray(y_floor, dtype=float)
+            if y_floor_profile.shape != (n + 1,):
+                raise ValueError(
+                    f"y_floor profile must have {n + 1} elements, got {y_floor_profile.shape}"
+                )
+        self._y_floor.value = y_floor_profile
         self._target_vy.value = float(target_vy)
         self._a_max.value = max(0.1, float(max_thrust_accel))
         self._a_min.value = max(0.0, float(min_thrust_accel))

@@ -23,6 +23,9 @@ class ZemTelemetry:
     solve_ms_mean: float | None = None
     solve_ms_p90: float | None = None
     fallback_frames: float | None = None
+    peak_alt_over_target: float | None = None
+    lateral_overshoot: float | None = None
+    hover_time: float | None = None
 
 
 class ZemStageEvalTracker:
@@ -116,6 +119,9 @@ class ZemStageEvalTracker:
         self.zem.solve_ms_mean = self.to_optional_float(snapshot.get("solve_ms_mean"))
         self.zem.solve_ms_p90 = self.to_optional_float(snapshot.get("solve_ms_p90"))
         self.zem.fallback_frames = self.to_optional_float(snapshot.get("fallback_frames"))
+        self.zem.peak_alt_over_target = self.to_optional_float(snapshot.get("peak_alt_over_target"))
+        self.zem.lateral_overshoot = self.to_optional_float(snapshot.get("lateral_overshoot"))
+        self.zem.hover_time = self.to_optional_float(snapshot.get("hover_time"))
 
     def capture_snapshot(self, game, actor, target_pos: Vector2, snapshot: dict[str, Any]) -> None:
         self._pull_zem_telemetry(snapshot)
@@ -177,6 +183,9 @@ class ZemStageEvalTracker:
         result["zem_solve_ms_mean"] = self.zem.solve_ms_mean
         result["zem_solve_ms_p90"] = self.zem.solve_ms_p90
         result["zem_fallback_frames"] = self.zem.fallback_frames
+        result["zem_peak_alt_over_target"] = self.zem.peak_alt_over_target
+        result["zem_lateral_overshoot"] = self.zem.lateral_overshoot
+        result["zem_hover_time"] = self.zem.hover_time
 
         if eval_mode == "focused":
             success = bool(self.phase_done)

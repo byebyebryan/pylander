@@ -43,6 +43,12 @@ Defaults:
 - `climb_phase_fuel_per_distance`
 - `climb_phase_path_efficiency`
 
+Additional `zem_zev` diagnostics exported for climb tuning:
+
+- `zem_peak_alt_over_target`
+- `zem_lateral_overshoot`
+- `zem_hover_time`
+
 ## Commands
 
 ```bash

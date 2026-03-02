@@ -46,7 +46,7 @@ Discrete dynamics:
 - `sqrt(ax^2 + ay^2) <= a_max`
 - nominal-first envelope with OD slack reserve
 - tilt cone: `|ax| <= tan(max_tilt) * ay`
-- soft terrain floor guard
+- soft terrain floor guard with dynamic floor (`min(current_y, target_y) - margin`)
 
 ## Objective
 
@@ -91,6 +91,7 @@ Throttle allocation includes simple on/off hysteresis to reduce min-throttle cha
 - `zem_setup_gate_done`, `zem_setup_gate_time`, `zem_setup_gate_altitude`, `zem_setup_gate_projected_dx`
 - `zem_terminal_gate_done`, `zem_terminal_gate_time`, `zem_terminal_gate_altitude`, `zem_terminal_gate_projected_dx`
 - `zem_solve_count`, `zem_solve_ms_mean`, `zem_solve_ms_p90`, `zem_fallback_frames`
+- `zem_peak_alt_over_target`, `zem_lateral_overshoot`, `zem_hover_time`
 
 Focused eval boundaries:
 
