@@ -248,6 +248,7 @@ class LanderGame:
         self.bot = bot
         self.level = level
         seed = random.randint(0, 1000000) if seed is None else seed
+        self.seed = int(seed)
         self._bot_profiler = BotLoopProfiler.from_env(headless=headless)
 
         if headless and not bot:
@@ -338,6 +339,15 @@ class LanderGame:
             enabled=self.headless,
             mode=getattr(self.level, "plot_mode", "none"),
         )
+        level_name = str(
+            getattr(self.level, "_level_name", type(self.level).__module__.split(".")[-1])
+        ).strip()
+        scenario_name = str(getattr(self.level, "scenario_name", "") or "").strip()
+        tag_parts = [level_name] if level_name else ["level"]
+        if scenario_name and scenario_name != level_name:
+            tag_parts.append(scenario_name)
+        tag_parts.append(str(self.seed))
+        self.plotter.set_selector_tag("_".join(tag_parts))
         self._plot_events_seen: set[tuple[str, str]] = set()
 
     def _collect_actor_entities(self) -> list[Entity]:

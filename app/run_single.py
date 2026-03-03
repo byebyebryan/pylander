@@ -86,6 +86,7 @@ def run_once(
 ) -> dict[str, Any]:
     run_name = level_name or settings.level_name
     level = create_level(run_name)
+    setattr(level, "_level_name", run_name)
 
     chosen_scenario = eval_scenario_name if eval_scenario_name is not None else settings.scenario_name
     set_eval_scenario(level, chosen_scenario)
