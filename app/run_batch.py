@@ -222,17 +222,14 @@ def run_benchmark(cfg: BenchSettings) -> int:
                     indexed_records[run_idx] = record
 
             records = [indexed_records[i] for i in range(1, total + 1)]
+        except RuntimeError:
+            raise
         except Exception as exc:
-            print(
-                f"Batch workers unavailable ({type(exc).__name__}: {exc}); "
-                "falling back to sequential execution. "
-                "Use --workers 1 to silence this in restricted environments."
-            )
-            records = _run_batch_sequential(
-                run_settings,
-                run_plan,
-                benchmark_mode=benchmark_mode,
-            )
+            raise ValueError(
+                "Batch workers unavailable; refusing implicit sequential fallback. "
+                f"Cause: {type(exc).__name__}: {exc}. "
+                "Resolve worker/process support or rerun intentionally with --workers 1."
+            ) from exc
 
     summary = aggregate_eval_records(records)
     failed = [r for r in records if not r.get("success", False)]

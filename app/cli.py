@@ -22,6 +22,11 @@ def _default_level(levels: list[str]) -> str | None:
     return "flat" if "flat" in levels else (levels[0] if levels else None)
 
 
+def _default_bench_workers() -> int:
+    cpu_count = int(os.cpu_count() or 1)
+    return max(1, cpu_count - 2)
+
+
 def _add_common_run_args(
     parser: argparse.ArgumentParser,
     *,
@@ -150,7 +155,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--workers",
         type=int,
         default=None,
-        help="Batch worker processes (default: CPU count)",
+        help="Batch worker processes (default: CPU count - 2, min 1)",
     )
     bench.add_argument("-n", "--steps", type=int, default=None, help="Limit simulation to N steps")
     bench.add_argument("-t", "--time", type=float, default=None, help="Limit simulation to S seconds")
@@ -296,7 +301,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
         workers = (
             max(1, int(args.workers))
             if args.workers is not None
-            else max(1, int(os.cpu_count() or 1))
+            else _default_bench_workers()
         )
         selectors: list[BenchTarget] = []
         for raw_selector in args.selectors:

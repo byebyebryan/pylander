@@ -168,5 +168,5 @@ Solver load is controlled with phase-adaptive replanning:
 - terminal: higher replan rate, tighter deviation thresholds
 
 Use `bench --workers N` for throughput when running large benchmark suites.
-In restricted environments where process workers are blocked, benchmarking
-automatically falls back to sequential execution and prints a warning.
+If process workers are blocked, benchmarking now errors (no implicit fallback);
+rerun with `--workers 1` only when you intentionally want sequential execution.

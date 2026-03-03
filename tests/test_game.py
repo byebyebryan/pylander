@@ -478,6 +478,48 @@ def test_parse_bench_command_uses_expected_defaults() -> None:
     assert command.bench.eval_mode == "auto"
 
 
+def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> None:
+    class _FailFuture:
+        def result(self):
+            raise ValueError("boom")
+
+    class _FakePool:
+        def __init__(self, *, max_workers: int):
+            self.max_workers = max_workers
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def submit(self, _fn, *_args, **_kwargs):
+            return _FailFuture()
+
+    monkeypatch.setattr(run_batch_module, "ProcessPoolExecutor", _FakePool)
+    monkeypatch.setattr(run_batch_module, "as_completed", lambda futures: list(futures))
+    monkeypatch.setattr(
+        run_batch_module,
+        "resolve_benchmark_plan",
+        lambda _cfg: [(0, "launch", "mid"), (1, "launch", "mid")],
+    )
+
+    cfg = BenchSettings(
+        bot_name="zem_zev",
+        selectors=(BenchTarget(level_name="launch", scenario_name="mid", seed_spec="0"),),
+        lander_name=None,
+        eval_mode="auto",
+        workers=4,
+        max_time=300.0,
+        max_steps=None,
+        plot_mode="none",
+        json_path=None,
+        csv_path=None,
+    )
+    with pytest.raises(RuntimeError, match="run 1/2 seed=0 level=launch scenario=mid failed"):
+        run_batch_module.run_benchmark(cfg)
+
+
 def test_plot_command_enables_plot_mode_by_default() -> None:
     _parser, command = parse_command(["plot", "launch:far:3", "--bot", "zem_zev"])
     assert isinstance(command, RunCommand)
