@@ -4,6 +4,13 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
+class BenchTarget:
+    level_name: str
+    scenario_name: str | None
+    seed_spec: str | None
+
+
+@dataclass(frozen=True)
 class RunSettings:
     level_name: str
     bot_name: str | None
@@ -24,25 +31,15 @@ class RunSettings:
 @dataclass(frozen=True)
 class BenchSettings:
     bot_name: str | None
-    level_name: str
-    level_names_csv: str | None
-    seeds_csv: str | None
-    scenarios_csv: str | None
-    scenario_name: str | None
+    selectors: tuple[BenchTarget, ...]
     lander_name: str | None
     eval_mode: str
-    quick: bool
     workers: int
     max_time: float
     max_steps: int | None
     plot_mode: str
     json_path: str | None
     csv_path: str | None
-
-
-@dataclass(frozen=True)
-class PlayCommand:
-    run: RunSettings
 
 
 @dataclass(frozen=True)
@@ -55,4 +52,4 @@ class BenchCommand:
     bench: BenchSettings
 
 
-Command = PlayCommand | RunCommand | BenchCommand
+Command = RunCommand | BenchCommand

@@ -4,7 +4,7 @@ import pytest
 
 import app.run_batch as run_batch_module
 from app.cli import build_parser, parse_command
-from app.config import BenchCommand, BenchSettings, RunCommand
+from app.config import BenchCommand, BenchSettings, BenchTarget, RunCommand
 from bots import create_bot, list_available_bots
 from core.bot import QueryBot
 from core.components import LandingSite, PhysicsState, Transform
@@ -388,17 +388,12 @@ def test_parser_rejects_removed_bot_behavior_flag() -> None:
         parser.parse_args(["run", "plunge", "--bot-behavior", "balanced"])
 
 
-def test_resolve_batch_plan_quick_benchmark_uses_expected_levels(monkeypatch) -> None:
+def test_resolve_batch_plan_expands_all_scenarios_without_seed_spec(monkeypatch) -> None:
     config = BenchSettings(
         bot_name=None,
-        level_name="plunge",
-        level_names_csv=None,
-        seeds_csv=None,
-        scenarios_csv=None,
-        scenario_name=None,
+        selectors=(BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None),),
         lander_name=None,
         eval_mode="auto",
-        quick=True,
         workers=1,
         max_time=300.0,
         max_steps=None,
@@ -409,12 +404,37 @@ def test_resolve_batch_plan_quick_benchmark_uses_expected_levels(monkeypatch) ->
 
     monkeypatch.setattr(
         run_batch_module,
-        "list_quick_benchmark_levels",
-        lambda: ["plunge", "flare", "coast", "climb", "setup"],
+        "resolve_level_scenarios",
+        lambda _name: ["low_normal", "mid_normal"],
     )
-    seeds, levels = resolve_benchmark_plan(config)
-    assert seeds == [0]
-    assert levels == ["plunge", "flare", "coast", "climb", "setup"]
+    monkeypatch.setattr(run_batch_module, "_scenario_has_randomized_fields", lambda _l, _s: False)
+    plan = resolve_benchmark_plan(config)
+    assert plan == [
+        (0, "plunge", "low_normal"),
+        (0, "plunge", "mid_normal"),
+    ]
+
+
+def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
+    config = BenchSettings(
+        bot_name=None,
+        selectors=(BenchTarget(level_name="launch", scenario_name="far", seed_spec="0-2,2"),),
+        lander_name=None,
+        eval_mode="auto",
+        workers=1,
+        max_time=300.0,
+        max_steps=None,
+        plot_mode="none",
+        json_path=None,
+        csv_path=None,
+    )
+    monkeypatch.setattr(run_batch_module, "_scenario_has_randomized_fields", lambda _l, _s: False)
+    plan = resolve_benchmark_plan(config)
+    assert plan == [
+        (0, "launch", "far"),
+        (1, "launch", "far"),
+        (2, "launch", "far"),
+    ]
 
 
 def test_hud_display_state_falls_back_to_status_parse() -> None:
@@ -438,7 +458,7 @@ def test_hud_display_state_prefers_phase_token() -> None:
 
 
 def test_parse_args_eval_mode_default_is_auto() -> None:
-    _parser, command = parse_command(["run", "plunge"])
+    _parser, command = parse_command(["sim", "plunge"])
     assert isinstance(command, RunCommand)
     assert command.run.eval_mode == "auto"
 
@@ -452,6 +472,16 @@ def test_cli_requires_subcommand() -> None:
 def test_parse_bench_command_uses_expected_defaults() -> None:
     _parser, command = parse_command(["bench", "plunge"])
     assert isinstance(command, BenchCommand)
-    assert command.bench.level_name == "plunge"
+    assert command.bench.selectors == (
+        BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None),
+    )
     assert command.bench.eval_mode == "auto"
-    assert command.bench.quick is False
+
+
+def test_plot_command_enables_plot_mode_by_default() -> None:
+    _parser, command = parse_command(["plot", "launch:far:3", "--bot", "zem_zev"])
+    assert isinstance(command, RunCommand)
+    assert command.run.level_name == "launch"
+    assert command.run.scenario_name == "far"
+    assert command.run.seed == 3
+    assert command.run.plot_mode == "all"

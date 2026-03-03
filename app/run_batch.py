@@ -10,106 +10,30 @@ from core.eval import (
     write_csv_records,
     write_json_report,
 )
-from levels import create_level, list_available_levels
+from levels import create_level
 
-from app.config import BenchSettings, RunSettings
+from app.config import BenchSettings, BenchTarget, RunSettings
 from app.reporting import print_batch_summary
 from app.run_single import (
     resolve_default_bot,
     run_once_record,
     set_eval_scenario,
 )
+from app.selector import parse_seed_spec
 
 _AUTO_RANDOMIZED_BATCH_SEEDS: tuple[int, ...] = tuple(range(10))
 
 
-def parse_seed_spec(spec: str) -> list[int]:
-    values: list[int] = []
-    for token in (p.strip() for p in spec.split(",")):
-        if not token:
-            continue
-        if "-" in token:
-            left, right = token.split("-", 1)
-            start = int(left.strip())
-            end = int(right.strip())
-            step = 1 if end >= start else -1
-            values.extend(range(start, end + step, step))
-        else:
-            values.append(int(token))
-
-    out: list[int] = []
-    seen: set[int] = set()
-    for value in values:
-        if value in seen:
-            continue
-        seen.add(value)
-        out.append(value)
-    return out
-
-
-def parse_name_csv(spec: str) -> list[str]:
-    out: list[str] = []
-    for token in (p.strip() for p in spec.split(",")):
-        if token:
-            out.append(token)
-    return out
-
-
-def list_quick_benchmark_levels() -> list[str]:
-    preferred = ["plunge", "flare", "coast", "climb", "setup"]
-    available = set(list_available_levels())
-    return [name for name in preferred if name in available]
-
-
-def resolve_level_scenarios(level_name: str, *, quick: bool = False) -> list[str]:
+def resolve_level_scenarios(level_name: str) -> list[str]:
     try:
         level = create_level(level_name)
     except Exception:
         return []
-    if quick:
-        list_scenarios = getattr(level, "list_quick_benchmark_scenarios", None)
-        if not callable(list_scenarios):
-            list_scenarios = getattr(level, "list_batch_scenarios", None)
-    else:
-        list_scenarios = getattr(level, "list_batch_scenarios", None)
+    list_scenarios = getattr(level, "list_batch_scenarios", None)
     if not callable(list_scenarios):
         return []
     out = [str(name).strip() for name in list_scenarios()]
     return [name for name in out if name]
-
-
-def resolve_scenarios_for_level(
-    cfg: BenchSettings,
-    level_name: str,
-    *,
-    resolver: Callable[[str, bool], list[str]] | None = None,
-) -> list[str]:
-    local_resolver = resolver or (lambda name, quick: resolve_level_scenarios(name, quick=quick))
-    if cfg.scenarios_csv:
-        return parse_name_csv(cfg.scenarios_csv)
-    if cfg.scenario_name:
-        return [cfg.scenario_name]
-    if cfg.quick:
-        return local_resolver(level_name, True)
-    return local_resolver(level_name, False)
-
-
-def resolve_benchmark_plan(cfg: BenchSettings) -> tuple[list[int], list[str]]:
-    if cfg.quick:
-        seeds = [0]
-        levels = list_quick_benchmark_levels() or [cfg.level_name]
-        return seeds, levels
-
-    if cfg.seeds_csv:
-        seeds = parse_seed_spec(cfg.seeds_csv)
-    else:
-        seeds = [0]
-
-    if cfg.level_names_csv:
-        levels = parse_name_csv(cfg.level_names_csv)
-    else:
-        levels = [cfg.level_name]
-    return seeds, levels
 
 
 def _scenario_has_randomized_fields(level_name: str, scenario_name: str | None) -> bool:
@@ -127,12 +51,77 @@ def _scenario_has_randomized_fields(level_name: str, scenario_name: str | None) 
     return False
 
 
+def resolve_selector_plan(
+    target: BenchTarget,
+    *,
+    scenario_resolver: Callable[[str], list[str]] | None = None,
+    randomized_checker: Callable[[str, str | None], bool] | None = None,
+) -> list[tuple[int, str, str | None]]:
+    resolver = scenario_resolver or resolve_level_scenarios
+    checker = randomized_checker or _scenario_has_randomized_fields
+    explicit_seeds = parse_seed_spec(target.seed_spec) if target.seed_spec else None
+
+    if explicit_seeds is not None and not explicit_seeds:
+        raise ValueError(
+            f"Selector '{target.level_name}' resolved an empty seed list from '{target.seed_spec}'"
+        )
+
+    scenarios: list[str | None]
+    if target.scenario_name is not None:
+        scenarios = [target.scenario_name]
+    else:
+        listed = resolver(target.level_name)
+        scenarios = listed if listed else [None]
+
+    run_plan: list[tuple[int, str, str | None]] = []
+    for scenario_name in scenarios:
+        if explicit_seeds is not None:
+            seeds = explicit_seeds
+        elif checker(target.level_name, scenario_name):
+            seeds = list(_AUTO_RANDOMIZED_BATCH_SEEDS)
+        else:
+            seeds = [0]
+        run_plan.extend((seed, target.level_name, scenario_name) for seed in seeds)
+    return run_plan
+
+
+def resolve_benchmark_plan(cfg: BenchSettings) -> list[tuple[int, str, str | None]]:
+    if not cfg.selectors:
+        raise ValueError("Benchmark requires at least one selector")
+
+    level_scenarios_cache: dict[str, list[str]] = {}
+    scenario_randomized_cache: dict[tuple[str, str | None], bool] = {}
+
+    def resolve_level_scenarios_cached(level_name: str) -> list[str]:
+        if level_name not in level_scenarios_cache:
+            level_scenarios_cache[level_name] = resolve_level_scenarios(level_name)
+        return level_scenarios_cache[level_name]
+
+    def scenario_has_randomized_cached(level_name: str, scenario_name: str | None) -> bool:
+        key = (level_name, scenario_name)
+        if key not in scenario_randomized_cache:
+            scenario_randomized_cache[key] = _scenario_has_randomized_fields(level_name, scenario_name)
+        return scenario_randomized_cache[key]
+
+    run_plan: list[tuple[int, str, str | None]] = []
+    for target in cfg.selectors:
+        run_plan.extend(
+            resolve_selector_plan(
+                target,
+                scenario_resolver=resolve_level_scenarios_cached,
+                randomized_checker=scenario_has_randomized_cached,
+            )
+        )
+    return run_plan
+
+
 def _to_run_settings(cfg: BenchSettings) -> RunSettings:
+    first_level = cfg.selectors[0].level_name
     return RunSettings(
-        level_name=cfg.level_name,
+        level_name=first_level,
         bot_name=cfg.bot_name,
         seed=None,
-        scenario_name=cfg.scenario_name,
+        scenario_name=None,
         lander_name=cfg.lander_name,
         eval_mode=cfg.eval_mode,
         print_freq=0,
@@ -173,69 +162,15 @@ def _run_batch_sequential(
 
 def run_benchmark(cfg: BenchSettings) -> int:
     run_settings = _to_run_settings(cfg)
-
-    seeds, levels = resolve_benchmark_plan(cfg)
-    if not seeds:
-        raise ValueError("Benchmark resolved no seeds")
-    if not levels:
-        raise ValueError("Benchmark resolved no levels")
-
-    default_bot_cache: dict[str, str | None] = {}
-    level_scenarios_cache: dict[tuple[str, bool], list[str]] = {}
-    scenario_randomized_cache: dict[tuple[str, str | None], bool] = {}
-
-    def resolve_default_bot_cached(level_name: str) -> str | None:
-        if level_name not in default_bot_cache:
-            default_bot_cache[level_name] = resolve_default_bot(level_name)
-        return default_bot_cache[level_name]
-
-    def resolve_level_scenarios_cached(level_name: str, quick: bool) -> list[str]:
-        key = (level_name, quick)
-        if key not in level_scenarios_cache:
-            level_scenarios_cache[key] = resolve_level_scenarios(level_name, quick=quick)
-        return level_scenarios_cache[key]
-
-    def scenario_has_randomized_cached(level_name: str, scenario_name: str | None) -> bool:
-        key = (level_name, scenario_name)
-        if key not in scenario_randomized_cache:
-            scenario_randomized_cache[key] = _scenario_has_randomized_fields(level_name, scenario_name)
-        return scenario_randomized_cache[key]
-
-    run_plan: list[tuple[int, str, str | None]] = []
-    explicit_seed_control = bool(cfg.quick or cfg.seeds_csv is not None)
-
-    for level_name in levels:
-        scenarios = resolve_scenarios_for_level(
-            cfg,
-            level_name,
-            resolver=resolve_level_scenarios_cached,
-        )
-        if not scenarios:
-            if explicit_seed_control:
-                scenario_seeds = seeds
-            elif scenario_has_randomized_cached(level_name, None):
-                scenario_seeds = list(_AUTO_RANDOMIZED_BATCH_SEEDS)
-            else:
-                scenario_seeds = [0]
-            run_plan.extend((seed, level_name, None) for seed in scenario_seeds)
-            continue
-
-        for scenario_name in scenarios:
-            if explicit_seed_control:
-                scenario_seeds = seeds
-            elif scenario_has_randomized_cached(level_name, scenario_name):
-                scenario_seeds = list(_AUTO_RANDOMIZED_BATCH_SEEDS)
-            else:
-                scenario_seeds = [0]
-            run_plan.extend((seed, level_name, scenario_name) for seed in scenario_seeds)
-
+    run_plan = resolve_benchmark_plan(cfg)
     total = len(run_plan)
     if total <= 0:
         raise ValueError("Benchmark resolved no runs")
 
+    unique_levels = sorted({level_name for _seed, level_name, _scenario in run_plan})
     if cfg.bot_name is None:
         missing_defaults = [
-            level_name for level_name in levels if resolve_default_bot_cached(level_name) is None
+            level_name for level_name in unique_levels if resolve_default_bot(level_name) is None
         ]
         if missing_defaults:
             missing_csv = ",".join(missing_defaults)
@@ -247,7 +182,7 @@ def run_benchmark(cfg: BenchSettings) -> int:
     worker_count = max(1, min(cfg.workers, total, os.cpu_count() or 1))
     print(f"Batch workers: requested={cfg.workers} effective={worker_count}")
 
-    benchmark_mode = "median" if cfg.quick else "sample"
+    benchmark_mode = "sample"
     if worker_count <= 1:
         records = _run_batch_sequential(
             run_settings,
@@ -310,6 +245,13 @@ def run_benchmark(cfg: BenchSettings) -> int:
     used_seeds = sorted({seed for seed, _level_name, _scenario_name in run_plan})
 
     batch_bot_name = cfg.bot_name or "level_default"
+    artifact_level = unique_levels[0] if len(unique_levels) == 1 else "batch"
+    artifact_tags = sorted(
+        {
+            f"{level_name}:{scenario_name}" if scenario_name is not None else level_name
+            for _seed, level_name, scenario_name in run_plan
+        }
+    )
 
     json_path = None
     csv_path = None
@@ -317,10 +259,10 @@ def run_benchmark(cfg: BenchSettings) -> int:
         json_target = (
             default_artifact_path(
                 kind="json",
-                level_name=cfg.level_name,
+                level_name=artifact_level,
                 bot_name=batch_bot_name,
                 seeds=used_seeds,
-                scenarios=levels,
+                scenarios=artifact_tags,
             )
             if cfg.json_path == "auto"
             else cfg.json_path
@@ -337,10 +279,10 @@ def run_benchmark(cfg: BenchSettings) -> int:
         csv_target = (
             default_artifact_path(
                 kind="csv",
-                level_name=cfg.level_name,
+                level_name=artifact_level,
                 bot_name=batch_bot_name,
                 seeds=used_seeds,
-                scenarios=levels,
+                scenarios=artifact_tags,
             )
             if cfg.csv_path == "auto"
             else cfg.csv_path
@@ -349,3 +291,4 @@ def run_benchmark(cfg: BenchSettings) -> int:
 
     print_batch_summary(summary, failed, json_path, csv_path)
     return 0 if summary["successes"] == summary["runs"] else 1
+
