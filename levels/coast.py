@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from core.components import PhysicsState, Transform
 from core.ecs import require_component
+from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 from core.level import Level
 from core.maths import Vector2
 from levels.scenario_common import (
@@ -78,6 +79,7 @@ _SCENARIOS: tuple[CoastScenario, ...] = tuple(
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
 _DEFAULT_SCENARIO = "mid_tight"
+_SMOKE_BENCHMARK_SCENARIOS: tuple[str, ...] = ("mid_wide",)
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
     "shallow_tight",
     "mid_wide",
@@ -127,6 +129,16 @@ class CoastLevel(ScenarioLevel):
     @staticmethod
     def list_quick_benchmark_scenarios() -> list[str]:
         return [name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME]
+
+    @staticmethod
+    def benchmark_profile() -> LevelBenchmarkProfile:
+        full = tuple(item.name for item in _SCENARIOS)
+        quick = tuple(name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME)
+        smoke = tuple(name for name in _SMOKE_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME)
+        return LevelBenchmarkProfile(
+            policy="normal",
+            scenarios=BenchmarkScenarioSets(smoke=smoke, quick=quick, full=full),
+        )
 
     def set_eval_scenario(self, name: str) -> None:
         key = str(name).strip().lower()

@@ -103,6 +103,18 @@ Bench selector format:
 
 Focused eval (`--eval-mode focused`) is available for `flare`, `coast`, `climb`, and `setup`.
 
+Benchmark pack tooling (`skills/pylander-benchmark/scripts/*.py`) now reads
+level metadata from `benchmark_profile()`:
+
+- scenario sets: `smoke`, `quick`, `full`
+- policy: `normal`, `observe_only`, `excluded`
+
+Default policy profile:
+
+- `flat`, `mountains`: `excluded`
+- `climb`: `observe_only`
+- `plunge`, `flare`, `coast`, `setup`, `launch`: `normal`
+
 ## Key options
 
 ### `run` / `sim` / `plot`
@@ -126,14 +138,14 @@ Focused eval (`--eval-mode focused`) is available for `flare`, `coast`, `climb`,
 - `-b, --bot NAME`
 - `-l, --lander NAME`
 - `-e, --eval-mode auto|focused|full`
-- `-w, --workers N`
+- `-w, --workers N` (default: `max(1, CPU cores - 2)`)
 - `-n, --steps N`
 - `-t, --time S`
 - `-p, --plot none|speed|thrust|all`
 - `-j, --json PATH|auto`
 - `-c, --csv PATH|auto`
-- If worker processes are unavailable in your environment, `bench` falls back to
-  sequential execution and prints a warning.
+- If worker processes are unavailable, `bench` now errors instead of silently
+  falling back. Use `--workers 1` only when you explicitly want sequential mode.
 
 ## Bot profiling and query API
 

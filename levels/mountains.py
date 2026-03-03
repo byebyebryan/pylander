@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 
 import core.terrain as _terrain
+from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 from core.level import Level
 from levels.common import PresetLevel, SiteSpec
 
@@ -83,6 +84,13 @@ class MountainsLevel(PresetLevel):
 
     def _build_base_terrain(self, seed: int):
         return _build_mountain_terrain(seed)
+
+    @staticmethod
+    def benchmark_profile() -> LevelBenchmarkProfile:
+        return LevelBenchmarkProfile(
+            policy="excluded",
+            scenarios=BenchmarkScenarioSets(smoke=(), quick=(), full=()),
+        )
 
 
 def create_level() -> Level:

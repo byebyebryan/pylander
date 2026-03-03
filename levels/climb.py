@@ -3,6 +3,7 @@ from __future__ import annotations
 import core.terrain as _terrain
 from core.components import CargoHold, Transform
 from core.ecs import require_component
+from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 from core.level import Level
 from core.maths import Vector2
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ _SCENARIOS: tuple[ClimbScenario, ...] = (
 )
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
 _DEFAULT_SCENARIO = "slope_mid"
+_SMOKE_BENCHMARK_SCENARIOS: tuple[str, ...] = ("slope_mid",)
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
     "slope_low",
     "slope_mid",
@@ -67,6 +69,16 @@ class ClimbLevel(PresetLevel):
     @staticmethod
     def list_quick_benchmark_scenarios() -> list[str]:
         return [name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME]
+
+    @staticmethod
+    def benchmark_profile() -> LevelBenchmarkProfile:
+        full = tuple(item.name for item in _SCENARIOS)
+        quick = tuple(name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME)
+        smoke = tuple(name for name in _SMOKE_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME)
+        return LevelBenchmarkProfile(
+            policy="observe_only",
+            scenarios=BenchmarkScenarioSets(smoke=smoke, quick=quick, full=full),
+        )
 
     def set_eval_scenario(self, name: str) -> None:
         key = str(name).strip().lower()

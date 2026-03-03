@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from core.components import PhysicsState, Transform
 from core.level import Level
+from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 from core.maths import Vector2
 from core.ecs import require_component
 from levels.scenario_common import (
@@ -53,6 +54,7 @@ _SCENARIOS: tuple[PlungeScenario, ...] = (
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
 _DEFAULT_SCENARIO = _scenario_name("mid", "normal")
+_SMOKE_BENCHMARK_SCENARIOS: tuple[str, ...] = (_scenario_name("mid", "normal"),)
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
     _scenario_name("low", "normal"),
     _scenario_name("mid", "normal"),
@@ -89,6 +91,16 @@ class PlungeLevel(ScenarioLevel):
     @staticmethod
     def list_quick_benchmark_scenarios() -> list[str]:
         return [name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME]
+
+    @staticmethod
+    def benchmark_profile() -> LevelBenchmarkProfile:
+        full = tuple(item.name for item in _SCENARIOS)
+        quick = tuple(name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME)
+        smoke = tuple(name for name in _SMOKE_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME)
+        return LevelBenchmarkProfile(
+            policy="normal",
+            scenarios=BenchmarkScenarioSets(smoke=smoke, quick=quick, full=full),
+        )
 
     def set_eval_scenario(self, name: str) -> None:
         key = str(name).strip().lower()
