@@ -8,7 +8,7 @@ Implementation note:
 
 - `zem_zev` uses the `QueryBot` `plan/act` API.
 - Phase tracking consumes a batched ballistic projection query result each tick.
-- Optimizer/replan/control allocation behavior is unchanged; only active-sensor integration moved to explicit queries.
+- Setup/coast phases use stricter center-first terminal-x tolerance and optional apex-shaped y-reference blending.
 
 ## Naming
 
@@ -77,16 +77,30 @@ Each frame:
 4. allocate acceleration to thrust+angle with tilt/rate limits,
 5. fallback only when optimizer result is infeasible.
 
-For uphill transfers, setup planning currently remains generic:
+For uphill transfers, setup planning remains generic:
 
 - there is currently no climb-specific trajectory shaping;
 - climb behavior reflects the same generic setup/coast/terminal loop used on
   other levels.
 
-Reference path shaping uses an altitude-adaptive two-phase profile:
+Reference path shaping now has two layers:
 
-- high altitude: lateral correction first with shallow y-ref progression,
-- later horizon: stronger descent toward target y.
+- base profile from optimizer defaults (`_reference_profiles`),
+- setup/coast override that blends a ballistic-like parabolic y-reference when `vy_up > 0`.
+
+The setup/coast y-reference is parameterized by an apex-over-target target:
+
+- `apex_target = clamp(setup_apex_height_per_dx * |dx_anchor|, setup_apex_height_min, setup_apex_height_max)`
+- blend by phase (`setup_apex_ref_blend`, `coast_apex_ref_blend`).
+
+Terminal-x tolerance is also phase-specific:
+
+- setup: `setup_center_tol_ratio * target_half_width`
+- coast: `coast_center_tol_ratio * target_half_width`
+- terminal: `terminal_center_tol_ratio * target_half_width`
+
+This replaces the prior "full pad-width deadband at all phases" behavior and
+pushes setup/coast to hold impact projection closer to pad center.
 
 Throttle allocation includes simple on/off hysteresis to reduce min-throttle chatter near cutoff.
 
@@ -99,15 +113,50 @@ Throttle allocation includes simple on/off hysteresis to reduce min-throttle cha
 - `zem_solve_count`, `zem_solve_ms_mean`, `zem_solve_ms_p90`, `zem_fallback_frames`
 - `zem_peak_alt_over_target`, `zem_lateral_overshoot`, `zem_hover_time`
 - `zem_clearance_margin`, `zem_clearance_scale`, `zem_clearance_active`
+- `zem_shape_window_started`, `zem_shape_window_done`
+- `zem_shape_window_start_time`, `zem_shape_window_end_time`
+- `zem_shape_apex_target_over_target`, `zem_shape_apex_actual_over_target`, `zem_shape_apex_error`
+- `zem_shape_curve_rmse`
+- `zem_shape_projected_dx_abs_mean`, `zem_shape_projected_dx_abs_max`
+- `zem_shape_shortfall_ratio`
 
 `zem_clearance_*` is retained for schema compatibility and is expected to remain
 inactive (`0`/`False`) in the current generic-baseline controller.
+
+Setup-gate debug traces can be enabled with:
+
+```bash
+PYLANDER_ZEM_DEBUG_SETUP=1 uv run python main.py run launch --bot zem_zev --seed 0
+```
 
 Focused eval boundaries:
 
 - `climb --eval-mode focused` -> `zem_setup_gate_done`
 - `setup --eval-mode focused` -> `zem_setup_gate_done`
 - `coast --eval-mode focused` -> `zem_terminal_gate_done`
+
+## Tuning knobs
+
+`setup` -> `coast` transition strictness:
+
+- setup gate latches on burn-end settle (reduces under-reporting during active burn):
+  `setup_gate_burn_start_thrust`, `setup_gate_idle_thrust_max`,
+  `setup_gate_burn_end_settle_s`
+- setup burn shaping before gate: `setup_burn_taper_*`, `setup_burn_cut_overshoot_*`
+- post-gate coast retention guard: `coast_hold_projected_dx_*`, `coast_hold_vx_track_*`, `coast_hold_overshoot_*`
+- terminal handoff strictness: `terminal_gate_*` (telemetry latch) and
+  `terminal_entry_*` (control handoff)
+
+Centering pressure by phase:
+
+- `setup_center_tol_ratio`
+- `coast_center_tol_ratio`
+- `terminal_center_tol_ratio`
+
+Trajectory shape controls:
+
+- `setup_apex_height_per_dx`, `setup_apex_height_min`, `setup_apex_height_max`
+- `setup_apex_ref_blend`, `coast_apex_ref_blend`
 
 ## Compute cost
 

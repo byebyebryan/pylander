@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from bots import create_bot
 from bots._optimizer_pdg import PDGOptimizer, PDGOptimizerConfig
 from game import LanderGame
@@ -118,6 +120,46 @@ def test_pdg_optimizer_uphill_target_is_feasible() -> None:
         pad_half_width=55.0,
         altitude_hint=5.0,
         warm_start=None,
+    )
+    assert plan is not None
+    assert plan.feasible
+
+
+def test_pdg_optimizer_supports_runtime_path_override_and_rejects_bad_length() -> None:
+    cfg = PDGOptimizerConfig(horizon_steps=12, step_dt=0.2)
+    optimizer = PDGOptimizer(cfg)
+    assert optimizer.horizon_steps == 12
+    assert optimizer.step_dt == pytest.approx(0.2)
+
+    common = dict(
+        x=0.0,
+        y=600.0,
+        vx=20.0,
+        vy=-15.0,
+        target_x=150.0,
+        target_y=0.0,
+        y_floor=-8.0,
+        target_vy=-2.0,
+        max_thrust_accel=22.0,
+        min_thrust_accel=2.0,
+        nominal_thrust_accel=12.0,
+        max_tilt_rad=0.6,
+        descent_floor_vy=-11.0,
+        gravity_mag=1.62,
+        pad_half_width=55.0,
+        altitude_hint=600.0,
+        warm_start=None,
+    )
+
+    with pytest.raises(ValueError, match="y_ref_override"):
+        optimizer.solve(y_ref_override=[0.0] * 10, **common)
+
+    n = cfg.horizon_steps
+    y_override = [600.0 - (50.0 * (i / n)) for i in range(n + 1)]
+    plan = optimizer.solve(
+        terminal_x_tol=8.0,
+        y_ref_override=y_override,
+        **common,
     )
     assert plan is not None
     assert plan.feasible

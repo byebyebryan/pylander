@@ -289,6 +289,17 @@ def test_normalize_run_result_includes_new_phase_fields() -> None:
             "zem_clearance_margin": 72.0,
             "zem_clearance_scale": 0.85,
             "zem_clearance_active": True,
+            "zem_shape_window_started": True,
+            "zem_shape_window_done": True,
+            "zem_shape_window_start_time": 0.4,
+            "zem_shape_window_end_time": 8.6,
+            "zem_shape_apex_target_over_target": 120.0,
+            "zem_shape_apex_actual_over_target": 116.0,
+            "zem_shape_apex_error": 4.0,
+            "zem_shape_curve_rmse": 14.5,
+            "zem_shape_projected_dx_abs_mean": 18.0,
+            "zem_shape_projected_dx_abs_max": 41.0,
+            "zem_shape_shortfall_ratio": 0.12,
         },
     )
     assert record["success"] is True
@@ -303,6 +314,38 @@ def test_normalize_run_result_includes_new_phase_fields() -> None:
     assert record["zem_clearance_margin"] == pytest.approx(72.0)
     assert record["zem_clearance_scale"] == pytest.approx(0.85)
     assert record["zem_clearance_active"] is True
+    assert record["zem_shape_window_started"] is True
+    assert record["zem_shape_window_done"] is True
+    assert record["zem_shape_window_start_time"] == pytest.approx(0.4)
+    assert record["zem_shape_window_end_time"] == pytest.approx(8.6)
+    assert record["zem_shape_apex_target_over_target"] == pytest.approx(120.0)
+    assert record["zem_shape_apex_actual_over_target"] == pytest.approx(116.0)
+    assert record["zem_shape_apex_error"] == pytest.approx(4.0)
+    assert record["zem_shape_curve_rmse"] == pytest.approx(14.5)
+    assert record["zem_shape_projected_dx_abs_mean"] == pytest.approx(18.0)
+    assert record["zem_shape_projected_dx_abs_max"] == pytest.approx(41.0)
+    assert record["zem_shape_shortfall_ratio"] == pytest.approx(0.12)
+
+
+def test_launch_run_merges_zem_snapshot_fields_into_result() -> None:
+    level = create_level_by_name("launch")
+    level.set_eval_scenario("near")
+    game = LanderGame(level=level, seed=0, bot=create_bot("zem_zev"), headless=True)
+    result = game.run(print_freq=0, max_steps=2, max_time=2.0)
+    assert "zem_phase" in result
+    assert "zem_shape_window_started" in result
+
+
+def test_launch_setup_gate_latches_no_later_than_terminal_gate() -> None:
+    level = create_level_by_name("launch")
+    level.set_eval_scenario("far")
+    game = LanderGame(level=level, seed=1, bot=create_bot("zem_zev"), headless=True)
+    result = game.run(print_freq=0, max_time=120.0)
+    setup_gate_time = result.get("zem_setup_gate_time")
+    terminal_gate_time = result.get("zem_terminal_gate_time")
+    assert setup_gate_time is not None
+    if terminal_gate_time is not None:
+        assert float(setup_gate_time) <= float(terminal_gate_time) + 1e-6
 
 
 def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:

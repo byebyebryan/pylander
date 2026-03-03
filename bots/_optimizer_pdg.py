@@ -123,6 +123,14 @@ class PDGOptimizer:
 
         self._build_problem()
 
+    @property
+    def horizon_steps(self) -> int:
+        return int(self._cfg.horizon_steps)
+
+    @property
+    def step_dt(self) -> float:
+        return float(self._cfg.step_dt)
+
     def _reference_profiles(
         self,
         *,
@@ -295,6 +303,8 @@ class PDGOptimizer:
         pad_half_width: float,
         altitude_hint: float,
         warm_start: PDGPlan | None,
+        terminal_x_tol: float | None = None,
+        y_ref_override: list[float] | tuple[float, ...] | np.ndarray | None = None,
     ) -> PDGPlan | None:
         if self._problem is None:
             return None
@@ -328,15 +338,24 @@ class PDGOptimizer:
         self._tilt_tan.value = max(1e-3, math.tan(max(0.02, float(max_tilt_rad))))
         self._vy_floor.value = float(descent_floor_vy)
         self._g_param.value = max(0.0, float(gravity_mag))
-        self._x_tol.value = max(0.0, float(pad_half_width))
+        x_tol = float(pad_half_width) if terminal_x_tol is None else float(terminal_x_tol)
+        self._x_tol.value = max(0.0, x_tol)
 
-        x_ref, y_ref = self._reference_profiles(
+        x_ref, y_ref_default = self._reference_profiles(
             x=float(x),
             y=float(y),
             target_x=float(target_x),
             target_y=float(target_y),
             altitude_hint=max(0.0, float(altitude_hint)),
         )
+        if y_ref_override is None:
+            y_ref = y_ref_default
+        else:
+            y_ref = np.asarray(y_ref_override, dtype=float)
+            if y_ref.shape != (n + 1,):
+                raise ValueError(
+                    f"y_ref_override must have {n + 1} elements, got {y_ref.shape}"
+                )
         self._x_ref.value = x_ref
         self._y_ref.value = y_ref
 

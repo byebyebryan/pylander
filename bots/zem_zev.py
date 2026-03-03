@@ -7,6 +7,7 @@ horizontal/vertical thrust commands from a single objective each replan cycle.
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 
 from bots._ballistics import (
@@ -56,6 +57,9 @@ class ZemZevConfig:
     low_alt_tilt_alt: float = 20.0
     low_alt_tilt_dx: float = 12.0
     low_alt_tilt_vx: float = 2.4
+    uphill_setup_dy_min: float = 20.0
+    uphill_setup_tilt_alt: float = 140.0
+    uphill_setup_tilt_max: float = 0.26
     angle_rate: float = 2.4
     throttle_off_threshold_scale: float = 0.85
 
@@ -86,18 +90,49 @@ class ZemZevConfig:
     emergency_alt: float = 220.0
 
     # Telemetry gates for focused launch/coast evals and phase tracking
-    setup_gate_projected_dx_abs: float = 60.0
-    setup_gate_projected_dx_target_ratio: float = 1.1
-    setup_gate_vx_track_abs: float = 4.0
-    setup_gate_vx_track_ratio: float = 0.20
+    setup_gate_projected_dx_abs: float = 55.0
+    setup_gate_projected_dx_target_ratio: float = 1.0
+    setup_gate_vx_track_abs: float = 3.8
+    setup_gate_vx_track_ratio: float = 0.18
     setup_gate_vy_up_max: float = -1.0
+    setup_gate_shortfall_abs: float = 20.0
+    setup_gate_shortfall_ratio: float = 0.30
+    setup_gate_idle_thrust_max: float = 0.03
+    setup_gate_burn_start_thrust: float = 0.20
+    setup_gate_burn_end_settle_s: float = 0.25
+    setup_burn_taper_start_abs: float = 72.0
+    setup_burn_taper_start_ratio: float = 1.30
+    setup_burn_taper_overshoot_abs: float = 120.0
+    setup_burn_taper_overshoot_ratio: float = 2.20
+    setup_burn_cut_overshoot_abs: float = 4.0
+    setup_burn_cut_overshoot_ratio: float = 0.08
+    coast_hold_projected_dx_abs: float = 24.0
+    coast_hold_projected_dx_target_ratio: float = 0.45
+    coast_hold_vx_track_abs: float = 2.6
+    coast_hold_vx_track_ratio: float = 0.14
+    coast_hold_overshoot_abs: float = 16.0
+    coast_hold_overshoot_ratio: float = 0.25
     terminal_gate_t_fall_s: float = 4.5
     terminal_gate_projected_dx_abs: float = 18.0
     terminal_gate_projected_dx_target_ratio: float = 0.4
     terminal_gate_vy_up_max: float = -4.0
+    terminal_entry_altitude_max: float = 260.0
+    terminal_entry_vy_up_max: float = -12.0
+    terminal_entry_projected_dx_abs: float = 70.0
+    terminal_entry_projected_dx_target_ratio: float = 1.30
     touchdown_phase_altitude: float = 4.0
     touchdown_phase_speed: float = 2.5
     touchdown_phase_dx_ratio: float = 0.65
+
+    # Phase centering + setup/coast shape objective
+    setup_center_tol_ratio: float = 0.20
+    coast_center_tol_ratio: float = 0.35
+    terminal_center_tol_ratio: float = 1.0
+    setup_apex_height_per_dx: float = 0.18
+    setup_apex_height_min: float = 30.0
+    setup_apex_height_max: float = 240.0
+    setup_apex_ref_blend: float = 0.45
+    coast_apex_ref_blend: float = 0.15
 
     # Launch-from-pad bootstrap when starting landed with a different target.
     launch_takeoff_clear_altitude: float = 10.0
@@ -108,8 +143,23 @@ class ZemZevBot(QueryBot):
     def __init__(self, behavior: str = "zem_zev") -> None:
         super().__init__()
         self._cfg = ZemZevConfig()
-        self._optimizer_short = PDGOptimizer(PDGOptimizerConfig(horizon_steps=28))
-        self._optimizer_long = PDGOptimizer(PDGOptimizerConfig(horizon_steps=36))
+        self._optimizer_setup = PDGOptimizer(
+            PDGOptimizerConfig(
+                horizon_steps=36,
+                w_terminal_x=48.0,
+                w_path_x=0.09,
+                w_path_y=0.025,
+            )
+        )
+        self._optimizer_coast = PDGOptimizer(
+            PDGOptimizerConfig(
+                horizon_steps=36,
+                w_terminal_x=36.0,
+                w_path_x=0.06,
+                w_path_y=0.020,
+            )
+        )
+        self._optimizer_terminal = PDGOptimizer(PDGOptimizerConfig(horizon_steps=28))
 
         self._behavior = "zem_zev"
         self._prev_angle_cmd = 0.0
@@ -134,6 +184,8 @@ class ZemZevBot(QueryBot):
         self._setup_gate_time: float | None = None
         self._setup_gate_altitude: float | None = None
         self._setup_gate_projected_dx: float | None = None
+        self._setup_burn_started = False
+        self._setup_burn_idle_since: float | None = None
         self._terminal_gate_done = False
         self._terminal_gate_time: float | None = None
         self._terminal_gate_altitude: float | None = None
@@ -147,8 +199,16 @@ class ZemZevBot(QueryBot):
         self._clearance_margin = 0.0
         self._clearance_scale = 0.0
         self._clearance_active = False
+        self._uphill_transfer = False
         self._auto_target_uid: str | None = None
         self._launch_takeoff_active = False
+        self._reset_shape_window_state()
+        self._last_flight_snapshot: dict[str, float | int | bool | str | None] | None = None
+        self._debug_setup = (
+            os.getenv("PYLANDER_ZEM_DEBUG_SETUP", "").strip().lower() in ("1", "true", "yes", "on")
+        )
+        self._debug_setup_last_print_t = -1.0
+        self._debug_setup_post_end_time: float | None = None
 
         self.set_behavior(behavior)
 
@@ -162,6 +222,7 @@ class ZemZevBot(QueryBot):
         self._reset_state()
         self._auto_target_uid = None
         self._launch_takeoff_active = False
+        self._last_flight_snapshot = None
 
     def _reset_state(self) -> None:
         self._prev_angle_cmd = 0.0
@@ -184,6 +245,8 @@ class ZemZevBot(QueryBot):
         self._setup_gate_time = None
         self._setup_gate_altitude = None
         self._setup_gate_projected_dx = None
+        self._setup_burn_started = False
+        self._setup_burn_idle_since = None
         self._terminal_gate_done = False
         self._terminal_gate_time = None
         self._terminal_gate_altitude = None
@@ -197,6 +260,35 @@ class ZemZevBot(QueryBot):
         self._clearance_margin = 0.0
         self._clearance_scale = 0.0
         self._clearance_active = False
+        self._uphill_transfer = False
+        self._reset_shape_window_state()
+        self._debug_setup_last_print_t = -1.0
+        self._debug_setup_post_end_time = None
+
+    def _debug_setup_print(self, line: str) -> None:
+        if not self._debug_setup:
+            return
+        print(f"ZEMDBG {line}")
+
+    def _reset_shape_window_state(self) -> None:
+        self._shape_window_started = False
+        self._shape_window_done = False
+        self._shape_window_start_time: float | None = None
+        self._shape_window_end_time: float | None = None
+        self._shape_start_x = 0.0
+        self._shape_start_y = 0.0
+        self._shape_target_x = 0.0
+        self._shape_target_y = 0.0
+        self._shape_anchor_dx_abs = 0.0
+        self._shape_apex_target_over_target = 0.0
+        self._shape_apex_actual_over_target = 0.0
+        self._shape_curve_sq_err_sum = 0.0
+        self._shape_curve_count = 0
+        self._shape_projected_dx_abs_sum = 0.0
+        self._shape_projected_dx_abs_max = 0.0
+        self._shape_projected_dx_count = 0
+        self._shape_shortfall_count = 0
+        self._shape_shortfall_sample_count = 0
 
     @staticmethod
     def _contact_distance(contact) -> float:
@@ -286,13 +378,79 @@ class ZemZevBot(QueryBot):
             vy_mag = min(vy_mag, cfg.vy_touch_cap + 0.3)
         return -max(cfg.braking_min_speed, vy_mag)
 
-    def _resolve_max_tilt(self, alt: float, dx: float, vx: float) -> float:
+    def _resolve_max_tilt(
+        self,
+        alt: float,
+        dx: float,
+        vx: float,
+        *,
+        dy: float = 0.0,
+        phase: str | None = None,
+    ) -> float:
         cfg = self._cfg
         if alt < cfg.low_alt_tilt_alt:
             if abs(dx) <= cfg.low_alt_tilt_dx and abs(vx) <= cfg.low_alt_tilt_vx:
-                return cfg.max_tilt_low_alt
-            return cfg.max_tilt_low_alt_far
-        return cfg.max_tilt
+                tilt = cfg.max_tilt_low_alt
+            else:
+                tilt = cfg.max_tilt_low_alt_far
+        else:
+            tilt = cfg.max_tilt
+        if (
+            phase == "setup"
+            and float(dy) >= cfg.uphill_setup_dy_min
+            and alt <= cfg.uphill_setup_tilt_alt
+        ):
+            tilt = min(tilt, cfg.uphill_setup_tilt_max)
+        return tilt
+
+    def _phase_terminal_x_tol(self, phase: str) -> float:
+        cfg = self._cfg
+        ratio = cfg.terminal_center_tol_ratio
+        if phase == "setup":
+            ratio = cfg.setup_center_tol_ratio
+        elif phase == "coast":
+            ratio = cfg.coast_center_tol_ratio
+        return max(4.0, float(self._last_target_half) * max(0.05, float(ratio)))
+
+    def _shape_apex_target(self, dx_abs: float) -> float:
+        cfg = self._cfg
+        return clamp(
+            float(cfg.setup_apex_height_per_dx) * max(0.0, float(dx_abs)),
+            float(cfg.setup_apex_height_min),
+            float(cfg.setup_apex_height_max),
+        )
+
+    def _shape_y_ref(
+        self,
+        *,
+        n: int,
+        x0: float,
+        y0: float,
+        target_x: float,
+        target_y: float,
+        apex_over_target: float,
+    ) -> list[float]:
+        den = target_x - x0
+        y_ref: list[float] = []
+        for idx in range(n + 1):
+            alpha = idx / max(1, n)
+            xk = x0 + (den * alpha)
+            if abs(den) <= 1e-6:
+                s = alpha
+            else:
+                s = clamp((xk - x0) / den, 0.0, 1.0)
+            baseline = ((1.0 - s) * y0) + (s * target_y)
+            yk = baseline + (4.0 * apex_over_target * s * (1.0 - s))
+            y_ref.append(float(yk))
+        return y_ref
+
+    def _shape_ref_blend_for_phase(self, phase: str) -> float:
+        cfg = self._cfg
+        if phase == "setup":
+            return clamp(float(cfg.setup_apex_ref_blend), 0.0, 1.0)
+        if phase == "coast":
+            return clamp(float(cfg.coast_apex_ref_blend), 0.0, 1.0)
+        return 0.0
 
     def _plan_index(self) -> int:
         if self._plan is None:
@@ -308,16 +466,18 @@ class ZemZevBot(QueryBot):
         alt: float,
         vy_up: float,
     ) -> PDGOptimizer:
-        if phase in ("setup", "coast"):
-            return self._optimizer_long
+        if phase == "setup":
+            return self._optimizer_setup
+        if phase == "coast":
+            return self._optimizer_coast
         if phase == "terminal":
-            return self._optimizer_short
+            return self._optimizer_terminal
         cfg = self._cfg
         down_speed = max(0.0, -float(vy_up))
         t_go = float("inf") if down_speed <= 1e-3 else (max(0.0, alt) / down_speed)
         if alt >= cfg.long_horizon_altitude or t_go >= cfg.long_horizon_time_to_go:
-            return self._optimizer_long
-        return self._optimizer_short
+            return self._optimizer_coast
+        return self._optimizer_terminal
 
     def _replan_policy_for_phase(self, phase: str) -> tuple[float, float, float, float, float]:
         cfg = self._cfg
@@ -386,7 +546,13 @@ class ZemZevBot(QueryBot):
         target_y_plan = target_y
         alt_guidance = alt
         y_floor: float | tuple[float, float] = min(float(passive.y), target_y_plan) - 8.0
-        max_tilt = self._resolve_max_tilt(alt, dx, float(passive.vx))
+        max_tilt = self._resolve_max_tilt(
+            alt,
+            dx,
+            float(passive.vx),
+            dy=dy,
+            phase=phase,
+        )
         # Nominal-first schedule: OD is reserve, not baseline burn design.
         target_vy = self._desired_terminal_vy(alt_guidance, nominal_thrust_accel, max_tilt)
         descent_floor_vy = self._descent_floor_vy(alt_guidance, nominal_thrust_accel, max_tilt)
@@ -408,6 +574,32 @@ class ZemZevBot(QueryBot):
             alt=alt_guidance,
             vy_up=float(passive.vy_up),
         )
+        terminal_x_tol = self._phase_terminal_x_tol(phase)
+        y_ref_override = None
+        shape_blend = self._shape_ref_blend_for_phase(phase)
+        if shape_blend > 1e-6 and float(passive.vy_up) > 0.0:
+            n = optimizer.horizon_steps
+            apex_dx = self._shape_anchor_dx_abs if self._shape_window_started else abs(dx)
+            apex_target = self._shape_apex_target(apex_dx)
+            shape_ref = self._shape_y_ref(
+                n=n,
+                x0=float(passive.x),
+                y0=float(passive.y),
+                target_x=target_x_plan,
+                target_y=target_y_plan,
+                apex_over_target=apex_target,
+            )
+            if shape_blend >= 1.0:
+                y_ref_override = shape_ref
+            else:
+                linear_ref = [
+                    float(passive.y) + ((target_y_plan - float(passive.y)) * (i / max(1, n)))
+                    for i in range(n + 1)
+                ]
+                y_ref_override = [
+                    ((1.0 - shape_blend) * linear_ref[i]) + (shape_blend * shape_ref[i])
+                    for i in range(n + 1)
+                ]
 
         plan = optimizer.solve(
             x=float(passive.x),
@@ -427,6 +619,8 @@ class ZemZevBot(QueryBot):
             pad_half_width=self._last_target_half,
             altitude_hint=alt_guidance,
             warm_start=self._plan,
+            terminal_x_tol=terminal_x_tol,
+            y_ref_override=y_ref_override,
         )
         if plan is not None:
             self._last_solve_ms = float(plan.solve_time_ms)
@@ -441,6 +635,7 @@ class ZemZevBot(QueryBot):
         *,
         passive: PassiveSensors,
         dx: float,
+        dy: float,
         alt: float,
         projection: BallisticProjection,
     ) -> None:
@@ -459,31 +654,132 @@ class ZemZevBot(QueryBot):
             cfg.setup_gate_vx_track_abs,
             cfg.setup_gate_vx_track_ratio * abs(track_vx),
         )
-        setup_ready = (
+        shortfall_guard = max(
+            cfg.setup_gate_shortfall_abs,
+            cfg.setup_gate_shortfall_ratio * self._last_target_half,
+        )
+        shortfall_metric = (
+            projected_dx * math.copysign(1.0, float(dx)) if abs(float(dx)) > 1e-3 else 0.0
+        )
+        not_falling_short = shortfall_metric <= shortfall_guard
+        not_overshooting_setup = shortfall_metric >= -shortfall_guard
+        thrust_level = float(passive.thrust_level)
+        # Diagnostic-only readiness signal (used for debug traces).
+        # Setup gate latching itself is burn-end based below.
+        setup_ready_diag = (
             abs(projected_dx) <= setup_dx_limit
             and abs(float(passive.vx) - track_vx) <= setup_vx_limit
             and float(passive.vy_up) <= cfg.setup_gate_vy_up_max
+            and not_falling_short
+            and not_overshooting_setup
         )
-        if setup_ready and (not self._setup_gate_done):
-            self._setup_gate_done = True
-            self._setup_gate_time = self._elapsed_time_s
-            self._setup_gate_altitude = alt
-            self._setup_gate_projected_dx = projected_dx
+        if (not self._setup_gate_done) and (not self._terminal_gate_done):
+            if (not self._setup_burn_started) and (thrust_level >= cfg.setup_gate_burn_start_thrust):
+                self._setup_burn_started = True
+                self._setup_burn_idle_since = None
+                self._debug_setup_print(
+                    "burn_start "
+                    f"t={self._elapsed_time_s:6.2f} "
+                    f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
+                    f"thrust={thrust_level:5.2f}"
+                )
+            if self._setup_burn_started:
+                if thrust_level <= cfg.setup_gate_idle_thrust_max:
+                    if self._setup_burn_idle_since is None:
+                        self._setup_burn_idle_since = self._elapsed_time_s
+                    idle_elapsed = self._elapsed_time_s - self._setup_burn_idle_since
+                    if idle_elapsed >= cfg.setup_gate_burn_end_settle_s:
+                        self._setup_gate_done = True
+                        self._setup_gate_time = self._elapsed_time_s
+                        self._setup_gate_altitude = alt
+                        self._setup_gate_projected_dx = projected_dx
+                        self._debug_setup_post_end_time = self._elapsed_time_s + 4.0
+                        self._debug_setup_print(
+                            "gate_latch_burn_end "
+                            f"t={self._elapsed_time_s:6.2f} "
+                            f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
+                            f"signed={shortfall_metric:8.2f} "
+                            f"thrust={thrust_level:5.2f}"
+                        )
+                else:
+                    self._setup_burn_idle_since = None
+                if (
+                    self._debug_setup
+                    and (self._elapsed_time_s - self._debug_setup_last_print_t) >= 0.25
+                ):
+                    idle_elapsed = 0.0
+                    if self._setup_burn_idle_since is not None:
+                        idle_elapsed = self._elapsed_time_s - self._setup_burn_idle_since
+                    self._debug_setup_last_print_t = self._elapsed_time_s
+                    self._debug_setup_print(
+                        "setup_track "
+                        f"t={self._elapsed_time_s:6.2f} "
+                        f"ph={self._active_phase:8s} "
+                        f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
+                        f"signed={shortfall_metric:8.2f} "
+                        f"thrust={thrust_level:5.2f} "
+                        f"ready={int(setup_ready_diag)} "
+                        f"idle_elapsed={idle_elapsed:5.2f}"
+                    )
+
+        coast_dx_limit = max(
+            cfg.coast_hold_projected_dx_abs,
+            cfg.coast_hold_projected_dx_target_ratio * self._last_target_half,
+        )
+        coast_vx_limit = max(
+            cfg.coast_hold_vx_track_abs,
+            cfg.coast_hold_vx_track_ratio * abs(track_vx),
+        )
+        coast_overshoot_guard = max(
+            cfg.coast_hold_overshoot_abs,
+            cfg.coast_hold_overshoot_ratio * self._last_target_half,
+        )
+        not_overshooting_far = shortfall_metric >= -coast_overshoot_guard
+        coast_hold = (
+            abs(projected_dx) <= coast_dx_limit
+            and abs(float(passive.vx) - track_vx) <= coast_vx_limit
+            and float(passive.vy_up) <= cfg.setup_gate_vy_up_max
+            and not_overshooting_far
+        )
 
         terminal_dx_limit = max(
             cfg.terminal_gate_projected_dx_abs,
             cfg.terminal_gate_projected_dx_target_ratio * self._last_target_half,
+        )
+        terminal_entry_dx_limit = max(
+            cfg.terminal_entry_projected_dx_abs,
+            cfg.terminal_entry_projected_dx_target_ratio * self._last_target_half,
         )
         terminal_ready = (
             t_fall <= cfg.terminal_gate_t_fall_s
             and abs(projected_dx) <= terminal_dx_limit
             and float(passive.vy_up) <= cfg.terminal_gate_vy_up_max
         )
+        terminal_entry_ready = (
+            t_fall <= cfg.terminal_gate_t_fall_s
+            and alt <= cfg.terminal_entry_altitude_max
+            and abs(projected_dx) <= terminal_entry_dx_limit
+            and float(passive.vy_up) <= cfg.terminal_entry_vy_up_max
+        )
+        terminal_phase_ready = terminal_ready or terminal_entry_ready
         if terminal_ready and (not self._terminal_gate_done):
             self._terminal_gate_done = True
             self._terminal_gate_time = self._elapsed_time_s
             self._terminal_gate_altitude = alt
             self._terminal_gate_projected_dx = projected_dx
+            if not self._setup_gate_done:
+                # Guardrail: never let setup gate first-latch after terminal starts.
+                self._setup_gate_done = True
+                self._setup_gate_time = self._elapsed_time_s
+                self._setup_gate_altitude = alt
+                self._setup_gate_projected_dx = projected_dx
+                self._debug_setup_print(
+                    "gate_latch_terminal_fallback "
+                    f"t={self._elapsed_time_s:6.2f} "
+                    f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
+                    f"signed={shortfall_metric:8.2f} "
+                    f"thrust={thrust_level:5.2f}"
+                )
 
         speed = math.hypot(float(passive.vx), float(passive.vy_up))
         touchdown_dx_limit = max(12.0, cfg.touchdown_phase_dx_ratio * self._last_target_half)
@@ -494,12 +790,125 @@ class ZemZevBot(QueryBot):
             and in_touchdown_corridor
         ):
             self._active_phase = "touchdown"
-        elif self._terminal_gate_done or terminal_ready:
+        elif self._terminal_gate_done or terminal_phase_ready:
             self._active_phase = "terminal"
-        elif self._setup_gate_done or setup_ready:
-            self._active_phase = "coast"
+        elif self._setup_gate_done:
+            if self._uphill_transfer:
+                # For uphill transfers (climb), continue setup-style guidance to
+                # build/hold vertical clearance before true coast handoff.
+                self._active_phase = "setup"
+            else:
+                self._active_phase = "coast"
         else:
             self._active_phase = "setup"
+
+        if (
+            self._debug_setup
+            and self._setup_gate_done
+            and self._debug_setup_post_end_time is not None
+            and self._elapsed_time_s <= self._debug_setup_post_end_time
+            and (self._elapsed_time_s - self._debug_setup_last_print_t) >= 0.25
+        ):
+            self._debug_setup_last_print_t = self._elapsed_time_s
+            self._debug_setup_print(
+                "post_gate "
+                f"t={self._elapsed_time_s:6.2f} "
+                f"ph={self._active_phase:8s} "
+                f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
+                f"signed={shortfall_metric:8.2f} "
+                f"thrust={float(passive.thrust_level):5.2f} "
+                f"coast_hold={int(coast_hold)}"
+            )
+
+    def _maybe_start_shape_window(
+        self,
+        *,
+        passive: PassiveSensors,
+        dx: float,
+        dy: float,
+    ) -> None:
+        if self._shape_window_started or self._shape_window_done:
+            return
+        if self._launch_takeoff_active:
+            return
+        if abs(float(dx)) <= 1e-3:
+            return
+        self._shape_window_started = True
+        self._shape_window_start_time = self._elapsed_time_s
+        self._shape_start_x = float(passive.x)
+        self._shape_start_y = float(passive.y)
+        self._shape_target_x = float(passive.x) + float(dx)
+        self._shape_target_y = float(passive.y) + float(dy)
+        self._uphill_transfer = float(dy) >= self._cfg.uphill_setup_dy_min
+        self._shape_anchor_dx_abs = abs(float(dx))
+        self._shape_apex_target_over_target = self._shape_apex_target(self._shape_anchor_dx_abs)
+        self._shape_apex_actual_over_target = max(0.0, float(passive.y) - self._shape_target_y)
+        self._shape_curve_sq_err_sum = 0.0
+        self._shape_curve_count = 0
+        self._shape_projected_dx_abs_sum = 0.0
+        self._shape_projected_dx_abs_max = 0.0
+        self._shape_projected_dx_count = 0
+        self._shape_shortfall_count = 0
+        self._shape_shortfall_sample_count = 0
+
+    def _shape_reference_y_at_x(self, x: float) -> float:
+        den = self._shape_target_x - self._shape_start_x
+        if abs(den) <= 1e-6:
+            s = 0.0
+        else:
+            s = clamp((float(x) - self._shape_start_x) / den, 0.0, 1.0)
+        baseline = ((1.0 - s) * self._shape_start_y) + (s * self._shape_target_y)
+        return baseline + (4.0 * self._shape_apex_target_over_target * s * (1.0 - s))
+
+    def _update_shape_window_metrics(
+        self,
+        *,
+        passive: PassiveSensors,
+        dx: float,
+        projection: BallisticProjection,
+    ) -> None:
+        if (not self._shape_window_started) or self._shape_window_done:
+            return
+
+        projected_abs = abs(float(projection.projected_dx))
+        self._shape_projected_dx_abs_sum += projected_abs
+        self._shape_projected_dx_count += 1
+        self._shape_projected_dx_abs_max = max(self._shape_projected_dx_abs_max, projected_abs)
+
+        dx_now = float(dx)
+        if abs(dx_now) > 1e-3:
+            self._shape_shortfall_sample_count += 1
+            shortfall_metric = float(projection.projected_dx) * math.copysign(1.0, dx_now)
+            if shortfall_metric > 0.0:
+                self._shape_shortfall_count += 1
+
+        over_target = max(0.0, float(passive.y) - self._shape_target_y)
+        self._shape_apex_actual_over_target = max(self._shape_apex_actual_over_target, over_target)
+        y_ref = self._shape_reference_y_at_x(float(passive.x))
+        y_err = float(passive.y) - y_ref
+        self._shape_curve_sq_err_sum += y_err * y_err
+        self._shape_curve_count += 1
+
+        if (
+            self._terminal_gate_done or self._active_phase in ("terminal", "touchdown")
+        ) and not self._shape_window_done:
+            self._shape_window_done = True
+            self._shape_window_end_time = self._elapsed_time_s
+
+    def _shape_curve_rmse(self) -> float | None:
+        if self._shape_curve_count <= 0:
+            return None
+        return math.sqrt(self._shape_curve_sq_err_sum / max(1, self._shape_curve_count))
+
+    def _shape_projected_dx_abs_mean(self) -> float | None:
+        if self._shape_projected_dx_count <= 0:
+            return None
+        return self._shape_projected_dx_abs_sum / max(1, self._shape_projected_dx_count)
+
+    def _shape_shortfall_ratio(self) -> float | None:
+        if self._shape_shortfall_sample_count <= 0:
+            return None
+        return self._shape_shortfall_count / max(1, self._shape_shortfall_sample_count)
 
     def _command_from_plan(
         self,
@@ -507,6 +916,7 @@ class ZemZevBot(QueryBot):
         dt: float,
         passive: PassiveSensors,
         dx: float,
+        dy: float,
         alt: float,
         max_power: float,
         min_throttle: float,
@@ -546,12 +956,24 @@ class ZemZevBot(QueryBot):
 
             # keep commands physical before allocation
             a_y = clamp(a_y, 0.0, max_thrust_accel)
-            max_tilt = self._resolve_max_tilt(alt, dx, float(passive.vx))
+            max_tilt = self._resolve_max_tilt(
+                alt,
+                dx,
+                float(passive.vx),
+                dy=dy,
+                phase=self._active_phase,
+            )
             tilt_tan = math.tan(max_tilt)
             a_x = clamp(a_x, -tilt_tan * max(0.2, a_y), tilt_tan * max(0.2, a_y))
 
         # Convert accel command to actuator targets.
-        max_tilt_now = self._resolve_max_tilt(alt, dx, float(passive.vx))
+        max_tilt_now = self._resolve_max_tilt(
+            alt,
+            dx,
+            float(passive.vx),
+            dy=dy,
+            phase=self._active_phase,
+        )
         angle_target = math.atan2(a_x, max(0.2, a_y))
         angle_target = clamp(angle_target, -max_tilt_now, max_tilt_now)
         angle_cmd = rate_limit_angle_command(
@@ -565,6 +987,47 @@ class ZemZevBot(QueryBot):
         thrust_acc = math.hypot(a_x, max(0.0, a_y))
         thrust = (mass * thrust_acc) / max(max_power, 1e-3)
         thrust = clamp(thrust, 0.0, max_throttle)
+
+        if (
+            self._active_phase == "setup"
+            and self._setup_burn_started
+            and (not self._setup_gate_done)
+            and (not self._terminal_gate_done)
+            and (self._last_projection_dx is not None)
+            and abs(float(dx)) > 1e-3
+            and float(dy) <= 0.0
+        ):
+            signed_shortfall = float(self._last_projection_dx) * math.copysign(1.0, float(dx))
+            if signed_shortfall > 0.0:
+                taper_start = max(
+                    cfg.setup_burn_taper_start_abs,
+                    cfg.setup_burn_taper_start_ratio * self._last_target_half,
+                )
+            else:
+                taper_start = max(
+                    cfg.setup_burn_taper_overshoot_abs,
+                    cfg.setup_burn_taper_overshoot_ratio * self._last_target_half,
+                )
+            overshoot_guard = max(
+                cfg.setup_burn_cut_overshoot_abs,
+                cfg.setup_burn_cut_overshoot_ratio * self._last_target_half,
+            )
+            if signed_shortfall <= taper_start:
+                taper_den = max(1e-3, taper_start + overshoot_guard)
+                taper_scale = clamp((signed_shortfall + overshoot_guard) / taper_den, 0.0, 1.0)
+                thrust = min(thrust, max_throttle * taper_scale)
+            if signed_shortfall <= -overshoot_guard:
+                thrust = 0.0
+                self._thrust_enabled = False
+                if self._debug_setup and (self._elapsed_time_s - self._debug_setup_last_print_t) >= 0.25:
+                    self._debug_setup_last_print_t = self._elapsed_time_s
+                    self._debug_setup_print(
+                        "overshoot_cut "
+                        f"t={self._elapsed_time_s:6.2f} "
+                        f"dx={dx:8.2f} proj_dx={float(self._last_projection_dx):8.2f} "
+                        f"signed={signed_shortfall:8.2f} guard={overshoot_guard:6.2f}"
+                    )
+
         idle_angle_target: float | None = None
         off_threshold = cfg.throttle_off_threshold_scale * min_throttle
         if self._thrust_enabled:
@@ -702,6 +1165,13 @@ class ZemZevBot(QueryBot):
             action = BotAction(0.0, passive.angle, False, status=f"zem_zev:{passive.state}")
             self.status = action.status
             return action
+        if (
+            self._last_flight_snapshot is not None
+            and self._elapsed_time_s <= 1e-9
+            and self._solve_count == 0
+        ):
+            # New run after a reset: discard prior episode telemetry.
+            self._last_flight_snapshot = None
 
         alt = max(0.0, finite_altitude(passive))
         if self._launch_takeoff_active and alt < self._cfg.launch_takeoff_clear_altitude:
@@ -749,6 +1219,7 @@ class ZemZevBot(QueryBot):
             self._clearance_active = False
 
         self._elapsed_time_s += max(0.0, float(dt))
+        self._maybe_start_shape_window(passive=passive, dx=dx, dy=dy)
         projection = estimate_ballistic_projection_from_result(
             dx=dx,
             alt=alt,
@@ -760,7 +1231,13 @@ class ZemZevBot(QueryBot):
         self._update_phase_tracking(
             passive=passive,
             dx=dx,
+            dy=dy,
             alt=alt,
+            projection=projection,
+        )
+        self._update_shape_window_metrics(
+            passive=passive,
+            dx=dx,
             projection=projection,
         )
         replan_hz, dx_err_lim, dy_err_lim, vx_err_lim, vy_err_lim = self._replan_policy_for_phase(
@@ -810,6 +1287,7 @@ class ZemZevBot(QueryBot):
             dt=dt,
             passive=passive,
             dx=dx,
+            dy=dy,
             alt=alt,
             max_power=max_power,
             min_throttle=min_throttle,
@@ -831,12 +1309,19 @@ class ZemZevBot(QueryBot):
             f"st:{self._last_solver_status}"
         )
         self.status = action.status
+        self._last_flight_snapshot = self._build_evaluation_snapshot()
         return action
 
-    def get_evaluation_snapshot(self) -> dict[str, float | int | bool | str | None]:
+    def _build_evaluation_snapshot(self) -> dict[str, float | int | bool | str | None]:
         solve_ms_mean = 0.0
         if self._solve_count > 0:
             solve_ms_mean = self._solve_ms_sum / max(1, self._solve_count)
+        shape_curve_rmse = self._shape_curve_rmse()
+        shape_projected_dx_abs_mean = self._shape_projected_dx_abs_mean()
+        shape_shortfall_ratio = self._shape_shortfall_ratio()
+        shape_apex_error = abs(
+            self._shape_apex_actual_over_target - self._shape_apex_target_over_target
+        )
         return {
             "kind": "zem_zev",
             "phase": self._active_phase,
@@ -860,14 +1345,33 @@ class ZemZevBot(QueryBot):
             "clearance_margin": self._clearance_margin,
             "clearance_scale": self._clearance_scale,
             "clearance_active": self._clearance_active,
+            "shape_window_started": self._shape_window_started,
+            "shape_window_done": self._shape_window_done,
+            "shape_window_start_time": self._shape_window_start_time,
+            "shape_window_end_time": self._shape_window_end_time,
+            "shape_apex_target_over_target": self._shape_apex_target_over_target,
+            "shape_apex_actual_over_target": self._shape_apex_actual_over_target,
+            "shape_apex_error": shape_apex_error,
+            "shape_curve_rmse": shape_curve_rmse,
+            "shape_projected_dx_abs_mean": shape_projected_dx_abs_mean,
+            "shape_projected_dx_abs_max": self._shape_projected_dx_abs_max,
+            "shape_shortfall_ratio": shape_shortfall_ratio,
         }
 
-
+    def get_evaluation_snapshot(self) -> dict[str, float | int | bool | str | None]:
+        snapshot = self._build_evaluation_snapshot()
+        has_live_progress = (
+            int(snapshot.get("solve_count") or 0) > 0
+            or bool(snapshot.get("setup_gate_done"))
+            or bool(snapshot.get("terminal_gate_done"))
+            or bool(snapshot.get("shape_window_started"))
+        )
+        if has_live_progress or self._last_flight_snapshot is None:
+            return snapshot
+        return dict(self._last_flight_snapshot)
 
 def create_bot() -> Bot:
     return ZemZevBot()
-
-
 
 def list_behavior_names() -> tuple[str, ...]:
     return ("zem_zev",)

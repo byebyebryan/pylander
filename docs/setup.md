@@ -10,6 +10,10 @@
 
 Focused evaluation for this level ends at `zem_setup_gate_done`.
 
+Trajectory-shape diagnostics are also exported through `zem_shape_*` fields to
+quantify setup ballistic quality (apex target/actual, curve RMSE, projected-dx
+mean/max, shortfall ratio).
+
 ## Scenario design
 
 Defined in [`levels/setup.py`](../levels/setup.py):
@@ -44,6 +48,13 @@ Defaults:
 - `setup_phase_fuel_consumed`
 - `setup_phase_fuel_per_distance`
 - `setup_phase_path_efficiency`
+
+Common `zem_zev` setup-shape tuning knobs for this level:
+
+- setup gate burn-end latch: `setup_gate_burn_start_thrust`, `setup_gate_idle_thrust_max`, `setup_gate_burn_end_settle_s`
+- setup burn taper/cut: `setup_burn_taper_*`, `setup_burn_cut_overshoot_*`
+- setup centering tolerance: `setup_center_tol_ratio`
+- setup apex shaping: `setup_apex_height_*`, `setup_apex_ref_blend`
 
 ## Commands
 
