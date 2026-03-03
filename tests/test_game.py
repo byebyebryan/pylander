@@ -384,6 +384,16 @@ def test_hud_display_state_falls_back_to_status_parse() -> None:
     assert stage == "terminal"
 
 
+def test_hud_display_state_prefers_phase_token() -> None:
+    class _Bot:
+        def get_status(self) -> str:
+            return "zem_zev:opt ph:setup dx: 12.3 pdx: -4.0"
+
+    active, stage = HudOverlay._resolve_bot_display_state(_Bot(), _Bot().get_status())
+    assert active == "zem_zev"
+    assert stage == "setup"
+
+
 def test_parse_args_eval_mode_default_is_auto() -> None:
     _parser, command = parse_command(["run", "plunge"])
     assert isinstance(command, RunCommand)

@@ -824,7 +824,9 @@ class ZemZevBot(QueryBot):
             self._fallback_frames += 1
         action.status = (
             f"zem_zev:{mode} ph:{phase} dx:{stable(dx, 1):6.1f} "
+            f"pdx:{stable(float(projection.projected_dx), 1):6.1f} "
             f"vx:{stable(passive.vx, 1):5.1f} vy:{stable(passive.vy_up, 1):5.1f} "
+            f"sg:{int(self._setup_gate_done)} tg:{int(self._terminal_gate_done)} "
             f"rp:{int(solved_now)} slv:{stable(self._last_solve_ms, 1):4.1f}ms "
             f"st:{self._last_solver_status}"
         )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 
 from core.components import (
     CargoHold,
@@ -194,7 +195,12 @@ class HudOverlay:
         prefix, rest = text.split(":", 1)
         active_bot = prefix.strip() or None
         rest = rest.strip()
-        stage = rest.split(maxsplit=1)[0] if rest else None
+        stage: str | None = None
+        phase_match = re.search(r"\bph:([a-zA-Z0-9_]+)\b", rest)
+        if phase_match is not None:
+            stage = phase_match.group(1)
+        elif rest:
+            stage = rest.split(maxsplit=1)[0]
         return active_bot, stage
 
     @staticmethod

@@ -338,6 +338,7 @@ class LanderGame:
             enabled=self.headless,
             mode=getattr(self.level, "plot_mode", "none"),
         )
+        self._plot_events_seen: set[tuple[str, str]] = set()
 
     def _collect_actor_entities(self) -> list[Entity]:
         world = self.level.world
@@ -454,6 +455,7 @@ class LanderGame:
 
         self.plotter.set_sampling_from_print_freq(print_freq, TARGET_RENDERING_FPS)
         self.plotter.seed_initial_sample()
+        self._plot_events_seen.clear()
         self._elapsed_time = 0.0
         initial_actor = self.get_active_actor()
         initial_trans = require_component(initial_actor, Transform)
@@ -529,6 +531,7 @@ class LanderGame:
 
             self.sensor_update_system.update(frame_dt)
             self.level.update(self, frame_dt)
+            self._track_plot_events()
             self.plotter.update(frame_dt)
             frame_dt = self._render(frame_dt)
             step_count += 1
@@ -742,6 +745,50 @@ class LanderGame:
                 if bot_str:
                     parts.append(f"{uid}:{bot_str}")
         print(" | ".join(parts))
+
+    def _track_plot_events(self) -> None:
+        for uid, bot in self.actor_bots.items():
+            get_snapshot = getattr(bot, "get_evaluation_snapshot", None)
+            if not callable(get_snapshot):
+                continue
+            try:
+                snapshot = get_snapshot()
+            except Exception:
+                continue
+            if not isinstance(snapshot, dict):
+                continue
+            if str(snapshot.get("kind", "")).strip().lower() != "zem_zev":
+                continue
+            actor = self.ecs_world.get_entity_by_id(uid)
+            if actor is None:
+                continue
+            trans = actor.get_component(Transform)
+            if trans is None:
+                continue
+            for event_name, done_key, projected_dx_key in (
+                ("setup_gate", "setup_gate_done", "setup_gate_projected_dx"),
+                ("flare_gate", "terminal_gate_done", "terminal_gate_projected_dx"),
+            ):
+                if not bool(snapshot.get(done_key)):
+                    continue
+                event_key = (uid, event_name)
+                if event_key in self._plot_events_seen:
+                    continue
+                label = event_name.replace("_", " ")
+                projected_dx = snapshot.get(projected_dx_key)
+                try:
+                    projected_dx_val = float(projected_dx) if projected_dx is not None else None
+                except (TypeError, ValueError):
+                    projected_dx_val = None
+                if projected_dx_val is not None:
+                    label = f"{label} pdx={projected_dx_val:.1f}"
+                self.plotter.mark_event(
+                    name=event_name,
+                    x=float(trans.pos.x),
+                    y=float(trans.pos.y),
+                    label=label,
+                )
+                self._plot_events_seen.add(event_key)
 
     @property
     def terrain(self):

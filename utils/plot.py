@@ -18,6 +18,7 @@ def save_trajectory_plot(
     samples: list[tuple[float, float, float, float]],
     mode: Literal["speed", "thrust"] = "speed",
     out_path: str | None = None,
+    events: list[dict[str, float | str | None]] | None = None,
 ) -> str:
     """Save a PNG plot of terrain (LOD 0) and a colored trajectory.
 
@@ -113,6 +114,46 @@ def save_trajectory_plot(
     cbar = fig.colorbar(lc, ax=ax, pad=0.01)
     cbar.set_label(cbar_label)
 
+    event_list = list(events or [])
+    if event_list:
+        color_by_name = {
+            "setup_gate": "#1f77b4",
+            "flare_gate": "#ff7f0e",
+            "terminal_gate": "#ff7f0e",
+        }
+        labeled_kinds: set[str] = set()
+        for event in event_list:
+            raw_name = event.get("name")
+            event_name = str(raw_name) if isinstance(raw_name, str) and raw_name else "event"
+            event_x = float(event.get("x", 0.0) or 0.0)
+            event_y = float(event.get("y", 0.0) or 0.0)
+            color = color_by_name.get(event_name, "#222222")
+            legend_label = event_name.replace("_", " ")
+            scatter_label = legend_label if event_name not in labeled_kinds else None
+            labeled_kinds.add(event_name)
+            ax.scatter(
+                [event_x],
+                [event_y],
+                s=42.0,
+                marker="o",
+                color=color,
+                edgecolors="#FFFFFF",
+                linewidths=0.8,
+                zorder=5,
+                label=scatter_label,
+            )
+            raw_label = event.get("label")
+            text_label = str(raw_label) if isinstance(raw_label, str) and raw_label else legend_label
+            ax.annotate(
+                text_label,
+                xy=(event_x, event_y),
+                xytext=(5, 6),
+                textcoords="offset points",
+                fontsize=7,
+                color=color,
+                zorder=6,
+            )
+
     # Bounds
     all_y = terrain_ys + ys
     y_min = min(all_y)
@@ -161,6 +202,7 @@ class Plotter:
         self.terrain = terrain
         self.lander = lander
         self._samples: list[tuple[float, float, float, float]] = []
+        self._events: list[dict[str, float | str | None]] = []
         self._sample_period_s: float = 1.0
         self._time_accum: float = 0.0
         self._sampling_enabled: bool = bool(self.enabled and self.mode != "none")
@@ -185,6 +227,7 @@ class Plotter:
         if not self._sampling_enabled:
             return
         self._samples.clear()
+        self._events.clear()
         self._time_accum = 0.0
         self._record_sample()
 
@@ -206,6 +249,25 @@ class Plotter:
     def get_samples(self) -> list[tuple[float, float, float, float]]:
         return list(self._samples)
 
+    def mark_event(
+        self,
+        *,
+        name: str,
+        x: float,
+        y: float,
+        label: str | None = None,
+    ) -> None:
+        if not self._sampling_enabled:
+            return
+        self._events.append(
+            {
+                "name": str(name),
+                "x": float(x),
+                "y": float(y),
+                "label": label if label is None else str(label),
+            }
+        )
+
     def finalize(self) -> dict:
         """Write plot files if enabled and a plotting mode is selected.
 
@@ -226,7 +288,11 @@ class Plotter:
                 for m in ("speed", "thrust"):
                     out_path = str(Path("outputs") / f"trajectory_{ts}_{m}.png")
                     save_trajectory_plot(
-                        self.terrain, self._samples, mode=m, out_path=out_path
+                        self.terrain,
+                        self._samples,
+                        mode=m,
+                        out_path=out_path,
+                        events=self._events,
                     )
                     paths.append(out_path)
                 return {"plot_paths": paths}
@@ -234,7 +300,11 @@ class Plotter:
                 m = "speed" if mode not in ("speed", "thrust") else mode
                 out_path = str(Path("outputs") / f"trajectory_{ts}_{m}.png")
                 save_trajectory_plot(
-                    self.terrain, self._samples, mode=m, out_path=out_path
+                    self.terrain,
+                    self._samples,
+                    mode=m,
+                    out_path=out_path,
+                    events=self._events,
                 )
                 return {"plot_path": out_path}
         except Exception as e:  # pragma: no cover - plotting optional
