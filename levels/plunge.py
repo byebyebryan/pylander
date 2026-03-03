@@ -75,7 +75,7 @@ def _make_spec(scenario: PlungeScenario) -> ScenarioLevelSpec:
 
 
 class PlungeLevel(ScenarioLevel):
-    default_bot_name = "plunge"
+    default_bot_name = "zem_zev"
 
     def __init__(self) -> None:
         super().__init__()

@@ -40,7 +40,7 @@ trajectory-shape fields).
 ## Commands
 
 ```bash
-uv run python main.py play launch
-uv run python main.py run launch --seed 0 --bot zem_zev
-uv run python main.py bench launch --bot zem_zev --scenarios near,mid,far
+uv run python main.py run --interactive launch
+uv run python main.py sim launch:near:0 --bot zem_zev
+uv run python main.py bench launch:near:0-9 launch:mid:0-9 launch:far:0-9 --bot zem_zev
 ```

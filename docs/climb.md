@@ -34,7 +34,7 @@ Scenarios:
 Defaults:
 
 - default scenario: `slope_mid`
-- quick benchmark subset: `slope_low`, `slope_mid`, `slope_high`
+- recommended benchmark subset: `slope_low`, `slope_mid`, `slope_high`
 
 ## Focused metrics
 
@@ -62,7 +62,11 @@ inactive (`0`/`False`) in the current generic-baseline configuration.
 ## Commands
 
 ```bash
-uv run python main.py play climb
-uv run python main.py bench climb --quick --bot zem_zev
-uv run python main.py bench climb --bot zem_zev --scenarios slope_low,slope_mid,slope_high
+uv run python main.py run --interactive climb
+uv run python main.py sim climb:slope_mid:0 --bot zem_zev
+uv run python main.py bench \
+  climb:slope_low:0-9 \
+  climb:slope_mid:0-9 \
+  climb:slope_high:0-9 \
+  --bot zem_zev
 ```

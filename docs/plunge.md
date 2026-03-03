@@ -36,7 +36,8 @@ Scenario naming: `<alt>_<weight>` (example: `mid_normal`).
 Defaults:
 
 - default scenario: `mid_normal`
-- quick benchmark subset: `low_normal`, `mid_normal`, `high_normal`
+- recommended benchmark subset: `low_normal`, `mid_normal`, `high_normal`
+- level default bot: `zem_zev`
 
 ## Goals and metrics
 
@@ -55,7 +56,11 @@ Metrics to watch:
 ## Commands
 
 ```bash
-uv run python main.py play plunge
-uv run python main.py run plunge --scenario mid_normal --seed 0 --bot plunge
-uv run python main.py bench plunge --quick --bot plunge
+uv run python main.py run --interactive plunge
+uv run python main.py sim plunge:mid_normal:0 --bot plunge
+uv run python main.py bench \
+  plunge:low_normal:0-9 \
+  plunge:mid_normal:0-9 \
+  plunge:high_normal:0-9 \
+  --bot plunge
 ```

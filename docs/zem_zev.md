@@ -126,7 +126,7 @@ inactive (`0`/`False`) in the current generic-baseline controller.
 Setup-gate debug traces can be enabled with:
 
 ```bash
-PYLANDER_ZEM_DEBUG_SETUP=1 uv run python main.py run launch --bot zem_zev --seed 0
+PYLANDER_ZEM_DEBUG_SETUP=1 uv run python main.py sim launch:near:0 --bot zem_zev
 ```
 
 Focused eval boundaries:

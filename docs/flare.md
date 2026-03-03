@@ -27,7 +27,7 @@ Scenarios:
 Defaults:
 
 - default scenario: `mid`
-- quick benchmark subset: `shallow`, `mid`, `steep`
+- recommended benchmark subset: `shallow`, `mid`, `steep`
 
 ## Eval modes
 
@@ -37,9 +37,15 @@ Defaults:
 ## Commands
 
 ```bash
-uv run python main.py play flare
-uv run python main.py bench flare --quick --bot zem_zev
-uv run python main.py bench flare --bot zem_zev --scenarios shallower,shallow,mid,steep,steeper
+uv run python main.py run --interactive flare
+uv run python main.py sim flare:mid:0 --bot zem_zev
+uv run python main.py bench \
+  flare:shallower:0-9 \
+  flare:shallow:0-9 \
+  flare:mid:0-9 \
+  flare:steep:0-9 \
+  flare:steeper:0-9 \
+  --bot zem_zev
 ```
 
 ## Related docs

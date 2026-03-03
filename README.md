@@ -33,107 +33,121 @@ uv run python main.py <command> [options]
 
 Commands:
 
-- `play`: interactive rendered mode
-- `run`: single headless simulation run
+- `run`: single run (`--interactive` for rendered mode, headless otherwise)
+- `sim`: single headless simulation run
+- `plot`: headless simulation with plotting enabled by default
 - `bench`: multi-run benchmark batch
 
 Run `uv run python main.py --help` for full help.
 
 ## Running
 
-### Interactive (`play`)
+### Interactive (`run --interactive`)
 
 ```bash
-uv run python main.py play
-uv run python main.py play flat --bot zem_zev
+uv run python main.py run --interactive
+uv run python main.py run --interactive flat --bot zem_zev
 ```
 
-### Single headless run (`run`)
+### Single headless run (`sim`)
 
 ```bash
-uv run python main.py run flare --bot zem_zev --seed 0
-uv run python main.py run coast --bot zem_zev --scenario mid_wide --seed 3
-uv run python main.py run climb --bot zem_zev --scenario slope_mid --seed 0
-uv run python main.py run plunge --bot plunge --scenario mid_normal --seed 0
-uv run python main.py run flare --bot query_demo --seed 0
+uv run python main.py sim flare:mid:0 --bot zem_zev
+uv run python main.py sim coast:mid_wide:3 --bot zem_zev
+uv run python main.py sim climb:slope_mid:0 --bot zem_zev
+uv run python main.py sim plunge:mid_normal:0 --bot plunge
+uv run python main.py sim flare:mid:0 --bot query_demo
+```
+
+Selector format:
+
+- run/sim/plot selector: `level[:scenario[:seed]]`
+- Use `level::seed` when setting a seed without a scenario.
+
+### Plot run (`plot`)
+
+```bash
+uv run python main.py plot launch:far:0 --bot zem_zev
 ```
 
 ### Benchmark batch (`bench`)
 
 ```bash
-# Quick regression suite (fixed seeds/scenarios)
-uv run python main.py bench plunge --quick --workers 8
-
-# Custom benchmark matrix
-uv run python main.py bench coast \
+# Coast subset over seed range
+uv run python main.py bench \
+  coast:shallow_tight:0-19 \
+  coast:mid_wide:0-19 \
+  coast:steep_wide:0-19 \
   --bot zem_zev \
-  --seeds 0-19 \
-  --scenarios shallow_tight,mid_wide,steep_wide \
   --workers 8
 
-# Multi-level benchmark + reports
-uv run python main.py bench plunge \
-  --levels plunge,flare,coast,climb,setup,launch \
+# Multi-level benchmark + reports (one selector per level/scenario spec)
+uv run python main.py bench \
+  plunge \
+  flare \
+  coast \
+  climb \
+  setup \
+  launch \
   --bot zem_zev \
-  --seeds 0-9 \
   --json auto \
   --csv auto
 ```
 
-Quick benchmark subsets:
+Bench selector format:
 
-- `plunge`: `low_normal`, `mid_normal`, `high_normal`
-- `flare`: `shallow`, `mid`, `steep`
-- `coast`: `shallow_tight`, `mid_wide`, `steep_wide`
-- `climb`: `slope_low`, `slope_mid`, `slope_high`
-- `setup`: `shallow_near`, `mid_far`, `steep_far`
+- `level[:scenario[:seed_spec]]`
+- `seed_spec` supports comma/range syntax, e.g. `0-9`, `0,2,4`, `3-1`.
+- If seed spec is omitted, deterministic scenarios run with seed `0`.
+- If seed spec is omitted and the scenario has randomized fields, seeds auto-expand to `0-9`.
 
 Focused eval (`--eval-mode focused`) is available for `flare`, `coast`, `climb`, and `setup`.
 
 ## Key options
 
-### `play` / `run`
+### `run` / `sim` / `plot`
 
-- `--bot NAME`
-- `--seed N`
-- `--scenario NAME`
-- `--lander NAME`
-- `--eval-mode auto|focused|full`
-- `--steps N`
-- `--time S`
-- `--plot none|speed|thrust|all`
+- selector: `level[:scenario[:seed]]`
+- `-b, --bot NAME`
+- `-l, --lander NAME`
+- `-e, --eval-mode auto|focused|full`
+- `-n, --steps N`
+- `-t, --time S`
+- `-f, --freq N` (headless print cadence)
+- `-p, --plot none|speed|thrust|all`
 - `--stop-on-crash`
 - `--stop-on-out-of-fuel`
 - `--stop-on-first-land`
+- `-i, --interactive` (`run` only)
 
 ### `bench`
 
-- `--bot NAME`
-- `--levels CSV`
-- `--seeds SPEC`
-- `--scenarios CSV`
-- `--scenario NAME`
-- `--quick`
-- `--workers N`
+- selectors: `level[:scenario[:seed_spec]]` (one or more)
+- `-b, --bot NAME`
+- `-l, --lander NAME`
+- `-e, --eval-mode auto|focused|full`
+- `-w, --workers N`
+- `-n, --steps N`
+- `-t, --time S`
+- `-p, --plot none|speed|thrust|all`
+- `-j, --json PATH|auto`
+- `-c, --csv PATH|auto`
 - If worker processes are unavailable in your environment, `bench` falls back to
   sequential execution and prints a warning.
-- `--json PATH|auto`
-- `--csv PATH|auto`
-- `--eval-mode auto|focused|full`
 
 ## Bot profiling and query API
 
 The game loop now supports lightweight bot-loop profiling in headless mode:
 
 ```bash
-PYLANDER_BOT_PROFILE=1 uv run python main.py run flare --bot zem_zev --seed 0
+PYLANDER_BOT_PROFILE=1 uv run python main.py sim flare:mid:0 --bot zem_zev
 ```
 
 Optional interval override (seconds):
 
 ```bash
 PYLANDER_BOT_PROFILE=1 PYLANDER_BOT_PROFILE_INTERVAL_S=2 \
-  uv run python main.py run flare --bot query_demo --seed 0
+  uv run python main.py sim flare:mid:0 --bot query_demo
 ```
 
 Profiled timing covers passive sensor build, active sensor build (legacy bots), query evaluation (query bots), and bot update time.

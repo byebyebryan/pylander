@@ -36,7 +36,7 @@ Scenarios:
 Defaults:
 
 - default scenario: `mid_near`
-- quick benchmark subset: `shallow_near`, `mid_far`, `steep_far`
+- recommended benchmark subset: `shallow_near`, `mid_far`, `steep_far`
 
 ## Focused metrics
 
@@ -59,7 +59,11 @@ Common `zem_zev` setup-shape tuning knobs for this level:
 ## Commands
 
 ```bash
-uv run python main.py play setup
-uv run python main.py bench setup --quick --bot zem_zev
-uv run python main.py bench setup --bot zem_zev --scenarios shallow_near,mid_far,steep_far
+uv run python main.py run --interactive setup
+uv run python main.py sim setup:mid_near:0 --bot zem_zev
+uv run python main.py bench \
+  setup:shallow_near:0-9 \
+  setup:mid_far:0-9 \
+  setup:steep_far:0-9 \
+  --bot zem_zev
 ```

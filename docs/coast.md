@@ -33,7 +33,7 @@ Scenarios:
 Defaults:
 
 - default scenario: `mid_tight`
-- quick benchmark subset: `shallow_tight`, `mid_wide`, `steep_wide`
+- recommended benchmark subset: `shallow_tight`, `mid_wide`, `steep_wide`
 
 ## Focused metrics
 
@@ -49,7 +49,11 @@ Defaults:
 ## Commands
 
 ```bash
-uv run python main.py play coast
-uv run python main.py bench coast --quick --bot zem_zev
-uv run python main.py bench coast --bot zem_zev --scenarios shallow_tight,mid_wide,steep_wide
+uv run python main.py run --interactive coast
+uv run python main.py sim coast:mid_tight:0 --bot zem_zev
+uv run python main.py bench \
+  coast:shallow_tight:0-19 \
+  coast:mid_wide:0-19 \
+  coast:steep_wide:0-19 \
+  --bot zem_zev
 ```
