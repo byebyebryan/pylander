@@ -34,6 +34,8 @@ Core metrics from game + batch aggregation:
 
 - CLI + batch evaluation: [`main.py`](../main.py)
 - Game loop + raw metrics: [`game.py`](../game.py)
+- Runtime loop extraction: [`runtime/loop_timing.py`](../runtime/loop_timing.py), [`runtime/sensors.py`](../runtime/sensors.py), [`runtime/bot_loop.py`](../runtime/bot_loop.py)
+- Level capability helpers: [`core/level_capabilities.py`](../core/level_capabilities.py)
 - Bot sensor/action API contract: [`core/bot.py`](../core/bot.py)
 - Metric normalization + aggregation: [`core/eval.py`](../core/eval.py)
 - Scenario levels: [`levels/`](../levels/)

@@ -1,12 +1,13 @@
 # ZEM/ZEV Optimizer Bot (`zem_zev`)
 
-Implementation: [`bots/zem_zev.py`](../bots/zem_zev.py), [`bots/_optimizer_pdg.py`](../bots/_optimizer_pdg.py)
+Implementation: [`bots/zem_zev.py`](../bots/zem_zev.py), [`bots/_optimizer_pdg.py`](../bots/_optimizer_pdg.py), [`bots/_zem_config.py`](../bots/_zem_config.py), [`bots/_zem_phase.py`](../bots/_zem_phase.py), [`bots/_zem_planner.py`](../bots/_zem_planner.py), [`bots/_zem_actuation.py`](../bots/_zem_actuation.py), [`bots/_zem_telemetry.py`](../bots/_zem_telemetry.py)
 
 `zem_zev` is the unified optimizer-first full-envelope guidance bot used by default in `launch`, `setup`, `coast`, `climb`, and `flare`.
 
 Implementation note:
 
 - `zem_zev` uses the `QueryBot` `plan/act` API.
+- Core planning, actuation, phase tracking, and telemetry assembly are split into `_zem_*` helper modules, with `ZemZevBot` acting as the orchestration shell.
 - Phase tracking consumes a batched ballistic projection query result each tick.
 - Setup/coast phases use stricter center-first terminal-x tolerance and optional apex-shaped y-reference blending.
 
