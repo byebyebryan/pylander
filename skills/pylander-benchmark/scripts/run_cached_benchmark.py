@@ -21,6 +21,28 @@ from build_selector_pack import (  # noqa: E402
     build_selectors,
 )
 
+_COMPUTE_FIELDS: tuple[str, ...] = (
+    "bot_profile_total_ms_per_tick",
+    "bot_profile_passive_ms_per_tick",
+    "bot_profile_active_ms_per_tick",
+    "bot_profile_query_ms_per_tick",
+    "bot_profile_update_ms_per_tick",
+    "bot_profile_total_ms_per_tick_p90",
+    "bot_profile_total_ms_per_tick_p99",
+    "bot_profile_query_ms_per_tick_p90",
+    "bot_profile_query_ms_per_tick_p99",
+    "bot_profile_update_ms_per_tick_p90",
+    "bot_profile_update_ms_per_tick_p99",
+)
+_COMPUTE_AVG_TOTAL_ABS_MIN = 0.10
+_COMPUTE_AVG_TOTAL_REL_MIN = 0.10
+_COMPUTE_AVG_COMPONENT_ABS_MIN = 0.05
+_COMPUTE_AVG_COMPONENT_REL_MIN = 0.20
+_COMPUTE_P99_TOTAL_ABS_MIN = 0.20
+_COMPUTE_P99_TOTAL_REL_MIN = 0.20
+_COMPUTE_P99_COMPONENT_ABS_MIN = 0.10
+_COMPUTE_P99_COMPONENT_REL_MIN = 0.25
+
 
 def _sanitize_token(value: str) -> str:
     out = []
@@ -96,6 +118,9 @@ def _selector_pack_stem(
     selectors: list[str],
     bot: str,
     eval_mode: str,
+    bot_profile_enabled: bool,
+    bot_profile_interval_s: float | None,
+    bot_profile_log_lines: bool,
 ) -> str:
     level_tokens = sorted({s.split(":", 1)[0] for s in selectors if s.strip()})
     level_hint = "-".join(level_tokens[:3]) if level_tokens else "none"
@@ -107,6 +132,11 @@ def _selector_pack_stem(
             "selectors": selectors,
             "bot": bot,
             "eval_mode": eval_mode,
+            "bot_profile_enabled": bool(bot_profile_enabled),
+            "bot_profile_interval_s": (
+                None if bot_profile_interval_s is None else round(float(bot_profile_interval_s), 6)
+            ),
+            "bot_profile_log_lines": bool(bot_profile_log_lines),
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -413,6 +443,245 @@ def _scenario_regressions(
     return out
 
 
+def _weighted_profile_metric(
+    records: list[dict[str, Any]],
+    *,
+    field: str,
+) -> tuple[float | None, float, int]:
+    sum_weighted = 0.0
+    sum_ticks = 0.0
+    profiled_runs = 0
+    for record in records:
+        ticks = _to_float(record.get("bot_profile_ticks"), 0.0)
+        value = _to_float(record.get(field), float("nan"))
+        if not (ticks > 0.0):
+            continue
+        if value != value:
+            continue
+        sum_weighted += value * ticks
+        sum_ticks += ticks
+        profiled_runs += 1
+    if sum_ticks <= 0.0:
+        return None, 0.0, 0
+    return (sum_weighted / sum_ticks), sum_ticks, profiled_runs
+
+
+def _compute_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
+    records = _payload_records(payload)
+    ticks_total = 0.0
+    runs_profiled = 0
+    for record in records:
+        ticks = _to_float(record.get("bot_profile_ticks"), 0.0)
+        if ticks > 0:
+            ticks_total += ticks
+            runs_profiled += 1
+
+    metrics: dict[str, float | None] = {}
+    for field in _COMPUTE_FIELDS:
+        value, _ticks, _runs = _weighted_profile_metric(records, field=field)
+        metrics[field] = value
+
+    available = ticks_total > 0 and any(v is not None for v in metrics.values())
+    return {
+        "available": bool(available),
+        "ticks_total": ticks_total,
+        "runs_profiled": runs_profiled,
+        "metrics": metrics,
+    }
+
+
+def _delta_with_rel(
+    baseline: float | None,
+    candidate: float | None,
+) -> dict[str, float | None]:
+    if baseline is None or candidate is None:
+        return {"baseline": baseline, "candidate": candidate, "delta_abs": None, "delta_rel": None}
+    delta_abs = float(candidate) - float(baseline)
+    if abs(float(baseline)) <= 1e-9:
+        delta_rel = float("inf") if delta_abs > 0 else 0.0
+    else:
+        delta_rel = delta_abs / abs(float(baseline))
+    return {
+        "baseline": float(baseline),
+        "candidate": float(candidate),
+        "delta_abs": delta_abs,
+        "delta_rel": delta_rel,
+    }
+
+
+def _is_notable_delta(
+    delta: dict[str, float | None],
+    *,
+    abs_min: float,
+    rel_min: float,
+) -> bool:
+    delta_abs = delta.get("delta_abs")
+    delta_rel = delta.get("delta_rel")
+    if delta_abs is None or delta_rel is None:
+        return False
+    if float(delta_abs) <= 0.0:
+        return False
+    if float(delta_abs) < float(abs_min):
+        return False
+    if float(delta_rel) < float(rel_min):
+        return False
+    return True
+
+
+def _compute_compare(
+    *,
+    baseline_payload: dict[str, Any],
+    candidate_payload: dict[str, Any],
+) -> dict[str, Any]:
+    b = _compute_snapshot(baseline_payload)
+    c = _compute_snapshot(candidate_payload)
+    deltas: dict[str, dict[str, float | None]] = {}
+    for field in _COMPUTE_FIELDS:
+        deltas[field] = _delta_with_rel(
+            b.get("metrics", {}).get(field),
+            c.get("metrics", {}).get(field),
+        )
+
+    thresholds = {
+        "avg_total": {
+            "abs_min_ms": _COMPUTE_AVG_TOTAL_ABS_MIN,
+            "rel_min": _COMPUTE_AVG_TOTAL_REL_MIN,
+        },
+        "avg_component": {
+            "abs_min_ms": _COMPUTE_AVG_COMPONENT_ABS_MIN,
+            "rel_min": _COMPUTE_AVG_COMPONENT_REL_MIN,
+        },
+        "p99_total": {
+            "abs_min_ms": _COMPUTE_P99_TOTAL_ABS_MIN,
+            "rel_min": _COMPUTE_P99_TOTAL_REL_MIN,
+        },
+        "p99_component": {
+            "abs_min_ms": _COMPUTE_P99_COMPONENT_ABS_MIN,
+            "rel_min": _COMPUTE_P99_COMPONENT_REL_MIN,
+        },
+    }
+    notable_avg_total = _is_notable_delta(
+        deltas["bot_profile_total_ms_per_tick"],
+        abs_min=_COMPUTE_AVG_TOTAL_ABS_MIN,
+        rel_min=_COMPUTE_AVG_TOTAL_REL_MIN,
+    )
+    notable_avg_components = any(
+        _is_notable_delta(
+            deltas[name],
+            abs_min=_COMPUTE_AVG_COMPONENT_ABS_MIN,
+            rel_min=_COMPUTE_AVG_COMPONENT_REL_MIN,
+        )
+        for name in (
+            "bot_profile_passive_ms_per_tick",
+            "bot_profile_active_ms_per_tick",
+            "bot_profile_query_ms_per_tick",
+            "bot_profile_update_ms_per_tick",
+        )
+    )
+    notable_p99_total = _is_notable_delta(
+        deltas["bot_profile_total_ms_per_tick_p99"],
+        abs_min=_COMPUTE_P99_TOTAL_ABS_MIN,
+        rel_min=_COMPUTE_P99_TOTAL_REL_MIN,
+    )
+    notable_p99_components = any(
+        _is_notable_delta(
+            deltas[name],
+            abs_min=_COMPUTE_P99_COMPONENT_ABS_MIN,
+            rel_min=_COMPUTE_P99_COMPONENT_REL_MIN,
+        )
+        for name in (
+            "bot_profile_query_ms_per_tick_p99",
+            "bot_profile_update_ms_per_tick_p99",
+        )
+    )
+    notable_avg = bool(notable_avg_total or notable_avg_components)
+    notable_p99 = bool(notable_p99_total or notable_p99_components)
+    notable_any = bool(notable_avg or notable_p99)
+
+    return {
+        "baseline": b,
+        "candidate": c,
+        "deltas": deltas,
+        "thresholds": thresholds,
+        "notable_avg": notable_avg,
+        "notable_p99": notable_p99,
+        "notable_any": notable_any,
+    }
+
+
+def _fmt_delta(delta: dict[str, float | None], scale_rel: bool = True) -> str:
+    base = delta.get("baseline")
+    cand = delta.get("candidate")
+    d_abs = delta.get("delta_abs")
+    d_rel = delta.get("delta_rel")
+    if base is None or cand is None or d_abs is None or d_rel is None:
+        return "n/a"
+    if d_rel == float("inf"):
+        rel_txt = "+inf"
+    else:
+        rel_txt = f"{(100.0 * float(d_rel)):+.1f}%" if scale_rel else f"{float(d_rel):+.3f}"
+    return f"{float(base):.3f}->{float(cand):.3f} ({float(d_abs):+.3f}, {rel_txt})"
+
+
+def _print_compute_block(
+    label: str,
+    *,
+    compare: dict[str, Any],
+    notable_regression: bool,
+    gating: bool,
+) -> dict[str, Any]:
+    print(f"\n# compute_{label}")
+    baseline = dict(compare.get("baseline") or {})
+    candidate = dict(compare.get("candidate") or {})
+    deltas = dict(compare.get("deltas") or {})
+    b_available = bool(baseline.get("available", False))
+    c_available = bool(candidate.get("available", False))
+    print(f"available: baseline={b_available} candidate={c_available}")
+    if not (b_available and c_available):
+        print("note: compute compare unavailable (profiling was disabled or missing for one side).")
+        return {
+            "available": False,
+            "notable_regression": False,
+            "notable_scope": ("global_gate" if gating else "observation_only"),
+            **compare,
+        }
+
+    print(
+        "profiled_runs: "
+        f"{_to_int(baseline.get('runs_profiled'), 0)}->{_to_int(candidate.get('runs_profiled'), 0)} "
+        f"ticks={_to_int(baseline.get('ticks_total'), 0)}->{_to_int(candidate.get('ticks_total'), 0)}"
+    )
+    print(
+        "avg_ms_per_tick(total/passive/active/query/update): "
+        f"{_fmt_delta(dict(deltas.get('bot_profile_total_ms_per_tick') or {}))} / "
+        f"{_fmt_delta(dict(deltas.get('bot_profile_passive_ms_per_tick') or {}))} / "
+        f"{_fmt_delta(dict(deltas.get('bot_profile_active_ms_per_tick') or {}))} / "
+        f"{_fmt_delta(dict(deltas.get('bot_profile_query_ms_per_tick') or {}))} / "
+        f"{_fmt_delta(dict(deltas.get('bot_profile_update_ms_per_tick') or {}))}"
+    )
+    print(
+        "p99_ms_per_tick(total/query/update): "
+        f"{_fmt_delta(dict(deltas.get('bot_profile_total_ms_per_tick_p99') or {}))} / "
+        f"{_fmt_delta(dict(deltas.get('bot_profile_query_ms_per_tick_p99') or {}))} / "
+        f"{_fmt_delta(dict(deltas.get('bot_profile_update_ms_per_tick_p99') or {}))}"
+    )
+    print(
+        "p90_ms_per_tick(total/query/update): "
+        f"{_fmt_delta(dict(deltas.get('bot_profile_total_ms_per_tick_p90') or {}))} / "
+        f"{_fmt_delta(dict(deltas.get('bot_profile_query_ms_per_tick_p90') or {}))} / "
+        f"{_fmt_delta(dict(deltas.get('bot_profile_update_ms_per_tick_p90') or {}))}"
+    )
+    if notable_regression:
+        scope_txt = "global (gating)" if gating else "observation-only (non-gating)"
+        print(f"notable_compute_regression: {scope_txt}")
+    return {
+        "available": True,
+        "notable_regression": bool(notable_regression),
+        "notable_scope": ("global_gate" if gating else "observation_only"),
+        **compare,
+    }
+
+
 def _run_command(cmd: list[str]) -> tuple[int, str]:
     print("# run")
     print(" ".join(cmd))
@@ -438,6 +707,9 @@ def _load_or_run(
     bot: str,
     workers: int | None,
     eval_mode: str,
+    bot_profile_enabled: bool,
+    bot_profile_interval_s: float | None,
+    bot_profile_log_lines: bool,
     results_root: Path,
     reuse: bool,
     allow_run: bool,
@@ -454,6 +726,11 @@ def _load_or_run(
         "bot": bot,
         "workers": (None if workers is None else int(workers)),
         "eval_mode": eval_mode,
+        "bot_profile_enabled": bool(bot_profile_enabled),
+        "bot_profile_interval_s": (
+            None if bot_profile_interval_s is None else float(bot_profile_interval_s)
+        ),
+        "bot_profile_log_lines": bool(bot_profile_log_lines),
     }
     if reuse and json_path.exists() and csv_path.exists() and meta_path.exists():
         try:
@@ -477,6 +754,9 @@ def _load_or_run(
         eval_mode=eval_mode,
         json_path=str(json_path),
         csv_path=str(csv_path),
+        bot_profile_enabled=bool(bot_profile_enabled),
+        bot_profile_interval_s=bot_profile_interval_s,
+        bot_profile_log_lines=bool(bot_profile_log_lines),
     )
     code, output = _run_command(cmd)
     if code not in (0, 1):
@@ -690,6 +970,28 @@ def _print_compare(
         crash_block=crash_observation,
         crash_notable=False,
     )
+    compute_global = _compute_compare(
+        baseline_payload=baseline_parts["global"],
+        candidate_payload=candidate_parts["global"],
+    )
+    compute_observation = _compute_compare(
+        baseline_payload=baseline_parts["observation"],
+        candidate_payload=candidate_parts["observation"],
+    )
+    compute_global_notable = bool(compute_global.get("notable_any", False))
+    compute_observation_notable = bool(compute_observation.get("notable_any", False))
+    compute_global_summary = _print_compute_block(
+        "global",
+        compare=compute_global,
+        notable_regression=compute_global_notable,
+        gating=True,
+    )
+    compute_observation_summary = _print_compute_block(
+        "observation",
+        compare=compute_observation,
+        notable_regression=compute_observation_notable,
+        gating=False,
+    )
 
     _print_crash_details(
         "crash_regressions_global",
@@ -738,6 +1040,8 @@ def _print_compare(
                 f"basis={row['fuel_basis']}"
             )
 
+    crash_global_notable = len(crash_global["new_crashes"]) > 0
+    global_notable = bool(crash_global_notable or compute_global_notable)
     return {
         "baseline_commit": baseline_commit,
         "candidate_commit": candidate_commit,
@@ -752,16 +1056,18 @@ def _print_compare(
         "global": {
             **global_summary,
             "crash": crash_global,
-            "notable_regression": len(crash_global["new_crashes"]) > 0,
+            "compute": compute_global_summary,
+            "notable_regression": global_notable,
             "worst_scenarios": deltas_global[:20],
         },
         "observation": {
             **observation_summary,
             "crash": crash_observation,
+            "compute": compute_observation_summary,
             "notable_regression": False,
             "worst_scenarios": deltas_observation[:20],
         },
-        "notable_regression": len(crash_global["new_crashes"]) > 0,
+        "notable_regression": global_notable,
     }
 
 
@@ -785,6 +1091,24 @@ def main() -> None:
     ap.add_argument("--bot", default="zem_zev")
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--eval-mode", default="auto", choices=("auto", "focused", "full"))
+    ap.add_argument(
+        "--bot-profile",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable bot compute profiling in benchmark runs (default: on)",
+    )
+    ap.add_argument(
+        "--bot-profile-interval-s",
+        type=float,
+        default=None,
+        help="Profiler report interval in seconds (when profiler logs are enabled)",
+    )
+    ap.add_argument(
+        "--bot-profile-logs",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable periodic profiler logs in benchmark output (default: off)",
+    )
     ap.add_argument("--baseline-ref", default=None, help="Git ref to compare against (e.g. main)")
     ap.add_argument("--results-dir", default="outputs/benchmarks")
     ap.add_argument("--no-reuse", action="store_true", help="Ignore cache and rerun current commit pack")
@@ -809,6 +1133,11 @@ def main() -> None:
         selectors=pack.selectors,
         bot=args.bot,
         eval_mode=args.eval_mode,
+        bot_profile_enabled=bool(args.bot_profile),
+        bot_profile_interval_s=(
+            None if args.bot_profile_interval_s is None else max(0.25, float(args.bot_profile_interval_s))
+        ),
+        bot_profile_log_lines=bool(args.bot_profile_logs),
     )
     results_root = (_REPO_ROOT / args.results_dir).resolve()
 
@@ -820,6 +1149,11 @@ def main() -> None:
         bot=args.bot,
         workers=args.workers,
         eval_mode=args.eval_mode,
+        bot_profile_enabled=bool(args.bot_profile),
+        bot_profile_interval_s=(
+            None if args.bot_profile_interval_s is None else max(0.25, float(args.bot_profile_interval_s))
+        ),
+        bot_profile_log_lines=bool(args.bot_profile_logs),
         results_root=results_root,
         reuse=not args.no_reuse,
         allow_run=True,
@@ -843,6 +1177,11 @@ def main() -> None:
         bot=args.bot,
         workers=args.workers,
         eval_mode=args.eval_mode,
+        bot_profile_enabled=bool(args.bot_profile),
+        bot_profile_interval_s=(
+            None if args.bot_profile_interval_s is None else max(0.25, float(args.bot_profile_interval_s))
+        ),
+        bot_profile_log_lines=bool(args.bot_profile_logs),
         results_root=results_root,
         reuse=True,
         allow_run=(baseline_commit == current_commit),

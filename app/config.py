@@ -26,6 +26,9 @@ class RunSettings:
     stop_on_out_of_fuel: bool
     stop_on_first_land: bool
     headless: bool
+    bot_profile_enabled: bool | None = None
+    bot_profile_interval_s: float | None = None
+    bot_profile_log_lines: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -40,6 +43,9 @@ class BenchSettings:
     plot_mode: str
     json_path: str | None
     csv_path: str | None
+    bot_profile_enabled: bool = True
+    bot_profile_interval_s: float | None = None
+    bot_profile_log_lines: bool = False
 
 
 @dataclass(frozen=True)

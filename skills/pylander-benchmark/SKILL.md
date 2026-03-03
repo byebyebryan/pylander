@@ -74,6 +74,7 @@ Policy behavior:
 4. Summarize:
    - global section (normal levels only): success/crash and fuel deltas
    - observation section (observe-only/excluded runs): separate informational deltas
+   - compute section (avg + p90/p99 ms/tick): total, query, update deltas
    - primary fuel deltas using success-only aggregates by default
    - secondary all-runs fuel deltas (for context when crashes/outliers skew results)
    - worst regressions by `level:scenario`
@@ -97,6 +98,12 @@ Parallel-worker policy:
 - No implicit sequential fallback is allowed.
 - Use `--workers 1` only when sequential mode is explicitly intended.
 
+Bot compute profiling defaults for benchmark runs:
+
+- enabled by default
+- periodic profiling logs disabled by default
+- cache key includes profiling options (`--bot-profile*`) so comparisons stay like-for-like
+
 ## Output format
 
 Always include:
@@ -104,6 +111,7 @@ Always include:
 - exact command(s)
 - selector list used
 - aggregate summary deltas (primary success-only + secondary all-runs)
+- compute deltas (avg/p90/p99 ms per tick) with notable spike callouts
 - per-scenario notable regressions (`level:scenario`)
 - crash regression details:
   - selector(s), failure mode, key telemetry snapshot
@@ -124,6 +132,8 @@ Examples:
 - `uv run python skills/pylander-benchmark/scripts/build_selector_pack.py --mode full --seed-spec 0-19`
 - `uv run python skills/pylander-benchmark/scripts/build_selector_pack.py --mode focused --selectors launch:far setup`
 - `uv run python skills/pylander-benchmark/scripts/build_selector_pack.py --mode quick --exclude-levels flat,mountains --observe-only-levels climb`
+- `uv run python skills/pylander-benchmark/scripts/build_selector_pack.py --mode quick --bot-profile --no-bot-profile-logs`
 - `uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode quick --baseline-ref main`
+- `uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot-profile --no-bot-profile-logs`
 - `uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode focused --selectors setup launch:far --seed-spec 0-9 --baseline-ref main`
 - `uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode full --baseline-ref main --exclude-levels flat,mountains --observe-only-levels climb`

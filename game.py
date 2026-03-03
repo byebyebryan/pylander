@@ -77,13 +77,21 @@ class LanderGame:
         seed: int | None = None,
         bot: Bot | None = None,
         headless: bool = False,
+        bot_profile_enabled: bool | None = None,
+        bot_profile_interval_s: float | None = None,
+        bot_profile_log_lines: bool | None = None,
     ):
         self.headless = headless
         self.bot = bot
         self.level = level
         seed = random.randint(0, 1000000) if seed is None else seed
         self.seed = int(seed)
-        self._bot_profiler = BotLoopProfiler.from_env(headless=headless)
+        self._bot_profiler = BotLoopProfiler.from_settings(
+            headless=headless,
+            enabled=bot_profile_enabled,
+            interval_s=bot_profile_interval_s,
+            log_lines=bot_profile_log_lines,
+        )
 
         if headless and not bot:
             raise ValueError("Headless mode requires a bot")

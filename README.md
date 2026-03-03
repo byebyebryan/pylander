@@ -144,8 +144,14 @@ Default policy profile:
 - `-p, --plot none|speed|thrust|all`
 - `-j, --json PATH|auto`
 - `-c, --csv PATH|auto`
+- `--bot-profile, --no-bot-profile` (default: on)
+- `--bot-profile-interval-s S` (optional profiler log interval)
+- `--bot-profile-logs, --no-bot-profile-logs` (default: off)
 - If worker processes are unavailable, `bench` now errors instead of silently
   falling back. Use `--workers 1` only when you explicitly want sequential mode.
+
+Benchmark records include bot compute timing metrics (avg plus p90/p99 for total,
+query, and update ms/tick) when profiling is enabled.
 
 ## Bot profiling and query API
 
@@ -163,6 +169,8 @@ PYLANDER_BOT_PROFILE=1 PYLANDER_BOT_PROFILE_INTERVAL_S=2 \
 ```
 
 Profiled timing covers passive sensor build, active sensor build (legacy bots), query evaluation (query bots), and bot update time.
+
+For `bench`, profiling is enabled by default with periodic profile logs disabled.
 
 See [`docs/overview.md`](docs/overview.md) for the new `QueryBot plan/act` interface and query payload types.
 

@@ -126,6 +126,9 @@ def _to_run_settings(cfg: BenchSettings) -> RunSettings:
         stop_on_out_of_fuel=True,
         stop_on_first_land=True,
         headless=True,
+        bot_profile_enabled=cfg.bot_profile_enabled,
+        bot_profile_interval_s=cfg.bot_profile_interval_s,
+        bot_profile_log_lines=cfg.bot_profile_log_lines,
     )
 
 

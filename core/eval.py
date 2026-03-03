@@ -160,6 +160,49 @@ def normalize_run_result(
         "zem_solve_ms_mean": _to_optional_float(result.get("zem_solve_ms_mean")),
         "zem_solve_ms_p90": _to_optional_float(result.get("zem_solve_ms_p90")),
         "zem_fallback_frames": _to_optional_float(result.get("zem_fallback_frames")),
+        "bot_profile_enabled": _to_optional_bool(result.get("bot_profile_enabled")),
+        "bot_profile_ticks": _to_optional_float(result.get("bot_profile_ticks")),
+        "bot_profile_passive_ms_per_tick": _to_optional_float(
+            result.get("bot_profile_passive_ms_per_tick")
+        ),
+        "bot_profile_active_ms_per_tick": _to_optional_float(
+            result.get("bot_profile_active_ms_per_tick")
+        ),
+        "bot_profile_query_ms_per_tick": _to_optional_float(
+            result.get("bot_profile_query_ms_per_tick")
+        ),
+        "bot_profile_update_ms_per_tick": _to_optional_float(
+            result.get("bot_profile_update_ms_per_tick")
+        ),
+        "bot_profile_total_ms_per_tick": _to_optional_float(
+            result.get("bot_profile_total_ms_per_tick")
+        ),
+        "bot_profile_query_ms_per_tick_p90": _to_optional_float(
+            result.get("bot_profile_query_ms_per_tick_p90")
+        ),
+        "bot_profile_query_ms_per_tick_p99": _to_optional_float(
+            result.get("bot_profile_query_ms_per_tick_p99")
+        ),
+        "bot_profile_update_ms_per_tick_p90": _to_optional_float(
+            result.get("bot_profile_update_ms_per_tick_p90")
+        ),
+        "bot_profile_update_ms_per_tick_p99": _to_optional_float(
+            result.get("bot_profile_update_ms_per_tick_p99")
+        ),
+        "bot_profile_total_ms_per_tick_p90": _to_optional_float(
+            result.get("bot_profile_total_ms_per_tick_p90")
+        ),
+        "bot_profile_total_ms_per_tick_p99": _to_optional_float(
+            result.get("bot_profile_total_ms_per_tick_p99")
+        ),
+        "bot_profile_query_total": _to_optional_float(result.get("bot_profile_query_total")),
+        "bot_profile_query_raycast": _to_optional_float(result.get("bot_profile_query_raycast")),
+        "bot_profile_query_terrain_profile": _to_optional_float(
+            result.get("bot_profile_query_terrain_profile")
+        ),
+        "bot_profile_query_ballistic": _to_optional_float(
+            result.get("bot_profile_query_ballistic")
+        ),
         "zem_peak_alt_over_target": _to_optional_float(
             result.get("zem_peak_alt_over_target")
         ),

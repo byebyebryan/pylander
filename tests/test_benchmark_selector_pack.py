@@ -85,3 +85,16 @@ def test_focused_selector_preserves_csv_seed_specs() -> None:
         focused_selectors=["launch:mid:0,2"],
     )
     assert pack.selectors == ["launch:mid:0,2"]
+
+
+def test_build_bench_command_includes_profile_flags() -> None:
+    cmd = selector_pack.build_bench_command(
+        selectors=["launch:mid:0-1"],
+        bot_profile_enabled=True,
+        bot_profile_interval_s=1.25,
+        bot_profile_log_lines=False,
+    )
+    assert "--bot-profile" in cmd
+    assert "--no-bot-profile-logs" in cmd
+    assert "--bot-profile-interval-s" in cmd
+    assert "1.250" in cmd

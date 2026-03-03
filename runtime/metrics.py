@@ -119,6 +119,7 @@ class BotProfileCounter:
     active_build_s: float = 0.0
     query_eval_s: float = 0.0
     bot_update_s: float = 0.0
+    total_tick_s: float = 0.0
     query_total: int = 0
     query_raycast: int = 0
     query_terrain_profile: int = 0
@@ -130,8 +131,12 @@ class BotLoopProfiler:
     enabled: bool
     interval_s: float = 5.0
     next_report_s: float = 5.0
+    log_lines: bool = True
     total: BotProfileCounter = field(default_factory=BotProfileCounter)
     by_bot: dict[str, BotProfileCounter] = field(default_factory=dict)
+    total_tick_samples_s: list[float] = field(default_factory=list)
+    query_tick_samples_s: list[float] = field(default_factory=list)
+    update_tick_samples_s: list[float] = field(default_factory=list)
 
     @staticmethod
     def _env_true(name: str) -> bool:
@@ -146,7 +151,32 @@ class BotLoopProfiler:
             interval = max(0.25, float(raw_interval))
         except ValueError:
             interval = 5.0
-        return cls(enabled=enabled, interval_s=interval, next_report_s=interval)
+        log_lines = not cls._env_true("PYLANDER_BOT_PROFILE_NO_LOG_LINES")
+        return cls(
+            enabled=enabled,
+            interval_s=interval,
+            next_report_s=interval,
+            log_lines=log_lines,
+        )
+
+    @classmethod
+    def from_settings(
+        cls,
+        *,
+        headless: bool,
+        enabled: bool | None = None,
+        interval_s: float | None = None,
+        log_lines: bool | None = None,
+    ) -> BotLoopProfiler:
+        profiler = cls.from_env(headless=headless)
+        if enabled is not None:
+            profiler.enabled = bool(enabled) and headless
+        if interval_s is not None:
+            profiler.interval_s = max(0.25, float(interval_s))
+            profiler.next_report_s = profiler.interval_s
+        if log_lines is not None:
+            profiler.log_lines = bool(log_lines)
+        return profiler
 
     def _counter_for_uid(self, uid: str) -> BotProfileCounter:
         counter = self.by_bot.get(uid)
@@ -209,12 +239,51 @@ class BotLoopProfiler:
         self._record_duration(self.total, "bot_update_s", seconds)
         self._record_duration(self._counter_for_uid(uid), "bot_update_s", seconds)
 
+    def record_tick_costs(
+        self,
+        uid: str,
+        *,
+        passive_s: float,
+        active_s: float,
+        query_s: float,
+        update_s: float,
+    ) -> None:
+        if not self.enabled:
+            return
+        total_s = (
+            max(0.0, float(passive_s))
+            + max(0.0, float(active_s))
+            + max(0.0, float(query_s))
+            + max(0.0, float(update_s))
+        )
+        counter = self._counter_for_uid(uid)
+        self._record_duration(self.total, "total_tick_s", total_s)
+        self._record_duration(counter, "total_tick_s", total_s)
+        self.total_tick_samples_s.append(total_s)
+        self.query_tick_samples_s.append(max(0.0, float(query_s)))
+        self.update_tick_samples_s.append(max(0.0, float(update_s)))
+
     @staticmethod
     def _ms_per_tick(seconds: float, ticks: int) -> float:
         return 1000.0 * seconds / max(1, ticks)
 
+    @staticmethod
+    def _percentile_ms(samples_s: list[float], q: float) -> float:
+        if not samples_s:
+            return 0.0
+        vals = sorted(float(max(0.0, x)) for x in samples_s)
+        if len(vals) == 1:
+            return 1000.0 * vals[0]
+        q_clamped = max(0.0, min(1.0, float(q)))
+        idx = q_clamped * (len(vals) - 1)
+        lo = int(idx)
+        hi = min(lo + 1, len(vals) - 1)
+        frac = idx - lo
+        v = vals[lo] * (1.0 - frac) + vals[hi] * frac
+        return 1000.0 * v
+
     def maybe_report_lines(self, elapsed_s: float) -> list[str]:
-        if not self.enabled or elapsed_s < self.next_report_s:
+        if not self.enabled or not self.log_lines or elapsed_s < self.next_report_s:
             return []
         self.next_report_s = elapsed_s + self.interval_s
 
@@ -227,6 +296,7 @@ class BotLoopProfiler:
                 f"active={self._ms_per_tick(total.active_build_s, total.ticks):.3f}ms/t "
                 f"query={self._ms_per_tick(total.query_eval_s, total.ticks):.3f}ms/t "
                 f"update={self._ms_per_tick(total.bot_update_s, total.ticks):.3f}ms/t "
+                f"total={self._ms_per_tick(total.total_tick_s, total.ticks):.3f}ms/t "
                 f"q={total.query_total}/{total.query_raycast}/{total.query_terrain_profile}/{total.query_ballistic}"
             )
         ]
@@ -257,6 +327,13 @@ class BotLoopProfiler:
         result["bot_profile_active_ms_per_tick"] = self._ms_per_tick(total.active_build_s, total.ticks)
         result["bot_profile_query_ms_per_tick"] = self._ms_per_tick(total.query_eval_s, total.ticks)
         result["bot_profile_update_ms_per_tick"] = self._ms_per_tick(total.bot_update_s, total.ticks)
+        result["bot_profile_total_ms_per_tick"] = self._ms_per_tick(total.total_tick_s, total.ticks)
+        result["bot_profile_total_ms_per_tick_p90"] = self._percentile_ms(self.total_tick_samples_s, 0.90)
+        result["bot_profile_total_ms_per_tick_p99"] = self._percentile_ms(self.total_tick_samples_s, 0.99)
+        result["bot_profile_query_ms_per_tick_p90"] = self._percentile_ms(self.query_tick_samples_s, 0.90)
+        result["bot_profile_query_ms_per_tick_p99"] = self._percentile_ms(self.query_tick_samples_s, 0.99)
+        result["bot_profile_update_ms_per_tick_p90"] = self._percentile_ms(self.update_tick_samples_s, 0.90)
+        result["bot_profile_update_ms_per_tick_p99"] = self._percentile_ms(self.update_tick_samples_s, 0.99)
         result["bot_profile_query_total"] = total.query_total
         result["bot_profile_query_raycast"] = total.query_raycast
         result["bot_profile_query_terrain_profile"] = total.query_terrain_profile

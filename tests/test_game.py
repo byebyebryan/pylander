@@ -476,6 +476,26 @@ def test_parse_bench_command_uses_expected_defaults() -> None:
         BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None),
     )
     assert command.bench.eval_mode == "auto"
+    assert command.bench.bot_profile_enabled is True
+    assert command.bench.bot_profile_log_lines is False
+    assert command.bench.bot_profile_interval_s is None
+
+
+def test_parse_bench_command_profile_flags_override_defaults() -> None:
+    _parser, command = parse_command(
+        [
+            "bench",
+            "plunge",
+            "--no-bot-profile",
+            "--bot-profile-logs",
+            "--bot-profile-interval-s",
+            "1.5",
+        ]
+    )
+    assert isinstance(command, BenchCommand)
+    assert command.bench.bot_profile_enabled is False
+    assert command.bench.bot_profile_log_lines is True
+    assert command.bench.bot_profile_interval_s == 1.5
 
 
 def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> None:

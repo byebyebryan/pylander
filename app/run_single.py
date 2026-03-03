@@ -79,7 +79,15 @@ def run_once(
     if bot is not None and run_bot_name is not None:
         setattr(bot, "_bot_name", run_bot_name)
 
-    game = LanderGame(seed=seed, bot=bot, headless=settings.headless, level=level)
+    game = LanderGame(
+        seed=seed,
+        bot=bot,
+        headless=settings.headless,
+        level=level,
+        bot_profile_enabled=settings.bot_profile_enabled,
+        bot_profile_interval_s=settings.bot_profile_interval_s,
+        bot_profile_log_lines=settings.bot_profile_log_lines,
+    )
     result = game.run(
         print_freq=settings.print_freq,
         max_time=settings.max_time,

@@ -168,6 +168,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bench.add_argument("-j", "--json", type=str, default=None, help="Write report JSON path (or 'auto')")
     bench.add_argument("-c", "--csv", type=str, default=None, help="Write report CSV path (or 'auto')")
+    bench.add_argument(
+        "--bot-profile",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable bot compute profiling during benchmark runs (default: on)",
+    )
+    bench.add_argument(
+        "--bot-profile-interval-s",
+        type=float,
+        default=None,
+        help="Profiler report interval in seconds (when profiler logs are enabled)",
+    )
+    bench.add_argument(
+        "--bot-profile-logs",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable periodic profiler console logs during benchmark runs (default: off)",
+    )
 
     return parser
 
@@ -237,6 +255,9 @@ def _build_run_settings(
         stop_on_out_of_fuel=bool(args.stop_on_out_of_fuel),
         stop_on_first_land=bool(args.stop_on_first_land),
         headless=headless,
+        bot_profile_enabled=None,
+        bot_profile_interval_s=None,
+        bot_profile_log_lines=None,
     )
 
 
@@ -340,6 +361,13 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
             plot_mode=args.plot,
             json_path=args.json,
             csv_path=args.csv,
+            bot_profile_enabled=bool(args.bot_profile),
+            bot_profile_interval_s=(
+                None
+                if args.bot_profile_interval_s is None
+                else max(0.25, float(args.bot_profile_interval_s))
+            ),
+            bot_profile_log_lines=bool(args.bot_profile_logs),
         )
         return parser, BenchCommand(bench=bench_cfg)
 
@@ -357,6 +385,10 @@ def announce_command(command: Command) -> None:
         print(f"Selectors: {', '.join(_render_bench_target(sel) for sel in cfg.selectors)}")
         print(f"Workers requested: {cfg.workers}")
         print(f"Eval mode: {cfg.eval_mode}")
+        print(f"Bot profile: {'on' if cfg.bot_profile_enabled else 'off'}")
+        print(f"Bot profile logs: {'on' if cfg.bot_profile_log_lines else 'off'}")
+        if cfg.bot_profile_interval_s is not None:
+            print(f"Bot profile interval: {cfg.bot_profile_interval_s:.2f}s")
         if cfg.lander_name:
             print(f"Lander: {cfg.lander_name}")
         return

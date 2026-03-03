@@ -87,3 +87,49 @@ def test_update_bot_steps_legacy_bot_path_uses_active_sensor_bucket() -> None:
     assert profiler.total.ticks == 1
     assert profiler.total.query_total == 0
     assert uid in profiler.by_bot
+
+
+def test_bot_profiler_emits_total_and_percentiles() -> None:
+    profiler = BotLoopProfiler(enabled=True, interval_s=1.0, next_report_s=1.0, log_lines=False)
+    for query_s, update_s in ((0.0010, 0.0010), (0.0020, 0.0015), (0.0030, 0.0020)):
+        profiler.record_tick("bot-1")
+        profiler.record_passive_build("bot-1", 0.0005)
+        profiler.record_active_build("bot-1", 0.0007)
+        profiler.record_query_eval(
+            "bot-1",
+            query_s,
+            query_total=1,
+            query_raycast=0,
+            query_terrain_profile=1,
+            query_ballistic=0,
+        )
+        profiler.record_bot_update("bot-1", update_s)
+        profiler.record_tick_costs(
+            "bot-1",
+            passive_s=0.0005,
+            active_s=0.0007,
+            query_s=query_s,
+            update_s=update_s,
+        )
+
+    result: dict[str, float | int | bool] = {}
+    profiler.apply_to_result(result)
+    lines = profiler.maybe_report_lines(elapsed_s=5.0)
+
+    assert result["bot_profile_enabled"] is True
+    assert result["bot_profile_ticks"] == 3
+    assert float(result["bot_profile_total_ms_per_tick"]) > 0.0
+    assert float(result["bot_profile_total_ms_per_tick_p90"]) >= float(
+        result["bot_profile_total_ms_per_tick"]
+    )
+    assert float(result["bot_profile_total_ms_per_tick_p99"]) >= float(
+        result["bot_profile_total_ms_per_tick_p90"]
+    )
+    assert float(result["bot_profile_query_ms_per_tick_p99"]) >= float(
+        result["bot_profile_query_ms_per_tick_p90"]
+    )
+    assert float(result["bot_profile_update_ms_per_tick_p99"]) >= float(
+        result["bot_profile_update_ms_per_tick_p90"]
+    )
+    assert result["bot_profile_query_total"] == 3
+    assert lines == []

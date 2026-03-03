@@ -37,6 +37,28 @@ def _record(
     }
 
 
+def _with_profile(record: dict[str, object], **overrides: float) -> dict[str, object]:
+    out = dict(record)
+    out.update(
+        {
+            "bot_profile_ticks": 600.0,
+            "bot_profile_total_ms_per_tick": 0.50,
+            "bot_profile_passive_ms_per_tick": 0.10,
+            "bot_profile_active_ms_per_tick": 0.20,
+            "bot_profile_query_ms_per_tick": 0.10,
+            "bot_profile_update_ms_per_tick": 0.10,
+            "bot_profile_total_ms_per_tick_p90": 0.60,
+            "bot_profile_total_ms_per_tick_p99": 0.70,
+            "bot_profile_query_ms_per_tick_p90": 0.15,
+            "bot_profile_query_ms_per_tick_p99": 0.20,
+            "bot_profile_update_ms_per_tick_p90": 0.14,
+            "bot_profile_update_ms_per_tick_p99": 0.20,
+        }
+    )
+    out.update(overrides)
+    return out
+
+
 def test_observation_only_crash_does_not_mark_notable_regression() -> None:
     baseline = {
         "records": [
@@ -109,3 +131,75 @@ def test_scenario_regressions_group_by_level_and_scenario() -> None:
     rows = cached_bench._scenario_regressions(baseline, candidate)
     names = {str(item["scenario"]) for item in rows}
     assert names == {"launch:mid", "coast:mid"}
+
+
+def test_global_compute_regression_marks_notable_regression() -> None:
+    baseline = {
+        "records": [
+            _with_profile(
+                _record(level="launch", scenario="mid", seed=0, state="landed", success=True, fuel=20.0),
+            )
+        ]
+    }
+    candidate = {
+        "records": [
+            _with_profile(
+                _record(level="launch", scenario="mid", seed=0, state="landed", success=True, fuel=20.0),
+                bot_profile_total_ms_per_tick=0.75,
+                bot_profile_total_ms_per_tick_p99=1.10,
+                bot_profile_query_ms_per_tick_p99=0.36,
+                bot_profile_update_ms_per_tick_p99=0.34,
+            )
+        ]
+    }
+
+    report = cached_bench._print_compare(
+        baseline_commit="base",
+        candidate_commit="cand",
+        baseline_payload=baseline,
+        candidate_payload=candidate,
+        level_policy={"launch": "normal"},
+        bot="zem_zev",
+        eval_mode="auto",
+        crash_detail_limit=2,
+    )
+
+    assert report["notable_regression"] is True
+    assert report["global"]["compute"]["notable_regression"] is True
+    assert report["global"]["compute"]["notable_any"] is True
+
+
+def test_observation_compute_regression_does_not_gate_global() -> None:
+    baseline = {
+        "records": [
+            _with_profile(
+                _record(level="climb", scenario="slope_mid", seed=0, state="landed", success=True, fuel=20.0),
+            )
+        ]
+    }
+    candidate = {
+        "records": [
+            _with_profile(
+                _record(level="climb", scenario="slope_mid", seed=0, state="landed", success=True, fuel=20.0),
+                bot_profile_total_ms_per_tick=0.78,
+                bot_profile_total_ms_per_tick_p99=1.15,
+                bot_profile_query_ms_per_tick_p99=0.38,
+                bot_profile_update_ms_per_tick_p99=0.36,
+            )
+        ]
+    }
+
+    report = cached_bench._print_compare(
+        baseline_commit="base",
+        candidate_commit="cand",
+        baseline_payload=baseline,
+        candidate_payload=candidate,
+        level_policy={"climb": "observe_only"},
+        bot="zem_zev",
+        eval_mode="auto",
+        crash_detail_limit=2,
+    )
+
+    assert report["notable_regression"] is False
+    assert report["global"]["compute"]["available"] is False
+    assert report["observation"]["compute"]["notable_regression"] is True

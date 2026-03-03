@@ -309,6 +309,9 @@ def build_bench_command(
     eval_mode: str = "auto",
     json_path: str = "auto",
     csv_path: str = "auto",
+    bot_profile_enabled: bool | None = None,
+    bot_profile_interval_s: float | None = None,
+    bot_profile_log_lines: bool | None = None,
 ) -> list[str]:
     if not selectors:
         raise ValueError("No selectors resolved")
@@ -328,6 +331,12 @@ def build_bench_command(
     )
     if workers is not None:
         cmd += ["--workers", str(max(1, int(workers)))]
+    if bot_profile_enabled is not None:
+        cmd += ["--bot-profile" if bot_profile_enabled else "--no-bot-profile"]
+    if bot_profile_log_lines is not None:
+        cmd += ["--bot-profile-logs" if bot_profile_log_lines else "--no-bot-profile-logs"]
+    if bot_profile_interval_s is not None:
+        cmd += ["--bot-profile-interval-s", f"{max(0.25, float(bot_profile_interval_s)):.3f}"]
     return cmd
 
 
@@ -351,6 +360,24 @@ def main() -> None:
     ap.add_argument("--bot", default="zem_zev")
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--eval-mode", default="auto", choices=("auto", "focused", "full"))
+    ap.add_argument(
+        "--bot-profile",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable bot compute profiling in benchmark runs (default: on)",
+    )
+    ap.add_argument(
+        "--bot-profile-interval-s",
+        type=float,
+        default=None,
+        help="Profiler report interval in seconds",
+    )
+    ap.add_argument(
+        "--bot-profile-logs",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable periodic profiler logs in benchmark output (default: off)",
+    )
     args = ap.parse_args()
 
     try:
@@ -368,6 +395,9 @@ def main() -> None:
             eval_mode=args.eval_mode,
             json_path="auto",
             csv_path="auto",
+            bot_profile_enabled=bool(args.bot_profile),
+            bot_profile_interval_s=args.bot_profile_interval_s,
+            bot_profile_log_lines=bool(args.bot_profile_logs),
         )
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc

@@ -45,13 +45,18 @@ def update_bot_steps(
                 current_bot = context.actor_bots.get(uid, bot)
                 profiler.record_tick(uid)
 
+                passive_s = 0.0
+                active_s = 0.0
+                query_s = 0.0
+                update_s = 0.0
+
                 t0 = perf_counter() if profiler.enabled else 0.0
                 passive_sensors = build_passive_sensors(actor, context.terrain)
                 if profiler.enabled:
-                    profiler.record_passive_build(uid, perf_counter() - t0)
+                    passive_s = perf_counter() - t0
+                    profiler.record_passive_build(uid, passive_s)
 
                 if isinstance(current_bot, QueryBot):
-                    update_s = 0.0
                     t_plan = perf_counter() if profiler.enabled else 0.0
                     raw_queries = current_bot.plan(bot_dt, passive_sensors)
                     queries = list(raw_queries or [])
@@ -66,9 +71,10 @@ def update_bot_steps(
                         queries,
                     )
                     if profiler.enabled:
+                        query_s = perf_counter() - t_eval
                         profiler.record_query_eval(
                             uid,
-                            perf_counter() - t_eval,
+                            query_s,
                             query_total=batch_stats.total,
                             query_raycast=batch_stats.raycast,
                             query_terrain_profile=batch_stats.terrain_profile,
@@ -92,7 +98,8 @@ def update_bot_steps(
                         context.terrain,
                     )
                     if profiler.enabled:
-                        profiler.record_active_build(uid, perf_counter() - t_active)
+                        active_s = perf_counter() - t_active
+                        profiler.record_active_build(uid, active_s)
 
                     t_update = perf_counter() if profiler.enabled else 0.0
                     action = current_bot.update(
@@ -101,7 +108,16 @@ def update_bot_steps(
                         active_sensors,
                     )
                     if profiler.enabled:
-                        profiler.record_bot_update(uid, perf_counter() - t_update)
+                        update_s = perf_counter() - t_update
+                        profiler.record_bot_update(uid, update_s)
+                if profiler.enabled:
+                    profiler.record_tick_costs(
+                        uid,
+                        passive_s=passive_s,
+                        active_s=active_s,
+                        query_s=query_s,
+                        update_s=update_s,
+                    )
                 bot_controls_by_uid[uid] = (
                     action.target_thrust,
                     action.target_angle,
