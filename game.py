@@ -2,42 +2,39 @@
 
 from __future__ import annotations
 
-import math
 import random
-from dataclasses import dataclass
-from time import perf_counter
 
-from core.bot import Bot, BotAction, PassiveSensors, QueryBot, VehicleInfo, _ActiveSensorImpl
+from core.bot import Bot
 from core.components import (
     ActorControlRole,
-    CargoHold,
     ControlIntent,
     Engine,
     FuelTank,
-    LanderGeometry,
     LanderState,
     PlayerControlled,
     PlayerSelectable,
     PhysicsState,
-    Radar,
-    RefuelConfig,
-    SensorReadings,
     Transform,
 )
 from core.controllers import PlayerController
 from core.ecs import Entity, World, require_component
 from core.engine_adapter import EngineAdapter
 from core.level import Level
-from core.maths import Range1D, Vector2, clearance_above_terrain
-from core.terrain import estimate_terrain_slope, sample_terrain_height
+from core.maths import Vector2
 from runtime.bootstrap import create_systems
-from runtime.bot_query_eval import evaluate_bot_queries
+from runtime.bot_loop import BotLoopContext, update_bot_steps
+from runtime.loop_timing import LoopTimers
 from runtime.metrics import BotLoopProfiler, RunMetricsTracker
+from runtime.sensors import (
+    build_headless_stats,
+    build_vehicle_info,
+    resolve_eval_target_pos,
+)
 from ui.renderer import Renderer
+from levels.common import get_mass
 from utils.input import InputHandler
 from utils.plot import Plotter
 from utils.protocols import ControlTuple
-from levels.common import get_mass
 
 from core.config import (
     BOT_FPS,
@@ -46,140 +43,6 @@ from core.config import (
     PHYSICS_FPS,
     TARGET_RENDERING_FPS,
 )
-
-
-def _resolve_eval_target_pos(level: Level, sites, start_pos: Vector2) -> Vector2 | None:
-    explicit = getattr(level, "eval_target_pos", None)
-    if isinstance(explicit, Vector2):
-        return Vector2(explicit)
-    if isinstance(explicit, (tuple, list)) and len(explicit) >= 2:
-        try:
-            return Vector2(float(explicit[0]), float(explicit[1]))
-        except (TypeError, ValueError):
-            return None
-
-    get_sites = getattr(sites, "get_sites", None)
-    if not callable(get_sites):
-        return None
-    try:
-        all_sites = list(get_sites(Range1D.from_center(start_pos.x, 1_000_000.0)))
-    except Exception:
-        return None
-    if not all_sites:
-        return None
-    nearest = min(
-        all_sites,
-        key=lambda site: (site.x - start_pos.x) ** 2 + (site.y - start_pos.y) ** 2,
-    )
-    return Vector2(nearest.x, nearest.y)
-
-
-def _build_vehicle_info(entity) -> VehicleInfo:
-    geo = require_component(entity, LanderGeometry)
-    phys = require_component(entity, PhysicsState)
-    tank = require_component(entity, FuelTank)
-    eng = require_component(entity, Engine)
-    cargo = entity.get_component(CargoHold)
-    ls = require_component(entity, LanderState)
-    radar = require_component(entity, Radar)
-    refuel = require_component(entity, RefuelConfig)
-    cargo_mass = 0.0
-    cargo_limit = 0.0
-    if cargo is not None:
-        cargo_mass = max(0.0, min(float(cargo.cargo_mass), float(cargo.max_cargo_mass)))
-        cargo_limit = max(0.0, float(cargo.max_cargo_mass))
-    return VehicleInfo(
-        width=geo.width,
-        height=geo.height,
-        dry_mass=phys.mass,
-        cargo_mass=cargo_mass,
-        max_cargo_mass=cargo_limit,
-        fuel_density=tank.density,
-        max_fuel=tank.max_fuel,
-        max_thrust_power=eng.max_power,
-        min_thrust=eng.min_thrust,
-        max_thrust=eng.max_thrust,
-        thrust_increase_rate=eng.increase_rate,
-        thrust_decrease_rate=eng.decrease_rate,
-        base_burn_rate=eng.base_burn_rate,
-        overdrive_burn_multiplier=eng.overdrive_burn_multiplier,
-        safe_landing_velocity=ls.safe_landing_velocity,
-        safe_landing_angle=ls.safe_landing_angle,
-        radar_outer_range=radar.outer_range,
-        radar_inner_range=radar.inner_range,
-        proximity_sensor_range=refuel.proximity_sensor_range,
-    )
-
-
-def _build_active_sensors(entity, engine_adapter, terrain):
-    trans = require_component(entity, Transform)
-    radar = require_component(entity, Radar)
-    return _ActiveSensorImpl(
-        origin_fn=lambda: Vector2(trans.pos),
-        radar_range_fn=lambda: radar.inner_range,
-        engine_adapter=engine_adapter,
-        actor_uid=entity.uid,
-        terrain_fn=terrain,
-    )
-
-
-def _build_passive_sensors(entity, terrain) -> PassiveSensors:
-    trans = require_component(entity, Transform)
-    phys = require_component(entity, PhysicsState)
-    tank = require_component(entity, FuelTank)
-    eng = require_component(entity, Engine)
-    ls = require_component(entity, LanderState)
-    geo = require_component(entity, LanderGeometry)
-    readings = require_component(entity, SensorReadings)
-    terrain_y = sample_terrain_height(terrain, trans.pos.x, lod=0)
-    terrain_slope = estimate_terrain_slope(terrain, trans.pos.x, lod=0)
-    altitude = clearance_above_terrain(
-        trans.pos.y,
-        terrain_y,
-        body_height=geo.height,
-    )
-    return PassiveSensors(
-        x=trans.pos.x,
-        y=trans.pos.y,
-        altitude=altitude,
-        terrain_y=terrain_y,
-        terrain_slope=terrain_slope,
-        vx=phys.vel.x,
-        vy_up=phys.vel.y,
-        angle=trans.rotation,
-        ax=phys.acc.x,
-        ay_up=phys.acc.y,
-        mass=get_mass(entity),
-        thrust_level=eng.thrust_level,
-        fuel=tank.fuel,
-        max_fuel=tank.max_fuel,
-        state=ls.state,
-        radar_contacts=readings.radar_contacts,
-        proximity=readings.proximity,
-    )
-
-
-def _build_headless_stats(entity, terrain) -> str:
-    trans = require_component(entity, Transform)
-    phys = require_component(entity, PhysicsState)
-    eng = require_component(entity, Engine)
-    tank = require_component(entity, FuelTank)
-    geo = require_component(entity, LanderGeometry)
-    terrain_y = sample_terrain_height(terrain, trans.pos.x, lod=0)
-    altitude = clearance_above_terrain(
-        trans.pos.y,
-        terrain_y,
-        body_height=geo.height,
-    )
-    angle_deg = math.degrees(trans.rotation)
-    thrust_pct = eng.thrust_level * 100.0
-    fuel_pct = 100.0 * tank.fuel / max(1e-6, tank.max_fuel)
-    return (
-        f"x:{trans.pos.x:6.1f} alt:{altitude:6.1f} | "
-        f"vx:{phys.vel.x:6.2f} vy:{phys.vel.y:6.2f} | "
-        f"ang:{angle_deg:5.1f} thr:{thrust_pct:3.0f}% | "
-        f"fuel:{fuel_pct:5.1f}%"
-    )
 
 
 def _reset_lander_entity(entity) -> None:
@@ -202,36 +65,6 @@ def _reset_lander_entity(entity) -> None:
     intent.target_thrust = None
     intent.target_angle = None
     intent.refuel_requested = False
-
-
-@dataclass
-class LoopTimers:
-    physics_dt: float
-    bot_dt: float
-    frame_dt: float
-    time_accum_physics: float = 0.0
-    time_accum_bot: float = 0.0
-    elapsed_time: float = 0.0
-
-    def advance_frame(self, dt: float) -> None:
-        self.frame_dt = dt
-        self.time_accum_physics += dt
-        self.time_accum_bot += dt
-        self.elapsed_time += dt
-
-    def should_step_physics(self) -> bool:
-        return self.time_accum_physics >= self.physics_dt
-
-    def should_step_bot(self) -> bool:
-        return self.time_accum_bot >= self.bot_dt
-
-    def consume_physics(self) -> None:
-        self.time_accum_physics -= self.physics_dt
-
-    def consume_bot(self) -> None:
-        self.time_accum_bot -= self.bot_dt
-
-
 class LanderGame:
     """Main application for lunar lander game."""
 
@@ -329,6 +162,14 @@ class LanderGame:
             if actor is None:
                 continue
             self._install_actor_bot(uid, actor, actor_bot)
+        self._bot_loop_context = BotLoopContext(
+            ecs_world=self.ecs_world,
+            actor_bots=self.actor_bots,
+            sensor_update_system=self.sensor_update_system,
+            profiler=self._bot_profiler,
+            terrain=self.terrain,
+            engine_adapter=self.engine_adapter,
+        )
         if self.renderer is not None:
             self.renderer.bot = self._active_actor_bot()
 
@@ -449,7 +290,7 @@ class LanderGame:
         self.actor_bots[uid] = bot
         self._ensure_bot_identity_fields(bot)
         if hasattr(bot, "set_vehicle_info"):
-            bot.set_vehicle_info(_build_vehicle_info(actor))
+            bot.set_vehicle_info(build_vehicle_info(actor))
 
     def run(
         self,
@@ -470,7 +311,7 @@ class LanderGame:
         initial_actor = self.get_active_actor()
         initial_trans = require_component(initial_actor, Transform)
         start_pos = Vector2(getattr(initial_actor, "start_pos", initial_trans.pos))
-        eval_target_pos = _resolve_eval_target_pos(self.level, self.sites, start_pos)
+        eval_target_pos = resolve_eval_target_pos(self.level, self.sites, start_pos)
         if eval_target_pos is not None:
             self.plotter.set_target(
                 x=float(eval_target_pos.x),
@@ -665,84 +506,7 @@ class LanderGame:
             self.engine_adapter.set_actor_mass(actor.uid, get_mass(actor))
 
     def _update_bot_steps(self, timers: LoopTimers) -> dict[str, ControlTuple | None]:
-        bot_controls_by_uid: dict[str, ControlTuple | None] = {}
-        bot_dt = timers.bot_dt
-        profiler = self._bot_profiler
-        while timers.should_step_bot():
-            timers.consume_bot()
-            if self.actor_bots:
-                self.sensor_update_system.update(bot_dt)
-                for uid, bot in list(self.actor_bots.items()):
-                    actor = self.ecs_world.get_entity_by_id(uid)
-                    if actor is None:
-                        continue
-                    ls = actor.get_component(LanderState)
-                    if ls is None or ls.state not in ("flying", "landed"):
-                        continue
-                    current_bot = self.actor_bots.get(uid, bot)
-                    profiler.record_tick(uid)
-
-                    t0 = perf_counter() if profiler.enabled else 0.0
-                    passive_sensors = _build_passive_sensors(actor, self.terrain)
-                    if profiler.enabled:
-                        profiler.record_passive_build(uid, perf_counter() - t0)
-
-                    if isinstance(current_bot, QueryBot):
-                        update_s = 0.0
-                        t_plan = perf_counter() if profiler.enabled else 0.0
-                        raw_queries = current_bot.plan(bot_dt, passive_sensors)
-                        queries = list(raw_queries or [])
-                        if profiler.enabled:
-                            update_s += perf_counter() - t_plan
-
-                        t_eval = perf_counter() if profiler.enabled else 0.0
-                        query_results, batch_stats = evaluate_bot_queries(
-                            actor,
-                            self.engine_adapter,
-                            self.terrain,
-                            queries,
-                        )
-                        if profiler.enabled:
-                            profiler.record_query_eval(
-                                uid,
-                                perf_counter() - t_eval,
-                                query_total=batch_stats.total,
-                                query_raycast=batch_stats.raycast,
-                                query_terrain_profile=batch_stats.terrain_profile,
-                                query_ballistic=batch_stats.ballistic,
-                            )
-
-                        t_act = perf_counter() if profiler.enabled else 0.0
-                        action: BotAction = current_bot.act(
-                            bot_dt,
-                            passive_sensors,
-                            query_results,
-                        )
-                        if profiler.enabled:
-                            update_s += perf_counter() - t_act
-                            profiler.record_bot_update(uid, update_s)
-                    else:
-                        t_active = perf_counter() if profiler.enabled else 0.0
-                        active_sensors = _build_active_sensors(
-                            actor, self.engine_adapter, self.terrain
-                        )
-                        if profiler.enabled:
-                            profiler.record_active_build(uid, perf_counter() - t_active)
-
-                        t_update = perf_counter() if profiler.enabled else 0.0
-                        action = current_bot.update(
-                            bot_dt,
-                            passive_sensors,
-                            active_sensors,
-                        )
-                        if profiler.enabled:
-                            profiler.record_bot_update(uid, perf_counter() - t_update)
-                    bot_controls_by_uid[uid] = (
-                        action.target_thrust,
-                        action.target_angle,
-                        action.refuel,
-                    )
-        return bot_controls_by_uid
+        return update_bot_steps(timers, context=self._bot_loop_context)
 
     def _render(self, frame_dt: float) -> float:
         if not self.headless and self.renderer is not None:
@@ -755,7 +519,7 @@ class LanderGame:
     def _print_headless_stats(self, timers: LoopTimers) -> None:
         active_actor = self.get_active_actor()
         parts = [f"t:{timers.elapsed_time:6.2f}"]
-        parts.append(_build_headless_stats(active_actor, self.terrain))
+        parts.append(build_headless_stats(active_actor, self.terrain))
         for uid, bot in self.actor_bots.items():
             if hasattr(bot, "get_headless_stats"):
                 bot_str = bot.get_headless_stats()
