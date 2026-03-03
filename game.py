@@ -461,6 +461,12 @@ class LanderGame:
         initial_trans = require_component(initial_actor, Transform)
         start_pos = Vector2(getattr(initial_actor, "start_pos", initial_trans.pos))
         eval_target_pos = _resolve_eval_target_pos(self.level, self.sites, start_pos)
+        if eval_target_pos is not None:
+            self.plotter.set_target(
+                x=float(eval_target_pos.x),
+                y=float(eval_target_pos.y),
+                label="landing target",
+            )
         metrics = RunMetricsTracker.from_actor(
             initial_actor,
             start_pos=start_pos,
