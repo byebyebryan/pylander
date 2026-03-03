@@ -29,6 +29,17 @@ class ZemTelemetry:
     clearance_margin: float | None = None
     clearance_scale: float | None = None
     clearance_active: bool = False
+    shape_window_started: bool = False
+    shape_window_done: bool = False
+    shape_window_start_time: float | None = None
+    shape_window_end_time: float | None = None
+    shape_apex_target_over_target: float | None = None
+    shape_apex_actual_over_target: float | None = None
+    shape_apex_error: float | None = None
+    shape_curve_rmse: float | None = None
+    shape_projected_dx_abs_mean: float | None = None
+    shape_projected_dx_abs_max: float | None = None
+    shape_shortfall_ratio: float | None = None
 
 
 class ZemStageEvalTracker:
@@ -128,6 +139,27 @@ class ZemStageEvalTracker:
         self.zem.clearance_margin = self.to_optional_float(snapshot.get("clearance_margin"))
         self.zem.clearance_scale = self.to_optional_float(snapshot.get("clearance_scale"))
         self.zem.clearance_active = bool(snapshot.get("clearance_active"))
+        self.zem.shape_window_started = bool(snapshot.get("shape_window_started"))
+        self.zem.shape_window_done = bool(snapshot.get("shape_window_done"))
+        self.zem.shape_window_start_time = self.to_optional_float(
+            snapshot.get("shape_window_start_time")
+        )
+        self.zem.shape_window_end_time = self.to_optional_float(snapshot.get("shape_window_end_time"))
+        self.zem.shape_apex_target_over_target = self.to_optional_float(
+            snapshot.get("shape_apex_target_over_target")
+        )
+        self.zem.shape_apex_actual_over_target = self.to_optional_float(
+            snapshot.get("shape_apex_actual_over_target")
+        )
+        self.zem.shape_apex_error = self.to_optional_float(snapshot.get("shape_apex_error"))
+        self.zem.shape_curve_rmse = self.to_optional_float(snapshot.get("shape_curve_rmse"))
+        self.zem.shape_projected_dx_abs_mean = self.to_optional_float(
+            snapshot.get("shape_projected_dx_abs_mean")
+        )
+        self.zem.shape_projected_dx_abs_max = self.to_optional_float(
+            snapshot.get("shape_projected_dx_abs_max")
+        )
+        self.zem.shape_shortfall_ratio = self.to_optional_float(snapshot.get("shape_shortfall_ratio"))
 
     def capture_snapshot(self, game, actor, target_pos: Vector2, snapshot: dict[str, Any]) -> None:
         self._pull_zem_telemetry(snapshot)
@@ -195,6 +227,17 @@ class ZemStageEvalTracker:
         result["zem_clearance_margin"] = self.zem.clearance_margin
         result["zem_clearance_scale"] = self.zem.clearance_scale
         result["zem_clearance_active"] = self.zem.clearance_active
+        result["zem_shape_window_started"] = self.zem.shape_window_started
+        result["zem_shape_window_done"] = self.zem.shape_window_done
+        result["zem_shape_window_start_time"] = self.zem.shape_window_start_time
+        result["zem_shape_window_end_time"] = self.zem.shape_window_end_time
+        result["zem_shape_apex_target_over_target"] = self.zem.shape_apex_target_over_target
+        result["zem_shape_apex_actual_over_target"] = self.zem.shape_apex_actual_over_target
+        result["zem_shape_apex_error"] = self.zem.shape_apex_error
+        result["zem_shape_curve_rmse"] = self.zem.shape_curve_rmse
+        result["zem_shape_projected_dx_abs_mean"] = self.zem.shape_projected_dx_abs_mean
+        result["zem_shape_projected_dx_abs_max"] = self.zem.shape_projected_dx_abs_max
+        result["zem_shape_shortfall_ratio"] = self.zem.shape_shortfall_ratio
 
         if eval_mode == "focused":
             success = bool(self.phase_done)

@@ -33,6 +33,10 @@ Run-end success fields:
 - `launch_landed_site_uid`
 - `failure_mode="wrong_pad"` when landed on non-destination pad
 
+Additional guidance diagnostics from `zem_zev` are merged into launch results
+with `zem_*` keys (including setup/terminal gate telemetry and `zem_shape_*`
+trajectory-shape fields).
+
 ## Commands
 
 ```bash

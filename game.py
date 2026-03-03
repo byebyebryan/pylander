@@ -557,6 +557,7 @@ class LanderGame:
         self._overdrive_time = metrics.overdrive_time
         self._overdrive_excess = metrics.overdrive_excess
         result = self.level.end(self)
+        self._merge_bot_snapshots_into_result(result)
         final_actor = self.get_active_actor()
         metrics.apply_to_result(
             result,
@@ -789,6 +790,25 @@ class LanderGame:
                     label=label,
                 )
                 self._plot_events_seen.add(event_key)
+
+    def _merge_bot_snapshots_into_result(self, result: dict) -> None:
+        for bot in self.actor_bots.values():
+            get_snapshot = getattr(bot, "get_evaluation_snapshot", None)
+            if not callable(get_snapshot):
+                continue
+            try:
+                snapshot = get_snapshot()
+            except Exception:
+                continue
+            if not isinstance(snapshot, dict):
+                continue
+            if str(snapshot.get("kind", "")).strip().lower() != "zem_zev":
+                continue
+            for key, value in snapshot.items():
+                if key == "kind":
+                    continue
+                out_key = key if str(key).startswith("zem_") else f"zem_{key}"
+                result.setdefault(out_key, value)
 
     @property
     def terrain(self):

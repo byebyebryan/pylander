@@ -168,6 +168,27 @@ def normalize_run_result(
         "zem_clearance_margin": _to_optional_float(result.get("zem_clearance_margin")),
         "zem_clearance_scale": _to_optional_float(result.get("zem_clearance_scale")),
         "zem_clearance_active": _to_optional_bool(result.get("zem_clearance_active")),
+        "zem_shape_window_started": _to_optional_bool(result.get("zem_shape_window_started")),
+        "zem_shape_window_done": _to_optional_bool(result.get("zem_shape_window_done")),
+        "zem_shape_window_start_time": _to_optional_float(
+            result.get("zem_shape_window_start_time")
+        ),
+        "zem_shape_window_end_time": _to_optional_float(result.get("zem_shape_window_end_time")),
+        "zem_shape_apex_target_over_target": _to_optional_float(
+            result.get("zem_shape_apex_target_over_target")
+        ),
+        "zem_shape_apex_actual_over_target": _to_optional_float(
+            result.get("zem_shape_apex_actual_over_target")
+        ),
+        "zem_shape_apex_error": _to_optional_float(result.get("zem_shape_apex_error")),
+        "zem_shape_curve_rmse": _to_optional_float(result.get("zem_shape_curve_rmse")),
+        "zem_shape_projected_dx_abs_mean": _to_optional_float(
+            result.get("zem_shape_projected_dx_abs_mean")
+        ),
+        "zem_shape_projected_dx_abs_max": _to_optional_float(
+            result.get("zem_shape_projected_dx_abs_max")
+        ),
+        "zem_shape_shortfall_ratio": _to_optional_float(result.get("zem_shape_shortfall_ratio")),
         "setup_phase_done": _to_optional_bool(result.get("setup_phase_done")),
         "setup_phase_time": _to_optional_float(result.get("setup_phase_time")),
         "setup_phase_altitude": _to_optional_float(result.get("setup_phase_altitude")),
