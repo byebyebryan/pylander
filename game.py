@@ -30,6 +30,7 @@ from runtime.sensors import (
     build_vehicle_info,
     resolve_eval_target_pos,
 )
+from core.level_capabilities import level_name_tag, level_plot_mode, level_scenario_tag
 from ui.renderer import Renderer
 from levels.common import get_mass
 from utils.input import InputHandler
@@ -178,12 +179,10 @@ class LanderGame:
             self.terrain,
             self.lander,
             enabled=self.headless,
-            mode=getattr(self.level, "plot_mode", "none"),
+            mode=level_plot_mode(self.level),
         )
-        level_name = str(
-            getattr(self.level, "_level_name", type(self.level).__module__.split(".")[-1])
-        ).strip()
-        scenario_name = str(getattr(self.level, "scenario_name", "") or "").strip()
+        level_name = level_name_tag(self.level)
+        scenario_name = level_scenario_tag(self.level)
         tag_parts = [level_name] if level_name else ["level"]
         if scenario_name and scenario_name != level_name:
             tag_parts.append(scenario_name)

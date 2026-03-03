@@ -4,6 +4,12 @@ from typing import Any
 
 from bots import create_bot
 from core.eval import normalize_run_result
+from core.level_capabilities import (
+    resolve_default_bot_name,
+    set_benchmark_mode_checked,
+    set_eval_mode_checked,
+    set_eval_scenario_checked,
+)
 from game import LanderGame
 from levels import create_level
 
@@ -16,31 +22,17 @@ def resolve_default_bot(level_name: str) -> str | None:
         level = create_level(level_name)
     except Exception:
         return None
-    default_bot = getattr(level, "default_bot_name", None)
-    if not isinstance(default_bot, str):
-        return None
-    default_bot = default_bot.strip()
-    return default_bot if default_bot else None
+    return resolve_default_bot_name(level)
 
 
 def resolve_run_bot_name(settings: RunSettings, level) -> str | None:
     if settings.bot_name:
         return settings.bot_name
-    default_bot = getattr(level, "default_bot_name", None)
-    if not isinstance(default_bot, str):
-        return None
-    default_bot = default_bot.strip()
-    return default_bot if default_bot else None
+    return resolve_default_bot_name(level)
 
 
 def set_eval_scenario(level, name: str | None) -> None:
-    if name is None:
-        return
-    set_scenario = getattr(level, "set_eval_scenario", None)
-    if not callable(set_scenario):
-        level_type_name = type(level).__name__
-        raise ValueError(f"Level '{level_type_name}' does not support scenario selection")
-    set_scenario(name)
+    set_eval_scenario_checked(level, name)
 
 
 def configure_level(level, settings: RunSettings, *, benchmark_mode: str | None = None) -> None:
@@ -56,18 +48,8 @@ def configure_level(level, settings: RunSettings, *, benchmark_mode: str | None 
     level.stop_on_out_of_fuel = stop_on_out_of_fuel
     level.stop_on_first_land = stop_on_first_land
 
-    set_benchmark_mode = getattr(level, "set_benchmark_mode", None)
-    if callable(set_benchmark_mode) and benchmark_mode is not None:
-        set_benchmark_mode(benchmark_mode)
-
-    set_eval_mode = getattr(level, "set_eval_mode", None)
-    if callable(set_eval_mode):
-        set_eval_mode(settings.eval_mode)
-    elif settings.eval_mode != "auto":
-        level_type_name = type(level).__name__
-        raise ValueError(
-            f"Level '{level_type_name}' does not support --eval-mode {settings.eval_mode!r}"
-        )
+    set_benchmark_mode_checked(level, benchmark_mode)
+    set_eval_mode_checked(level, settings.eval_mode)
 
     level.plot_mode = settings.plot_mode
     level.max_time = settings.max_time

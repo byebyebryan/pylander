@@ -10,6 +10,11 @@ from core.eval import (
     write_csv_records,
     write_json_report,
 )
+from core.level_capabilities import (
+    list_batch_scenarios_safe,
+    scenario_has_randomized_fields_safe,
+    set_eval_scenario_checked,
+)
 from levels import create_level
 
 from app.config import BenchSettings, BenchTarget, RunSettings
@@ -17,7 +22,6 @@ from app.reporting import print_batch_summary
 from app.run_single import (
     resolve_default_bot,
     run_once_record,
-    set_eval_scenario,
 )
 from app.selector import parse_seed_spec
 
@@ -29,26 +33,16 @@ def resolve_level_scenarios(level_name: str) -> list[str]:
         level = create_level(level_name)
     except Exception:
         return []
-    list_scenarios = getattr(level, "list_batch_scenarios", None)
-    if not callable(list_scenarios):
-        return []
-    out = [str(name).strip() for name in list_scenarios()]
-    return [name for name in out if name]
+    return list_batch_scenarios_safe(level)
 
 
 def _scenario_has_randomized_fields(level_name: str, scenario_name: str | None) -> bool:
     try:
         level = create_level(level_name)
-        set_eval_scenario(level, scenario_name)
-        checker = getattr(level, "scenario_has_randomized_fields", None)
-        if callable(checker):
-            try:
-                return bool(checker(scenario_name))
-            except TypeError:
-                return bool(checker())
+        set_eval_scenario_checked(level, scenario_name)
+        return scenario_has_randomized_fields_safe(level, scenario_name)
     except Exception:
         return False
-    return False
 
 
 def resolve_selector_plan(
@@ -291,4 +285,3 @@ def run_benchmark(cfg: BenchSettings) -> int:
 
     print_batch_summary(summary, failed, json_path, csv_path)
     return 0 if summary["successes"] == summary["runs"] else 1
-
