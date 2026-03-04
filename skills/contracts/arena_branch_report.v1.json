@@ -1,0 +1,51 @@
+{
+  "type": "object",
+  "required": [
+    "contract",
+    "arena_id",
+    "arena_type",
+    "branch_id",
+    "decision",
+    "summary",
+    "top_repros",
+    "commands",
+    "notes",
+    "created_at_utc"
+  ],
+  "properties": {
+    "contract": {"type": "string", "enum": ["arena_branch_report.v1"]},
+    "arena_id": {"type": "string"},
+    "arena_type": {"type": "string", "enum": ["strategy", "tune"]},
+    "branch_id": {"type": "string"},
+    "decision": {"type": "string", "enum": ["promote", "iterate", "drop"]},
+    "summary": {
+      "type": "object",
+      "required": [
+        "success_rate",
+        "success_rate_delta",
+        "fuel_mean_primary_delta",
+        "new_global_crashes",
+        "compute_avg_total_delta_ms",
+        "compute_p99_total_delta_ms",
+        "observation_regressions",
+        "notable_global_regression"
+      ],
+      "properties": {
+        "success_rate": {"type": "number"},
+        "success_rate_delta": {"type": "number"},
+        "fuel_mean_primary_delta": {"type": "number"},
+        "new_global_crashes": {"type": "integer"},
+        "compute_avg_total_delta_ms": {"type": "number"},
+        "compute_p99_total_delta_ms": {"type": "number"},
+        "observation_regressions": {"type": "integer"},
+        "notable_global_regression": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "top_repros": {"type": "array", "items": {"type": "string"}},
+    "commands": {"type": "array", "items": {"type": "string"}},
+    "notes": {"type": "string"},
+    "created_at_utc": {"type": "string"}
+  },
+  "additionalProperties": false
+}

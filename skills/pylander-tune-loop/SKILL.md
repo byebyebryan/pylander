@@ -7,9 +7,17 @@ description: Run a metric-gated tuning loop with profile-based depth (`light`, `
 
 Use this skill for direct tuning, or for post-arena polish on a selected winner.
 
+Script-backed status:
+- executor: `skills/pylander-tune-loop/scripts/run_tune_loop.py`
+- output contract: `skills/contracts/tune_loop_report.v1.json`
+
+## Command
+
+`uv run python skills/pylander-tune-loop/scripts/run_tune_loop.py --input <input_json> --output <output_json>`
+
 ## Inputs
 
-- `selector_scope` (focused)
+- `selector_scope` (focused; string or list)
 - `bot` (default `zem_zev`)
 - optional `bot_config_path`
 - `profile`: `light | standard | extensive`
@@ -18,8 +26,9 @@ Use this skill for direct tuning, or for post-arena polish on a selected winner.
 - `seed_spec`
 - `max_new_crashes`
 - `min_success_rate`
-- fuel target or relative delta target
+- `fuel_target_delta` (negative is improvement target)
 - compute guardrail (avg/p99 ms/tick)
+- optional `iterations` list with measured metrics per iteration
 
 ## Default profile budgets
 
@@ -34,14 +43,11 @@ Route-aware defaults:
 
 ## Loop
 
-For each iteration:
+For each provided iteration entry:
 
-1. Apply one small tuning change.
-2. Run focused compare:
-- `uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode focused --selectors <...> --seed-spec <seed_spec> --baseline-ref main --bot <bot> [--bot-config <path>]`
-3. Inspect plots for top regressions:
-- `uv run python main.py plot <selector> --bot <bot> --plot all --plot-output both`
-4. Decide:
+1. Evaluate blocker gates (crash/success/compute).
+2. Evaluate fuel target progress.
+3. Decide:
 - `keep` (promote change)
 - `adjust` (continue loop)
 - `abort` (revert strategy)

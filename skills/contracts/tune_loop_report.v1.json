@@ -1,0 +1,74 @@
+{
+  "type": "object",
+  "required": [
+    "contract",
+    "profile",
+    "selector_scope",
+    "budget",
+    "iterations",
+    "final_decision",
+    "next_step_handoff",
+    "created_at_utc"
+  ],
+  "properties": {
+    "contract": {"type": "string", "enum": ["tune_loop_report.v1"]},
+    "profile": {"type": "string", "enum": ["light", "standard", "extensive"]},
+    "selector_scope": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "budget": {
+      "type": "object",
+      "required": ["max_iterations", "seed_spec"],
+      "properties": {
+        "max_iterations": {"type": "integer"},
+        "seed_spec": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "iterations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["iteration", "decision", "metrics"],
+        "properties": {
+          "iteration": {"type": "integer"},
+          "decision": {"type": "string", "enum": ["keep", "adjust", "abort"]},
+          "metrics": {
+            "type": "object",
+            "required": [
+              "success_rate",
+              "success_rate_delta",
+              "fuel_mean_primary_delta",
+              "new_global_crashes",
+              "compute_avg_total_delta_ms",
+              "compute_p99_total_delta_ms"
+            ],
+            "properties": {
+              "success_rate": {"type": "number"},
+              "success_rate_delta": {"type": "number"},
+              "fuel_mean_primary_delta": {"type": "number"},
+              "new_global_crashes": {"type": "integer"},
+              "compute_avg_total_delta_ms": {"type": "number"},
+              "compute_p99_total_delta_ms": {"type": "number"}
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "final_decision": {
+      "type": "string",
+      "enum": ["goals_met", "iteration_budget_exhausted", "hard_blocker", "no_change"]
+    },
+    "next_step_handoff": {
+      "type": "object",
+      "required": ["target_skill", "payload"],
+      "properties": {
+        "target_skill": {"type": "string", "enum": ["pylander-regression-doctor", "none"]},
+        "payload": {"type": "object"}
+      },
+      "additionalProperties": false
+    },
+    "created_at_utc": {"type": "string"}
+  },
+  "additionalProperties": false
+}

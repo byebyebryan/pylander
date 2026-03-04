@@ -7,6 +7,20 @@ description: Execute one arena branch (strategy or tuning), run focused validati
 
 Use this skill for one branch in either `pylander-strategy-arena` or `pylander-tune-arena`.
 
+Script-backed status:
+- executor: `skills/pylander-arena-worker/scripts/run_arena_branch.py`
+- output contract: `skills/contracts/arena_branch_report.v1.json`
+
+## Command
+
+Dry-run using supplied metrics:
+
+`uv run python skills/pylander-arena-worker/scripts/run_arena_branch.py --input <input_json> --output <output_json> --no-execute-validation`
+
+Execute focused benchmark validation:
+
+`uv run python skills/pylander-arena-worker/scripts/run_arena_branch.py --input <input_json> --output <output_json> --execute-validation`
+
 ## Inputs
 
 - `arena_type`: `strategy | tune`
@@ -17,6 +31,7 @@ Use this skill for one branch in either `pylander-strategy-arena` or `pylander-t
 - optional `baseline_ref`
 - optional `bot_config_path`
 - optional `loop_profile` for branch-local looping (default: `light`)
+- optional `measured_metrics` for dry-run (when not executing commands)
 
 ## Required artifacts
 
@@ -25,14 +40,13 @@ Use this skill for one branch in either `pylander-strategy-arena` or `pylander-t
 
 ## Workflow
 
-1. Apply branch change (code and/or config override).
-2. Run focused validation:
+1. Apply branch change before running this skill (code and/or config override).
+2. If `--execute-validation` is enabled, run focused validation:
 - `uv run python main.py sim <selector> --bot <bot> --freq 1`
 - `uv run python main.py plot <selector> --bot <bot> --plot all --plot-output both`
 - `uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode focused --selectors <...> --seed-spec 0-4 --bot <bot> [--bot-config <path>]`
-3. If branch stabilization is needed, run a short local loop via `pylander-tune-loop` using `profile=light` unless explicitly overridden.
-4. If baseline is provided, run focused compare and include deltas.
-5. Emit `report.json` with:
+3. If `--no-execute-validation`, consume `measured_metrics` from input.
+4. Emit `report.json` with:
 - summary metrics
 - crash deltas
 - compute deltas (avg/p90/p99)

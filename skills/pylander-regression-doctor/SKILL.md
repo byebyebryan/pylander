@@ -7,19 +7,34 @@ description: Diagnose broad benchmark regression state (quick/full) after tuning
 
 Use this skill as the final broad gate after `pylander-tune-loop` (whether reached directly or via `pylander-tune-arena`).
 
+Script-backed status:
+- executor: `skills/pylander-regression-doctor/scripts/gate_regression.py`
+- output contract: `skills/contracts/regression_gate_report.v1.json`
+
+## Command
+
+Use an existing compare report:
+
+`uv run python skills/pylander-regression-doctor/scripts/gate_regression.py --input <input_json> --output <output_json> --no-execute`
+
+Run compare first, then gate:
+
+`uv run python skills/pylander-regression-doctor/scripts/gate_regression.py --input <input_json> --output <output_json> --execute`
+
 ## Inputs
 
 - `mode`: usually `quick`, optionally `full`
 - `baseline_ref`: usually `main`
 - `bot`: default `zem_zev`
 - optional `bot_config_path`
+- optional `compare_report_path` (required when `--no-execute`)
 - optional level policy overrides:
 - `exclude_levels`
 - `observe_only_levels`
 
 ## Workflow
 
-1. Execute cached compare:
+1. If `compare_report_path` is missing and `--execute` is enabled, execute cached compare:
 - `uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode <mode> --baseline-ref <baseline_ref> --bot <bot> [--bot-config <path>]`
 2. Read compare report:
 - global (gating) crash/success/fuel deltas

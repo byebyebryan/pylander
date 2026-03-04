@@ -30,6 +30,10 @@ Use this skill when the user wants failure analysis and strategy selection for a
 4. Produce 1-3 ranked strategy candidates with explicit tradeoffs and expected impact.
 5. Hand off to `pylander-strategy-arena` with candidate bundle.
 
+Handoff command template:
+
+`uv run python skills/pylander-strategy-arena/scripts/run_strategy_arena.py --input <arena_input_json> --output <arena_output_json> --no-execute-workers`
+
 ## Output contract
 
 1. `doctor_verdict`: `healthy | watch | investigate | critical`

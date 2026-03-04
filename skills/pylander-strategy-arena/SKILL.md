@@ -7,10 +7,22 @@ description: Orchestrate parallel strategy experiments, compare standardized bra
 
 Use this skill when there are multiple plausible strategy directions and no clear winner yet.
 
+Script-backed status:
+- executor: `skills/pylander-strategy-arena/scripts/run_strategy_arena.py`
+- output contract: `skills/contracts/arena_scoreboard.v1.json`
+
+## Command
+
+`uv run python skills/pylander-strategy-arena/scripts/run_strategy_arena.py --input <input_json> --output <output_json> --no-execute-workers`
+
+Optional worker execution for branches that provide `worker_input` instead of `report_path`:
+
+`uv run python skills/pylander-strategy-arena/scripts/run_strategy_arena.py --input <input_json> --output <output_json> --execute-workers`
+
 ## Inputs
 
-- `goal`
-- `strategy_candidates` (2-4 preferred)
+- `arena_id`
+- `branches` (each branch must provide one of: `report_path`, `inline_report`, or `worker_input` when worker execution is enabled)
 - `focused_selectors`
 - `bot` (default `zem_zev`)
 - optional `baseline_ref`
@@ -21,9 +33,12 @@ Use this skill when there are multiple plausible strategy directions and no clea
 - max strategies
 - validation selectors and seed range
 - stop conditions (crash/success/fuel/compute guardrails)
-2. Launch one `pylander-arena-worker` per strategy (parallel).
-3. Collect reports under `outputs/arena/<arena_id>/`.
-4. Rank strategies by:
+2. Resolve one branch report per strategy.
+3. Apply hard gates:
+- no new global crashes
+- no global success-rate drop
+- no notable global regression marker
+4. Rank passing strategies by:
 - correctness first (crashes/success)
 - efficiency (fuel/time)
 - compute cost (avg/p90/p99)

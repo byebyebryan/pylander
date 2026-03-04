@@ -179,6 +179,15 @@ Local project workflows live under `skills/`:
 - `pylander-benchmark` / `pylander-benchmark-doctor`: benchmark execution and diagnosis.
 - `pylander-plot` / `pylander-plot-doctor`: plot pack generation and visual diagnosis.
 
+Core orchestration executors:
+
+- `uv run python skills/pylander-tune-router/scripts/route_tuning.py --input <in.json> --output <out.json>`
+- `uv run python skills/pylander-arena-worker/scripts/run_arena_branch.py --input <in.json> --output <out.json> --no-execute-validation`
+- `uv run python skills/pylander-strategy-arena/scripts/run_strategy_arena.py --input <in.json> --output <out.json> --no-execute-workers`
+- `uv run python skills/pylander-tune-arena/scripts/run_tune_arena.py --input <in.json> --output <out.json> --no-execute-workers`
+- `uv run python skills/pylander-tune-loop/scripts/run_tune_loop.py --input <in.json> --output <out.json>`
+- `uv run python skills/pylander-regression-doctor/scripts/gate_regression.py --input <in.json> --output <out.json> --no-execute`
+
 ## Bot profiling and query API
 
 The game loop now supports lightweight bot-loop profiling in headless mode:

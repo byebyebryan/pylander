@@ -1,0 +1,39 @@
+{
+  "type": "object",
+  "required": [
+    "contract",
+    "mode",
+    "baseline_ref",
+    "compare_report_path",
+    "gate_verdict",
+    "evidence",
+    "follow_ups",
+    "created_at_utc"
+  ],
+  "properties": {
+    "contract": {"type": "string", "enum": ["regression_gate_report.v1"]},
+    "mode": {"type": "string", "enum": ["quick", "full"]},
+    "baseline_ref": {"type": "string"},
+    "compare_report_path": {"type": "string"},
+    "gate_verdict": {"type": "string", "enum": ["keep", "investigate", "revert"]},
+    "evidence": {
+      "type": "object",
+      "required": [
+        "new_global_crashes",
+        "delta_success_rate",
+        "notable_global_regression",
+        "notable_global_compute"
+      ],
+      "properties": {
+        "new_global_crashes": {"type": "integer"},
+        "delta_success_rate": {"type": "number"},
+        "notable_global_regression": {"type": "boolean"},
+        "notable_global_compute": {"type": "boolean"}
+      },
+      "additionalProperties": false
+    },
+    "follow_ups": {"type": "array", "items": {"type": "string"}},
+    "created_at_utc": {"type": "string"}
+  },
+  "additionalProperties": false
+}

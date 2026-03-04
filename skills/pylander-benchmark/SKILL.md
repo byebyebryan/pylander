@@ -93,6 +93,11 @@ Policy behavior:
 
 This cache is local-machine only and should not be committed.
 
+Baseline compare precondition:
+
+- comparing against another ref (for example `--baseline-ref main`) requires that selector pack cache to already exist for that baseline ref on this machine.
+- if baseline cache is missing, `run_cached_benchmark.py` fails fast with a message to seed the cache from that ref first.
+
 Parallel-worker policy:
 
 - If worker pools are unavailable, benchmarking errors immediately.
