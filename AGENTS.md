@@ -68,6 +68,9 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - Use `pylander-plot` / `pylander-plot-doctor` for visual trajectory/thrust analysis and anomaly triage.
 - Use `pylander-telemetry-doctor` for log/data-first crash/perf triage.
 - Use `pylander-telemetry-builder` when diagnosis needs additional focused probes; default to plan-first, then implement probes only when explicitly requested.
+- Use `pylander-docs-sync` for drift checks and patch planning across README/docs/AGENTS.
+- Use `pylander-maintenance-planner` for recurring test/benchmark maintenance planning (`test|bench|both`).
+- Use `pylander-refactor-planner` for phased refactor plans and optional patch-set specs before execution.
 
 ## CLI and benchmark conventions
 - Command model: `uv run python main.py <command> ...` where command is `run`, `sim`, `plot`, or `bench`.

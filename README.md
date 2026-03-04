@@ -180,6 +180,9 @@ Local project workflows live under `skills/`:
 - `pylander-plot` / `pylander-plot-doctor`: plot pack generation and visual diagnosis.
 - `pylander-telemetry-doctor`: crash/perf triage from benchmark artifacts and sim/debug logs.
 - `pylander-telemetry-builder`: plan-first focused telemetry/probe design when existing signals are insufficient.
+- `pylander-docs-sync`: detect docs drift and produce a minimal docs patch plan.
+- `pylander-maintenance-planner`: plan test/benchmark maintenance with `mode=test|bench|both`.
+- `pylander-refactor-planner`: decision-complete refactor planning with optional patch-set specification.
 
 Workflow this skill set is built for:
 
@@ -193,6 +196,8 @@ Workflow this skill set is built for:
    `pylander-plot` / `pylander-plot-doctor` at any stage for focused diagnosis.
 8. Use `pylander-telemetry-doctor` for log/data triage and hand off to
    `pylander-telemetry-builder` when additional focused instrumentation is needed.
+9. Use `pylander-docs-sync`, `pylander-maintenance-planner`, and
+   `pylander-refactor-planner` as cross-cutting planning tools for recurring maintenance work.
 
 For the full skill map (including intent, artifacts, and contracts), see:
 [`docs/skills_workflow.md`](docs/skills_workflow.md).

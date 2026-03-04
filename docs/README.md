@@ -8,6 +8,7 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 - Bot development framework + API: [`overview.md`](overview.md)
 - Skill workflow map (goal -> strategy -> tuning -> regression gate): [`skills_workflow.md`](skills_workflow.md)
 - Telemetry diagnosis/probe workflow: see skill entries in [`../README.md`](../README.md) and contracts under `skills/contracts/`.
+- Docs sync and maintenance/refactor planning workflows: see project skill entries in [`../README.md`](../README.md).
 
 ## Controllers and levels
 

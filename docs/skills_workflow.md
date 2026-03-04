@@ -25,7 +25,7 @@ Primary path:
 5. `pylander-tune-arena` + `pylander-arena-worker` -> `pylander-tune-loop`, or direct `pylander-tune-loop`
 6. `pylander-regression-doctor`
 
-Cross-cutting diagnostics usable at any stage:
+Cross-cutting skills usable at any stage:
 
 - `pylander-benchmark`
 - `pylander-benchmark-doctor`
@@ -33,6 +33,9 @@ Cross-cutting diagnostics usable at any stage:
 - `pylander-plot-doctor`
 - `pylander-telemetry-doctor`
 - `pylander-telemetry-builder`
+- `pylander-docs-sync`
+- `pylander-maintenance-planner`
+- `pylander-refactor-planner`
 
 ## Skill coverage matrix
 
@@ -52,6 +55,9 @@ Cross-cutting diagnostics usable at any stage:
 | `pylander-plot-doctor` | Plot interpretation and anomaly diagnosis | Playbook (`SKILL.md`) | Doctor verdict, ranked visual findings, follow-ups |
 | `pylander-telemetry-doctor` | Log/data crash+perf triage and reproducible repro bundle generation | Script-backed: `skills/pylander-telemetry-doctor/scripts/analyze_telemetry.py` | `telemetry_triage_report.v1` |
 | `pylander-telemetry-builder` | Plan-first focused telemetry/probe design from triage gaps | Script-backed: `skills/pylander-telemetry-builder/scripts/plan_telemetry.py` | `telemetry_probe_plan.v1` |
+| `pylander-docs-sync` | Docs drift analysis and patch planning | Playbook (`SKILL.md`) | Drift report and docs patch plan |
+| `pylander-maintenance-planner` | Test/benchmark maintenance planning (`test|bench|both`) | Playbook (`SKILL.md`) | Prioritized maintenance plan and command bundle |
+| `pylander-refactor-planner` | Incremental refactor planning with invariants and risk controls | Playbook (`SKILL.md`) | Phased refactor plan and optional patch-set spec |
 
 ## Contracts and artifacts
 
@@ -78,3 +84,4 @@ Common artifact locations:
 - Use explicit selectors/seeds whenever possible for reproducibility.
 - Keep branch comparisons like-for-like: same selectors, seed spec, bot, and bot config.
 - Use telemetry doctor first for crash/perf triage; only add probes via telemetry builder when the current signal set is insufficient.
+- Use docs-sync and maintenance/refactor planners as optional cross-cutting planning tools, not mandatory gates.
