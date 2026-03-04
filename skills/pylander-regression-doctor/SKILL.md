@@ -1,11 +1,11 @@
 ---
 name: pylander-regression-doctor
-description: Diagnose broad benchmark regression state (quick/full) after focused tuning and recommend keep/investigate/revert.
+description: Diagnose broad benchmark regression state (quick/full) after tuning and recommend keep/investigate/revert.
 ---
 
 # Pylander Regression Doctor
 
-Use this skill to make the merge decision after strategy tuning.
+Use this skill as the final broad gate after `pylander-tune-loop` (whether reached directly or via `pylander-tune-arena`).
 
 ## Inputs
 

@@ -59,8 +59,10 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - Preferred loop:
   - `pylander-goal-builder` to define/build the new goal level/scenarios.
   - `pylander-goal-doctor` to diagnose current failure modes and propose strategies.
-  - `pylander-strategy-arena` + `pylander-strategy-worker` to run parallel strategy experiments.
-  - `pylander-tune-loop-lite` to do bounded winner tuning.
+  - `pylander-strategy-arena` + `pylander-arena-worker` to run parallel strategy experiments.
+  - `pylander-tune-router` to choose route:
+    - `pylander-tune-arena` -> `pylander-tune-loop` -> `pylander-regression-doctor`, or
+    - `pylander-tune-loop` -> `pylander-regression-doctor`.
   - `pylander-regression-doctor` for broad regression decisioning.
 - Use `pylander-benchmark` / `pylander-benchmark-doctor` for metric-grounded benchmark execution and diagnosis.
 - Use `pylander-plot` / `pylander-plot-doctor` for visual trajectory/thrust analysis and anomaly triage.

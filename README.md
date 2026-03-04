@@ -170,9 +170,11 @@ Local project workflows live under `skills/`:
 
 - `pylander-goal-builder`: define/build new eval levels with benchmark profile coverage.
 - `pylander-goal-doctor`: diagnose level-goal failures and produce ranked strategies.
-- `pylander-strategy-worker`: execute one focused strategy experiment.
-- `pylander-strategy-arena`: run parallel strategy workers and pick a winner.
-- `pylander-tune-loop-lite`: bounded tuning loop on the chosen strategy.
+- `pylander-strategy-arena`: run parallel strategy branches and pick a winner.
+- `pylander-tune-router`: decide whether tuning should run through tune-arena or direct tune-loop.
+- `pylander-tune-arena`: run parallel tuning branches on the selected strategy winner.
+- `pylander-arena-worker`: execute one focused strategy/tuning branch.
+- `pylander-tune-loop`: profile-based tuning loop (`light|standard|extensive`) for direct tuning or post-arena polish.
 - `pylander-regression-doctor`: quick/full regression diagnosis before merge.
 - `pylander-benchmark` / `pylander-benchmark-doctor`: benchmark execution and diagnosis.
 - `pylander-plot` / `pylander-plot-doctor`: plot pack generation and visual diagnosis.

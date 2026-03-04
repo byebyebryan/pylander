@@ -28,17 +28,17 @@ Use this skill when the user wants failure analysis and strategy selection for a
 - trajectory-shape clues from plots
 - compute hot spots (avg/p90/p99 ms/tick)
 4. Produce 1-3 ranked strategy candidates with explicit tradeoffs and expected impact.
+5. Hand off to `pylander-strategy-arena` with candidate bundle.
 
 ## Output contract
 
 1. `doctor_verdict`: `healthy | watch | investigate | critical`
 2. `root_causes`: measured evidence first, inferences second
 3. `strategy_candidates`: ranked with effort/risk/expected gain
-4. `recommended_next_step`: single best option with a focused validation command bundle
+4. `next_step_handoff`: ready input payload for `pylander-strategy-arena`
 
 ## Guardrails
 
 - Distinguish measured facts from hypotheses.
 - Avoid broad retuning before reproducing on focused selectors.
 - Include at least one deterministic repro selector in findings.
-
