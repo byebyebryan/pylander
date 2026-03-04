@@ -335,3 +335,68 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
     proc = subprocess.run(cmd, cwd=str(REPO_ROOT), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     assert proc.returncode == 0, proc.stdout
     assert reg_output.exists()
+
+    doctor_compare = tmp_path / "doctor_compare.json"
+    doctor_compare.write_text(
+        json.dumps(
+            {
+                "global": {
+                    "summary_delta": {"success_rate": -0.01},
+                    "crash": {
+                        "new_crashes": [
+                            {
+                                "level": "launch",
+                                "scenario": "mid",
+                                "seed": 0,
+                                "baseline_state": "landed",
+                                "candidate_state": "crashed",
+                                "candidate_failure_mode": "impact",
+                                "repro": {
+                                    "plot": "uv run python main.py plot launch:mid:0 --bot zem_zev",
+                                    "sim_trace": (
+                                        "uv run python main.py sim launch:mid:0 --bot zem_zev --freq 1"
+                                    ),
+                                    "sim_profile": (
+                                        "PYLANDER_BOT_PROFILE=1 uv run python main.py sim launch:mid:0 "
+                                        "--bot zem_zev --freq 1"
+                                    ),
+                                },
+                            }
+                        ],
+                        "candidate_crashes": [],
+                    },
+                    "compute": {"notable_regression": False},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    doctor_output = tmp_path / "telemetry_report.json"
+    cmd = [
+        sys.executable,
+        str(_script("skills/pylander-telemetry-doctor/scripts/analyze_telemetry.py")),
+        "--compare-json",
+        str(doctor_compare),
+        "--output-report",
+        str(doctor_output),
+    ]
+    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    assert proc.returncode == 0, proc.stdout
+    assert doctor_output.exists()
+    telemetry_report = json.loads(doctor_output.read_text(encoding="utf-8"))
+    contracts.validate_contract_data(telemetry_report, "telemetry_triage_report.v1")
+
+    builder_output = tmp_path / "telemetry_probe_plan.json"
+    cmd = [
+        sys.executable,
+        str(_script("skills/pylander-telemetry-builder/scripts/plan_telemetry.py")),
+        "--triage-report",
+        str(doctor_output),
+        "--output-plan",
+        str(builder_output),
+    ]
+    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    assert proc.returncode == 0, proc.stdout
+    assert builder_output.exists()
+    telemetry_plan = json.loads(builder_output.read_text(encoding="utf-8"))
+    contracts.validate_contract_data(telemetry_plan, "telemetry_probe_plan.v1")

@@ -178,6 +178,8 @@ Local project workflows live under `skills/`:
 - `pylander-regression-doctor`: quick/full regression diagnosis before merge.
 - `pylander-benchmark` / `pylander-benchmark-doctor`: benchmark execution and diagnosis.
 - `pylander-plot` / `pylander-plot-doctor`: plot pack generation and visual diagnosis.
+- `pylander-telemetry-doctor`: crash/perf triage from benchmark artifacts and sim/debug logs.
+- `pylander-telemetry-builder`: plan-first focused telemetry/probe design when existing signals are insufficient.
 
 Workflow this skill set is built for:
 
@@ -189,6 +191,8 @@ Workflow this skill set is built for:
 6. Run broad gate decision with `pylander-regression-doctor`.
 7. Use `pylander-benchmark` / `pylander-benchmark-doctor` and
    `pylander-plot` / `pylander-plot-doctor` at any stage for focused diagnosis.
+8. Use `pylander-telemetry-doctor` for log/data triage and hand off to
+   `pylander-telemetry-builder` when additional focused instrumentation is needed.
 
 For the full skill map (including intent, artifacts, and contracts), see:
 [`docs/skills_workflow.md`](docs/skills_workflow.md).
@@ -201,6 +205,12 @@ Core orchestration executors:
 - `uv run python skills/pylander-tune-arena/scripts/run_tune_arena.py --input <in.json> --output <out.json> --no-execute-workers`
 - `uv run python skills/pylander-tune-loop/scripts/run_tune_loop.py --input <in.json> --output <out.json>`
 - `uv run python skills/pylander-regression-doctor/scripts/gate_regression.py --input <in.json> --output <out.json> --no-execute`
+
+Telemetry diagnostics executors:
+
+- `uv run python skills/pylander-telemetry-doctor/scripts/analyze_telemetry.py --compare-json <path> --output-report <out.json>`
+- `uv run python skills/pylander-telemetry-doctor/scripts/analyze_telemetry.py --benchmark-json <path> --sim-log <sim.log> --output-report <out.json>`
+- `uv run python skills/pylander-telemetry-builder/scripts/plan_telemetry.py --triage-report <triage.json> --output-plan <plan.json>`
 
 ## Bot profiling and query API
 

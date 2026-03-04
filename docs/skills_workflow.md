@@ -31,6 +31,8 @@ Cross-cutting diagnostics usable at any stage:
 - `pylander-benchmark-doctor`
 - `pylander-plot`
 - `pylander-plot-doctor`
+- `pylander-telemetry-doctor`
+- `pylander-telemetry-builder`
 
 ## Skill coverage matrix
 
@@ -48,6 +50,8 @@ Cross-cutting diagnostics usable at any stage:
 | `pylander-benchmark-doctor` | Benchmark triage and root-cause ranking | Playbook (`SKILL.md`) | Doctor verdict, ranked findings, repro bundle |
 | `pylander-plot` | Plot-pack case selection and plot command execution | Script-backed: `skills/pylander-plot/scripts/build_plot_pack.py` | Plot pack manifest |
 | `pylander-plot-doctor` | Plot interpretation and anomaly diagnosis | Playbook (`SKILL.md`) | Doctor verdict, ranked visual findings, follow-ups |
+| `pylander-telemetry-doctor` | Log/data crash+perf triage and reproducible repro bundle generation | Script-backed: `skills/pylander-telemetry-doctor/scripts/analyze_telemetry.py` | `telemetry_triage_report.v1` |
+| `pylander-telemetry-builder` | Plan-first focused telemetry/probe design from triage gaps | Script-backed: `skills/pylander-telemetry-builder/scripts/plan_telemetry.py` | `telemetry_probe_plan.v1` |
 
 ## Contracts and artifacts
 
@@ -58,15 +62,19 @@ Script-backed orchestration contracts live under `skills/contracts/`:
 - `arena_scoreboard.v1.json`
 - `tune_loop_report.v1.json`
 - `regression_gate_report.v1.json`
+- `telemetry_triage_report.v1.json`
+- `telemetry_probe_plan.v1.json`
 
 Common artifact locations:
 
 - `outputs/arena/<arena_id>/<branch_id>/` branch notes and report artifacts
 - `outputs/benchmarks/<commit-or-dirty-key>/` benchmark cache and compare reports
 - `outputs/plots/` plot packs and generated plot bundles
+- `outputs/diagnostics/` telemetry triage reports and probe plans
 
 ## Practical notes
 
 - Cached baseline compares require a pre-seeded cache for non-current refs.
 - Use explicit selectors/seeds whenever possible for reproducibility.
 - Keep branch comparisons like-for-like: same selectors, seed spec, bot, and bot config.
+- Use telemetry doctor first for crash/perf triage; only add probes via telemetry builder when the current signal set is insufficient.

@@ -66,6 +66,8 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
   - `pylander-regression-doctor` for broad regression decisioning.
 - Use `pylander-benchmark` / `pylander-benchmark-doctor` for metric-grounded benchmark execution and diagnosis.
 - Use `pylander-plot` / `pylander-plot-doctor` for visual trajectory/thrust analysis and anomaly triage.
+- Use `pylander-telemetry-doctor` for log/data-first crash/perf triage.
+- Use `pylander-telemetry-builder` when diagnosis needs additional focused probes; default to plan-first, then implement probes only when explicitly requested.
 
 ## CLI and benchmark conventions
 - Command model: `uv run python main.py <command> ...` where command is `run`, `sim`, `plot`, or `bench`.
