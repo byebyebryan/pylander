@@ -164,6 +164,19 @@ query, and update ms/tick) when profiling is enabled.
 
 When plotting is enabled, runs now emit `plot_paths` and a plot manifest path for bundle-style outputs.
 
+## Project skills
+
+Local project workflows live under `skills/`:
+
+- `pylander-goal-builder`: define/build new eval levels with benchmark profile coverage.
+- `pylander-goal-doctor`: diagnose level-goal failures and produce ranked strategies.
+- `pylander-strategy-worker`: execute one focused strategy experiment.
+- `pylander-strategy-arena`: run parallel strategy workers and pick a winner.
+- `pylander-tune-loop-lite`: bounded tuning loop on the chosen strategy.
+- `pylander-regression-doctor`: quick/full regression diagnosis before merge.
+- `pylander-benchmark` / `pylander-benchmark-doctor`: benchmark execution and diagnosis.
+- `pylander-plot` / `pylander-plot-doctor`: plot pack generation and visual diagnosis.
+
 ## Bot profiling and query API
 
 The game loop now supports lightweight bot-loop profiling in headless mode:
