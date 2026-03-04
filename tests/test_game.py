@@ -398,6 +398,8 @@ def test_resolve_batch_plan_expands_all_scenarios_without_seed_spec(monkeypatch)
         max_time=300.0,
         max_steps=None,
         plot_mode="none",
+        plot_output="combined",
+        plot_max_side_px=1800,
         json_path=None,
         csv_path=None,
     )
@@ -425,6 +427,8 @@ def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
         max_time=300.0,
         max_steps=None,
         plot_mode="none",
+        plot_output="combined",
+        plot_max_side_px=1800,
         json_path=None,
         csv_path=None,
     )
@@ -476,6 +480,8 @@ def test_parse_bench_command_uses_expected_defaults() -> None:
         BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None),
     )
     assert command.bench.eval_mode == "auto"
+    assert command.bench.plot_output == "combined"
+    assert command.bench.plot_max_side_px == 1800
     assert command.bench.bot_profile_enabled is True
     assert command.bench.bot_profile_log_lines is False
     assert command.bench.bot_profile_interval_s is None
@@ -496,6 +502,43 @@ def test_parse_bench_command_profile_flags_override_defaults() -> None:
     assert command.bench.bot_profile_enabled is False
     assert command.bench.bot_profile_log_lines is True
     assert command.bench.bot_profile_interval_s == 1.5
+
+
+def test_parse_bench_command_plot_flags_override_defaults() -> None:
+    _parser, command = parse_command(
+        [
+            "bench",
+            "plunge",
+            "--plot",
+            "all",
+            "--plot-output",
+            "split",
+            "--plot-max-side-px",
+            "1400",
+        ]
+    )
+    assert isinstance(command, BenchCommand)
+    assert command.bench.plot_mode == "all"
+    assert command.bench.plot_output == "split"
+    assert command.bench.plot_max_side_px == 1400
+
+
+def test_parse_plot_command_output_flags_override_defaults() -> None:
+    _parser, command = parse_command(
+        [
+            "plot",
+            "launch:far:3",
+            "--bot",
+            "zem_zev",
+            "--plot-output",
+            "both",
+            "--plot-max-side-px",
+            "1400",
+        ]
+    )
+    assert isinstance(command, RunCommand)
+    assert command.run.plot_output == "both"
+    assert command.run.plot_max_side_px == 1400
 
 
 def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> None:
@@ -533,6 +576,8 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
         max_time=300.0,
         max_steps=None,
         plot_mode="none",
+        plot_output="combined",
+        plot_max_side_px=1800,
         json_path=None,
         csv_path=None,
     )
@@ -547,3 +592,5 @@ def test_plot_command_enables_plot_mode_by_default() -> None:
     assert command.run.scenario_name == "far"
     assert command.run.seed == 3
     assert command.run.plot_mode == "all"
+    assert command.run.plot_output == "combined"
+    assert command.run.plot_max_side_px == 1800

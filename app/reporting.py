@@ -26,6 +26,8 @@ def print_headless_results(result: dict[str, Any]) -> None:
         print(f"Plot:              {result['plot_path']}")
     if result.get("plot_error"):
         print(f"Plot error:        {result['plot_error']}")
+    if result.get("plot_manifest_path"):
+        print(f"Plot manifest:     {result['plot_manifest_path']}")
 
 
 def _print_efficiency_block(title: str, block: dict[str, Any] | None) -> None:

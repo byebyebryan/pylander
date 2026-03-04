@@ -52,6 +52,8 @@ def configure_level(level, settings: RunSettings, *, benchmark_mode: str | None 
     set_eval_mode_checked(level, settings.eval_mode)
 
     level.plot_mode = settings.plot_mode
+    level.plot_output = settings.plot_output
+    level.plot_max_side_px = settings.plot_max_side_px
     level.max_time = settings.max_time
     if settings.lander_name:
         setattr(level, "lander_name", settings.lander_name)

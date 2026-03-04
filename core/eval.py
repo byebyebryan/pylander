@@ -290,6 +290,10 @@ def normalize_run_result(
         record["plot_path"] = result.get("plot_path")
     if "plot_paths" in result:
         record["plot_paths"] = result.get("plot_paths")
+    if "plot_manifest_path" in result:
+        record["plot_manifest_path"] = result.get("plot_manifest_path")
+    if "plot_bundle_dir" in result:
+        record["plot_bundle_dir"] = result.get("plot_bundle_dir")
     return record
 
 

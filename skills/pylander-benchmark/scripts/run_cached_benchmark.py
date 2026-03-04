@@ -319,7 +319,10 @@ def _make_repro_commands(
 ) -> dict[str, str]:
     selector = _selector_from_record(record)
     return {
-        "plot": f"uv run python main.py plot {selector} --bot {bot} --eval-mode {eval_mode} --plot all",
+        "plot": (
+            f"uv run python main.py plot {selector} --bot {bot} --eval-mode {eval_mode} "
+            "--plot all --plot-output both --plot-max-side-px 1800"
+        ),
         "sim_trace": f"uv run python main.py sim {selector} --bot {bot} --eval-mode {eval_mode} --freq 1",
         "sim_profile": (
             f"PYLANDER_BOT_PROFILE=1 uv run python main.py sim {selector} "

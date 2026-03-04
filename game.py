@@ -30,7 +30,13 @@ from runtime.sensors import (
     build_vehicle_info,
     resolve_eval_target_pos,
 )
-from core.level_capabilities import level_name_tag, level_plot_mode, level_scenario_tag
+from core.level_capabilities import (
+    level_name_tag,
+    level_plot_max_side_px,
+    level_plot_mode,
+    level_plot_output,
+    level_scenario_tag,
+)
 from ui.renderer import Renderer
 from levels.common import get_mass
 from utils.input import InputHandler
@@ -66,6 +72,8 @@ def _reset_lander_entity(entity) -> None:
     intent.target_thrust = None
     intent.target_angle = None
     intent.refuel_requested = False
+
+
 class LanderGame:
     """Main application for lunar lander game."""
 
@@ -188,6 +196,8 @@ class LanderGame:
             self.lander,
             enabled=self.headless,
             mode=level_plot_mode(self.level),
+            output_profile=level_plot_output(self.level),
+            max_side_px=level_plot_max_side_px(self.level),
         )
         level_name = level_name_tag(self.level)
         scenario_name = level_scenario_tag(self.level)

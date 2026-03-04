@@ -22,6 +22,8 @@ class RunSettings:
     max_time: float
     max_steps: int | None
     plot_mode: str
+    plot_output: str
+    plot_max_side_px: int
     stop_on_crash: bool
     stop_on_out_of_fuel: bool
     stop_on_first_land: bool
@@ -41,6 +43,8 @@ class BenchSettings:
     max_time: float
     max_steps: int | None
     plot_mode: str
+    plot_output: str
+    plot_max_side_px: int
     json_path: str | None
     csv_path: str | None
     bot_profile_enabled: bool = True

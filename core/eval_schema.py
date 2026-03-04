@@ -91,6 +91,8 @@ HEADLESS_RESULT_FIELDS: tuple[str, ...] = (
     "setup_phase_fuel_consumed",
     "setup_phase_fuel_per_distance",
     "setup_phase_path_efficiency",
+    "plot_bundle_dir",
+    "plot_manifest_path",
 )
 
 EFFICIENCY_METRIC_FIELDS: tuple[str, ...] = (

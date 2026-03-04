@@ -115,7 +115,7 @@ Always include:
 - per-scenario notable regressions (`level:scenario`)
 - crash regression details:
   - selector(s), failure mode, key telemetry snapshot
-  - repro commands for `plot` and `sim`/profiled `sim`
+  - repro commands for `plot` (`--plot-output both`) and `sim`/profiled `sim`
 - explicit policy context (`excluded` / `observe_only` / `normal`)
 - recommendation (`keep`, `investigate`, `revert`)
 

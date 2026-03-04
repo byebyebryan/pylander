@@ -130,3 +130,19 @@ Reported buckets:
 - bot update time (`update` or `plan+act`)
 
 Final run result also includes `bot_profile_*` summary fields.
+
+## Plot bundles
+
+Headless plotting supports:
+
+- `--plot-output combined` (single overview image)
+- `--plot-output split` (multiple focused panels)
+- `--plot-output both` (overview + split panels)
+
+Image size can be capped with `--plot-max-side-px` (default `1800`) to improve reliability for automated image analysis.
+
+When plotting is enabled, run results may include:
+
+- `plot_paths`
+- `plot_manifest_path`
+- `plot_bundle_dir`

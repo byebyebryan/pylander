@@ -207,6 +207,23 @@ def level_plot_mode(level, *, default: str = "none") -> str:
     return mode if mode else default
 
 
+def level_plot_output(level, *, default: str = "combined") -> str:
+    raw = getattr(level, "plot_output", default)
+    mode = str(raw or "").strip().lower()
+    if mode in {"combined", "split", "both"}:
+        return mode
+    return default
+
+
+def level_plot_max_side_px(level, *, default: int = 1800) -> int:
+    raw = getattr(level, "plot_max_side_px", default)
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        value = int(default)
+    return max(256, value)
+
+
 def level_name_tag(level) -> str:
     raw = getattr(level, "_level_name", type(level).__module__.split(".")[-1])
     name = str(raw or "").strip()

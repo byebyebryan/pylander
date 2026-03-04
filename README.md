@@ -68,7 +68,10 @@ Selector format:
 
 ```bash
 uv run python main.py plot launch:far:0 --bot zem_zev
+uv run python main.py plot launch:far:0 --bot zem_zev --plot all --plot-output both
 ```
+
+Plot outputs are written under `outputs/plots/<selector>_<timestamp>/` when plotting is enabled.
 
 ### Benchmark batch (`bench`)
 
@@ -127,6 +130,8 @@ Default policy profile:
 - `-t, --time S`
 - `-f, --freq N` (headless print cadence)
 - `-p, --plot none|speed|thrust|all`
+- `-o, --plot-output combined|split|both`
+- `--plot-max-side-px N` (default: 1800)
 - `--stop-on-crash`
 - `--stop-on-out-of-fuel`
 - `--stop-on-first-land`
@@ -142,6 +147,8 @@ Default policy profile:
 - `-n, --steps N`
 - `-t, --time S`
 - `-p, --plot none|speed|thrust|all`
+- `-o, --plot-output combined|split|both`
+- `--plot-max-side-px N` (default: 1800)
 - `-j, --json PATH|auto`
 - `-c, --csv PATH|auto`
 - `--bot-profile, --no-bot-profile` (default: on)
@@ -152,6 +159,8 @@ Default policy profile:
 
 Benchmark records include bot compute timing metrics (avg plus p90/p99 for total,
 query, and update ms/tick) when profiling is enabled.
+
+When plotting is enabled, runs now emit `plot_paths` and a plot manifest path for bundle-style outputs.
 
 ## Bot profiling and query API
 

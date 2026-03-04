@@ -26,6 +26,7 @@ This skill is for:
 - `observe_only_levels` (optional)
 - `workers` (optional; defaults to CLI behavior)
 - `max_cases` (optional; default 8)
+- `auto_plot_top_n` (optional; default 3 in `triage`)
 
 ## Data Sources
 
@@ -105,6 +106,9 @@ Per-case reproduction:
 - notable compute regression (`avg` or `p99`)
 - trajectory-shape anomalies
 3. Return an investigation order and first-fix recommendation.
+4. Hybrid auto plot policy:
+- auto-generate plots for top 3 critical cases
+- provide manual plot commands for remaining cases
 
 ## Diagnostic Heuristics
 

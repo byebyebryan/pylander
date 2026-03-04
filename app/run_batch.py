@@ -122,6 +122,8 @@ def _to_run_settings(cfg: BenchSettings) -> RunSettings:
         max_time=cfg.max_time,
         max_steps=cfg.max_steps,
         plot_mode=cfg.plot_mode,
+        plot_output=cfg.plot_output,
+        plot_max_side_px=cfg.plot_max_side_px,
         stop_on_crash=True,
         stop_on_out_of_fuel=True,
         stop_on_first_land=True,

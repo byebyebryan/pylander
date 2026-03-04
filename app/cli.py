@@ -75,6 +75,19 @@ def _add_common_run_args(
         help="Trajectory plot mode",
     )
     parser.add_argument(
+        "-o",
+        "--plot-output",
+        choices=("combined", "split", "both"),
+        default=None,
+        help="Plot output profile (combined image, split panels, or both)",
+    )
+    parser.add_argument(
+        "--plot-max-side-px",
+        type=int,
+        default=None,
+        help="Max plot image long side in pixels (default: 1800)",
+    )
+    parser.add_argument(
         "--stop-on-crash",
         action="store_true",
         help="Terminate when the lander crashes",
@@ -166,6 +179,19 @@ def build_parser() -> argparse.ArgumentParser:
         default="none",
         help="Plot mode for headless runs",
     )
+    bench.add_argument(
+        "-o",
+        "--plot-output",
+        choices=("combined", "split", "both"),
+        default="combined",
+        help="Plot output profile for headless benchmark runs",
+    )
+    bench.add_argument(
+        "--plot-max-side-px",
+        type=int,
+        default=1800,
+        help="Max plot image long side in pixels",
+    )
     bench.add_argument("-j", "--json", type=str, default=None, help="Write report JSON path (or 'auto')")
     bench.add_argument("-c", "--csv", type=str, default=None, help="Write report CSV path (or 'auto')")
     bench.add_argument(
@@ -240,6 +266,8 @@ def _build_run_settings(
             raise AssertionError from exc
 
     plot_mode = default_plot_mode if args.plot is None else str(args.plot)
+    plot_output = "combined" if args.plot_output is None else str(args.plot_output)
+    plot_max_side_px = 1800 if args.plot_max_side_px is None else max(256, int(args.plot_max_side_px))
     return RunSettings(
         level_name=selector.level_name,
         bot_name=args.bot,
@@ -251,6 +279,8 @@ def _build_run_settings(
         max_time=300.0 if args.time is None else float(args.time),
         max_steps=args.steps,
         plot_mode=plot_mode,
+        plot_output=plot_output,
+        plot_max_side_px=plot_max_side_px,
         stop_on_crash=bool(args.stop_on_crash),
         stop_on_out_of_fuel=bool(args.stop_on_out_of_fuel),
         stop_on_first_land=bool(args.stop_on_first_land),
@@ -359,6 +389,8 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
             max_time=300.0 if args.time is None else float(args.time),
             max_steps=args.steps,
             plot_mode=args.plot,
+            plot_output=str(args.plot_output or "combined"),
+            plot_max_side_px=max(256, int(args.plot_max_side_px)),
             json_path=args.json,
             csv_path=args.csv,
             bot_profile_enabled=bool(args.bot_profile),
@@ -385,6 +417,10 @@ def announce_command(command: Command) -> None:
         print(f"Selectors: {', '.join(_render_bench_target(sel) for sel in cfg.selectors)}")
         print(f"Workers requested: {cfg.workers}")
         print(f"Eval mode: {cfg.eval_mode}")
+        print(f"Plot: {cfg.plot_mode}")
+        if cfg.plot_mode != "none":
+            print(f"Plot output: {cfg.plot_output}")
+            print(f"Plot max side: {cfg.plot_max_side_px}px")
         print(f"Bot profile: {'on' if cfg.bot_profile_enabled else 'off'}")
         print(f"Bot profile logs: {'on' if cfg.bot_profile_log_lines else 'off'}")
         if cfg.bot_profile_interval_s is not None:
@@ -425,3 +461,6 @@ def _print_run_summary(cfg: RunSettings) -> None:
         if cfg.max_steps is not None:
             print(f"Max steps: {cfg.max_steps}")
         print(f"Plot: {cfg.plot_mode}")
+        if cfg.plot_mode != "none":
+            print(f"Plot output: {cfg.plot_output}")
+            print(f"Plot max side: {cfg.plot_max_side_px}px")
