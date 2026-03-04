@@ -6,6 +6,7 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 
 - Running the game / CLI / headless / batch: [`../README.md`](../README.md)
 - Bot development framework + API: [`overview.md`](overview.md)
+- Skill workflow map (goal -> strategy -> tuning -> regression gate): [`skills_workflow.md`](skills_workflow.md)
 
 ## Controllers and levels
 

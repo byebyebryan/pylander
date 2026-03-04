@@ -179,6 +179,20 @@ Local project workflows live under `skills/`:
 - `pylander-benchmark` / `pylander-benchmark-doctor`: benchmark execution and diagnosis.
 - `pylander-plot` / `pylander-plot-doctor`: plot pack generation and visual diagnosis.
 
+Workflow this skill set is built for:
+
+1. Define or adjust goal surface with `pylander-goal-builder`.
+2. Diagnose failures and produce ranked strategies with `pylander-goal-doctor`.
+3. Run parallel strategy evaluation with `pylander-strategy-arena` and `pylander-arena-worker`.
+4. Route tuning depth with `pylander-tune-router`.
+5. Tune via either `pylander-tune-arena` + `pylander-arena-worker` then `pylander-tune-loop`, or direct `pylander-tune-loop`.
+6. Run broad gate decision with `pylander-regression-doctor`.
+7. Use `pylander-benchmark` / `pylander-benchmark-doctor` and
+   `pylander-plot` / `pylander-plot-doctor` at any stage for focused diagnosis.
+
+For the full skill map (including intent, artifacts, and contracts), see:
+[`docs/skills_workflow.md`](docs/skills_workflow.md).
+
 Core orchestration executors:
 
 - `uv run python skills/pylander-tune-router/scripts/route_tuning.py --input <in.json> --output <out.json>`
