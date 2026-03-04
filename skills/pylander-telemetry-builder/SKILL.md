@@ -37,4 +37,4 @@ Default mode is plan-first (no code changes unless explicitly requested).
 
 ## Handoff
 
-After applying planned probes and collecting runs, re-run `pylander-telemetry-doctor` to confirm the issue and close the loop.
+After applying planned probes and collecting runs, re-run `pylander-telemetry-analyzer` to confirm the issue and close the loop.

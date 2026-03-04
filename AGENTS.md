@@ -58,19 +58,31 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 ## Skill-driven workflow
 - Preferred loop:
   - `pylander-goal-builder` to define/build the new goal level/scenarios.
-  - `pylander-goal-doctor` to diagnose current failure modes and propose strategies.
-  - `pylander-strategy-arena` + `pylander-arena-worker` to run parallel strategy experiments.
-  - `pylander-tune-router` to choose route:
-    - `pylander-tune-arena` -> `pylander-tune-loop` -> `pylander-regression-doctor`, or
-    - `pylander-tune-loop` -> `pylander-regression-doctor`.
-  - `pylander-regression-doctor` for broad regression decisioning.
-- Use `pylander-benchmark` / `pylander-benchmark-doctor` for metric-grounded benchmark execution and diagnosis.
-- Use `pylander-plot` / `pylander-plot-doctor` for visual trajectory/thrust analysis and anomaly triage.
-- Use `pylander-telemetry-doctor` for log/data-first crash/perf triage.
+  - `pylander-goal-analyzer` to diagnose current failure modes and propose strategies.
+  - `pylander-strategy-orchestrator` + `pylander-arena-branch-runner` to run parallel strategy experiments.
+  - `pylander-tune-routing-planner` to choose route:
+    - `pylander-tune-orchestrator` -> `pylander-tune-loop-manager` -> `pylander-regression-analyzer`, or
+    - `pylander-tune-loop-manager` -> `pylander-regression-analyzer`.
+  - `pylander-regression-analyzer` for broad regression decisioning.
+- Use `pylander-benchmark-runner` / `pylander-benchmark-analyzer` for metric-grounded benchmark execution and diagnosis.
+- Use `pylander-plot-runner` / `pylander-plot-analyzer` for visual trajectory/thrust analysis and anomaly triage.
+- Use `pylander-telemetry-analyzer` for log/data-first crash/perf triage.
 - Use `pylander-telemetry-builder` when diagnosis needs additional focused probes; default to plan-first, then implement probes only when explicitly requested.
-- Use `pylander-docs-sync` for drift checks and patch planning across README/docs/AGENTS.
+- Use `pylander-docs-sync-planner` for drift checks and patch planning across README/docs/AGENTS.
 - Use `pylander-maintenance-planner` for recurring test/benchmark maintenance planning (`test|bench|both`).
 - Use `pylander-refactor-planner` for phased refactor plans and optional patch-set specs before execution.
+- Use `pylander-commit-manager` to plan task-scoped commits and standardize commit messages.
+
+## Commit hygiene
+- Treat each commit as PR scope: one problem/goal/task per commit.
+- Do not split commits by file type alone; keep code/tests/docs together when they serve the same goal.
+- Split into separate commits when goals are distinct and independently reviewable.
+- Subject format: `<type>: <goal summary>` where type is one of `feat|fix|refactor|docs|test|bench|skills|chore`.
+- Keep subject lines imperative and <=72 chars.
+- For non-trivial commits (recommended generally), include body sections:
+  - `Why:` intent/problem.
+  - `What:` concise bullets of key changes.
+  - `Validation:` commands run, or explicit reason when not run.
 
 ## CLI and benchmark conventions
 - Command model: `uv run python main.py <command> ...` where command is `run`, `sim`, `plot`, or `bench`.
@@ -79,7 +91,7 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
   - bench: `level[:scenario[:seed_spec]]`
 - Prefer explicit selectors in evals/benchmarks for reproducibility.
 - Use `--bot-config <path>` for tuned bot overrides; ensure comparisons use like-for-like bot config.
-- For broad regression checks, prefer `skills/pylander-benchmark/scripts/run_cached_benchmark.py` (cache-aware baseline compare).
+- For broad regression checks, prefer `skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py` (cache-aware baseline compare).
 - Benchmark worker behavior is fail-fast when worker pools are unavailable; no implicit sequential fallback.
 
 ## Change acceptance checklist (definition of done)
@@ -87,6 +99,6 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - `uv run ruff check .`
 - If behavior changed: run a relevant headless eval and compare metrics to a baseline
  - Example focused eval: `uv run python main.py sim launch:far:0 --bot zem_zev`
- - Example quick regression compare: `uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot zem_zev`
+ - Example quick regression compare: `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot zem_zev`
 - If CLI/defaults/workflows changed: update `README.md`
 - Don’t check in artifacts (`outputs/` stays local/ignored), including benchmark caches and generated plots.

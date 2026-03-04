@@ -106,7 +106,7 @@ Bench selector format:
 
 Focused eval (`--eval-mode focused`) is available for `flare`, `coast`, `climb`, and `setup`.
 
-Benchmark pack tooling (`skills/pylander-benchmark/scripts/*.py`) now reads
+Benchmark pack tooling (`skills/pylander-benchmark-runner/scripts/*.py`) now reads
 level metadata from `benchmark_profile()`:
 
 - scenario sets: `smoke`, `quick`, `full`
@@ -169,52 +169,54 @@ When plotting is enabled, runs now emit `plot_paths` and a plot manifest path fo
 Local project workflows live under `skills/`:
 
 - `pylander-goal-builder`: define/build new eval levels with benchmark profile coverage.
-- `pylander-goal-doctor`: diagnose level-goal failures and produce ranked strategies.
-- `pylander-strategy-arena`: run parallel strategy branches and pick a winner.
-- `pylander-tune-router`: decide whether tuning should run through tune-arena or direct tune-loop.
-- `pylander-tune-arena`: run parallel tuning branches on the selected strategy winner.
-- `pylander-arena-worker`: execute one focused strategy/tuning branch.
-- `pylander-tune-loop`: profile-based tuning loop (`light|standard|extensive`) for direct tuning or post-arena polish.
-- `pylander-regression-doctor`: quick/full regression diagnosis before merge.
-- `pylander-benchmark` / `pylander-benchmark-doctor`: benchmark execution and diagnosis.
-- `pylander-plot` / `pylander-plot-doctor`: plot pack generation and visual diagnosis.
-- `pylander-telemetry-doctor`: crash/perf triage from benchmark artifacts and sim/debug logs.
+- `pylander-goal-analyzer`: diagnose level-goal failures and produce ranked strategies.
+- `pylander-strategy-orchestrator`: run parallel strategy branches and pick a winner.
+- `pylander-tune-routing-planner`: decide whether tuning should run through tune-arena or direct tune-loop.
+- `pylander-tune-orchestrator`: run parallel tuning branches on the selected strategy winner.
+- `pylander-arena-branch-runner`: execute one focused strategy/tuning branch.
+- `pylander-tune-loop-manager`: profile-based tuning loop (`light|standard|extensive`) for direct tuning or post-arena polish.
+- `pylander-regression-analyzer`: quick/full regression diagnosis before merge.
+- `pylander-benchmark-runner` / `pylander-benchmark-analyzer`: benchmark execution and diagnosis.
+- `pylander-plot-runner` / `pylander-plot-analyzer`: plot pack generation and visual diagnosis.
+- `pylander-telemetry-analyzer`: crash/perf triage from benchmark artifacts and sim/debug logs.
 - `pylander-telemetry-builder`: plan-first focused telemetry/probe design when existing signals are insufficient.
-- `pylander-docs-sync`: detect docs drift and produce a minimal docs patch plan.
+- `pylander-docs-sync-planner`: detect docs drift and produce a minimal docs patch plan.
 - `pylander-maintenance-planner`: plan test/benchmark maintenance with `mode=test|bench|both`.
 - `pylander-refactor-planner`: decision-complete refactor planning with optional patch-set specification.
+- `pylander-commit-manager`: plan and execute task-scoped commits with standardized message format.
 
 Workflow this skill set is built for:
 
 1. Define or adjust goal surface with `pylander-goal-builder`.
-2. Diagnose failures and produce ranked strategies with `pylander-goal-doctor`.
-3. Run parallel strategy evaluation with `pylander-strategy-arena` and `pylander-arena-worker`.
-4. Route tuning depth with `pylander-tune-router`.
-5. Tune via either `pylander-tune-arena` + `pylander-arena-worker` then `pylander-tune-loop`, or direct `pylander-tune-loop`.
-6. Run broad gate decision with `pylander-regression-doctor`.
-7. Use `pylander-benchmark` / `pylander-benchmark-doctor` and
-   `pylander-plot` / `pylander-plot-doctor` at any stage for focused diagnosis.
-8. Use `pylander-telemetry-doctor` for log/data triage and hand off to
+2. Diagnose failures and produce ranked strategies with `pylander-goal-analyzer`.
+3. Run parallel strategy evaluation with `pylander-strategy-orchestrator` and `pylander-arena-branch-runner`.
+4. Route tuning depth with `pylander-tune-routing-planner`.
+5. Tune via either `pylander-tune-orchestrator` + `pylander-arena-branch-runner` then `pylander-tune-loop-manager`, or direct `pylander-tune-loop-manager`.
+6. Run broad gate decision with `pylander-regression-analyzer`.
+7. Use `pylander-benchmark-runner` / `pylander-benchmark-analyzer` and
+   `pylander-plot-runner` / `pylander-plot-analyzer` at any stage for focused diagnosis.
+8. Use `pylander-telemetry-analyzer` for log/data triage and hand off to
    `pylander-telemetry-builder` when additional focused instrumentation is needed.
-9. Use `pylander-docs-sync`, `pylander-maintenance-planner`, and
+9. Use `pylander-docs-sync-planner`, `pylander-maintenance-planner`, and
    `pylander-refactor-planner` as cross-cutting planning tools for recurring maintenance work.
+10. Use `pylander-commit-manager` to split work into goal-based commits and keep message quality consistent.
 
 For the full skill map (including intent, artifacts, and contracts), see:
 [`docs/skills_workflow.md`](docs/skills_workflow.md).
 
 Core orchestration executors:
 
-- `uv run python skills/pylander-tune-router/scripts/route_tuning.py --input <in.json> --output <out.json>`
-- `uv run python skills/pylander-arena-worker/scripts/run_arena_branch.py --input <in.json> --output <out.json> --no-execute-validation`
-- `uv run python skills/pylander-strategy-arena/scripts/run_strategy_arena.py --input <in.json> --output <out.json> --no-execute-workers`
-- `uv run python skills/pylander-tune-arena/scripts/run_tune_arena.py --input <in.json> --output <out.json> --no-execute-workers`
-- `uv run python skills/pylander-tune-loop/scripts/run_tune_loop.py --input <in.json> --output <out.json>`
-- `uv run python skills/pylander-regression-doctor/scripts/gate_regression.py --input <in.json> --output <out.json> --no-execute`
+- `uv run python skills/pylander-tune-routing-planner/scripts/route_tuning.py --input <in.json> --output <out.json>`
+- `uv run python skills/pylander-arena-branch-runner/scripts/run_arena_branch.py --input <in.json> --output <out.json> --no-execute-validation`
+- `uv run python skills/pylander-strategy-orchestrator/scripts/run_strategy_arena.py --input <in.json> --output <out.json> --no-execute-workers`
+- `uv run python skills/pylander-tune-orchestrator/scripts/run_tune_arena.py --input <in.json> --output <out.json> --no-execute-workers`
+- `uv run python skills/pylander-tune-loop-manager/scripts/run_tune_loop.py --input <in.json> --output <out.json>`
+- `uv run python skills/pylander-regression-analyzer/scripts/gate_regression.py --input <in.json> --output <out.json> --no-execute`
 
 Telemetry diagnostics executors:
 
-- `uv run python skills/pylander-telemetry-doctor/scripts/analyze_telemetry.py --compare-json <path> --output-report <out.json>`
-- `uv run python skills/pylander-telemetry-doctor/scripts/analyze_telemetry.py --benchmark-json <path> --sim-log <sim.log> --output-report <out.json>`
+- `uv run python skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py --compare-json <path> --output-report <out.json>`
+- `uv run python skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py --benchmark-json <path> --sim-log <sim.log> --output-report <out.json>`
 - `uv run python skills/pylander-telemetry-builder/scripts/plan_telemetry.py --triage-report <triage.json> --output-plan <plan.json>`
 
 ## Bot profiling and query API

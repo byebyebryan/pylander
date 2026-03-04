@@ -27,18 +27,18 @@ def _script(rel: str) -> Path:
 
 contracts = _load_module("skill_contracts", _script("skills/lib/contracts.py"))
 route_mod = _load_module(
-    "route_tuning_script", _script("skills/pylander-tune-router/scripts/route_tuning.py")
+    "route_tuning_script", _script("skills/pylander-tune-routing-planner/scripts/route_tuning.py")
 )
 strategy_arena_mod = _load_module(
     "strategy_arena_script",
-    _script("skills/pylander-strategy-arena/scripts/run_strategy_arena.py"),
+    _script("skills/pylander-strategy-orchestrator/scripts/run_strategy_arena.py"),
 )
 tune_loop_mod = _load_module(
-    "tune_loop_script", _script("skills/pylander-tune-loop/scripts/run_tune_loop.py")
+    "tune_loop_script", _script("skills/pylander-tune-loop-manager/scripts/run_tune_loop.py")
 )
 regression_mod = _load_module(
     "regression_gate_script",
-    _script("skills/pylander-regression-doctor/scripts/gate_regression.py"),
+    _script("skills/pylander-regression-analyzer/scripts/gate_regression.py"),
 )
 
 
@@ -70,7 +70,7 @@ def test_route_auto_selects_arena_on_conflict() -> None:
     }
     out = route_mod.route_tuning(payload)
     assert out["recommended_route"] == "arena"
-    assert out["handoff_payload"]["target_skill"] == "pylander-tune-arena"
+    assert out["handoff_payload"]["target_skill"] == "pylander-tune-orchestrator"
 
 
 def test_route_manual_override_loop() -> None:
@@ -140,7 +140,7 @@ def test_strategy_arena_selects_top_passing_branch() -> None:
     out = strategy_arena_mod.run_strategy_arena(payload, execute_workers=False)
     assert out["outcome"] == "winner"
     assert out["winner_branch_id"] == "good"
-    assert out["next_step_handoff"]["target_skill"] == "pylander-tune-router"
+    assert out["next_step_handoff"]["target_skill"] == "pylander-tune-routing-planner"
 
 
 def test_tune_loop_marks_hard_blocker() -> None:
@@ -203,7 +203,7 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
     )
     cmd = [
         sys.executable,
-        str(_script("skills/pylander-tune-router/scripts/route_tuning.py")),
+        str(_script("skills/pylander-tune-routing-planner/scripts/route_tuning.py")),
         "--input",
         str(route_input),
         "--output",
@@ -236,7 +236,7 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
     )
     cmd = [
         sys.executable,
-        str(_script("skills/pylander-arena-worker/scripts/run_arena_branch.py")),
+        str(_script("skills/pylander-arena-branch-runner/scripts/run_arena_branch.py")),
         "--input",
         str(worker_input),
         "--output",
@@ -261,7 +261,7 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
     )
     cmd = [
         sys.executable,
-        str(_script("skills/pylander-strategy-arena/scripts/run_strategy_arena.py")),
+        str(_script("skills/pylander-strategy-orchestrator/scripts/run_strategy_arena.py")),
         "--input",
         str(strategy_input),
         "--output",
@@ -286,7 +286,7 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
     )
     cmd = [
         sys.executable,
-        str(_script("skills/pylander-tune-loop/scripts/run_tune_loop.py")),
+        str(_script("skills/pylander-tune-loop-manager/scripts/run_tune_loop.py")),
         "--input",
         str(tune_input),
         "--output",
@@ -325,7 +325,7 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
     )
     cmd = [
         sys.executable,
-        str(_script("skills/pylander-regression-doctor/scripts/gate_regression.py")),
+        str(_script("skills/pylander-regression-analyzer/scripts/gate_regression.py")),
         "--input",
         str(reg_input),
         "--output",
@@ -374,7 +374,7 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
     doctor_output = tmp_path / "telemetry_report.json"
     cmd = [
         sys.executable,
-        str(_script("skills/pylander-telemetry-doctor/scripts/analyze_telemetry.py")),
+        str(_script("skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py")),
         "--compare-json",
         str(doctor_compare),
         "--output-report",

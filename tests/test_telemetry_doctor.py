@@ -22,7 +22,7 @@ def _script(rel: str) -> Path:
 
 doctor = _load_module(
     "telemetry_doctor_script",
-    _script("skills/pylander-telemetry-doctor/scripts/analyze_telemetry.py"),
+    _script("skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py"),
 )
 contracts = _load_module("skill_contracts_for_doctor", _script("skills/lib/contracts.py"))
 

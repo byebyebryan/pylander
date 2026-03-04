@@ -53,7 +53,7 @@
       "properties": {
         "target_skill": {
           "type": "string",
-          "enum": ["pylander-tune-arena", "pylander-tune-loop"]
+          "enum": ["pylander-tune-orchestrator", "pylander-tune-loop-manager"]
         },
         "payload": {"type": "object"}
       },

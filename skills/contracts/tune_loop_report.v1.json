@@ -63,7 +63,7 @@
       "type": "object",
       "required": ["target_skill", "payload"],
       "properties": {
-        "target_skill": {"type": "string", "enum": ["pylander-regression-doctor", "none"]},
+        "target_skill": {"type": "string", "enum": ["pylander-regression-analyzer", "none"]},
         "payload": {"type": "object"}
       },
       "additionalProperties": false

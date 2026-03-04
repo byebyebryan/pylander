@@ -6,7 +6,7 @@ from pathlib import Path
 _SCRIPT_DIR = (
     Path(__file__).resolve().parents[1]
     / "skills"
-    / "pylander-benchmark"
+    / "pylander-benchmark-runner"
     / "scripts"
 )
 if str(_SCRIPT_DIR) not in sys.path:

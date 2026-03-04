@@ -61,7 +61,7 @@ Focus on:
 - reproducibility consistency (selectors/seeds/bot-config)
 
 Core commands:
-- `uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode quick --baseline-ref <baseline_ref> --bot <bot>`
+- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref <baseline_ref> --bot <bot>`
 - focused follow-up compares with explicit selectors/seeds when needed
 
 ### `both`
