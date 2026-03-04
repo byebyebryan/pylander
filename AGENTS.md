@@ -45,19 +45,41 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 
 ## Bot development and evaluation
 - Treat bot build/eval/optimization as first-class (not a side quest).
-- Scenario-first: solve focused scenarios, then generalize and extract reusable control components.
-- Phase-first when available: tune and validate one phase at a time (e.g. `launch` focused handoff before full run).
-- Define measurable outcomes per phase (success criteria + efficiency metrics), not just end-of-run state.
+- The primary controller is the unified `zem_zev` bot; avoid re-introducing split-phase bot stacks.
+- Scenario-first: solve focused selectors/scenarios first, then widen to cross-level coverage.
+- Define measurable outcomes for each tuning objective (success criteria + efficiency + stability), not just end-of-run state.
 - Use meaningful metrics (success rate, landing quality, fuel use, stability, consistency across seeds).
+- Include compute-cost metrics in evaluations (avg plus p90/p99 bot ms/tick) to catch hot-path regressions.
 - Require reproducible evals (seed + scenario + bot + config).
 - Use benchmarks/evals to guide decisions and catch regressions.
 - Use metric gates for bot changes: require measurable improvement or document explicit tradeoffs.
-- Validate downstream impact after phase tuning with a cross-level check (`plunge`/`flare`/`coast`/`launch`) before merge.
+- Validate downstream impact after focused tuning with a cross-level check (`plunge`/`flare`/`coast`/`setup`/`launch`) before merge.
+
+## Skill-driven workflow
+- Preferred loop:
+  - `pylander-goal-builder` to define/build the new goal level/scenarios.
+  - `pylander-goal-doctor` to diagnose current failure modes and propose strategies.
+  - `pylander-strategy-arena` + `pylander-strategy-worker` to run parallel strategy experiments.
+  - `pylander-tune-loop-lite` to do bounded winner tuning.
+  - `pylander-regression-doctor` for broad regression decisioning.
+- Use `pylander-benchmark` / `pylander-benchmark-doctor` for metric-grounded benchmark execution and diagnosis.
+- Use `pylander-plot` / `pylander-plot-doctor` for visual trajectory/thrust analysis and anomaly triage.
+
+## CLI and benchmark conventions
+- Command model: `uv run python main.py <command> ...` where command is `run`, `sim`, `plot`, or `bench`.
+- Selector model:
+  - run/sim/plot: `level[:scenario[:seed]]`
+  - bench: `level[:scenario[:seed_spec]]`
+- Prefer explicit selectors in evals/benchmarks for reproducibility.
+- Use `--bot-config <path>` for tuned bot overrides; ensure comparisons use like-for-like bot config.
+- For broad regression checks, prefer `skills/pylander-benchmark/scripts/run_cached_benchmark.py` (cache-aware baseline compare).
+- Benchmark worker behavior is fail-fast when worker pools are unavailable; no implicit sequential fallback.
 
 ## Change acceptance checklist (definition of done)
 - `uv run pytest`
 - `uv run ruff check .`
 - If behavior changed: run a relevant headless eval and compare metrics to a baseline
- - Example smoke test: `uv run python main.py plunge --headless --quick-benchmark`
+ - Example focused eval: `uv run python main.py sim launch:far:0 --bot zem_zev`
+ - Example quick regression compare: `uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot zem_zev`
 - If CLI/defaults/workflows changed: update `README.md`
-- Don’t check in artifacts (`outputs/` stays local/ignored)
+- Don’t check in artifacts (`outputs/` stays local/ignored), including benchmark caches and generated plots.
