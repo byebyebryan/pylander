@@ -37,6 +37,24 @@ def test_bot_registry_exposes_only_supported_bots() -> None:
     assert isinstance(zem_bot, QueryBot)
 
 
+def test_create_bot_rejects_config_override_for_unsupported_bot() -> None:
+    with pytest.raises(ValueError, match="does not support --bot-config"):
+        create_bot("plunge", config_override={"setup_gate_projected_dx_abs": 42.0})
+
+
+def test_create_bot_applies_zem_bot_config_override() -> None:
+    bot = create_bot(
+        "zem_zev",
+        config_override={
+            "setup_gate_projected_dx_abs": 42.0,
+            "fallback_hold_steps": 10.0,
+        },
+    )
+    cfg = getattr(bot, "_cfg")
+    assert float(cfg.setup_gate_projected_dx_abs) == pytest.approx(42.0)
+    assert int(cfg.fallback_hold_steps) == 10
+
+
 def test_level_registry_still_includes_phase_levels() -> None:
     levels = list_available_levels()
     for name in ("plunge", "flare", "coast", "climb", "setup", "launch"):
@@ -391,6 +409,7 @@ def test_parser_rejects_removed_bot_behavior_flag() -> None:
 def test_resolve_batch_plan_expands_all_scenarios_without_seed_spec(monkeypatch) -> None:
     config = BenchSettings(
         bot_name=None,
+        bot_config_path=None,
         selectors=(BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None),),
         lander_name=None,
         eval_mode="auto",
@@ -420,6 +439,7 @@ def test_resolve_batch_plan_expands_all_scenarios_without_seed_spec(monkeypatch)
 def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
     config = BenchSettings(
         bot_name=None,
+        bot_config_path=None,
         selectors=(BenchTarget(level_name="launch", scenario_name="far", seed_spec="0-2,2"),),
         lander_name=None,
         eval_mode="auto",
@@ -569,6 +589,7 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
 
     cfg = BenchSettings(
         bot_name="zem_zev",
+        bot_config_path=None,
         selectors=(BenchTarget(level_name="launch", scenario_name="mid", seed_spec="0"),),
         lander_name=None,
         eval_mode="auto",

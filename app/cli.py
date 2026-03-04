@@ -45,6 +45,12 @@ def _add_common_run_args(
         default=None,
         help="Bot name (overrides level default bot)",
     )
+    parser.add_argument(
+        "--bot-config",
+        type=str,
+        default=None,
+        help="Path to JSON bot override config (supported bots only)",
+    )
     if include_freq:
         parser.add_argument(
             "-f",
@@ -155,6 +161,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Benchmark selectors: level[:scenario[:seed_spec]]",
     )
     bench.add_argument("-b", "--bot", dest="bot", default=None)
+    bench.add_argument(
+        "--bot-config",
+        type=str,
+        default=None,
+        help="Path to JSON bot override config (supported bots only)",
+    )
     bench.add_argument("-l", "--lander")
     bench.add_argument(
         "-e",
@@ -271,6 +283,7 @@ def _build_run_settings(
     return RunSettings(
         level_name=selector.level_name,
         bot_name=args.bot,
+        bot_config_path=args.bot_config,
         seed=seed_value,
         scenario_name=selector.scenario_name,
         lander_name=args.lander,
@@ -382,6 +395,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
             )
         bench_cfg = BenchSettings(
             bot_name=args.bot,
+            bot_config_path=args.bot_config,
             selectors=tuple(selectors),
             lander_name=args.lander,
             eval_mode=str(args.eval_mode or "auto"),
@@ -417,6 +431,8 @@ def announce_command(command: Command) -> None:
         print(f"Selectors: {', '.join(_render_bench_target(sel) for sel in cfg.selectors)}")
         print(f"Workers requested: {cfg.workers}")
         print(f"Eval mode: {cfg.eval_mode}")
+        if cfg.bot_config_path:
+            print(f"Bot config: {cfg.bot_config_path}")
         print(f"Plot: {cfg.plot_mode}")
         if cfg.plot_mode != "none":
             print(f"Plot output: {cfg.plot_output}")
@@ -451,6 +467,8 @@ def _print_run_summary(cfg: RunSettings) -> None:
     print(f"Selector: {selector}")
     if cfg.bot_name:
         print(f"Bot: {cfg.bot_name}")
+    if cfg.bot_config_path:
+        print(f"Bot config: {cfg.bot_config_path}")
     if cfg.eval_mode != "auto":
         print(f"Eval mode: {cfg.eval_mode}")
     if cfg.lander_name:

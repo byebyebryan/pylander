@@ -309,6 +309,7 @@ def build_bench_command(
     eval_mode: str = "auto",
     json_path: str = "auto",
     csv_path: str = "auto",
+    bot_config_path: str | None = None,
     bot_profile_enabled: bool | None = None,
     bot_profile_interval_s: float | None = None,
     bot_profile_log_lines: bool | None = None,
@@ -329,6 +330,8 @@ def build_bench_command(
             csv_path,
         ]
     )
+    if bot_config_path:
+        cmd += ["--bot-config", str(bot_config_path)]
     if workers is not None:
         cmd += ["--workers", str(max(1, int(workers)))]
     if bot_profile_enabled is not None:
@@ -358,6 +361,7 @@ def main() -> None:
         help="Levels to keep as observation-only (csv or repeated)",
     )
     ap.add_argument("--bot", default="zem_zev")
+    ap.add_argument("--bot-config", default=None)
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--eval-mode", default="auto", choices=("auto", "focused", "full"))
     ap.add_argument(
@@ -395,6 +399,7 @@ def main() -> None:
             eval_mode=args.eval_mode,
             json_path="auto",
             csv_path="auto",
+            bot_config_path=args.bot_config,
             bot_profile_enabled=bool(args.bot_profile),
             bot_profile_interval_s=args.bot_profile_interval_s,
             bot_profile_log_lines=bool(args.bot_profile_logs),

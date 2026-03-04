@@ -114,6 +114,7 @@ def _to_run_settings(cfg: BenchSettings) -> RunSettings:
     return RunSettings(
         level_name=first_level,
         bot_name=cfg.bot_name,
+        bot_config_path=cfg.bot_config_path,
         seed=None,
         scenario_name=None,
         lander_name=cfg.lander_name,

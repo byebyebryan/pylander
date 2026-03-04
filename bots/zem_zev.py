@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import math
 import os
+from dataclasses import fields, replace
+from typing import Any
 
 from bots._ballistics import (
     BallisticProjection,
@@ -122,6 +124,47 @@ class ZemZevBot(QueryBot):
         self._auto_target_uid = None
         self._launch_takeoff_active = False
         self._last_flight_snapshot = None
+
+    def apply_config_override(self, overrides: dict[str, Any]) -> None:
+        if not isinstance(overrides, dict):
+            raise ValueError("zem_zev bot config override must be a mapping")
+        if not overrides:
+            return
+        valid_fields = {f.name: f for f in fields(ZemZevConfig)}
+        patch: dict[str, Any] = {}
+        for key, raw_value in overrides.items():
+            if key not in valid_fields:
+                known = ", ".join(sorted(valid_fields))
+                raise ValueError(
+                    f"Unknown zem_zev config key '{key}'. Expected one of: {known}"
+                )
+            current = getattr(self._cfg, key)
+            if isinstance(current, bool):
+                if not isinstance(raw_value, bool):
+                    raise ValueError(f"zem_zev config key '{key}' must be a boolean")
+                patch[key] = bool(raw_value)
+            elif isinstance(current, int) and not isinstance(current, bool):
+                if isinstance(raw_value, bool):
+                    raise ValueError(f"zem_zev config key '{key}' must be an integer")
+                if isinstance(raw_value, float):
+                    if not float(raw_value).is_integer():
+                        raise ValueError(
+                            f"zem_zev config key '{key}' must be an integer; got {raw_value!r}"
+                        )
+                    patch[key] = int(raw_value)
+                elif isinstance(raw_value, int):
+                    patch[key] = int(raw_value)
+                else:
+                    raise ValueError(f"zem_zev config key '{key}' must be an integer")
+            elif isinstance(current, float):
+                if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+                    raise ValueError(f"zem_zev config key '{key}' must be a number")
+                patch[key] = float(raw_value)
+            else:
+                raise ValueError(
+                    f"zem_zev config key '{key}' has unsupported type for override"
+                )
+        self._cfg = replace(self._cfg, **patch)
 
     def _reset_state(self) -> None:
         self._prev_angle_cmd = 0.0

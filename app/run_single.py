@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from typing import Any
 
 from bots import create_bot
@@ -33,6 +35,21 @@ def resolve_run_bot_name(settings: RunSettings, level) -> str | None:
 
 def set_eval_scenario(level, name: str | None) -> None:
     set_eval_scenario_checked(level, name)
+
+
+def _load_bot_config(path: str | None) -> dict[str, Any] | None:
+    if not path:
+        return None
+    config_path = Path(path).expanduser().resolve()
+    if not config_path.exists():
+        raise ValueError(f"Bot config file not found: {config_path}")
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid bot config JSON at {config_path}: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise ValueError(f"Bot config must be a JSON object: {config_path}")
+    return dict(payload)
 
 
 def configure_level(level, settings: RunSettings, *, benchmark_mode: str | None = None) -> None:
@@ -77,7 +94,12 @@ def run_once(
     configure_level(level, settings, benchmark_mode=benchmark_mode)
 
     run_bot_name = resolve_run_bot_name(settings, level)
-    bot = create_bot(run_bot_name) if run_bot_name is not None else None
+    bot_config = _load_bot_config(settings.bot_config_path)
+    bot = (
+        create_bot(run_bot_name, config_override=bot_config)
+        if run_bot_name is not None
+        else None
+    )
     if bot is not None and run_bot_name is not None:
         setattr(bot, "_bot_name", run_bot_name)
 

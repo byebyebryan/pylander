@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import List, Type
+from typing import Any, List, Type
 
 from core.bot import Bot
 from core.plugin_loader import (
@@ -49,10 +49,18 @@ def load_bot_class(name: str) -> Type[Bot]:
     return bot_cls
 
 
-def create_bot(name: str) -> Bot:
+def create_bot(name: str, *, config_override: dict[str, Any] | None = None) -> Bot:
     """Instantiate a bot by module name."""
     bot_cls = load_bot_class(name)
-    return bot_cls()
+    bot = bot_cls()
+    if config_override:
+        apply_override = getattr(bot, "apply_config_override", None)
+        if not callable(apply_override):
+            raise ValueError(
+                f"Bot '{name}' does not support --bot-config overrides"
+            )
+        apply_override(dict(config_override))
+    return bot
 
 
 __all__ = [

@@ -124,6 +124,7 @@ Default policy profile:
 
 - selector: `level[:scenario[:seed]]`
 - `-b, --bot NAME`
+- `--bot-config PATH` (JSON override config for supported bots)
 - `-l, --lander NAME`
 - `-e, --eval-mode auto|focused|full`
 - `-n, --steps N`
@@ -141,6 +142,7 @@ Default policy profile:
 
 - selectors: `level[:scenario[:seed_spec]]` (one or more)
 - `-b, --bot NAME`
+- `--bot-config PATH` (JSON override config for supported bots)
 - `-l, --lander NAME`
 - `-e, --eval-mode auto|focused|full`
 - `-w, --workers N` (default: `max(1, CPU cores - 2)`)

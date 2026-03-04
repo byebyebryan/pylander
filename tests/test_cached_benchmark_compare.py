@@ -203,3 +203,24 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
     assert report["notable_regression"] is False
     assert report["global"]["compute"]["available"] is False
     assert report["observation"]["compute"]["notable_regression"] is True
+
+
+def test_selector_pack_stem_changes_with_bot_config_path() -> None:
+    common = dict(
+        mode="quick",
+        selectors=["launch:mid:0-2"],
+        bot="zem_zev",
+        eval_mode="auto",
+        bot_profile_enabled=True,
+        bot_profile_interval_s=None,
+        bot_profile_log_lines=False,
+    )
+    no_config = cached_bench._selector_pack_stem(
+        bot_config_path=None,
+        **common,
+    )
+    with_config = cached_bench._selector_pack_stem(
+        bot_config_path="configs/zem_custom.json",
+        **common,
+    )
+    assert no_config != with_config

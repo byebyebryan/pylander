@@ -19,6 +19,7 @@ This skill is for:
 - `mode`: `health | compare | focus | triage`
 - `pack_mode`: `smoke | quick | full | focused`
 - `bot` (default `zem_zev`)
+- `bot_config_path` (optional JSON override path; forwarded as `--bot-config`)
 - `baseline_ref` (required for `compare`)
 - `seed_spec` (optional)
 - `selectors` (required for `pack_mode=focused`)
@@ -48,15 +49,15 @@ Do not commit benchmark output artifacts.
 
 Candidate-only health run:
 
-`uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode <pack_mode> --bot <bot> --bot-profile --no-bot-profile-logs`
+`uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode <pack_mode> --bot <bot> [--bot-config <path>] --bot-profile --no-bot-profile-logs`
 
 Compare against baseline:
 
-`uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode <pack_mode> --baseline-ref <baseline_ref> --bot <bot> --bot-profile --no-bot-profile-logs`
+`uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode <pack_mode> --baseline-ref <baseline_ref> --bot <bot> [--bot-config <path>] --bot-profile --no-bot-profile-logs`
 
 Focused run:
 
-`uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode focused --selectors <selector...> --seed-spec <seed_spec> --bot <bot> --bot-profile --no-bot-profile-logs`
+`uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode focused --selectors <selector...> --seed-spec <seed_spec> --bot <bot> [--bot-config <path>] --bot-profile --no-bot-profile-logs`
 
 Per-case reproduction:
 

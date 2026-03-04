@@ -11,6 +11,7 @@ Use this skill when the user asks to run benchmarks, compare a change against a 
 
 - `mode`: `smoke | quick | full | focused`
 - `bot` (default: `zem_zev`)
+- `bot_config_path` (optional JSON override path; forwarded as `--bot-config`)
 - `workers` (optional; if omitted uses CLI default `max(1, CPU cores - 2)`)
 - `seed_spec` (optional override, e.g. `0-9`)
 - `selectors` (focused mode)
@@ -137,3 +138,4 @@ Examples:
 - `uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot-profile --no-bot-profile-logs`
 - `uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode focused --selectors setup launch:far --seed-spec 0-9 --baseline-ref main`
 - `uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode full --baseline-ref main --exclude-levels flat,mountains --observe-only-levels climb`
+- `uv run python skills/pylander-benchmark/scripts/run_cached_benchmark.py --mode focused --selectors launch:far --seed-spec 0-4 --bot-config configs/zem_tuning.json`

@@ -117,6 +117,7 @@ def _selector_pack_stem(
     mode: str,
     selectors: list[str],
     bot: str,
+    bot_config_path: str | None,
     eval_mode: str,
     bot_profile_enabled: bool,
     bot_profile_interval_s: float | None,
@@ -131,6 +132,7 @@ def _selector_pack_stem(
             "mode": mode,
             "selectors": selectors,
             "bot": bot,
+            "bot_config_path": (None if not bot_config_path else str(bot_config_path)),
             "eval_mode": eval_mode,
             "bot_profile_enabled": bool(bot_profile_enabled),
             "bot_profile_interval_s": (
@@ -708,6 +710,7 @@ def _load_or_run(
     mode: str,
     selectors: list[str],
     bot: str,
+    bot_config_path: str | None,
     workers: int | None,
     eval_mode: str,
     bot_profile_enabled: bool,
@@ -727,6 +730,7 @@ def _load_or_run(
         "mode": mode,
         "selectors": selectors,
         "bot": bot,
+        "bot_config_path": (None if not bot_config_path else str(bot_config_path)),
         "workers": (None if workers is None else int(workers)),
         "eval_mode": eval_mode,
         "bot_profile_enabled": bool(bot_profile_enabled),
@@ -753,6 +757,7 @@ def _load_or_run(
     cmd = build_bench_command(
         selectors=selectors,
         bot=bot,
+        bot_config_path=bot_config_path,
         workers=workers,
         eval_mode=eval_mode,
         json_path=str(json_path),
@@ -1092,6 +1097,7 @@ def main() -> None:
         help="Levels to keep as observation-only (csv or repeated)",
     )
     ap.add_argument("--bot", default="zem_zev")
+    ap.add_argument("--bot-config", default=None)
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--eval-mode", default="auto", choices=("auto", "focused", "full"))
     ap.add_argument(
@@ -1135,6 +1141,7 @@ def main() -> None:
         mode=args.mode,
         selectors=pack.selectors,
         bot=args.bot,
+        bot_config_path=args.bot_config,
         eval_mode=args.eval_mode,
         bot_profile_enabled=bool(args.bot_profile),
         bot_profile_interval_s=(
@@ -1150,6 +1157,7 @@ def main() -> None:
         mode=args.mode,
         selectors=pack.selectors,
         bot=args.bot,
+        bot_config_path=args.bot_config,
         workers=args.workers,
         eval_mode=args.eval_mode,
         bot_profile_enabled=bool(args.bot_profile),
@@ -1178,6 +1186,7 @@ def main() -> None:
         mode=args.mode,
         selectors=pack.selectors,
         bot=args.bot,
+        bot_config_path=args.bot_config,
         workers=args.workers,
         eval_mode=args.eval_mode,
         bot_profile_enabled=bool(args.bot_profile),

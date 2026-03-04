@@ -14,6 +14,7 @@ class BenchTarget:
 class RunSettings:
     level_name: str
     bot_name: str | None
+    bot_config_path: str | None
     seed: int | None
     scenario_name: str | None
     lander_name: str | None
@@ -36,6 +37,7 @@ class RunSettings:
 @dataclass(frozen=True)
 class BenchSettings:
     bot_name: str | None
+    bot_config_path: str | None
     selectors: tuple[BenchTarget, ...]
     lander_name: str | None
     eval_mode: str

@@ -98,3 +98,13 @@ def test_build_bench_command_includes_profile_flags() -> None:
     assert "--no-bot-profile-logs" in cmd
     assert "--bot-profile-interval-s" in cmd
     assert "1.250" in cmd
+
+
+def test_build_bench_command_includes_bot_config_path() -> None:
+    cmd = selector_pack.build_bench_command(
+        selectors=["launch:mid:0-1"],
+        bot_config_path="configs/zem_fast.json",
+    )
+    assert "--bot-config" in cmd
+    idx = cmd.index("--bot-config")
+    assert cmd[idx + 1] == "configs/zem_fast.json"
