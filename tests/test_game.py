@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 
 import app.run_batch as run_batch_module
@@ -500,11 +502,17 @@ def test_parse_bench_command_uses_expected_defaults() -> None:
         BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None),
     )
     assert command.bench.eval_mode == "auto"
+    assert command.bench.workers == max(1, int(os.cpu_count() or 1) - 2)
     assert command.bench.plot_output == "combined"
     assert command.bench.plot_max_side_px == 1800
     assert command.bench.bot_profile_enabled is True
     assert command.bench.bot_profile_log_lines is False
     assert command.bench.bot_profile_interval_s is None
+
+
+def test_parse_bench_command_rejects_workers_override() -> None:
+    with pytest.raises(SystemExit):
+        parse_command(["bench", "plunge", "--workers", "1"])
 
 
 def test_parse_bench_command_profile_flags_override_defaults() -> None:

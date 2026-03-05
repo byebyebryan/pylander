@@ -94,6 +94,7 @@ def test_build_bench_command_includes_profile_flags() -> None:
         bot_profile_interval_s=1.25,
         bot_profile_log_lines=False,
     )
+    assert "--workers" not in cmd
     assert "--bot-profile" in cmd
     assert "--no-bot-profile-logs" in cmd
     assert "--bot-profile-interval-s" in cmd

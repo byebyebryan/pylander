@@ -305,7 +305,6 @@ def build_bench_command(
     *,
     selectors: list[str],
     bot: str = "zem_zev",
-    workers: int | None = None,
     eval_mode: str = "auto",
     json_path: str = "auto",
     csv_path: str = "auto",
@@ -332,8 +331,6 @@ def build_bench_command(
     )
     if bot_config_path:
         cmd += ["--bot-config", str(bot_config_path)]
-    if workers is not None:
-        cmd += ["--workers", str(max(1, int(workers)))]
     if bot_profile_enabled is not None:
         cmd += ["--bot-profile" if bot_profile_enabled else "--no-bot-profile"]
     if bot_profile_log_lines is not None:
@@ -362,7 +359,6 @@ def main() -> None:
     )
     ap.add_argument("--bot", default="zem_zev")
     ap.add_argument("--bot-config", default=None)
-    ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--eval-mode", default="auto", choices=("auto", "focused", "full"))
     ap.add_argument(
         "--bot-profile",
@@ -395,7 +391,6 @@ def main() -> None:
         cmd = build_bench_command(
             selectors=pack.selectors,
             bot=args.bot,
-            workers=args.workers,
             eval_mode=args.eval_mode,
             json_path="auto",
             csv_path="auto",

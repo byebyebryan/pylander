@@ -711,7 +711,6 @@ def _load_or_run(
     selectors: list[str],
     bot: str,
     bot_config_path: str | None,
-    workers: int | None,
     eval_mode: str,
     bot_profile_enabled: bool,
     bot_profile_interval_s: float | None,
@@ -731,7 +730,7 @@ def _load_or_run(
         "selectors": selectors,
         "bot": bot,
         "bot_config_path": (None if not bot_config_path else str(bot_config_path)),
-        "workers": (None if workers is None else int(workers)),
+        "worker_mode": "default",
         "eval_mode": eval_mode,
         "bot_profile_enabled": bool(bot_profile_enabled),
         "bot_profile_interval_s": (
@@ -758,7 +757,6 @@ def _load_or_run(
         selectors=selectors,
         bot=bot,
         bot_config_path=bot_config_path,
-        workers=workers,
         eval_mode=eval_mode,
         json_path=str(json_path),
         csv_path=str(csv_path),
@@ -775,7 +773,7 @@ def _load_or_run(
         if any(marker in output for marker in worker_error_markers):
             raise SystemExit(
                 "Benchmark aborted: parallel workers are unavailable and sequential fallback is disabled.\n"
-                "Please resolve process/worker support on this machine, or rerun intentionally with --workers 1."
+                "Please resolve process/worker support on this machine, then rerun."
             )
         raise SystemExit(f"Benchmark command failed with exit code {code}")
     if not json_path.exists():
@@ -1098,7 +1096,6 @@ def main() -> None:
     )
     ap.add_argument("--bot", default="zem_zev")
     ap.add_argument("--bot-config", default=None)
-    ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--eval-mode", default="auto", choices=("auto", "focused", "full"))
     ap.add_argument(
         "--bot-profile",
@@ -1158,7 +1155,6 @@ def main() -> None:
         selectors=pack.selectors,
         bot=args.bot,
         bot_config_path=args.bot_config,
-        workers=args.workers,
         eval_mode=args.eval_mode,
         bot_profile_enabled=bool(args.bot_profile),
         bot_profile_interval_s=(
@@ -1187,7 +1183,6 @@ def main() -> None:
         selectors=pack.selectors,
         bot=args.bot,
         bot_config_path=args.bot_config,
-        workers=args.workers,
         eval_mode=args.eval_mode,
         bot_profile_enabled=bool(args.bot_profile),
         bot_profile_interval_s=(

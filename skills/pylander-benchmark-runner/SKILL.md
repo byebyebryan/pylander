@@ -12,7 +12,6 @@ Use this skill when the user asks to run benchmarks, compare a change against a 
 - `mode`: `smoke | quick | full | focused`
 - `bot` (default: `zem_zev`)
 - `bot_config_path` (optional JSON override path; forwarded as `--bot-config`)
-- `workers` (optional; if omitted uses CLI default `max(1, CPU cores - 2)`)
 - `seed_spec` (optional override, e.g. `0-9`)
 - `selectors` (focused mode)
 - `exclude_levels` (optional CSV/repeated level names)
@@ -23,7 +22,7 @@ Use this skill when the user asks to run benchmarks, compare a change against a 
 
 Benchmark command:
 
-`uv run python main.py bench <selector ...> --bot <bot> --workers <n> --json auto --csv auto`
+`uv run python main.py bench <selector ...> --bot <bot> --json auto --csv auto`
 
 Selector format:
 
@@ -102,7 +101,7 @@ Parallel-worker policy:
 
 - If worker pools are unavailable, benchmarking errors immediately.
 - No implicit sequential fallback is allowed.
-- Use `--workers 1` only when sequential mode is explicitly intended.
+- Benchmark runs use the default worker policy from `main.py bench`.
 
 Bot compute profiling defaults for benchmark runs:
 
@@ -134,7 +133,6 @@ Use `scripts/run_cached_benchmark.py` to execute benchmark packs with cache reus
 Examples:
 
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode smoke`
-- `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode quick --workers 12`
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode full --seed-spec 0-19`
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode focused --selectors launch:far setup`
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode quick --exclude-levels flat,mountains --observe-only-levels climb`

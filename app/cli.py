@@ -175,13 +175,6 @@ def build_parser() -> argparse.ArgumentParser:
         default="auto",
         help="Evaluation mode for levels that support staged scoring",
     )
-    bench.add_argument(
-        "-w",
-        "--workers",
-        type=int,
-        default=None,
-        help="Batch worker processes (default: CPU count - 2, min 1)",
-    )
     bench.add_argument("-n", "--steps", type=int, default=None, help="Limit simulation to N steps")
     bench.add_argument("-t", "--time", type=float, default=None, help="Limit simulation to S seconds")
     bench.add_argument(
@@ -362,11 +355,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
         )
 
     if args.command == "bench":
-        workers = (
-            max(1, int(args.workers))
-            if args.workers is not None
-            else _default_bench_workers()
-        )
+        workers = _default_bench_workers()
         selectors: list[BenchTarget] = []
         for raw_selector in args.selectors:
             try:

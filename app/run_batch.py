@@ -234,7 +234,7 @@ def run_benchmark(cfg: BenchSettings) -> int:
             raise ValueError(
                 "Batch workers unavailable; refusing implicit sequential fallback. "
                 f"Cause: {type(exc).__name__}: {exc}. "
-                "Resolve worker/process support or rerun intentionally with --workers 1."
+                "Resolve worker/process support and rerun."
             ) from exc
 
     summary = aggregate_eval_records(records)

@@ -136,8 +136,6 @@ def _run_validation(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str],
         str(payload.get("seed_spec") or "0-4"),
         "--bot",
         bot,
-        "--workers",
-        str(max(1, to_int(payload.get("workers"), 1))),
     ]
     if bot_config_path:
         bench_cmd += ["--bot-config", bot_config_path]

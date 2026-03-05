@@ -81,8 +81,7 @@ uv run python main.py bench \
   coast:shallow_tight:0-19 \
   coast:mid_wide:0-19 \
   coast:steep_wide:0-19 \
-  --bot zem_zev \
-  --workers 8
+  --bot zem_zev
 
 # Multi-level benchmark + reports (one selector per level/scenario spec)
 uv run python main.py bench \
@@ -145,7 +144,6 @@ Default policy profile:
 - `--bot-config PATH` (JSON override config for supported bots)
 - `-l, --lander NAME`
 - `-e, --eval-mode auto|focused|full`
-- `-w, --workers N` (default: `max(1, CPU cores - 2)`)
 - `-n, --steps N`
 - `-t, --time S`
 - `-p, --plot none|speed|thrust|all`
@@ -157,7 +155,7 @@ Default policy profile:
 - `--bot-profile-interval-s S` (optional profiler log interval)
 - `--bot-profile-logs, --no-bot-profile-logs` (default: off)
 - If worker processes are unavailable, `bench` now errors instead of silently
-  falling back. Use `--workers 1` only when you explicitly want sequential mode.
+  falling back. Benchmark runs use the default parallel worker policy.
 
 Benchmark records include bot compute timing metrics (avg plus p90/p99 for total,
 query, and update ms/tick) when profiling is enabled.

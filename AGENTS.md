@@ -92,6 +92,7 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - Prefer explicit selectors in evals/benchmarks for reproducibility.
 - Use `--bot-config <path>` for tuned bot overrides; ensure comparisons use like-for-like bot config.
 - For broad regression checks, prefer `skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py` (cache-aware baseline compare).
+- Benchmark runs use default worker count; do not pass `--workers`.
 - Benchmark worker behavior is fail-fast when worker pools are unavailable; no implicit sequential fallback.
 
 ## Change acceptance checklist (definition of done)
