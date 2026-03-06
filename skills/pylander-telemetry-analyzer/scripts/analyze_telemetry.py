@@ -56,6 +56,15 @@ def _selector_from_triplet(
     )
 
 
+def _bot_metric_prefix(bot: str) -> str:
+    token = re.sub(r"[^a-z0-9]+", "_", str(bot or "").strip().lower()).strip("_")
+    return f"bot_{token or 'unknown'}_"
+
+
+def _bot_metric_key(bot: str, suffix: str) -> str:
+    return f"{_bot_metric_prefix(bot)}{suffix}"
+
+
 def _repro_commands(
     selector: str,
     *,
@@ -380,6 +389,7 @@ def _findings_from_benchmark(
 ) -> tuple[list[dict[str, Any]], list[str]]:
     findings: list[dict[str, Any]] = []
     repro_bundle: list[str] = []
+    terminal_dx_key = _bot_metric_key(bot, "terminal_gate_projected_dx")
 
     records = [record for record in list(benchmark.get("records") or []) if isinstance(record, dict)]
     crashed_records = [record for record in records if str(record.get("state") or "") == "crashed"]
@@ -411,7 +421,7 @@ def _findings_from_benchmark(
     scored_phase: list[tuple[float, dict[str, Any]]] = []
     for record in records:
         setup_dx = abs(to_float(record.get("setup_gate_projected_dx"), 0.0))
-        terminal_dx = abs(to_float(record.get("bot_zem_zev_terminal_gate_projected_dx"), 0.0))
+        terminal_dx = abs(to_float(record.get(terminal_dx_key), 0.0))
         score = max(setup_dx, terminal_dx)
         if score <= 50.0:
             continue
@@ -429,9 +439,8 @@ def _findings_from_benchmark(
                 selector=selector,
                 measured_evidence={
                     "setup_gate_projected_dx": record.get("setup_gate_projected_dx"),
-                    "bot_zem_zev_terminal_gate_projected_dx": record.get(
-                        "bot_zem_zev_terminal_gate_projected_dx"
-                    ),
+                    "bot_terminal_gate_projected_dx_field": terminal_dx_key,
+                    "bot_terminal_gate_projected_dx": record.get(terminal_dx_key),
                 },
                 likely_cause=(
                     "Setup/coast handoff is leaving excessive lateral correction burden later in flight."

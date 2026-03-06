@@ -28,9 +28,10 @@ Selector format:
 
 - `level`
 - `level:scenario`
-- `level:scenario:seed_spec`
+- `level:scenario:goal:seed_spec`
 
-Where `seed_spec` supports ranges and CSV: `0-9`, `0,2,4`, `3-1`.
+Goal is optional and defaults to `landing`. `seed_spec` supports ranges and CSV:
+`0-9`, `0,2,4`, `3-1`.
 
 ## Mode behavior
 
@@ -74,7 +75,7 @@ Policy behavior:
 4. Summarize:
    - global section (normal levels only): success/crash and fuel deltas
    - observation section (observe-only/excluded runs): separate informational deltas
-   - compute section (avg + p90/p99 ms/tick): total, query, update deltas
+   - compute section (avg + p90/p99 ms/tick): total, passive, update deltas
    - primary fuel deltas using success-only aggregates by default
    - secondary all-runs fuel deltas (for context when crashes/outliers skew results)
    - worst regressions by `level:scenario`

@@ -56,8 +56,23 @@ def _abs_float(value: Any) -> float:
         return 0.0
 
 
-def _build_cases_from_records(records: list[dict[str, Any]], *, top_n: int) -> list[dict[str, Any]]:
+def _bot_metric_prefix(bot: str) -> str:
+    token = re.sub(r"[^a-z0-9]+", "_", str(bot or "").strip().lower()).strip("_")
+    return f"bot_{token or 'unknown'}_"
+
+
+def _bot_metric_key(bot: str, suffix: str) -> str:
+    return f"{_bot_metric_prefix(bot)}{suffix}"
+
+
+def _build_cases_from_records(
+    records: list[dict[str, Any]],
+    *,
+    top_n: int,
+    bot: str,
+) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
+    terminal_dx_key = _bot_metric_key(bot, "terminal_gate_projected_dx")
 
     for rec in records:
         if str(rec.get("state") or "") == "crashed":
@@ -77,14 +92,14 @@ def _build_cases_from_records(records: list[dict[str, Any]], *, top_n: int) -> l
         records,
         key=lambda r: (
             _abs_float(r.get("setup_gate_projected_dx")),
-            _abs_float(r.get("bot_zem_zev_terminal_gate_projected_dx")),
+            _abs_float(r.get(terminal_dx_key)),
             _abs_float(r.get("fuel_consumed")),
         ),
         reverse=True,
     )
     for rec in ranked:
         setup_dx = _abs_float(rec.get("setup_gate_projected_dx"))
-        terminal_dx = _abs_float(rec.get("bot_zem_zev_terminal_gate_projected_dx"))
+        terminal_dx = _abs_float(rec.get(terminal_dx_key))
         fuel = _abs_float(rec.get("fuel_consumed"))
         if setup_dx <= 0.0 and terminal_dx <= 0.0 and fuel <= 0.0:
             continue
@@ -99,9 +114,8 @@ def _build_cases_from_records(records: list[dict[str, Any]], *, top_n: int) -> l
                 "reason": reason,
                 "evidence": {
                     "setup_gate_projected_dx": rec.get("setup_gate_projected_dx"),
-                    "bot_zem_zev_terminal_gate_projected_dx": rec.get(
-                        "bot_zem_zev_terminal_gate_projected_dx"
-                    ),
+                    "bot_terminal_gate_projected_dx_field": terminal_dx_key,
+                    "bot_terminal_gate_projected_dx": rec.get(terminal_dx_key),
                     "fuel_consumed": rec.get("fuel_consumed"),
                 },
             }
@@ -283,7 +297,7 @@ def main() -> None:
             cases.extend(_build_cases_from_compare(compare_payload, top_n=top_n))
         if benchmark_payload is not None and len(cases) < top_n:
             records = [dict(r) for r in (benchmark_payload.get("records") or []) if isinstance(r, dict)]
-            for case in _build_cases_from_records(records, top_n=top_n):
+            for case in _build_cases_from_records(records, top_n=top_n, bot=str(args.bot)):
                 if any(str(c.get("selector")) == str(case.get("selector")) for c in cases):
                     continue
                 cases.append(case)
@@ -293,7 +307,7 @@ def main() -> None:
         if benchmark_payload is None:
             raise SystemExit("health mode requires --benchmark-json")
         records = [dict(r) for r in (benchmark_payload.get("records") or []) if isinstance(r, dict)]
-        cases = _build_cases_from_records(records, top_n=top_n)
+        cases = _build_cases_from_records(records, top_n=top_n, bot=str(args.bot))
 
     if not cases:
         raise SystemExit("No plot cases resolved")

@@ -25,7 +25,8 @@ Core metrics from game + batch aggregation:
 - Efficiency: `fuel_consumed`, `fuel_per_distance`, `path_efficiency`
 - Timing: `time`, `time_to_first_land`
 - Eval metadata: `eval_goal`, `eval_early_end`, `eval_end_reason`
-- Unified optimizer telemetry: `zem_*` gate + solver fields
+- Generic setup/eval telemetry: `setup_gate_*`, `setup_goal_*`
+- Bot-owned diagnostics: `bot_<botname>_*` (for example `bot_zem_zev_*`)
 
 ## Where things live
 
@@ -48,8 +49,12 @@ Implement `Bot.update(dt, sensors) -> BotAction`.
 - `target_thrust`: `0..vehicle.max_thrust`
 - `target_angle`: radians (`0` = upright)
 - `refuel`: `True/False`
-- `status`: short UI/log string
+- `status`: short human-facing fallback string
 - `message`: optional transient text
+
+Bots can also expose structured display state through `get_display_state()` for
+HUD/headless presentation, and bot-owned result telemetry through
+`get_bot_telemetry()`.
 
 `Sensors` includes pose, terrain context, kinematics, mass/fuel/thrust state, and radar/proximity readings.
 
@@ -72,6 +77,12 @@ Reported buckets:
 - total bot loop time
 
 Final run result also includes `bot_profile_*` summary fields.
+
+Headless output is split into:
+
+- compact per-tick ship/bot lines for live scanning
+- a sectioned final-results report with generic metrics first and bot-owned
+  telemetry grouped separately
 
 ## Plot bundles
 

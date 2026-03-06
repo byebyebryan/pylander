@@ -49,7 +49,8 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - Scenario-first: solve focused selectors/scenarios first, then widen to cross-level coverage.
 - Define measurable outcomes for each tuning objective (success criteria + efficiency + stability), not just end-of-run state.
 - Use meaningful metrics (success rate, landing quality, fuel use, stability, consistency across seeds).
-- Include compute-cost metrics in evaluations (avg plus p90/p99 bot ms/tick) to catch hot-path regressions.
+- Include compute-cost metrics in evaluations (avg plus p90/p99 passive/update/total ms/tick) to catch hot-path regressions.
+- Prefer generic evaluation metrics first (`setup_gate_*`, `setup_goal_*`) and treat bot-owned diagnostics as namespaced telemetry (`bot_<botname>_*`).
 - Require reproducible evals (seed + scenario + bot + config).
 - Use benchmarks/evals to guide decisions and catch regressions.
 - Use metric gates for bot changes: require measurable improvement or document explicit tradeoffs.
@@ -87,8 +88,8 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 ## CLI and benchmark conventions
 - Command model: `uv run python main.py <command> ...` where command is `run`, `sim`, `plot`, or `bench`.
 - Selector model:
-  - run/sim/plot: `level[:scenario[:seed]]`
-  - bench: `level[:scenario[:seed_spec]]`
+  - run/sim/plot: `level[:scenario[:goal[:seed]]]`
+  - bench: `level[:scenario[:goal[:seed_spec]]]`
 - Prefer explicit selectors in evals/benchmarks for reproducibility.
 - Use `--bot-config <path>` for tuned bot overrides; ensure comparisons use like-for-like bot config.
 - For broad regression checks, prefer `skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py` (cache-aware baseline compare).

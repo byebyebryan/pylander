@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -56,6 +57,15 @@ def _sanitize_token(value: str) -> str:
     while "__" in token:
         token = token.replace("__", "_")
     return token or "run"
+
+
+def _bot_metric_prefix(bot: str) -> str:
+    token = re.sub(r"[^a-z0-9]+", "_", str(bot or "").strip().lower()).strip("_")
+    return f"bot_{token}_"
+
+
+def _bot_metric_key(bot: str, suffix: str) -> str:
+    return f"{_bot_metric_prefix(bot)}{suffix}"
 
 
 def _git_rev_parse(ref: str) -> str:
@@ -271,7 +281,8 @@ def _to_float(value: Any, default: float = 0.0) -> float:
         return default
 
 
-def _run_diag(record: dict[str, Any]) -> dict[str, Any]:
+def _run_diag(record: dict[str, Any], *, bot: str) -> dict[str, Any]:
+    terminal_dx_key = _bot_metric_key(bot, "terminal_gate_projected_dx")
     keys = (
         "state",
         "failure_mode",
@@ -283,12 +294,14 @@ def _run_diag(record: dict[str, Any]) -> dict[str, Any]:
         "avg_speed",
         "score",
         "setup_gate_projected_dx",
-        "bot_zem_zev_terminal_gate_projected_dx",
+        terminal_dx_key,
     )
     out: dict[str, Any] = {}
     for key in keys:
         if key in record:
             out[key] = record.get(key)
+    out["bot_terminal_gate_projected_dx_field"] = terminal_dx_key
+    out["bot_terminal_gate_projected_dx"] = record.get(terminal_dx_key)
     return out
 
 
@@ -360,8 +373,8 @@ def _crash_deltas(
                 "baseline_failure_mode": b_rec.get("failure_mode"),
                 "candidate_fuel_consumed": c_rec.get("fuel_consumed"),
                 "candidate_time": c_rec.get("time"),
-                "candidate_metrics": _run_diag(c_rec),
-                "baseline_metrics": _run_diag(b_rec),
+                "candidate_metrics": _run_diag(c_rec, bot=bot),
+                "baseline_metrics": _run_diag(b_rec, bot=bot),
                 "repro": _make_repro_commands(c_rec, bot=bot),
             }
             candidate_crashes.append(entry)
@@ -873,7 +886,7 @@ def _print_compare(
                 f"time={_to_float(candidate_metrics.get('time'), 0.0):.2f} "
                 f"fuel={_to_float(candidate_metrics.get('fuel_consumed'), 0.0):.3f} "
                 f"setup_dx={_to_float(candidate_metrics.get('setup_gate_projected_dx'), 0.0):.3f} "
-                f"terminal_dx={_to_float(candidate_metrics.get('bot_zem_zev_terminal_gate_projected_dx'), 0.0):.3f}"
+                f"terminal_dx={_to_float(candidate_metrics.get('bot_terminal_gate_projected_dx'), 0.0):.3f}"
             )
             if baseline_metrics:
                 print(

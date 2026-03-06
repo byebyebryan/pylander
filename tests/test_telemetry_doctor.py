@@ -121,7 +121,7 @@ def test_analyze_benchmark_without_compare_requests_probe() -> None:
                 "seed": 0,
                 "state": "landed",
                 "setup_gate_projected_dx": 140.0,
-                "bot_zem_zev_terminal_gate_projected_dx": 82.0,
+                "bot_test_bot_terminal_gate_projected_dx": 82.0,
                 "bot_profile_total_ms_per_tick": 1.4,
                 "bot_profile_total_ms_per_tick_p99": 62.0,
                 "bot_profile_update_ms_per_tick_p99": 55.0,
@@ -134,11 +134,18 @@ def test_analyze_benchmark_without_compare_requests_probe() -> None:
         compare_payload=None,
         sim_logs=[],
         source_paths={"benchmark_json": "/tmp/bench.json", "compare_json": "", "sim_logs": []},
-        bot="zem_zev",
+        bot="test-bot",
         max_findings=8,
     )
 
     assert report["doctor_verdict"] in {"investigate", "watch"}
     assert report["probe_request"]["needed"] is True
     assert any("baseline-vs-candidate" in q for q in report["probe_request"]["questions"])
+    phase_findings = [item for item in report["top_findings"] if item["category"] == "phase"]
+    assert phase_findings
+    assert phase_findings[0]["measured_evidence"]["bot_terminal_gate_projected_dx"] == 82.0
+    assert (
+        phase_findings[0]["measured_evidence"]["bot_terminal_gate_projected_dx_field"]
+        == "bot_test_bot_terminal_gate_projected_dx"
+    )
     contracts.validate_contract_data(report, "telemetry_triage_report.v1")

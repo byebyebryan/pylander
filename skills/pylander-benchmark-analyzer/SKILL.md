@@ -73,7 +73,7 @@ Per-case reproduction:
 2. Summarize:
 - success/crash counts and rates
 - primary fuel (`success_only` when available) and all-runs fuel
-- compute timing (`avg`, `p90`, `p99`) for total/query/update ms per tick
+- compute timing (`avg`, `p90`, `p99`) for total/passive/update ms per tick
 3. Flag issues by severity:
 - crashes
 - low success rate
@@ -132,7 +132,7 @@ Use these heuristics consistently.
 Use available gate and ZEM fields to detect shaping issues:
 
 - high `|setup_gate_projected_dx|` suggests poor setup handoff
-- high `|bot_zem_zev_terminal_gate_projected_dx|` suggests insufficient passive alignment
+- high `|bot_<botname>_terminal_gate_projected_dx|` suggests insufficient passive alignment
 - large gap between setup and terminal projected-dx suggests heavy late correction burden
 - large `bot_zem_zev_shape_curve_rmse` / `bot_zem_zev_shape_apex_error` suggests trajectory shape mismatch
 - gate ordering anomalies (for runs with both timestamps) indicate phase/control bugs
@@ -144,7 +144,7 @@ Use bot profile fields from benchmark output:
 - `bot_profile_total_ms_per_tick`
 - `bot_profile_total_ms_per_tick_p90`
 - `bot_profile_total_ms_per_tick_p99`
-- query/update equivalents
+- passive/update equivalents
 
 Treat sustained avg increase and p99 spike increase as separate signals.
 

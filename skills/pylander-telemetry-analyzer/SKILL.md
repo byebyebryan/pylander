@@ -27,8 +27,14 @@ At least one source input is required.
 
 - Compare report JSON from benchmark tooling (preferred for regression truth)
 - Benchmark records JSON for phase/perf outliers
-- Sim log text (`--freq 1`) for per-tick state, profiler lines, final result blocks
+- Sim log text (`--freq 1`) for per-tick state, profiler lines, and sectioned final-result blocks
 - Optional setup debug traces (`PYLANDER_ZEM_DEBUG_SETUP=1`)
+
+Current signal conventions:
+
+- generic setup metrics: `setup_gate_*`, `setup_goal_*`
+- bot-owned diagnostics: `bot_<botname>_*` (for example `bot_zem_zev_*`)
+- profiler fields: `bot_profile_*` covering passive/update/total timing
 
 ## Output contract
 

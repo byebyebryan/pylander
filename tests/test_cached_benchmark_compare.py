@@ -235,3 +235,18 @@ def test_selector_pack_stem_changes_with_bot_config_path() -> None:
         **common,
     )
     assert no_config != with_config
+
+
+def test_run_diag_uses_selected_bot_terminal_metric_namespace() -> None:
+    diag = cached_bench._run_diag(
+        {
+            "state": "landed",
+            "setup_gate_projected_dx": 12.0,
+            "bot_test_bot_terminal_gate_projected_dx": 4.5,
+        },
+        bot="test-bot",
+    )
+
+    assert diag["setup_gate_projected_dx"] == 12.0
+    assert diag["bot_terminal_gate_projected_dx"] == 4.5
+    assert diag["bot_terminal_gate_projected_dx_field"] == "bot_test_bot_terminal_gate_projected_dx"

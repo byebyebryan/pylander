@@ -156,8 +156,13 @@ Default policy profile:
 - If worker processes are unavailable, `bench` now errors instead of silently
   falling back. Benchmark runs use the default parallel worker policy.
 
-Benchmark records include bot compute timing metrics (avg plus p90/p99 for total,
-query, and update ms/tick) when profiling is enabled.
+Benchmark records include bot compute timing metrics (avg plus p90/p99 for
+passive, update, and total ms/tick) when profiling is enabled.
+
+Setup-phase evaluation metrics are reported through generic fields such as
+`setup_gate_*` and `setup_goal_*`. Bot-owned diagnostics stay namespaced under
+`bot_<botname>_*`, for example `bot_zem_zev_terminal_gate_projected_dx` and
+`bot_zem_zev_shape_curve_rmse`.
 
 When plotting is enabled, runs now emit `plot_paths` and a plot manifest path for bundle-style outputs.
 
@@ -231,9 +236,16 @@ PYLANDER_BOT_PROFILE=1 PYLANDER_BOT_PROFILE_INTERVAL_S=2 \
   uv run python main.py sim plunge:mid_normal:0 --bot plunge
 ```
 
-Profiled timing covers sensor build, bot update time, and total bot-loop time.
+Profiled timing covers passive pre-update work, bot update time, and total
+bot-loop time.
 
 For `bench`, profiling is enabled by default with periodic profile logs disabled.
+
+Headless `sim` output now uses:
+
+- compact per-tick lines: `t=... | ship x=... y=... | bot=... mode=... phase=...`
+- sectioned final results with generic run/setup fields first and bot-owned
+  diagnostics grouped under `Bot Telemetry: <bot>`
 
 See [`docs/overview.md`](docs/overview.md) for the bot API and profiling details.
 

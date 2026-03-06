@@ -28,7 +28,7 @@ Use this skill to generate plot artifacts for human and AI analysis.
 
 1. Build case list:
 - `compare`/`triage`: prioritize new global crashes from compare report
-- fallback to benchmark records with large projected-dx/fuel signals
+- fallback to benchmark records with large generic setup miss, bot-owned terminal miss, or fuel signals
 - `focus`: use explicit selectors only
 2. Generate plot command(s) per case:
 - `main.py plot <selector> --plot <plot_mode> --plot-output <plot_output> --plot-max-side-px <px>`
@@ -42,3 +42,5 @@ Use this skill to generate plot artifacts for human and AI analysis.
 - Prefer `--plot-output both` for mixed human+AI workflows.
 - Use `--plot-output split` when image complexity is the main concern.
 - Keep `plot_max_side_px` around 1800 for robust ingestion quality.
+- Current triage ranking uses `setup_gate_projected_dx` and the selected bot's
+  `bot_<botname>_terminal_gate_projected_dx` when available.
