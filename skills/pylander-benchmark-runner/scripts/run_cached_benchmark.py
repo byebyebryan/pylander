@@ -13,8 +13,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.selector import render_record_selector, render_selector_group  # noqa: E402
 from core.eval import aggregate_eval_records  # noqa: E402
+from core.selector_codec import render_record_selector  # noqa: E402
 
 from build_selector_pack import (  # noqa: E402
     ResolvedSelectorPack,
@@ -193,6 +193,30 @@ def _build_payload_from_records(records: list[dict[str, Any]]) -> dict[str, Any]
     }
 
 
+def _selector_summary_rows(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    summary = aggregate_eval_records(_payload_records(payload))
+    rows = dict(summary.get("by_selector") or {})
+    out: dict[str, dict[str, Any]] = {}
+    for selector, row in rows.items():
+        out[str(selector)] = {
+            "success_rate": float(row.get("success_rate", 0.0) or 0.0),
+            "efficiency_success": dict(row.get("efficiency_success") or {}),
+            "efficiency_all": dict(row.get("efficiency_all") or {}),
+        }
+    return out
+
+
+def _fuel_mean_from_summary(row: dict[str, Any]) -> tuple[float, int, float]:
+    eff_success = dict(row.get("efficiency_success") or {})
+    eff_all = dict(row.get("efficiency_all") or {})
+    success_stats = dict(eff_success.get("fuel_consumed") or {})
+    all_stats = dict(eff_all.get("fuel_consumed") or {})
+    success_mean = float(success_stats.get("mean", 0.0) or 0.0)
+    success_count = int(success_stats.get("count", 0) or 0)
+    all_mean = float(all_stats.get("mean", 0.0) or 0.0)
+    return success_mean, success_count, all_mean
+
+
 def _record_level_policy(
     record: dict[str, Any],
     *,
@@ -367,28 +391,8 @@ def _scenario_regressions(
     baseline: dict[str, Any],
     candidate: dict[str, Any],
 ) -> list[dict[str, float | str]]:
-    def _by_level_scenario(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
-        buckets: dict[str, list[dict[str, Any]]] = {}
-        for rec in _payload_records(payload):
-            key = render_selector_group(
-                level_name=str(rec.get("level") or "unknown").strip() or "unknown",
-                scenario_name=str(rec.get("scenario") or "").strip() or None,
-                goal=rec.get("eval_goal"),
-            )
-            buckets.setdefault(key, []).append(rec)
-
-        out: dict[str, dict[str, Any]] = {}
-        for key, records in buckets.items():
-            summary = aggregate_eval_records(records)
-            out[key] = {
-                "success_rate": float(summary.get("success_rate", 0.0) or 0.0),
-                "efficiency_success": dict(summary.get("efficiency_success") or {}),
-                "efficiency_all": dict(summary.get("efficiency_all") or {}),
-            }
-        return out
-
-    b = _by_level_scenario(baseline)
-    c = _by_level_scenario(candidate)
+    b = _selector_summary_rows(baseline)
+    c = _selector_summary_rows(candidate)
     names = sorted(set(b) | set(c))
     out: list[dict[str, float | str]] = []
     for name in names:
@@ -396,18 +400,8 @@ def _scenario_regressions(
         c_row = dict(c.get(name) or {})
         b_sr = float(b_row.get("success_rate", 0.0) or 0.0)
         c_sr = float(c_row.get("success_rate", 0.0) or 0.0)
-        b_eff_success = dict(b_row.get("efficiency_success") or {})
-        c_eff_success = dict(c_row.get("efficiency_success") or {})
-        b_fuel_success = float((b_eff_success.get("fuel_consumed") or {}).get("mean", 0.0) or 0.0)
-        c_fuel_success = float((c_eff_success.get("fuel_consumed") or {}).get("mean", 0.0) or 0.0)
-        b_fuel_success_n = int((b_eff_success.get("fuel_consumed") or {}).get("count", 0) or 0)
-        c_fuel_success_n = int((c_eff_success.get("fuel_consumed") or {}).get("count", 0) or 0)
-        b_fuel_all = float(
-            ((b_row.get("efficiency_all") or {}).get("fuel_consumed") or {}).get("mean", 0.0) or 0.0
-        )
-        c_fuel_all = float(
-            ((c_row.get("efficiency_all") or {}).get("fuel_consumed") or {}).get("mean", 0.0) or 0.0
-        )
+        b_fuel_success, b_fuel_success_n, b_fuel_all = _fuel_mean_from_summary(b_row)
+        c_fuel_success, c_fuel_success_n, c_fuel_all = _fuel_mean_from_summary(c_row)
         use_success = b_fuel_success_n > 0 and c_fuel_success_n > 0
         b_fuel = b_fuel_success if use_success else b_fuel_all
         c_fuel = c_fuel_success if use_success else c_fuel_all

@@ -10,8 +10,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.selector import render_record_selector, render_selector  # noqa: E402
 from core.eval_schema import HEADLESS_RESULT_FIELDS  # noqa: E402
+from core.selector_codec import render_record_selector, render_selector  # noqa: E402
 from skills.lib.contracts import validate_contract_data  # noqa: E402
 from skills.lib.orchestration import (  # noqa: E402
     load_json,

@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.selector import render_record_selector
 from core.eval_schema import EFFICIENCY_METRIC_FIELDS
+from core.selector_codec import render_record_selector
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:

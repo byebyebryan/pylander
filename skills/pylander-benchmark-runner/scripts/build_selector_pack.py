@@ -10,7 +10,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.selector import parse_selector, render_selector  # noqa: E402
+from app.selector import parse_selector  # noqa: E402
+from core.selector_codec import render_selector  # noqa: E402
 from core.level_capabilities import (  # noqa: E402
     BenchmarkLevelPolicy,
     LevelBenchmarkProfile,

@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
 
-from core.eval_goals import (
-    EVAL_GOAL_LANDING,
-    KNOWN_EVAL_GOAL_SET,
-    normalize_eval_goal,
+from core.eval_goals import KNOWN_EVAL_GOAL_SET, normalize_eval_goal
+from core.selector_codec import (
+    render_record_selector as _render_record_selector,
+    render_selector as _render_selector,
+    render_selector_group as _render_selector_group,
 )
+
+render_selector = _render_selector
+render_selector_group = _render_selector_group
+render_record_selector = _render_record_selector
 
 
 @dataclass(frozen=True)
@@ -105,83 +109,4 @@ def parse_selector(
         scenario_name=scenario_name,
         goal=goal,
         seed_token=seed_token,
-    )
-
-
-def render_selector(
-    *,
-    level_name: str,
-    scenario_name: str | None,
-    goal: str | None,
-    seed_token: str | int | None,
-) -> str:
-    level = str(level_name or "").strip() or "unknown"
-    scenario = str(scenario_name or "").strip() or None
-    seed = str(seed_token).strip() if seed_token is not None else None
-    goal_token = normalize_eval_goal(goal)
-
-    if goal_token == EVAL_GOAL_LANDING:
-        if scenario and seed:
-            return f"{level}:{scenario}:{seed}"
-        if scenario:
-            return f"{level}:{scenario}"
-        if seed:
-            return f"{level}::{seed}"
-        return level
-
-    if scenario:
-        base = f"{level}:{scenario}:{goal_token}"
-    else:
-        base = f"{level}::{goal_token}"
-    if seed:
-        return f"{base}:{seed}"
-    return base
-
-
-def render_selector_group(
-    *,
-    level_name: str,
-    scenario_name: str | None,
-    goal: str | None,
-) -> str:
-    return render_selector(
-        level_name=level_name,
-        scenario_name=scenario_name,
-        goal=goal,
-        seed_token=None,
-    )
-
-
-def _record_level_name(record: Mapping[str, Any]) -> str:
-    return str(record.get("level") or "").strip() or "unknown"
-
-
-def _record_scenario_name(record: Mapping[str, Any]) -> str | None:
-    scenario = str(record.get("scenario") or "").strip()
-    if not scenario:
-        return None
-    level_name = _record_level_name(record)
-    return None if scenario == level_name else scenario
-
-
-def _record_seed_token(record: Mapping[str, Any]) -> str | None:
-    seed = record.get("seed")
-    if seed is None:
-        return None
-    try:
-        return str(int(seed))
-    except (TypeError, ValueError):
-        return str(seed).strip() or None
-
-
-def render_record_selector(
-    record: Mapping[str, Any],
-    *,
-    include_seed: bool = True,
-) -> str:
-    return render_selector(
-        level_name=_record_level_name(record),
-        scenario_name=_record_scenario_name(record),
-        goal=record.get("eval_goal"),
-        seed_token=_record_seed_token(record) if include_seed else None,
     )
