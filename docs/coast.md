@@ -37,7 +37,7 @@ Defaults:
 
 - End-to-end objective metrics: `state`, `success`, `fuel_consumed`, `path_efficiency`
 - Unified gate telemetry: `zem_setup_gate_*`, `zem_terminal_gate_*`
-- Goal metadata when using goal selectors: `eval_goal`, `eval_early_end`, `eval_end_reason` (`bot_eval_*` aliases are also emitted)
+- Goal metadata when using goal selectors: `eval_goal`, `eval_early_end`, `eval_end_reason`
 
 ## Commands
 

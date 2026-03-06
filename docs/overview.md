@@ -24,7 +24,7 @@ Core metrics from game + batch aggregation:
 - Outcome: `state`, `success`, `landing_offset`
 - Efficiency: `fuel_consumed`, `fuel_per_distance`, `path_efficiency`
 - Timing: `time`, `time_to_first_land`
-- Eval metadata: `eval_goal`, `eval_early_end`, `eval_end_reason` (plus `bot_eval_*` aliases)
+- Eval metadata: `eval_goal`, `eval_early_end`, `eval_end_reason`
 - Unified optimizer telemetry: `zem_*` gate + solver fields
 
 ## Where things live

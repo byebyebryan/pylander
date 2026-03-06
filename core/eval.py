@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.selector import render_record_selector
 from core.eval_schema import EFFICIENCY_METRIC_FIELDS
 
 
@@ -103,11 +104,9 @@ def normalize_run_result(
         failure_mode = failure_mode_raw.strip()
     else:
         failure_mode = "none" if success else state
-    eval_goal = str(result.get("eval_goal") or result.get("bot_eval_goal") or "landing")
-    eval_early_end = _to_optional_bool(
-        result.get("eval_early_end", result.get("bot_eval_early_end"))
-    )
-    eval_end_reason = result.get("eval_end_reason", result.get("bot_eval_end_reason"))
+    eval_goal = str(result.get("eval_goal") or "landing")
+    eval_early_end = _to_optional_bool(result.get("eval_early_end"))
+    eval_end_reason = result.get("eval_end_reason")
     record = {
         "bot": bot_name,
         "level": level_name,
@@ -142,9 +141,6 @@ def normalize_run_result(
         "eval_goal": eval_goal,
         "eval_early_end": eval_early_end,
         "eval_end_reason": eval_end_reason,
-        "bot_eval_goal": eval_goal,
-        "bot_eval_early_end": eval_early_end,
-        "bot_eval_end_reason": eval_end_reason,
         "setup_goal_time": _to_optional_float(result.get("setup_goal_time")),
         "setup_goal_fuel_consumed": _to_optional_float(
             result.get("setup_goal_fuel_consumed")
@@ -258,6 +254,29 @@ def normalize_run_result(
     return record
 
 
+def _summary_bucket() -> dict[str, Any]:
+    return {
+        "runs": 0,
+        "successes": 0,
+        "landed": 0,
+        "crashed": 0,
+        "out_of_fuel": 0,
+        "flying": 0,
+        "other": 0,
+        "success_rate": 0.0,
+        "_records": [],
+    }
+
+
+def _finalize_summary_bucket(item: dict[str, Any]) -> None:
+    runs = int(item["runs"])
+    item["success_rate"] = (item["successes"] / runs) if runs > 0 else 0.0
+    item_records = item.pop("_records")
+    item_success = [record for record in item_records if record.get("success", False)]
+    item["efficiency_success"] = _efficiency_summary(item_success)
+    item["efficiency_all"] = _efficiency_summary(item_records)
+
+
 def aggregate_eval_records(records: list[dict[str, Any]]) -> dict[str, Any]:
     total = len(records)
     successes = sum(1 for r in records if bool(r.get("success", False)))
@@ -269,46 +288,28 @@ def aggregate_eval_records(records: list[dict[str, Any]]) -> dict[str, Any]:
     success_rate = (successes / total) if total > 0 else 0.0
 
     by_scenario: dict[str, dict[str, Any]] = {}
+    by_selector: dict[str, dict[str, Any]] = {}
     for record in records:
         scenario_name = str(record.get("scenario") or "default")
-        goal_token = str(
-            record.get("eval_goal")
-            or record.get("bot_eval_goal")
-            or "landing"
-        ).strip().lower() or "landing"
-        key = scenario_name if goal_token == "landing" else f"{scenario_name}@{goal_token}"
-        item = by_scenario.setdefault(
-            key,
-            {
-                "runs": 0,
-                "successes": 0,
-                "landed": 0,
-                "crashed": 0,
-                "out_of_fuel": 0,
-                "flying": 0,
-                "other": 0,
-                "success_rate": 0.0,
-                "_records": [],
-            },
-        )
-        item["runs"] += 1
-        if bool(record.get("success", False)):
-            item["successes"] += 1
-        item["_records"].append(record)
-        state = record.get("state")
-        if state in ("landed", "crashed", "out_of_fuel", "flying"):
-            item[state] += 1
-        else:
-            item["other"] += 1
+        scenario_item = by_scenario.setdefault(scenario_name, _summary_bucket())
+        selector_key = render_record_selector(record, include_seed=False)
+        selector_item = by_selector.setdefault(selector_key, _summary_bucket())
+        for item in (scenario_item, selector_item):
+            item["runs"] += 1
+            if bool(record.get("success", False)):
+                item["successes"] += 1
+            item["_records"].append(record)
+            state = record.get("state")
+            if state in ("landed", "crashed", "out_of_fuel", "flying"):
+                item[state] += 1
+            else:
+                item["other"] += 1
 
     successful_records = [record for record in records if record.get("success", False)]
     for item in by_scenario.values():
-        runs = int(item["runs"])
-        item["success_rate"] = (item["successes"] / runs) if runs > 0 else 0.0
-        item_records = item.pop("_records")
-        item_success = [record for record in item_records if record.get("success", False)]
-        item["efficiency_success"] = _efficiency_summary(item_success)
-        item["efficiency_all"] = _efficiency_summary(item_records)
+        _finalize_summary_bucket(item)
+    for item in by_selector.values():
+        _finalize_summary_bucket(item)
 
     return {
         "runs": total,
@@ -322,6 +323,7 @@ def aggregate_eval_records(records: list[dict[str, Any]]) -> dict[str, Any]:
         "efficiency_success": _efficiency_summary(successful_records),
         "efficiency_all": _efficiency_summary(records),
         "by_scenario": by_scenario,
+        "by_selector": by_selector,
     }
 
 

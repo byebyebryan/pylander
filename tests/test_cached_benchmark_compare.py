@@ -127,6 +127,28 @@ def test_scenario_regressions_group_by_level_and_scenario() -> None:
     assert names == {"launch:mid", "coast:mid"}
 
 
+def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
+    baseline = {
+        "records": [
+            {
+                **_record(level="setup", scenario="mid_near", seed=0, state="flying", success=True, fuel=20.0),
+                "eval_goal": "setup",
+            }
+        ]
+    }
+    candidate = {
+        "records": [
+            {
+                **_record(level="setup", scenario="mid_near", seed=0, state="flying", success=False, fuel=24.0),
+                "eval_goal": "setup",
+            }
+        ]
+    }
+
+    rows = cached_bench._scenario_regressions(baseline, candidate)
+    assert [str(item["scenario"]) for item in rows] == ["setup:mid_near:setup"]
+
+
 def test_global_compute_regression_marks_notable_regression() -> None:
     baseline = {
         "records": [

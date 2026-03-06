@@ -10,7 +10,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from app.selector import parse_selector  # noqa: E402
+from app.selector import parse_selector, render_selector  # noqa: E402
 from core.level_capabilities import (  # noqa: E402
     BenchmarkLevelPolicy,
     LevelBenchmarkProfile,
@@ -151,14 +151,12 @@ def _selector(
     *,
     eval_goal: str = "landing",
 ) -> str:
-    goal = str(eval_goal or "landing").strip().lower() or "landing"
-    if goal == "landing":
-        if scenario:
-            return f"{level}:{scenario}:{seed_spec}"
-        return f"{level}::{seed_spec}"
-    if scenario:
-        return f"{level}:{scenario}:{goal}:{seed_spec}"
-    return f"{level}::{goal}:{seed_spec}"
+    return render_selector(
+        level_name=level,
+        scenario_name=scenario,
+        goal=str(eval_goal or "landing").strip().lower() or "landing",
+        seed_token=seed_spec,
+    )
 
 
 def _scenarios_for_mode(profile: LevelBenchmarkProfile, mode: str) -> tuple[str, ...]:

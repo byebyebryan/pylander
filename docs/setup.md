@@ -40,7 +40,7 @@ Defaults:
 
 ## Metrics
 
-- `eval_goal`, `eval_early_end`, `eval_end_reason` (`bot_eval_*` aliases are also emitted)
+- `eval_goal`, `eval_early_end`, `eval_end_reason`
 - `setup_goal_time`, `setup_goal_fuel_consumed`, `setup_goal_projected_dx`, `setup_goal_time_to_target`
 - `zem_setup_gate_done`, `zem_setup_gate_time`, `zem_setup_gate_altitude`, `zem_setup_gate_projected_dx`
 - `zem_shape_*` diagnostics for setup-trajectory quality

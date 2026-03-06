@@ -13,6 +13,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from app.selector import render_record_selector, render_selector_group  # noqa: E402
 from core.eval import aggregate_eval_records  # noqa: E402
 
 from build_selector_pack import (  # noqa: E402
@@ -267,42 +268,6 @@ def _run_diag(record: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def _selector_from_record(record: dict[str, Any]) -> str:
-    level = str(record.get("level") or "unknown").strip() or "unknown"
-    scenario = str(record.get("scenario") or "").strip()
-    eval_goal = str(record.get("eval_goal") or record.get("bot_eval_goal") or "landing").strip().lower()
-    if not eval_goal:
-        eval_goal = "landing"
-    seed = record.get("seed")
-    seed_token = None
-    if seed is not None:
-        try:
-            seed_token = str(int(seed))
-        except (TypeError, ValueError):
-            seed_token = str(seed)
-
-    has_scenario = bool(scenario and scenario != level)
-    if has_scenario:
-        base = f"{level}:{scenario}"
-    else:
-        base = level
-    if eval_goal == "landing":
-        if seed_token is None:
-            return base
-        if has_scenario:
-            return f"{base}:{seed_token}"
-        return f"{base}::{seed_token}"
-
-    goal_base = (
-        f"{level}:{scenario}:{eval_goal}"
-        if has_scenario
-        else f"{level}::{eval_goal}"
-    )
-    if seed_token is None:
-        return goal_base
-    return f"{goal_base}:{seed_token}"
-
-
 def _records_by_key(payload: dict[str, Any]) -> dict[tuple[str, str, str, int], dict[str, Any]]:
     out: dict[tuple[str, str, str, int], dict[str, Any]] = {}
     for rec_raw in payload.get("records") or []:
@@ -311,7 +276,7 @@ def _records_by_key(payload: dict[str, Any]) -> dict[tuple[str, str, str, int], 
         rec = dict(rec_raw)
         level = str(rec.get("level") or "").strip()
         scenario = str(rec.get("scenario") or "").strip()
-        eval_goal = str(rec.get("eval_goal") or rec.get("bot_eval_goal") or "landing").strip().lower()
+        eval_goal = str(rec.get("eval_goal") or "landing").strip().lower()
         if not eval_goal:
             eval_goal = "landing"
         seed = _to_int(rec.get("seed"), 0)
@@ -326,7 +291,7 @@ def _make_repro_commands(
     *,
     bot: str,
 ) -> dict[str, str]:
-    selector = _selector_from_record(record)
+    selector = render_record_selector(record)
     return {
         "plot": (
             f"uv run python main.py plot {selector} --bot {bot} "
@@ -405,15 +370,10 @@ def _scenario_regressions(
     def _by_level_scenario(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
         buckets: dict[str, list[dict[str, Any]]] = {}
         for rec in _payload_records(payload):
-            level = str(rec.get("level") or "unknown").strip() or "unknown"
-            scenario = str(rec.get("scenario") or "default").strip() or "default"
-            eval_goal = str(rec.get("eval_goal") or rec.get("bot_eval_goal") or "landing").strip().lower()
-            if not eval_goal:
-                eval_goal = "landing"
-            key = (
-                f"{level}:{scenario}"
-                if eval_goal == "landing"
-                else f"{level}:{scenario}@{eval_goal}"
+            key = render_selector_group(
+                level_name=str(rec.get("level") or "unknown").strip() or "unknown",
+                scenario_name=str(rec.get("scenario") or "").strip() or None,
+                goal=rec.get("eval_goal"),
             )
             buckets.setdefault(key, []).append(rec)
 

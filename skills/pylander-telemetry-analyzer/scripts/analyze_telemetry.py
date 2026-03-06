@@ -10,6 +10,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from app.selector import render_record_selector, render_selector  # noqa: E402
 from core.eval_schema import HEADLESS_RESULT_FIELDS  # noqa: E402
 from skills.lib.contracts import validate_contract_data  # noqa: E402
 from skills.lib.orchestration import (  # noqa: E402
@@ -38,39 +39,7 @@ _RESULT_LABELS: tuple[str, ...] = tuple(
 
 
 def _selector_from_record(record: dict[str, Any]) -> str:
-    level = str(record.get("level") or "").strip() or "unknown"
-    scenario = str(record.get("scenario") or "").strip()
-    eval_goal = str(record.get("eval_goal") or record.get("bot_eval_goal") or "landing").strip().lower()
-    if not eval_goal:
-        eval_goal = "landing"
-    seed = record.get("seed")
-    seed_token: str | None = None
-    if seed is not None:
-        try:
-            seed_token = str(int(seed))
-        except (TypeError, ValueError):
-            seed_token = str(seed)
-
-    has_scenario = bool(scenario and scenario != level)
-    if has_scenario:
-        base = f"{level}:{scenario}"
-    else:
-        base = level
-    if eval_goal == "landing":
-        if seed_token is None:
-            return base
-        if has_scenario:
-            return f"{base}:{seed_token}"
-        return f"{base}::{seed_token}"
-
-    goal_base = (
-        f"{level}:{scenario}:{eval_goal}"
-        if has_scenario
-        else f"{level}::{eval_goal}"
-    )
-    if seed_token is None:
-        return goal_base
-    return f"{goal_base}:{seed_token}"
+    return render_record_selector(record)
 
 
 def _selector_from_triplet(
@@ -80,23 +49,16 @@ def _selector_from_triplet(
     *,
     eval_goal: Any = "landing",
 ) -> str:
-    level_token = str(level or "").strip() or "unknown"
-    scenario_token = str(scenario or "").strip()
-    goal_token = str(eval_goal or "landing").strip().lower() or "landing"
-
-    seed_token: str
     try:
         seed_token = str(int(seed))
     except (TypeError, ValueError):
         seed_token = "0"
-
-    if goal_token == "landing":
-        if scenario_token and scenario_token != level_token:
-            return f"{level_token}:{scenario_token}:{seed_token}"
-        return f"{level_token}::{seed_token}"
-    if scenario_token and scenario_token != level_token:
-        return f"{level_token}:{scenario_token}:{goal_token}:{seed_token}"
-    return f"{level_token}::{goal_token}:{seed_token}"
+    return render_selector(
+        level_name=str(level or "").strip() or "unknown",
+        scenario_name=str(scenario or "").strip() or None,
+        goal=str(eval_goal or "landing").strip().lower() or "landing",
+        seed_token=seed_token,
+    )
 
 
 def _repro_commands(

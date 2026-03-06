@@ -648,16 +648,13 @@ class LanderGame:
     def _apply_bot_eval_to_result(self, result: dict) -> None:
         goal = self.eval_goal
         result["eval_goal"] = goal
-        result["bot_eval_goal"] = goal
 
         decision = self._bot_eval_decision
         result["eval_early_end"] = bool(decision.should_end) if decision else False
-        result["bot_eval_early_end"] = bool(decision.should_end) if decision else False
         if decision is not None:
             if decision.end_reason:
                 reason = str(decision.end_reason)
                 result["eval_end_reason"] = reason
-                result["bot_eval_end_reason"] = reason
             for key, value in (decision.metrics or {}).items():
                 if not isinstance(key, str):
                     continue
@@ -671,7 +668,6 @@ class LanderGame:
                 result["success"] = False
                 result["failure_mode"] = "goal_not_reached"
                 result.setdefault("eval_end_reason", "goal_not_reached")
-                result.setdefault("bot_eval_end_reason", "goal_not_reached")
             return
 
         if decision is None:
