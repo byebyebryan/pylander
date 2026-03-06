@@ -34,7 +34,7 @@ def test_parse_sim_log_extracts_final_results_and_profile(tmp_path: Path) -> Non
             [
                 "Mode: headless run",
                 "Selector: launch:near:0",
-                "bot_prof: ticks=16 passive=0.012ms/t active=0.000ms/t query=0.011ms/t update=10.364ms/t total=10.387ms/t q=15/0/0/15",
+                "bot_prof: ticks=16 passive=0.012ms/t update=10.364ms/t total=10.387ms/t",
                 "t:  0.02 | x:  -0.0 alt:   0.0 | vx: -0.00 vy:  0.00 | ang:  0.0 thr:  0% | fuel:100.0% | actor:bot:zem_zev:opt ph:setup dx: 214.5 pdx: 214.5 vx:  0.0 vy:  7.7 sg:0 tg:0 rp:1 slv:177.0ms st:optimal",
                 "",
                 "============================================================",

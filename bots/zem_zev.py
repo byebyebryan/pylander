@@ -31,14 +31,13 @@ from bots._zem_telemetry import (
 )
 from bots._optimizer_pdg import PDGOptimizer, PDGOptimizerConfig, PDGPlan
 from bots._targeting import pick_target, target_half_width
-from core.bot import Bot, BotAction, PassiveSensors, QueryBot
-from core.bot_queries import BotQuery, BotQueryResults
+from core.bot import Bot, BotAction, Sensors
 from core.config import GRAVITY
 
 _GRAVITY_MAG = abs(float(GRAVITY))
 
 
-class ZemZevBot(QueryBot):
+class ZemZevBot(Bot):
     def __init__(self, behavior: str = "zem_zev") -> None:
         super().__init__()
         self._cfg = ZemZevConfig()
@@ -245,14 +244,14 @@ class ZemZevBot(QueryBot):
             rel_y = float(getattr(contact, "rel_y", 0.0))
             return math.hypot(rel_x, rel_y)
 
-    def _landed_contact_uid(self, passive: PassiveSensors) -> str | None:
+    def _landed_contact_uid(self, passive: Sensors) -> str | None:
         contacts = passive.radar_contacts or []
         if not contacts:
             return None
         landed = min(contacts, key=self._contact_distance)
         return landed.uid
 
-    def _resolve_target_contact(self, passive: PassiveSensors):
+    def _resolve_target_contact(self, passive: Sensors):
         contacts = passive.radar_contacts or []
         if not contacts:
             return None
@@ -456,7 +455,7 @@ class ZemZevBot(QueryBot):
 
     def _state_deviation_requires_replan(
         self,
-        passive: PassiveSensors,
+        passive: Sensors,
         *,
         dx_err_lim: float,
         dy_err_lim: float,
@@ -480,7 +479,7 @@ class ZemZevBot(QueryBot):
     def _solve_plan(
         self,
         *,
-        passive: PassiveSensors,
+        passive: Sensors,
         dx: float,
         dy: float,
         max_thrust_accel: float,
@@ -502,7 +501,7 @@ class ZemZevBot(QueryBot):
     def _update_phase_tracking(
         self,
         *,
-        passive: PassiveSensors,
+        passive: Sensors,
         dx: float,
         dy: float,
         alt: float,
@@ -520,7 +519,7 @@ class ZemZevBot(QueryBot):
     def _maybe_start_shape_window(
         self,
         *,
-        passive: PassiveSensors,
+        passive: Sensors,
         dx: float,
         dy: float,
     ) -> None:
@@ -543,7 +542,7 @@ class ZemZevBot(QueryBot):
     def _update_shape_window_metrics(
         self,
         *,
-        passive: PassiveSensors,
+        passive: Sensors,
         dx: float,
         projection: BallisticProjection,
     ) -> None:
@@ -573,7 +572,7 @@ class ZemZevBot(QueryBot):
         self,
         *,
         dt: float,
-        passive: PassiveSensors,
+        passive: Sensors,
         dx: float,
         dy: float,
         alt: float,
@@ -595,19 +594,7 @@ class ZemZevBot(QueryBot):
             max_thrust_accel=max_thrust_accel,
         )
 
-    def plan(self, dt: float, passive: PassiveSensors) -> list[BotQuery]:
-        _ = dt
-        if passive.state != "flying":
-            return []
-        return []
-
-    def act(
-        self,
-        dt: float,
-        passive: PassiveSensors,
-        results: BotQueryResults,
-    ) -> BotAction:
-        _ = results
+    def update(self, dt: float, passive: Sensors) -> BotAction:
         if passive.state == "crashed":
             return self._reset_with_status(angle=passive.angle, status="zem_zev:crashed")
         if passive.state == "out_of_fuel":

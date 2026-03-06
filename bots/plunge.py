@@ -20,8 +20,7 @@ from bots._bot_math import (
     vehicle_limits,
 )
 from bots._targeting import pick_target
-from core.bot import Bot, BotAction, PassiveSensors, QueryBot
-from core.bot_queries import BotQuery, BotQueryResults
+from core.bot import Bot, BotAction, Sensors
 from core.sensor import RadarContact
 
 
@@ -57,7 +56,7 @@ class PlungePolicy:
 BALANCED_PLUNGE_POLICY = PlungePolicy()
 
 
-class PlungeBot(QueryBot):
+class PlungeBot(Bot):
     def __init__(self, behavior: str = "balanced") -> None:
         super().__init__()
         self._policy = BALANCED_PLUNGE_POLICY
@@ -84,7 +83,7 @@ class PlungeBot(QueryBot):
 
     def _can_use_overdrive(
         self,
-        passive: PassiveSensors,
+        passive: Sensors,
         *,
         vertical_mode: str,
         alt: float,
@@ -103,17 +102,17 @@ class PlungeBot(QueryBot):
             )
         )
 
-    def _fuel_ratio(self, passive: PassiveSensors) -> float:
+    def _fuel_ratio(self, passive: Sensors) -> float:
         max_fuel = max(1e-6, float(passive.max_fuel))
         return clamp(float(passive.fuel) / max_fuel, 0.0, 1.0)
 
-    def _horizontal_controller(self, passive: PassiveSensors, vx_sp: float) -> float:
+    def _horizontal_controller(self, passive: Sensors, vx_sp: float) -> float:
         vx_err = vx_sp - passive.vx
         return (0.5 * vx_err) - (0.1 * passive.ax)
 
     def _vertical_controller(
         self,
-        passive: PassiveSensors,
+        passive: Sensors,
         vy_sp: float,
         alt: float,
         vertical_mode: str,
@@ -149,7 +148,7 @@ class PlungeBot(QueryBot):
     def _allocate_controls(
         self,
         dt: float,
-        passive: PassiveSensors,
+        passive: Sensors,
         *,
         a_x_sp: float,
         a_up_sp: float,
@@ -198,7 +197,7 @@ class PlungeBot(QueryBot):
 
     def _guidance(
         self,
-        passive: PassiveSensors,
+        passive: Sensors,
         target: RadarContact,
         *,
         max_force: float,
@@ -274,17 +273,7 @@ class PlungeBot(QueryBot):
             burn_altitude=burn_altitude,
         )
 
-    def plan(self, dt: float, passive: PassiveSensors) -> list[BotQuery]:
-        _ = dt, passive
-        return []
-
-    def act(
-        self,
-        dt: float,
-        passive: PassiveSensors,
-        results: BotQueryResults,
-    ) -> BotAction:
-        _ = results
+    def update(self, dt: float, passive: Sensors) -> BotAction:
         if passive.state in ("landed", "crashed", "out_of_fuel"):
             self._ballistic_debug_summary = ""
             action = BotAction(

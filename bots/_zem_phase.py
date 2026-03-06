@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 
 from bots._ballistics import BallisticProjection
-from core.bot import PassiveSensors
+from core.bot import Sensors
 from core.config import GRAVITY
 
 _GRAVITY_MAG = abs(float(GRAVITY))
@@ -21,7 +21,7 @@ def _projected_apex(y: float, vy_up: float, target_y: float) -> tuple[float, flo
 def update_phase_tracking(
     bot,
     *,
-    passive: PassiveSensors,
+    passive: Sensors,
     dx: float,
     dy: float,
     alt: float,
@@ -227,7 +227,7 @@ def update_phase_tracking(
 def maybe_start_shape_window(
     bot,
     *,
-    passive: PassiveSensors,
+    passive: Sensors,
     dx: float,
     dy: float,
 ) -> None:
@@ -259,7 +259,7 @@ def maybe_start_shape_window(
 def update_shape_window_metrics(
     bot,
     *,
-    passive: PassiveSensors,
+    passive: Sensors,
     dx: float,
     projection: BallisticProjection,
 ) -> None:

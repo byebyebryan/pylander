@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 
 from bots._bot_math import clamp, rate_limit_angle_command
-from core.bot import BotAction, PassiveSensors
+from core.bot import BotAction, Sensors
 from core.config import GRAVITY
 
 _GRAVITY_MAG = abs(float(GRAVITY))
@@ -13,7 +13,7 @@ def command_from_plan(
     bot,
     *,
     dt: float,
-    passive: PassiveSensors,
+    passive: Sensors,
     dx: float,
     dy: float,
     alt: float,

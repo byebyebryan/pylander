@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from core.bot import PassiveSensors, VehicleInfo, _ActiveSensorImpl
+from core.bot import Sensors, VehicleInfo
 from core.components import (
     CargoHold,
     Engine,
@@ -86,19 +86,7 @@ def build_vehicle_info(entity) -> VehicleInfo:
     )
 
 
-def build_active_sensors(entity, engine_adapter, terrain):
-    trans = require_component(entity, Transform)
-    radar = require_component(entity, Radar)
-    return _ActiveSensorImpl(
-        origin_fn=lambda: Vector2(trans.pos),
-        radar_range_fn=lambda: radar.inner_range,
-        engine_adapter=engine_adapter,
-        actor_uid=entity.uid,
-        terrain_fn=terrain,
-    )
-
-
-def build_passive_sensors(entity, terrain) -> PassiveSensors:
+def build_sensors(entity, terrain) -> Sensors:
     trans = require_component(entity, Transform)
     phys = require_component(entity, PhysicsState)
     tank = require_component(entity, FuelTank)
@@ -113,7 +101,7 @@ def build_passive_sensors(entity, terrain) -> PassiveSensors:
         terrain_y,
         body_height=geo.height,
     )
-    return PassiveSensors(
+    return Sensors(
         x=trans.pos.x,
         y=trans.pos.y,
         altitude=altitude,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from bots._bot_math import clamp, finite_altitude
 from bots._optimizer_pdg import PDGPlan
-from core.bot import PassiveSensors
+from core.bot import Sensors
 from core.config import GRAVITY
 
 _GRAVITY_MAG = abs(float(GRAVITY))
@@ -11,7 +11,7 @@ _GRAVITY_MAG = abs(float(GRAVITY))
 def solve_plan(
     bot,
     *,
-    passive: PassiveSensors,
+    passive: Sensors,
     dx: float,
     dy: float,
     max_thrust_accel: float,

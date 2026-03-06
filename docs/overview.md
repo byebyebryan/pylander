@@ -44,7 +44,7 @@ Core metrics from game + batch aggregation:
 
 ## Bot API (sensor/action)
 
-Implement `Bot.update(dt, passive, active) -> BotAction`.
+Implement `Bot.update(dt, sensors) -> BotAction`.
 
 `BotAction` outputs are target-based:
 
@@ -54,56 +54,12 @@ Implement `Bot.update(dt, passive, active) -> BotAction`.
 - `status`: short UI/log string
 - `message`: optional transient text
 
-`PassiveSensors` includes pose, terrain context, kinematics, mass/fuel/thrust state, and radar/proximity readings.
-
-`ActiveSensors` supports:
-
-- `raycast(...)`
-- `terrain_height(...)`
-- `terrain_profile(...)`
+`Sensors` includes pose, terrain context, kinematics, mass/fuel/thrust state, and radar/proximity readings.
 
 Notes:
 
 - Bots should use the sensor/action API, not engine internals.
-- `ActiveSensors` is rebuilt per bot step.
-
-## QueryBot API (batched active sensors)
-
-For new bots, you can use the optional two-stage API:
-
-- `plan(dt, passive) -> list[BotQuery]`
-- `act(dt, passive, results) -> BotAction`
-
-`QueryBot` runs in the game loop as:
-
-1. build passive sensors
-2. call `plan(...)`
-3. evaluate requested active queries in one batch
-4. call `act(...)`
-
-Current built-in bots on this interface:
-
-- `plunge`
-- `zem_zev`
-
-Supported queries (`core/bot_queries.py`):
-
-- `BotQueryRaycast`
-- `BotQueryTerrainProfile`
-
-Results are keyed by query `id` and returned as typed payloads:
-
-- `RaycastResult`
-- `TerrainProfileResult`
-
-Batch evaluator behavior:
-
-- duplicate query IDs are rejected
-
-Backward compatibility:
-
-- Existing external/custom bots can keep using `Bot.update(..., active)` unchanged.
-- Only bots that subclass `QueryBot` use the batched query path.
+- Terrain-impact ballistic prediction is a rendering concern, not bot planning input.
 
 ## Bot-loop profiling
 
@@ -114,10 +70,9 @@ Headless runs can emit timing breakdowns with env vars:
 
 Reported buckets:
 
-- passive sensor build time
-- legacy active sensor build time
-- query evaluation time (query bots)
-- bot update time (`update` or `plan+act`)
+- sensor build time
+- bot update time
+- total bot loop time
 
 Final run result also includes `bot_profile_*` summary fields.
 

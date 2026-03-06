@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import math
 
-from core.bot import PassiveSensors
+from core.bot import Sensors
 from core.sensor import RadarContact
 
 
 def pick_target(
-    passive: PassiveSensors,
+    passive: Sensors,
     *,
     pinned_uid: str | None = None,
 ) -> RadarContact | None:

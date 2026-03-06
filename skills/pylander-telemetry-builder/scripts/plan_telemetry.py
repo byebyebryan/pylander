@@ -160,14 +160,14 @@ def _probe_template(
         "insertion_anchor": "BotLoopProfiler update path for actor timings",
         "schema": {
             "metric": "bot_loop_hotspot",
-            "fields": ["selector", "phase", "passive_ms", "query_ms", "update_ms", "total_ms"],
+            "fields": ["selector", "phase", "passive_ms", "update_ms", "total_ms"],
         },
         "sampling_or_gate": {
             "env_var": "PYLANDER_TELEM_PERF_TRACE",
             "mode": "sampled_ticks",
             "sample_rate": 0.1,
         },
-        "expected_signal": "Tail spikes localized to query or update segment with phase context.",
+        "expected_signal": "Tail spikes localized to passive or update segment with phase context.",
         "risk_and_overhead": {
             "expected_avg_overhead_ms": max(0.0, avg_budget * 0.35),
             "expected_p99_overhead_ms": max(0.0, p99_budget * 0.60),

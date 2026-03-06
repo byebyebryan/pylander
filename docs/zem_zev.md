@@ -6,7 +6,7 @@ Implementation: [`bots/zem_zev.py`](../bots/zem_zev.py), [`bots/_optimizer_pdg.p
 
 Implementation note:
 
-- `zem_zev` uses the `QueryBot` `plan/act` API.
+- `zem_zev` uses the `Bot.update(dt, sensors)` API.
 - Core planning, actuation, phase tracking, and telemetry assembly are split into `_zem_*` helper modules, with `ZemZevBot` acting as the orchestration shell.
 - Phase tracking uses analytic ballistic projection against target geometry (target x/y) rather than terrain-impact sensing.
 - Setup/coast phases use stricter center-first terminal-x tolerance and optional apex-shaped y-reference blending.

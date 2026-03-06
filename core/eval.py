@@ -171,23 +171,11 @@ def normalize_run_result(
         "bot_profile_passive_ms_per_tick": _to_optional_float(
             result.get("bot_profile_passive_ms_per_tick")
         ),
-        "bot_profile_active_ms_per_tick": _to_optional_float(
-            result.get("bot_profile_active_ms_per_tick")
-        ),
-        "bot_profile_query_ms_per_tick": _to_optional_float(
-            result.get("bot_profile_query_ms_per_tick")
-        ),
         "bot_profile_update_ms_per_tick": _to_optional_float(
             result.get("bot_profile_update_ms_per_tick")
         ),
         "bot_profile_total_ms_per_tick": _to_optional_float(
             result.get("bot_profile_total_ms_per_tick")
-        ),
-        "bot_profile_query_ms_per_tick_p90": _to_optional_float(
-            result.get("bot_profile_query_ms_per_tick_p90")
-        ),
-        "bot_profile_query_ms_per_tick_p99": _to_optional_float(
-            result.get("bot_profile_query_ms_per_tick_p99")
         ),
         "bot_profile_update_ms_per_tick_p90": _to_optional_float(
             result.get("bot_profile_update_ms_per_tick_p90")
@@ -200,11 +188,6 @@ def normalize_run_result(
         ),
         "bot_profile_total_ms_per_tick_p99": _to_optional_float(
             result.get("bot_profile_total_ms_per_tick_p99")
-        ),
-        "bot_profile_query_total": _to_optional_float(result.get("bot_profile_query_total")),
-        "bot_profile_query_raycast": _to_optional_float(result.get("bot_profile_query_raycast")),
-        "bot_profile_query_terrain_profile": _to_optional_float(
-            result.get("bot_profile_query_terrain_profile")
         ),
         "zem_peak_alt_over_target": _to_optional_float(
             result.get("zem_peak_alt_over_target")

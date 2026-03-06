@@ -8,7 +8,7 @@ import app.run_batch as run_batch_module
 from app.cli import build_parser, parse_command
 from app.config import BenchCommand, BenchSettings, BenchTarget, RunCommand
 from bots import create_bot, list_available_bots
-from core.bot import QueryBot
+from core.bot import Bot
 from core.components import LandingSite, PhysicsState, Transform
 from core.ecs import require_component
 from core.eval import aggregate_eval_records, normalize_run_result
@@ -31,8 +31,8 @@ def test_bot_registry_exposes_only_supported_bots() -> None:
     zem_bot = create_bot("zem_zev")
     assert plunge_bot.__class__.__name__ == "PlungeBot"
     assert zem_bot.__class__.__name__ == "ZemZevBot"
-    assert isinstance(plunge_bot, QueryBot)
-    assert isinstance(zem_bot, QueryBot)
+    assert isinstance(plunge_bot, Bot)
+    assert isinstance(zem_bot, Bot)
 
 
 def test_create_bot_rejects_config_override_for_unsupported_bot() -> None:

@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from typing import Mapping, TypeVar
 
-from core.bot import PassiveSensors, VehicleInfo
+from core.bot import Sensors, VehicleInfo
 
 _BehaviorT = TypeVar("_BehaviorT")
 
@@ -31,7 +31,7 @@ def coerce_finite(value: float | None, default: float = 0.0) -> float:
     return numeric
 
 
-def finite_altitude(passive: PassiveSensors) -> float:
+def finite_altitude(passive: Sensors) -> float:
     if math.isfinite(passive.altitude):
         return passive.altitude
     return 1e9
@@ -56,7 +56,7 @@ def resolve_behavior(
     return key, behaviors[key]
 
 
-def vehicle_limits(passive: PassiveSensors, max_force: float) -> tuple[float, float]:
+def vehicle_limits(passive: Sensors, max_force: float) -> tuple[float, float]:
     mass = max(0.5, passive.mass)
     up_acc_max = max(0.1, (max_force / mass) - 9.8)
     return mass, up_acc_max

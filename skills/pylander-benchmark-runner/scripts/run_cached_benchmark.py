@@ -24,13 +24,9 @@ from build_selector_pack import (  # noqa: E402
 _COMPUTE_FIELDS: tuple[str, ...] = (
     "bot_profile_total_ms_per_tick",
     "bot_profile_passive_ms_per_tick",
-    "bot_profile_active_ms_per_tick",
-    "bot_profile_query_ms_per_tick",
     "bot_profile_update_ms_per_tick",
     "bot_profile_total_ms_per_tick_p90",
     "bot_profile_total_ms_per_tick_p99",
-    "bot_profile_query_ms_per_tick_p90",
-    "bot_profile_query_ms_per_tick_p99",
     "bot_profile_update_ms_per_tick_p90",
     "bot_profile_update_ms_per_tick_p99",
 )
@@ -578,8 +574,6 @@ def _compute_compare(
         )
         for name in (
             "bot_profile_passive_ms_per_tick",
-            "bot_profile_active_ms_per_tick",
-            "bot_profile_query_ms_per_tick",
             "bot_profile_update_ms_per_tick",
         )
     )
@@ -595,7 +589,6 @@ def _compute_compare(
             rel_min=_COMPUTE_P99_COMPONENT_REL_MIN,
         )
         for name in (
-            "bot_profile_query_ms_per_tick_p99",
             "bot_profile_update_ms_per_tick_p99",
         )
     )
@@ -657,23 +650,19 @@ def _print_compute_block(
         f"ticks={_to_int(baseline.get('ticks_total'), 0)}->{_to_int(candidate.get('ticks_total'), 0)}"
     )
     print(
-        "avg_ms_per_tick(total/passive/active/query/update): "
+        "avg_ms_per_tick(total/passive/update): "
         f"{_fmt_delta(dict(deltas.get('bot_profile_total_ms_per_tick') or {}))} / "
         f"{_fmt_delta(dict(deltas.get('bot_profile_passive_ms_per_tick') or {}))} / "
-        f"{_fmt_delta(dict(deltas.get('bot_profile_active_ms_per_tick') or {}))} / "
-        f"{_fmt_delta(dict(deltas.get('bot_profile_query_ms_per_tick') or {}))} / "
         f"{_fmt_delta(dict(deltas.get('bot_profile_update_ms_per_tick') or {}))}"
     )
     print(
-        "p99_ms_per_tick(total/query/update): "
+        "p99_ms_per_tick(total/update): "
         f"{_fmt_delta(dict(deltas.get('bot_profile_total_ms_per_tick_p99') or {}))} / "
-        f"{_fmt_delta(dict(deltas.get('bot_profile_query_ms_per_tick_p99') or {}))} / "
         f"{_fmt_delta(dict(deltas.get('bot_profile_update_ms_per_tick_p99') or {}))}"
     )
     print(
-        "p90_ms_per_tick(total/query/update): "
+        "p90_ms_per_tick(total/update): "
         f"{_fmt_delta(dict(deltas.get('bot_profile_total_ms_per_tick_p90') or {}))} / "
-        f"{_fmt_delta(dict(deltas.get('bot_profile_query_ms_per_tick_p90') or {}))} / "
         f"{_fmt_delta(dict(deltas.get('bot_profile_update_ms_per_tick_p90') or {}))}"
     )
     if notable_regression:

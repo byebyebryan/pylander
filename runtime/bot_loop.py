@@ -4,12 +4,11 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
 
-from core.bot import Bot, BotAction, QueryBot
+from core.bot import Bot, BotAction
 from core.components import LanderState
-from runtime.bot_query_eval import evaluate_bot_queries
 from runtime.loop_timing import LoopTimers
 from runtime.metrics import BotLoopProfiler
-from runtime.sensors import build_active_sensors, build_passive_sensors
+from runtime.sensors import build_sensors
 from utils.protocols import ControlTuple
 
 
@@ -20,7 +19,6 @@ class BotLoopContext:
     sensor_update_system: Any
     profiler: BotLoopProfiler
     terrain: Any
-    engine_adapter: Any
 
 
 def update_bot_steps(
@@ -46,75 +44,23 @@ def update_bot_steps(
                 profiler.record_tick(uid)
 
                 passive_s = 0.0
-                active_s = 0.0
-                query_s = 0.0
                 update_s = 0.0
 
                 t0 = perf_counter() if profiler.enabled else 0.0
-                passive_sensors = build_passive_sensors(actor, context.terrain)
+                sensors = build_sensors(actor, context.terrain)
                 if profiler.enabled:
                     passive_s = perf_counter() - t0
                     profiler.record_passive_build(uid, passive_s)
 
-                if isinstance(current_bot, QueryBot):
-                    t_plan = perf_counter() if profiler.enabled else 0.0
-                    raw_queries = current_bot.plan(bot_dt, passive_sensors)
-                    queries = list(raw_queries or [])
-                    if profiler.enabled:
-                        update_s += perf_counter() - t_plan
-
-                    t_eval = perf_counter() if profiler.enabled else 0.0
-                    query_results, batch_stats = evaluate_bot_queries(
-                        actor,
-                        context.engine_adapter,
-                        context.terrain,
-                        queries,
-                    )
-                    if profiler.enabled:
-                        query_s = perf_counter() - t_eval
-                        profiler.record_query_eval(
-                            uid,
-                            query_s,
-                            query_total=batch_stats.total,
-                            query_raycast=batch_stats.raycast,
-                            query_terrain_profile=batch_stats.terrain_profile,
-                        )
-
-                    t_act = perf_counter() if profiler.enabled else 0.0
-                    action: BotAction = current_bot.act(
-                        bot_dt,
-                        passive_sensors,
-                        query_results,
-                    )
-                    if profiler.enabled:
-                        update_s += perf_counter() - t_act
-                        profiler.record_bot_update(uid, update_s)
-                else:
-                    t_active = perf_counter() if profiler.enabled else 0.0
-                    active_sensors = build_active_sensors(
-                        actor,
-                        context.engine_adapter,
-                        context.terrain,
-                    )
-                    if profiler.enabled:
-                        active_s = perf_counter() - t_active
-                        profiler.record_active_build(uid, active_s)
-
-                    t_update = perf_counter() if profiler.enabled else 0.0
-                    action = current_bot.update(
-                        bot_dt,
-                        passive_sensors,
-                        active_sensors,
-                    )
-                    if profiler.enabled:
-                        update_s = perf_counter() - t_update
-                        profiler.record_bot_update(uid, update_s)
+                t_update = perf_counter() if profiler.enabled else 0.0
+                action: BotAction = current_bot.update(bot_dt, sensors)
+                if profiler.enabled:
+                    update_s = perf_counter() - t_update
+                    profiler.record_bot_update(uid, update_s)
                 if profiler.enabled:
                     profiler.record_tick_costs(
                         uid,
                         passive_s=passive_s,
-                        active_s=active_s,
-                        query_s=query_s,
                         update_s=update_s,
                     )
                 bot_controls_by_uid[uid] = (

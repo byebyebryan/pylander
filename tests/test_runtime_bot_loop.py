@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from core.bot import Bot, BotAction, PassiveSensors, QueryBot
-from core.bot_queries import BotQueryTerrainProfile
+from core.bot import Bot, BotAction, Sensors
 from game import LanderGame
 from levels import create_level as create_level_by_name
 from runtime.bot_loop import BotLoopContext, update_bot_steps
@@ -15,59 +14,18 @@ def _make_timers() -> LoopTimers:
     return timers
 
 
-def test_update_bot_steps_query_bot_path_records_query_stats() -> None:
-    class _CountingQueryBot(QueryBot):
-        def __init__(self) -> None:
-            super().__init__()
-            self.plan_calls = 0
-            self.act_calls = 0
-
-        def plan(self, dt: float, passive: PassiveSensors):
-            _ = dt, passive
-            self.plan_calls += 1
-            return [BotQueryTerrainProfile(id="tp", x_start=-50.0, x_end=50.0, samples=5)]
-
-        def act(self, dt: float, passive: PassiveSensors, results):
-            _ = dt, passive, results
-            self.act_calls += 1
-            return BotAction(target_thrust=0.0, target_angle=0.0, refuel=False)
-
-    bot = _CountingQueryBot()
-    game = LanderGame(level=create_level_by_name("flat"), seed=0, bot=bot, headless=True)
-    profiler = BotLoopProfiler(enabled=True, interval_s=1.0, next_report_s=1.0)
-    context = BotLoopContext(
-        ecs_world=game.ecs_world,
-        actor_bots=game.actor_bots,
-        sensor_update_system=game.sensor_update_system,
-        profiler=profiler,
-        terrain=game.terrain,
-        engine_adapter=game.engine_adapter,
-    )
-
-    controls = update_bot_steps(_make_timers(), context=context)
-    uid = next(iter(game.actor_bots))
-    assert controls[uid] == (0.0, 0.0, False)
-    assert bot.plan_calls == 1
-    assert bot.act_calls == 1
-    assert profiler.total.ticks == 1
-    assert profiler.total.query_total == 1
-    assert profiler.total.query_terrain_profile == 1
-    assert profiler.total.query_raycast == 0
-
-
-def test_update_bot_steps_legacy_bot_path_uses_active_sensor_bucket() -> None:
-    class _LegacyBot(Bot):
+def test_update_bot_steps_calls_update_and_records_tick() -> None:
+    class _CountingBot(Bot):
         def __init__(self) -> None:
             super().__init__()
             self.update_calls = 0
 
-        def update(self, dt: float, passive: PassiveSensors, active) -> BotAction:
-            _ = dt, passive
+        def update(self, dt: float, sensors: Sensors) -> BotAction:
+            _ = dt, sensors
             self.update_calls += 1
-            _ = active.terrain_height(passive.x)
             return BotAction(target_thrust=0.0, target_angle=0.0, refuel=False)
 
-    bot = _LegacyBot()
+    bot = _CountingBot()
     game = LanderGame(level=create_level_by_name("flat"), seed=0, bot=bot, headless=True)
     profiler = BotLoopProfiler(enabled=True, interval_s=1.0, next_report_s=1.0)
     context = BotLoopContext(
@@ -76,7 +34,6 @@ def test_update_bot_steps_legacy_bot_path_uses_active_sensor_bucket() -> None:
         sensor_update_system=game.sensor_update_system,
         profiler=profiler,
         terrain=game.terrain,
-        engine_adapter=game.engine_adapter,
     )
 
     controls = update_bot_steps(_make_timers(), context=context)
@@ -84,29 +41,18 @@ def test_update_bot_steps_legacy_bot_path_uses_active_sensor_bucket() -> None:
     assert controls[uid] == (0.0, 0.0, False)
     assert bot.update_calls == 1
     assert profiler.total.ticks == 1
-    assert profiler.total.query_total == 0
     assert uid in profiler.by_bot
 
 
 def test_bot_profiler_emits_total_and_percentiles() -> None:
     profiler = BotLoopProfiler(enabled=True, interval_s=1.0, next_report_s=1.0, log_lines=False)
-    for query_s, update_s in ((0.0010, 0.0010), (0.0020, 0.0015), (0.0030, 0.0020)):
+    for update_s in (0.0010, 0.0015, 0.0020):
         profiler.record_tick("bot-1")
         profiler.record_passive_build("bot-1", 0.0005)
-        profiler.record_active_build("bot-1", 0.0007)
-        profiler.record_query_eval(
-            "bot-1",
-            query_s,
-            query_total=1,
-            query_raycast=0,
-            query_terrain_profile=1,
-        )
         profiler.record_bot_update("bot-1", update_s)
         profiler.record_tick_costs(
             "bot-1",
             passive_s=0.0005,
-            active_s=0.0007,
-            query_s=query_s,
             update_s=update_s,
         )
 
@@ -123,11 +69,7 @@ def test_bot_profiler_emits_total_and_percentiles() -> None:
     assert float(result["bot_profile_total_ms_per_tick_p99"]) >= float(
         result["bot_profile_total_ms_per_tick_p90"]
     )
-    assert float(result["bot_profile_query_ms_per_tick_p99"]) >= float(
-        result["bot_profile_query_ms_per_tick_p90"]
-    )
     assert float(result["bot_profile_update_ms_per_tick_p99"]) >= float(
         result["bot_profile_update_ms_per_tick_p90"]
     )
-    assert result["bot_profile_query_total"] == 3
     assert lines == []

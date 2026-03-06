@@ -185,7 +185,6 @@ class LanderGame:
             sensor_update_system=self.sensor_update_system,
             profiler=self._bot_profiler,
             terrain=self.terrain,
-            engine_adapter=self.engine_adapter,
         )
         if self.renderer is not None:
             self.renderer.bot = self._active_actor_bot()

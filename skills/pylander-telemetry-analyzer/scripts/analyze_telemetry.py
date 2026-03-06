@@ -25,8 +25,8 @@ _COMPACT_RESULT_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*?)(None|True|False|-?[
 _BOT_PROF_RE = re.compile(
     r"ticks=(?P<ticks>\d+)"
     r".*?passive=(?P<passive>[0-9.]+)ms/t"
-    r".*?active=(?P<active>[0-9.]+)ms/t"
-    r".*?query=(?P<query>[0-9.]+)ms/t"
+    r"(?:.*?active=(?P<active>[0-9.]+)ms/t)?"
+    r"(?:.*?query=(?P<query>[0-9.]+)ms/t)?"
     r".*?update=(?P<update>[0-9.]+)ms/t"
     r".*?total=(?P<total>[0-9.]+)ms/t"
 )
@@ -485,7 +485,6 @@ def _findings_from_benchmark(
         p99 = max(
             to_float(record.get("bot_profile_total_ms_per_tick_p99"), 0.0),
             to_float(record.get("bot_profile_update_ms_per_tick_p99"), 0.0),
-            to_float(record.get("bot_profile_query_ms_per_tick_p99"), 0.0),
         )
         if p99 <= 20.0:
             continue

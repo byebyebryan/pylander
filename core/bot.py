@@ -2,12 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Protocol, Any, Callable
-
-from core.bot_queries import (
-    BotQuery,
-    BotQueryResults,
-)
+from typing import Any
 from core.sensor import RadarContact, ProximityContact
 
 
@@ -36,11 +31,8 @@ class VehicleInfo:
 
 
 @dataclass(frozen=True)
-class PassiveSensors:
-    """Passive sensors snapshot available to the bot each frame.
-
-    Omits any callable active sensors and economy details.
-    """
+class Sensors:
+    """Sensors snapshot available to the bot each frame."""
 
     # Lander world position (world units)
     x: float
@@ -71,28 +63,6 @@ class PassiveSensors:
     proximity: ProximityContact | None = None
 
 
-class ActiveSensors(Protocol):
-    """Active sensor interfaces callable by the bot each frame."""
-
-    def raycast(
-        self, dir_angle: float, max_range: float | None = None
-    ) -> dict[str, Any]:
-        """Cast a ray in world-space direction.
-
-        Returns a dict: {"hit": bool, "distance": float, "hit_x": float, "hit_y": float}
-        """
-        ...
-
-    def terrain_height(self, world_x: float, lod: int = 0) -> float:
-        """Return terrain height y at world x."""
-        ...
-
-    def terrain_profile(
-        self, x_start: float, x_end: float, samples: int = 16, lod: int = 0
-    ) -> list[tuple[float, float]]:
-        """Sample terrain between two x-coordinates."""
-        ...
-
 @dataclass
 class BotAction:
     """Explicit action outputs from the bot for this frame (target-based)."""
@@ -113,15 +83,12 @@ class Bot(ABC):
         self._pinned_target_uid: str | None = None
 
     @abstractmethod
-    def update(
-        self, dt: float, passive: PassiveSensors, active: ActiveSensors
-    ) -> BotAction:
+    def update(self, dt: float, sensors: Sensors) -> BotAction:
         """Calculate the next action based on sensors.
 
         Args:
             dt: Delta time in seconds
-            passive: PassiveSensors snapshot for this frame
-            active: ActiveSensors callable interfaces for this frame
+            sensors: Sensors snapshot for this frame
 
         Returns:
             BotAction describing control outputs and metadata
@@ -170,75 +137,3 @@ class Bot(ABC):
     def get_evaluation_snapshot(self) -> dict[str, Any] | None:
         """Return optional structured evaluation state for the current frame."""
         return None
-
-
-class QueryBot(Bot, ABC):
-    """Optional two-stage bot API for batched active sensor queries."""
-
-    @abstractmethod
-    def plan(self, dt: float, passive: PassiveSensors) -> list[BotQuery]:
-        """Declare active sensor queries required for this tick."""
-        raise NotImplementedError
-
-    @abstractmethod
-    def act(
-        self,
-        dt: float,
-        passive: PassiveSensors,
-        results: BotQueryResults,
-    ) -> BotAction:
-        """Produce action from passive sensors plus evaluated query results."""
-        raise NotImplementedError
-
-    def update(
-        self, dt: float, passive: PassiveSensors, active: ActiveSensors
-    ) -> BotAction:
-        _ = dt, passive, active
-        raise RuntimeError(
-            "QueryBot.update() should not be called directly; "
-            "use plan()/act() via the game query loop."
-        )
-
-
-class _ActiveSensorImpl:
-    """Concrete ActiveSensors implementation backed by an engine adapter."""
-
-    def __init__(
-        self,
-        origin_fn: Callable[[], Any],
-        radar_range_fn: Callable[[], float],
-        engine_adapter,
-        actor_uid: str | None = None,
-        terrain_fn: Callable[[float, int], float] | Callable[[float], float] | None = None,
-    ):
-        self._origin = origin_fn
-        self._range = radar_range_fn
-        self._engine = engine_adapter
-        self._actor_uid = actor_uid
-        self._terrain = terrain_fn
-
-    def raycast(self, dir_angle: float, max_range: float | None = None) -> dict:
-        rng = self._range() if max_range is None else max_range
-        if self._engine is None:
-            return {"hit": False, "hit_x": 0.0, "hit_y": 0.0, "distance": None}
-        return self._engine.raycast(self._origin(), dir_angle, rng, uid=self._actor_uid)
-
-    def terrain_height(self, world_x: float, lod: int = 0) -> float:
-        if self._terrain is None:
-            return 0.0
-        try:
-            return float(self._terrain(world_x, lod))
-        except TypeError:
-            return float(self._terrain(world_x))
-
-    def terrain_profile(
-        self, x_start: float, x_end: float, samples: int = 16, lod: int = 0
-    ) -> list[tuple[float, float]]:
-        n = max(2, int(samples))
-        out: list[tuple[float, float]] = []
-        span = x_end - x_start
-        for i in range(n):
-            t = i / (n - 1)
-            xx = x_start + span * t
-            out.append((xx, self.terrain_height(xx, lod=lod)))
-        return out

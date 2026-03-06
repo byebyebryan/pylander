@@ -116,13 +116,8 @@ class RunMetricsTracker:
 class BotProfileCounter:
     ticks: int = 0
     passive_build_s: float = 0.0
-    active_build_s: float = 0.0
-    query_eval_s: float = 0.0
     bot_update_s: float = 0.0
     total_tick_s: float = 0.0
-    query_total: int = 0
-    query_raycast: int = 0
-    query_terrain_profile: int = 0
 
 
 @dataclass
@@ -134,7 +129,6 @@ class BotLoopProfiler:
     total: BotProfileCounter = field(default_factory=BotProfileCounter)
     by_bot: dict[str, BotProfileCounter] = field(default_factory=dict)
     total_tick_samples_s: list[float] = field(default_factory=list)
-    query_tick_samples_s: list[float] = field(default_factory=list)
     update_tick_samples_s: list[float] = field(default_factory=list)
 
     @staticmethod
@@ -200,35 +194,6 @@ class BotLoopProfiler:
         self._record_duration(self.total, "passive_build_s", seconds)
         self._record_duration(self._counter_for_uid(uid), "passive_build_s", seconds)
 
-    def record_active_build(self, uid: str, seconds: float) -> None:
-        if not self.enabled:
-            return
-        self._record_duration(self.total, "active_build_s", seconds)
-        self._record_duration(self._counter_for_uid(uid), "active_build_s", seconds)
-
-    def record_query_eval(
-        self,
-        uid: str,
-        seconds: float,
-        *,
-        query_total: int,
-        query_raycast: int,
-        query_terrain_profile: int,
-    ) -> None:
-        if not self.enabled:
-            return
-        self._record_duration(self.total, "query_eval_s", seconds)
-        counter = self._counter_for_uid(uid)
-        self._record_duration(counter, "query_eval_s", seconds)
-
-        self.total.query_total += int(query_total)
-        self.total.query_raycast += int(query_raycast)
-        self.total.query_terrain_profile += int(query_terrain_profile)
-
-        counter.query_total += int(query_total)
-        counter.query_raycast += int(query_raycast)
-        counter.query_terrain_profile += int(query_terrain_profile)
-
     def record_bot_update(self, uid: str, seconds: float) -> None:
         if not self.enabled:
             return
@@ -240,23 +205,15 @@ class BotLoopProfiler:
         uid: str,
         *,
         passive_s: float,
-        active_s: float,
-        query_s: float,
         update_s: float,
     ) -> None:
         if not self.enabled:
             return
-        total_s = (
-            max(0.0, float(passive_s))
-            + max(0.0, float(active_s))
-            + max(0.0, float(query_s))
-            + max(0.0, float(update_s))
-        )
+        total_s = max(0.0, float(passive_s)) + max(0.0, float(update_s))
         counter = self._counter_for_uid(uid)
         self._record_duration(self.total, "total_tick_s", total_s)
         self._record_duration(counter, "total_tick_s", total_s)
         self.total_tick_samples_s.append(total_s)
-        self.query_tick_samples_s.append(max(0.0, float(query_s)))
         self.update_tick_samples_s.append(max(0.0, float(update_s)))
 
     @staticmethod
@@ -289,17 +246,14 @@ class BotLoopProfiler:
                 "bot_prof: "
                 f"ticks={total.ticks} "
                 f"passive={self._ms_per_tick(total.passive_build_s, total.ticks):.3f}ms/t "
-                f"active={self._ms_per_tick(total.active_build_s, total.ticks):.3f}ms/t "
-                f"query={self._ms_per_tick(total.query_eval_s, total.ticks):.3f}ms/t "
                 f"update={self._ms_per_tick(total.bot_update_s, total.ticks):.3f}ms/t "
-                f"total={self._ms_per_tick(total.total_tick_s, total.ticks):.3f}ms/t "
-                f"q={total.query_total}/{total.query_raycast}/{total.query_terrain_profile}"
+                f"total={self._ms_per_tick(total.total_tick_s, total.ticks):.3f}ms/t"
             )
         ]
 
         heavy = sorted(
             self.by_bot.items(),
-            key=lambda item: item[1].bot_update_s + item[1].query_eval_s,
+            key=lambda item: item[1].bot_update_s,
             reverse=True,
         )[:3]
         if heavy:
@@ -307,7 +261,6 @@ class BotLoopProfiler:
             for uid, counter in heavy:
                 bot_parts.append(
                     f"{uid}:u{self._ms_per_tick(counter.bot_update_s, counter.ticks):.3f}"
-                    f"/q{self._ms_per_tick(counter.query_eval_s, counter.ticks):.3f}"
                     f"({counter.ticks})"
                 )
             lines.append("bot_prof_top: " + " ".join(bot_parts))
@@ -320,16 +273,9 @@ class BotLoopProfiler:
         result["bot_profile_enabled"] = True
         result["bot_profile_ticks"] = total.ticks
         result["bot_profile_passive_ms_per_tick"] = self._ms_per_tick(total.passive_build_s, total.ticks)
-        result["bot_profile_active_ms_per_tick"] = self._ms_per_tick(total.active_build_s, total.ticks)
-        result["bot_profile_query_ms_per_tick"] = self._ms_per_tick(total.query_eval_s, total.ticks)
         result["bot_profile_update_ms_per_tick"] = self._ms_per_tick(total.bot_update_s, total.ticks)
         result["bot_profile_total_ms_per_tick"] = self._ms_per_tick(total.total_tick_s, total.ticks)
         result["bot_profile_total_ms_per_tick_p90"] = self._percentile_ms(self.total_tick_samples_s, 0.90)
         result["bot_profile_total_ms_per_tick_p99"] = self._percentile_ms(self.total_tick_samples_s, 0.99)
-        result["bot_profile_query_ms_per_tick_p90"] = self._percentile_ms(self.query_tick_samples_s, 0.90)
-        result["bot_profile_query_ms_per_tick_p99"] = self._percentile_ms(self.query_tick_samples_s, 0.99)
         result["bot_profile_update_ms_per_tick_p90"] = self._percentile_ms(self.update_tick_samples_s, 0.90)
         result["bot_profile_update_ms_per_tick_p99"] = self._percentile_ms(self.update_tick_samples_s, 0.99)
-        result["bot_profile_query_total"] = total.query_total
-        result["bot_profile_query_raycast"] = total.query_raycast
-        result["bot_profile_query_terrain_profile"] = total.query_terrain_profile

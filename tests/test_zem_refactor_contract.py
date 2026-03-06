@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from bots import create_bot
-from core.bot import PassiveSensors
+from core.bot import BotAction, Sensors
 from game import LanderGame
 from levels import create_level as create_level_by_name
 
 
-def _passive(*, state: str = "flying") -> PassiveSensors:
-    return PassiveSensors(
+def _sensors(*, state: str = "flying") -> Sensors:
+    return Sensors(
         x=0.0,
         y=120.0,
         altitude=120.0,
@@ -28,10 +28,10 @@ def _passive(*, state: str = "flying") -> PassiveSensors:
     )
 
 
-def test_zem_plan_is_queryless() -> None:
+def test_zem_update_returns_action_when_flying() -> None:
     bot = create_bot("zem_zev")
-    queries = bot.plan(1.0 / 30.0, _passive(state="flying"))
-    assert queries == []
+    action = bot.update(1.0 / 30.0, _sensors(state="flying"))
+    assert isinstance(action, BotAction)
 
 
 def test_zem_non_flying_status_resets_runtime_state() -> None:
@@ -40,7 +40,7 @@ def test_zem_non_flying_status_resets_runtime_state() -> None:
     bot._auto_target_uid = "target-1"
     bot._launch_takeoff_active = True
 
-    action = bot.act(1.0 / 30.0, _passive(state="crashed"), results={})
+    action = bot.update(1.0 / 30.0, _sensors(state="crashed"))
     assert action.status == "zem_zev:crashed"
     assert action.target_thrust == 0.0
     assert bot._solve_count == 0

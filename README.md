@@ -215,7 +215,7 @@ Telemetry diagnostics executors:
 - `uv run python skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py --benchmark-json <path> --sim-log <sim.log> --output-report <out.json>`
 - `uv run python skills/pylander-telemetry-builder/scripts/plan_telemetry.py --triage-report <triage.json> --output-plan <plan.json>`
 
-## Bot profiling and query API
+## Bot profiling
 
 The game loop now supports lightweight bot-loop profiling in headless mode:
 
@@ -230,11 +230,11 @@ PYLANDER_BOT_PROFILE=1 PYLANDER_BOT_PROFILE_INTERVAL_S=2 \
   uv run python main.py sim plunge:mid_normal:0 --bot plunge
 ```
 
-Profiled timing covers passive sensor build, active sensor build (legacy bots), query evaluation (query bots), and bot update time.
+Profiled timing covers sensor build, bot update time, and total bot-loop time.
 
 For `bench`, profiling is enabled by default with periodic profile logs disabled.
 
-See [`docs/overview.md`](docs/overview.md) for the new `QueryBot plan/act` interface and query payload types.
+See [`docs/overview.md`](docs/overview.md) for the bot API and profiling details.
 
 ## Controls (interactive)
 
