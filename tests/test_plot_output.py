@@ -59,6 +59,7 @@ def test_save_trajectory_plots_combined_writes_manifest(tmp_path: Path) -> None:
         output_profile="combined",
         out_dir=str(out_dir),
         max_side_px=1200,
+        target={"x": 120.0, "y": 0.0, "size": 110.0, "label": "landing target"},
         selector_tag="launch_far_0",
     )
 
@@ -70,6 +71,7 @@ def test_save_trajectory_plots_combined_writes_manifest(tmp_path: Path) -> None:
     payload = json.loads(manifest.read_text(encoding="utf-8"))
     assert payload["plot_output"] == "combined"
     assert payload["plot_count"] == 1
+    assert payload["target"]["size"] == 110.0
 
 
 def test_save_trajectory_plots_split_all_writes_expected_files(tmp_path: Path) -> None:

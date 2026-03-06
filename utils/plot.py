@@ -319,19 +319,56 @@ def _draw_target(ax, *, target: dict[str, float | str | None] | None) -> None:
     except (TypeError, ValueError):
         target_x = 0.0
         target_y = 0.0
+    try:
+        target_size = abs(float(target.get("size", 0.0) or 0.0))
+    except (TypeError, ValueError):
+        target_size = 0.0
     target_label_raw = target.get("label", "target")
     target_label = str(target_label_raw) if target_label_raw else "target"
-    ax.scatter(
-        [target_x],
-        [target_y],
-        s=120.0,
-        marker="*",
-        color="#2ca02c",
-        edgecolors="#FFFFFF",
-        linewidths=0.9,
+    half_width = max(18.0, target_size * 0.5)
+    left_x = target_x - half_width
+    right_x = target_x + half_width
+    cap_height = max(10.0, half_width * 0.18)
+    target_color = "#2ecc71"
+
+    ax.plot(
+        [left_x, right_x],
+        [target_y, target_y],
+        color="#ffffff",
+        linewidth=8.4,
+        solid_capstyle="round",
+        alpha=0.98,
         zorder=7,
+    )
+    ax.plot(
+        [left_x, right_x],
+        [target_y, target_y],
+        color=target_color,
+        linewidth=4.8,
+        solid_capstyle="round",
+        alpha=1.0,
+        zorder=8,
         label=target_label,
     )
+    for x in (left_x, right_x):
+        ax.plot(
+            [x, x],
+            [target_y - cap_height, target_y + cap_height],
+            color="#ffffff",
+            linewidth=5.4,
+            solid_capstyle="round",
+            alpha=0.98,
+            zorder=7,
+        )
+        ax.plot(
+            [x, x],
+            [target_y - cap_height, target_y + cap_height],
+            color=target_color,
+            linewidth=2.8,
+            solid_capstyle="round",
+            alpha=1.0,
+            zorder=8,
+        )
 
 
 def _vector_sample_indices(sample_times: list[float]) -> list[int]:
@@ -1274,13 +1311,21 @@ class Plotter:
         else:
             self._sample_period_s = 1.0
 
-    def set_target(self, *, x: float, y: float, label: str = "target") -> None:
+    def set_target(
+        self,
+        *,
+        x: float,
+        y: float,
+        label: str = "target",
+        size: float | None = None,
+    ) -> None:
         if not self._sampling_enabled:
             return
         self._target = {
             "x": float(x),
             "y": float(y),
             "label": str(label),
+            "size": None if size is None else float(size),
         }
 
     def set_plot_max_side_px(self, value: int) -> None:

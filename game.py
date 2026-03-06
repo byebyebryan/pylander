@@ -9,7 +9,7 @@ from core.components import Transform
 from core.ecs import Entity, require_component
 from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal
 from core.level import Level
-from core.maths import Vector2
+from core.maths import Range1D, Vector2
 from runtime.actor_session import (
     active_actor_bot,
     collect_actor_entities,
@@ -208,10 +208,25 @@ class LanderGame:
         start_pos = Vector2(getattr(initial_actor, "start_pos", initial_trans.pos))
         eval_target_pos = resolve_eval_target_pos(self.level, self.sites, start_pos)
         if eval_target_pos is not None:
+            target_size: float | None = None
+            get_sites = getattr(self.sites, "get_sites", None)
+            if callable(get_sites):
+                try:
+                    nearby_sites = list(get_sites(Range1D.from_center(float(eval_target_pos.x), 1000.0)))
+                except Exception:
+                    nearby_sites = []
+                if nearby_sites:
+                    nearest_site = min(
+                        nearby_sites,
+                        key=lambda site: (float(site.x) - float(eval_target_pos.x)) ** 2
+                        + (float(site.y) - float(eval_target_pos.y)) ** 2,
+                    )
+                    target_size = float(getattr(nearest_site, "size", 0.0) or 0.0)
             self.plotter.set_target(
                 x=float(eval_target_pos.x),
                 y=float(eval_target_pos.y),
                 label="landing target",
+                size=target_size,
             )
         metrics = RunMetricsTracker.from_actor(
             initial_actor,
