@@ -741,18 +741,37 @@ class ZemZevBot(Bot):
         )
 
     def get_plot_markers(self) -> tuple[PlotMarker, ...]:
-        if not self._terminal_gate_done:
-            return ()
-        label = "terminal entry"
-        if self._terminal_gate_projected_dx is not None:
-            label = f"{label} pdx={stable(self._terminal_gate_projected_dx, 1):.1f}"
-        return (
-            PlotMarker(
-                id="terminal_entry",
-                name="terminal_entry",
-                label=label,
-            ),
-        )
+        out: list[PlotMarker] = []
+        if self._setup_gate_done:
+            out.append(
+                PlotMarker(
+                    id="setup_gate",
+                    name="setup_gate",
+                    label="setup gate",
+                    x=self._setup_gate_x,
+                    y=self._setup_gate_y,
+                    metadata={
+                        "time_s": self._setup_gate_time,
+                        "vx": self._setup_gate_vx,
+                        "vy_up": self._setup_gate_vy_up,
+                    },
+                )
+            )
+        if self._terminal_gate_done:
+            label = "terminal entry"
+            if self._terminal_gate_projected_dx is not None:
+                label = f"{label} pdx={stable(self._terminal_gate_projected_dx, 1):.1f}"
+            out.append(
+                PlotMarker(
+                    id="terminal_entry",
+                    name="terminal_entry",
+                    label=label,
+                    x=self._terminal_gate_x,
+                    y=self._terminal_gate_y,
+                    metadata={"time_s": self._terminal_gate_time},
+                )
+            )
+        return tuple(out)
 
     def get_evaluation_decision(self) -> BotEvalDecision | None:
         return _build_evaluation_decision_impl(self)

@@ -18,6 +18,18 @@ def _projected_apex(y: float, vy_up: float, target_y: float) -> tuple[float, flo
     return apex_y, (apex_y - float(target_y))
 
 
+def _capture_setup_gate_state(bot, *, passive: Sensors) -> None:
+    bot._setup_gate_x = float(passive.x)
+    bot._setup_gate_y = float(passive.y)
+    bot._setup_gate_vx = float(passive.vx)
+    bot._setup_gate_vy_up = float(passive.vy_up)
+
+
+def _capture_terminal_gate_state(bot, *, passive: Sensors) -> None:
+    bot._terminal_gate_x = float(passive.x)
+    bot._terminal_gate_y = float(passive.y)
+
+
 def update_phase_tracking(
     bot,
     *,
@@ -89,6 +101,7 @@ def update_phase_tracking(
                     bot._setup_gate_projected_dx = projected_dx
                     bot._setup_gate_projected_apex_y = apex_y
                     bot._setup_gate_projected_apex_over_target = apex_over_target
+                    _capture_setup_gate_state(bot, passive=passive)
                     bot._debug_setup_post_end_time = bot._elapsed_time_s + 4.0
                     bot._debug_setup_print(
                         "gate_latch_burn_end "
@@ -164,6 +177,7 @@ def update_phase_tracking(
         bot._terminal_gate_time = bot._elapsed_time_s
         bot._terminal_gate_altitude = alt
         bot._terminal_gate_projected_dx = projected_dx
+        _capture_terminal_gate_state(bot, passive=passive)
         if not bot._setup_gate_done:
             target_y = float(bot._last_target_y)
             apex_y, apex_over_target = _projected_apex(
@@ -177,6 +191,7 @@ def update_phase_tracking(
             bot._setup_gate_projected_dx = projected_dx
             bot._setup_gate_projected_apex_y = apex_y
             bot._setup_gate_projected_apex_over_target = apex_over_target
+            _capture_setup_gate_state(bot, passive=passive)
             bot._debug_setup_print(
                 "gate_latch_terminal_fallback "
                 f"t={bot._elapsed_time_s:6.2f} "

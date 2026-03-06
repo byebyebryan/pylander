@@ -104,6 +104,7 @@ class PlotMarker:
     label: str | None = None
     x: float | None = None
     y: float | None = None
+    metadata: dict[str, float | str | None] = field(default_factory=dict)
 
 
 class Bot(ABC):

@@ -6,9 +6,11 @@ from pathlib import Path
 import matplotlib.image as mpimg
 
 from utils.plot import (
+    _ballistic_projection_series,
     _build_plot_context,
     _combined_spatial_arrangement,
     _compute_figure_size,
+    _projected_intercept_from_state,
     save_trajectory_plots,
 )
 
@@ -89,9 +91,10 @@ def test_save_trajectory_plots_split_all_writes_expected_files(tmp_path: Path) -
     names = {Path(p).name for p in (result.get("plot_paths") or [])}
     assert {
         "spatial_speed.png",
-        "spatial_velocity_vectors.png",
+        "spatial_trajectory_comparison.png",
         "spatial_thrust.png",
         "spatial_thrust_vectors.png",
+        "timeseries_ballistic_projection.png",
         "timeseries_speed_thrust.png",
         "timeseries_hv_speed.png",
         "timeseries_thrust_components.png",
@@ -150,12 +153,60 @@ def test_build_plot_context_widens_tall_spatial_ratio_for_column_layouts() -> No
     assert ctx.span_x / ctx.span_y >= 1.24
 
 
+def test_projected_intercept_crosses_target_y_when_reachable() -> None:
+    intercept = _projected_intercept_from_state(
+        x=0.0,
+        y=120.0,
+        vx=8.0,
+        vy_up=-12.0,
+        target_x=80.0,
+        target_y=0.0,
+    )
+
+    assert intercept.has_target_y_solution is True
+    assert intercept.end_y == 0.0
+
+
+def test_projected_intercept_falls_back_to_apex_when_target_y_is_unreachable() -> None:
+    intercept = _projected_intercept_from_state(
+        x=10.0,
+        y=30.0,
+        vx=6.0,
+        vy_up=4.0,
+        target_x=100.0,
+        target_y=80.0,
+    )
+
+    assert intercept.has_target_y_solution is False
+    assert intercept.end_y < 80.0
+
+
+def test_ballistic_projection_series_uses_apex_while_climbing_and_current_height_while_descending() -> None:
+    climb_ctx = _build_plot_context(_FlatTerrain(), _tall_samples())
+    climb_apex_over_target, climb_projected_dx = _ballistic_projection_series(
+        ctx=climb_ctx,
+        target={"x": 120.0, "y": 0.0},
+    )
+    descend_ctx = _build_plot_context(_FlatTerrain(), _samples())
+    descend_apex_over_target, descend_projected_dx = _ballistic_projection_series(
+        ctx=descend_ctx,
+        target={"x": 120.0, "y": 0.0},
+    )
+
+    assert len(climb_apex_over_target) == len(climb_ctx.sample_times)
+    assert len(climb_projected_dx) == len(climb_ctx.sample_times)
+    assert len(descend_apex_over_target) == len(descend_ctx.sample_times)
+    assert len(descend_projected_dx) == len(descend_ctx.sample_times)
+    assert climb_apex_over_target[0] > climb_ctx.ys[0]
+    assert descend_apex_over_target[-1] == descend_ctx.ys[-1]
+
+
 def test_compute_figure_size_keeps_spatial_minimums_for_colorbar_space() -> None:
     wide_w, wide_h = _compute_figure_size(640.0, 160.0, layout="single")
     tall_w, tall_h = _compute_figure_size(160.0, 640.0, layout="all", arrangement="columns")
     assert wide_h >= 6.3
     assert tall_w >= 15.0
-    assert tall_h >= 17.2
+    assert tall_h >= 18.8
 
 
 def test_save_trajectory_plots_tall_combined_stays_close_to_square(tmp_path: Path) -> None:
@@ -171,7 +222,7 @@ def test_save_trajectory_plots_tall_combined_stays_close_to_square(tmp_path: Pat
     )
 
     image = mpimg.imread(Path(result["plot_path"]))
-    assert image.shape[1] / image.shape[0] > 0.88
+    assert image.shape[1] / image.shape[0] > 0.84
 
 
 def test_save_trajectory_plots_tall_split_does_not_become_overly_wide(tmp_path: Path) -> None:

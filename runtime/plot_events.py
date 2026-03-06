@@ -53,6 +53,7 @@ def _emit_plot_event(
     default_y: float,
     x: float | None = None,
     y: float | None = None,
+    metadata: dict[str, float | str | None] | None = None,
 ) -> None:
     event_key = (actor_uid, event_id)
     if event_key in events_seen:
@@ -70,6 +71,7 @@ def _emit_plot_event(
         x=event_x,
         y=event_y,
         label=label,
+        metadata=metadata,
     )
     events_seen.add(event_key)
 
@@ -91,24 +93,6 @@ def track_plot_events(
         default_x = float(trans.pos.x)
         default_y = float(trans.pos.y)
 
-        phase_snapshot = _safe_phase_snapshot(bot)
-        if phase_snapshot is not None:
-            for milestone in phase_snapshot.milestones:
-                marker_spec = _SHARED_MILESTONE_LABELS.get(str(milestone))
-                if marker_spec is None:
-                    continue
-                event_name, label = marker_spec
-                _emit_plot_event(
-                    plotter=plotter,
-                    events_seen=events_seen,
-                    actor_uid=uid,
-                    event_id=str(milestone),
-                    event_name=event_name,
-                    label=label,
-                    default_x=default_x,
-                    default_y=default_y,
-                )
-
         for marker in _safe_plot_markers(bot):
             event_id = str(marker.id).strip()
             event_name = str(marker.name).strip()
@@ -126,4 +110,23 @@ def track_plot_events(
                 default_y=default_y,
                 x=marker.x,
                 y=marker.y,
+                metadata=dict(marker.metadata),
             )
+
+        phase_snapshot = _safe_phase_snapshot(bot)
+        if phase_snapshot is not None:
+            for milestone in phase_snapshot.milestones:
+                marker_spec = _SHARED_MILESTONE_LABELS.get(str(milestone))
+                if marker_spec is None:
+                    continue
+                event_name, label = marker_spec
+                _emit_plot_event(
+                    plotter=plotter,
+                    events_seen=events_seen,
+                    actor_uid=uid,
+                    event_id=str(milestone),
+                    event_name=event_name,
+                    label=label,
+                    default_x=default_x,
+                    default_y=default_y,
+                )

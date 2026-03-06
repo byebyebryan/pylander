@@ -26,10 +26,18 @@ class _Bot:
 
 class _Plotter:
     def __init__(self) -> None:
-        self.events: list[tuple[str, float, float, str]] = []
+        self.events: list[tuple[str, float, float, str, dict[str, float | str | None] | None]] = []
 
-    def mark_event(self, *, name: str, x: float, y: float, label: str) -> None:
-        self.events.append((name, x, y, label))
+    def mark_event(
+        self,
+        *,
+        name: str,
+        x: float,
+        y: float,
+        label: str,
+        metadata: dict[str, float | str | None] | None = None,
+    ) -> None:
+        self.events.append((name, x, y, label, metadata))
 
 
 def test_track_plot_events_marks_setup_and_terminal_entry_once() -> None:
@@ -46,6 +54,14 @@ def test_track_plot_events_marks_setup_and_terminal_entry_once() -> None:
                 phase_snapshot=FlightPhaseSnapshot(phase="coast", milestones=("setup_gate",)),
                 plot_markers=(
                     PlotMarker(
+                        id="setup_gate",
+                        name="setup_gate",
+                        label="setup gate",
+                        x=14.0,
+                        y=26.0,
+                        metadata={"vx": 3.5, "vy_up": -7.0},
+                    ),
+                    PlotMarker(
                         id="terminal_entry",
                         name="terminal_entry",
                         label="terminal entry pdx=-4.6",
@@ -63,6 +79,14 @@ def test_track_plot_events_marks_setup_and_terminal_entry_once() -> None:
                 phase_snapshot=FlightPhaseSnapshot(phase="coast", milestones=("setup_gate",)),
                 plot_markers=(
                     PlotMarker(
+                        id="setup_gate",
+                        name="setup_gate",
+                        label="setup gate",
+                        x=14.0,
+                        y=26.0,
+                        metadata={"vx": 3.5, "vy_up": -7.0},
+                    ),
+                    PlotMarker(
                         id="terminal_entry",
                         name="terminal_entry",
                         label="terminal entry pdx=-4.6",
@@ -76,8 +100,8 @@ def test_track_plot_events_marks_setup_and_terminal_entry_once() -> None:
     )
 
     assert plotter.events == [
-        ("setup_gate", 10.0, 20.0, "setup gate"),
-        ("terminal_entry", 10.0, 20.0, "terminal entry pdx=-4.6"),
+        ("setup_gate", 14.0, 26.0, "setup gate", {"vx": 3.5, "vy_up": -7.0}),
+        ("terminal_entry", 10.0, 20.0, "terminal entry pdx=-4.6", {}),
     ]
 
 
@@ -107,7 +131,7 @@ def test_track_plot_events_uses_marker_coordinates_when_provided() -> None:
         events_seen=set(),
     )
 
-    assert plotter.events == [("terminal_entry", 42.0, 84.0, "custom marker")]
+    assert plotter.events == [("terminal_entry", 42.0, 84.0, "custom marker", {})]
 
 
 def test_track_plot_events_ignores_missing_actor_and_empty_markers() -> None:

@@ -74,7 +74,15 @@ def test_zem_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> Non
     bot = create_bot("zem_zev")
     bot._active_phase = "terminal"
     bot._setup_gate_done = True
+    bot._setup_gate_time = 6.0
+    bot._setup_gate_x = 120.0
+    bot._setup_gate_y = 240.0
+    bot._setup_gate_vx = 8.0
+    bot._setup_gate_vy_up = -12.0
     bot._terminal_gate_done = True
+    bot._terminal_gate_time = 7.0
+    bot._terminal_gate_x = 140.0
+    bot._terminal_gate_y = 180.0
     bot._terminal_gate_projected_dx = -4.56
 
     phase_snapshot = bot.get_flight_phase_snapshot()
@@ -86,9 +94,24 @@ def test_zem_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> Non
     )
     assert markers == (
         PlotMarker(
+            id="setup_gate",
+            name="setup_gate",
+            label="setup gate",
+            x=120.0,
+            y=240.0,
+            metadata={
+                "time_s": 6.0,
+                "vx": 8.0,
+                "vy_up": -12.0,
+            },
+        ),
+        PlotMarker(
             id="terminal_entry",
             name="terminal_entry",
             label="terminal entry pdx=-4.6",
+            x=140.0,
+            y=180.0,
+            metadata={"time_s": 7.0},
         ),
     )
 
