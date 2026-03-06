@@ -13,6 +13,7 @@ from core.ecs import require_component
 
 PlotMode = Literal["none", "speed", "thrust", "all"]
 PlotOutputProfile = Literal["combined", "split", "both"]
+_TALL_SPATIAL_RATIO_CUTOFF = 1.35
 
 
 @dataclass
@@ -89,16 +90,48 @@ def _compute_figure_size(
     span_y: float,
     *,
     layout: Literal["single", "all", "series"],
+    arrangement: Literal["rows", "columns"] = "rows",
 ) -> tuple[float, float]:
     ratio = max(1e-6, span_x) / max(1e-6, span_y)
-    traj_height = 5.4
-    traj_width = traj_height * max(1.6, min(4.8, ratio))
-    width = max(10.0, min(26.0, traj_width))
+    panel_aspect = max(0.55, min(4.8, ratio))
+    panel_area = 60.0
+    min_width = 7.8 if ratio < _TALL_SPATIAL_RATIO_CUTOFF else 10.2
+    min_height = 5.8 if ratio < _TALL_SPATIAL_RATIO_CUTOFF else 6.3
+    width = max(min_width, min(26.0, (panel_area * panel_aspect) ** 0.5))
+    height = max(min_height, min(16.0, panel_area / width))
     if layout == "all":
-        return width, (traj_height * 3.0) + 4.0
+        if arrangement == "columns":
+            panel_width = max(9.2, width)
+            return max(18.2, min(26.0, panel_width * 3.15)), max(12.5, min(22.0, height + 5.8))
+        return max(10.2, width), max(19.0, min(28.0, (height * 3.0) + 5.0))
     if layout == "series":
-        return width, 3.6
-    return width, traj_height
+        return max(10.0, min(24.0, width * 1.1)), 3.6
+    return width, height
+
+
+def _spatial_ratio(span_x: float, span_y: float) -> float:
+    return max(1e-6, span_x) / max(1e-6, span_y)
+
+
+def _is_tall_spatial(span_x: float, span_y: float) -> bool:
+    return _spatial_ratio(span_x, span_y) < _TALL_SPATIAL_RATIO_CUTOFF
+
+
+def _combined_spatial_arrangement(span_x: float, span_y: float) -> Literal["rows", "columns"]:
+    return "columns" if _is_tall_spatial(span_x, span_y) else "rows"
+
+
+def _spatial_colorbar_position(span_x: float, span_y: float) -> Literal["right", "bottom"]:
+    return "bottom" if _is_tall_spatial(span_x, span_y) else "right"
+
+
+def _expand_span(lower: float, upper: float, *, min_span: float) -> tuple[float, float]:
+    span = max(0.0, upper - lower)
+    if span >= min_span:
+        return lower, upper
+    center = 0.5 * (lower + upper)
+    half = 0.5 * min_span
+    return center - half, center + half
 
 
 def _resolve_dpi(
@@ -135,11 +168,12 @@ def _build_plot_context(
     vxs = [float(p[6]) if len(p) > 6 else 0.0 for p in samples]
     vys = [float(p[7]) if len(p) > 7 else 0.0 for p in samples]
 
-    min_x = min(xs)
-    max_x = max(xs)
-    pad = 200.0
-    min_x -= pad
-    max_x += pad
+    sample_min_x = min(xs)
+    sample_max_x = max(xs)
+    sample_span_x = max(1.0, sample_max_x - sample_min_x)
+    x_pad = min(240.0, max(45.0, sample_span_x * 0.18))
+    min_x = sample_min_x - x_pad
+    max_x = sample_max_x + x_pad
     if max_x <= min_x:
         max_x = min_x + 1.0
 
@@ -158,9 +192,19 @@ def _build_plot_context(
     all_y = terrain_ys + ys
     y_min = min(all_y)
     y_max = max(all_y)
-    y_pad = 0.05 * max(1.0, (y_max - y_min))
+    sample_span_y = max(1.0, y_max - y_min)
+    y_pad = min(240.0, max(35.0, sample_span_y * 0.12))
     lower_y = y_min - y_pad
     upper_y = y_max + y_pad
+    span_x = max_x - min_x
+    span_y = upper_y - lower_y
+    raw_ratio = span_x / max(1e-6, span_y)
+    min_ratio = 1.25 if raw_ratio < _TALL_SPATIAL_RATIO_CUTOFF else 0.6
+    max_ratio = 3.2
+    if raw_ratio > max_ratio:
+        lower_y, upper_y = _expand_span(lower_y, upper_y, min_span=span_x / max_ratio)
+    elif raw_ratio < min_ratio:
+        min_x, max_x = _expand_span(min_x, max_x, min_span=span_y * min_ratio)
     span_x = max_x - min_x
     span_y = upper_y - lower_y
 
@@ -244,6 +288,28 @@ def _draw_events(ax, *, events: list[dict[str, float | str | None]] | None) -> N
         )
 
 
+def _draw_spatial_legend(ax, *, legend_ax=None) -> None:
+    handles, labels = ax.get_legend_handles_labels()
+    if not handles:
+        if legend_ax is not None:
+            legend_ax.axis("off")
+        return
+    if legend_ax is None:
+        ax.legend(handles, labels, loc="upper right", fontsize=8)
+        return
+    legend_ax.axis("off")
+    legend_ax.legend(
+        handles,
+        labels,
+        loc="center left",
+        ncol=min(3, len(handles)),
+        fontsize=8,
+        frameon=False,
+        handlelength=1.8,
+        columnspacing=1.2,
+    )
+
+
 def _draw_target(ax, *, target: dict[str, float | str | None] | None) -> None:
     if target is None:
         return
@@ -285,20 +351,27 @@ def _vector_sample_indices(sample_times: list[float]) -> list[int]:
     return picked
 
 
-def _draw_spatial_common(ax, *, ctx: _PlotContext, events, target, title: str, show_xlabel: bool = True) -> None:
+def _draw_spatial_common(
+    ax,
+    *,
+    ctx: _PlotContext,
+    events,
+    target,
+    title: str,
+    legend_ax=None,
+    show_xlabel: bool = True,
+) -> None:
     _draw_events(ax, events=events)
     _draw_target(ax, target=target)
     ax.set_xlim(ctx.min_x, ctx.max_x)
     ax.set_ylim(ctx.lower_y, ctx.upper_y)
     ax.set_aspect("equal", adjustable="box")
-    ax.set_anchor("W")
+    ax.set_anchor("C" if _is_tall_spatial(ctx.span_x, ctx.span_y) else "W")
     ax.set_xlabel("x (world units)" if show_xlabel else "")
     ax.set_ylabel("y (world units)")
-    ax.set_title(title)
+    ax.set_title(title, pad=10.0)
     ax.grid(True, linestyle=":", alpha=0.3)
-    handles, labels = ax.get_legend_handles_labels()
-    if handles:
-        ax.legend(handles, labels, loc="upper right", fontsize=8)
+    _draw_spatial_legend(ax, legend_ax=legend_ax)
 
 
 def _draw_spatial_panel(
@@ -309,6 +382,8 @@ def _draw_spatial_panel(
     events,
     target,
     cax=None,
+    legend_ax=None,
+    cbar_orientation: Literal["vertical", "horizontal"] = "vertical",
     color_mode: Literal["speed", "thrust"],
     title: str,
     show_xlabel: bool = True,
@@ -341,7 +416,11 @@ def _draw_spatial_panel(
     lc.set_array(vals)
     lc.set_linewidth(2.0)
     ax.add_collection(lc)
-    cbar = fig.colorbar(lc, cax=cax) if cax is not None else fig.colorbar(lc, ax=ax, pad=0.01)
+    cbar = (
+        fig.colorbar(lc, cax=cax, orientation=cbar_orientation)
+        if cax is not None
+        else fig.colorbar(lc, ax=ax, pad=0.01)
+    )
     cbar.set_label(cbar_label)
 
     _draw_spatial_common(
@@ -350,6 +429,7 @@ def _draw_spatial_panel(
         events=events,
         target=target,
         title=title,
+        legend_ax=legend_ax,
         show_xlabel=show_xlabel,
     )
 
@@ -362,6 +442,8 @@ def _draw_vector_spatial_panel(
     events,
     target,
     cax=None,
+    legend_ax=None,
+    cbar_orientation: Literal["vertical", "horizontal"] = "vertical",
     title: str,
     show_xlabel: bool = True,
 ) -> None:
@@ -408,7 +490,7 @@ def _draw_vector_spatial_panel(
             zorder=5,
         )
         if cax is not None:
-            cbar = fig.colorbar(q, cax=cax)
+            cbar = fig.colorbar(q, cax=cax, orientation=cbar_orientation)
         else:
             cbar = fig.colorbar(q, ax=ax, pad=0.01)
         cbar.set_label("thrust (0..1)")
@@ -436,6 +518,7 @@ def _draw_vector_spatial_panel(
         events=events,
         target=target,
         title=title,
+        legend_ax=legend_ax,
         show_xlabel=show_xlabel,
     )
 
@@ -494,6 +577,35 @@ def _save_figure(fig, out_file: Path, *, max_side_px: int, base_dpi: int = 150) 
     return str(out_file)
 
 
+def _create_spatial_axes(
+    fig,
+    spec,
+    *,
+    colorbar_position: Literal["right", "bottom"],
+    sharex=None,
+    sharey=None,
+) -> tuple[Any, Any, Any]:
+    if colorbar_position == "bottom":
+        sub = spec.subgridspec(3, 1, height_ratios=(0.16, 1.0, 0.10), hspace=0.05)
+        legend_ax = fig.add_subplot(sub[0, 0])
+        ax = fig.add_subplot(sub[1, 0], sharex=sharex, sharey=sharey)
+        cax = fig.add_subplot(sub[2, 0])
+    else:
+        sub = spec.subgridspec(
+            2,
+            2,
+            height_ratios=(0.18, 1.0),
+            width_ratios=(1.0, 0.055),
+            hspace=0.04,
+            wspace=0.08,
+        )
+        legend_ax = fig.add_subplot(sub[0, :])
+        ax = fig.add_subplot(sub[1, 0], sharex=sharex, sharey=sharey)
+        cax = fig.add_subplot(sub[1, 1])
+    legend_ax.axis("off")
+    return ax, cax, legend_ax
+
+
 def _render_combined_plot(
     *,
     ctx: _PlotContext,
@@ -509,24 +621,73 @@ def _render_combined_plot(
     import matplotlib.pyplot as plt
 
     if mode == "all":
-        fig_w, fig_h = _compute_figure_size(ctx.span_x, ctx.span_y, layout="all")
-        fig = plt.figure(figsize=(fig_w, fig_h))
-        grid = fig.add_gridspec(
-            5,
-            2,
-            width_ratios=(1.0, 0.055),
-            height_ratios=(2.8, 2.8, 2.8, 1.3, 1.3),
-            hspace=0.16,
-            wspace=0.08,
+        arrangement = _combined_spatial_arrangement(ctx.span_x, ctx.span_y)
+        fig_w, fig_h = _compute_figure_size(
+            ctx.span_x,
+            ctx.span_y,
+            layout="all",
+            arrangement=arrangement,
         )
-        ax_speed = fig.add_subplot(grid[0, 0])
-        cax_speed = fig.add_subplot(grid[0, 1])
-        ax_thrust = fig.add_subplot(grid[1, 0], sharex=ax_speed, sharey=ax_speed)
-        cax_thrust = fig.add_subplot(grid[1, 1])
-        ax_vectors = fig.add_subplot(grid[2, 0], sharex=ax_speed, sharey=ax_speed)
-        cax_vectors = fig.add_subplot(grid[2, 1])
-        ax_series = fig.add_subplot(grid[3, :])
-        ax_hv = fig.add_subplot(grid[4, :], sharex=ax_series)
+        fig = plt.figure(figsize=(fig_w, fig_h))
+        if arrangement == "columns":
+            grid = fig.add_gridspec(
+                3,
+                3,
+                height_ratios=(5.0, 1.35, 1.35),
+                hspace=0.30,
+                wspace=0.06,
+            )
+            ax_speed, cax_speed, lax_speed = _create_spatial_axes(
+                fig,
+                grid[0, 0],
+                colorbar_position="bottom",
+            )
+            ax_thrust, cax_thrust, lax_thrust = _create_spatial_axes(
+                fig,
+                grid[0, 1],
+                colorbar_position="bottom",
+                sharex=ax_speed,
+                sharey=ax_speed,
+            )
+            ax_vectors, cax_vectors, lax_vectors = _create_spatial_axes(
+                fig,
+                grid[0, 2],
+                colorbar_position="bottom",
+                sharex=ax_speed,
+                sharey=ax_speed,
+            )
+            ax_series = fig.add_subplot(grid[1, :])
+            ax_hv = fig.add_subplot(grid[2, :], sharex=ax_series)
+            cbar_orientation: Literal["vertical", "horizontal"] = "horizontal"
+        else:
+            grid = fig.add_gridspec(
+                5,
+                1,
+                height_ratios=(3.0, 3.0, 3.0, 1.3, 1.3),
+                hspace=0.28,
+            )
+            ax_speed, cax_speed, lax_speed = _create_spatial_axes(
+                fig,
+                grid[0, 0],
+                colorbar_position="right",
+            )
+            ax_thrust, cax_thrust, lax_thrust = _create_spatial_axes(
+                fig,
+                grid[1, 0],
+                colorbar_position="right",
+                sharex=ax_speed,
+                sharey=ax_speed,
+            )
+            ax_vectors, cax_vectors, lax_vectors = _create_spatial_axes(
+                fig,
+                grid[2, 0],
+                colorbar_position="right",
+                sharex=ax_speed,
+                sharey=ax_speed,
+            )
+            ax_series = fig.add_subplot(grid[3, 0])
+            ax_hv = fig.add_subplot(grid[4, 0], sharex=ax_series)
+            cbar_orientation = "vertical"
 
         _draw_spatial_panel(
             fig,
@@ -535,6 +696,8 @@ def _render_combined_plot(
             events=events,
             target=target,
             cax=cax_speed,
+            legend_ax=lax_speed,
+            cbar_orientation=cbar_orientation,
             color_mode="speed",
             title="Trajectory by speed",
             show_xlabel=False,
@@ -546,6 +709,8 @@ def _render_combined_plot(
             events=events,
             target=target,
             cax=cax_thrust,
+            legend_ax=lax_thrust,
+            cbar_orientation=cbar_orientation,
             color_mode="thrust",
             title="Trajectory by thrust",
             show_xlabel=False,
@@ -557,6 +722,8 @@ def _render_combined_plot(
             events=events,
             target=target,
             cax=cax_vectors,
+            legend_ax=lax_vectors,
+            cbar_orientation=cbar_orientation,
             title="Thrust direction vectors (time-sampled)",
             show_xlabel=False,
         )
@@ -573,10 +740,18 @@ def _render_combined_plot(
             show_xlabel=False,
         )
 
-        fig.subplots_adjust(left=0.065, right=0.94, bottom=0.05, top=0.96, hspace=0.22, wspace=0.08)
+        fig.subplots_adjust(left=0.065, right=0.96, bottom=0.05, top=0.97)
     else:
         fig_w, fig_h = _compute_figure_size(ctx.span_x, ctx.span_y, layout="single")
-        fig, ax = plt.subplots(figsize=(fig_w, fig_h))
+        colorbar_position = _spatial_colorbar_position(ctx.span_x, ctx.span_y)
+        fig = plt.figure(figsize=(fig_w, fig_h))
+        grid = fig.add_gridspec(1, 1)
+        ax, cax, legend_ax = _create_spatial_axes(
+            fig,
+            grid[0, 0],
+            colorbar_position=colorbar_position,
+        )
+        cbar_orientation = "horizontal" if colorbar_position == "bottom" else "vertical"
         if mode == "thrust":
             _draw_vector_spatial_panel(
                 fig,
@@ -584,6 +759,9 @@ def _render_combined_plot(
                 ctx=ctx,
                 events=events,
                 target=target,
+                cax=cax,
+                legend_ax=legend_ax,
+                cbar_orientation=cbar_orientation,
                 title="Lander trajectory thrust vectors",
                 show_xlabel=True,
             )
@@ -594,11 +772,14 @@ def _render_combined_plot(
                 ctx=ctx,
                 events=events,
                 target=target,
+                cax=cax,
+                legend_ax=legend_ax,
+                cbar_orientation=cbar_orientation,
                 color_mode="speed",
                 title="Lander trajectory (speed-colored)",
                 show_xlabel=True,
             )
-        fig.tight_layout()
+        fig.subplots_adjust(left=0.08, right=0.95, bottom=0.08, top=0.96)
 
     return _save_figure(fig, out_file, max_side_px=max_side_px)
 
@@ -618,17 +799,24 @@ def _render_split_plots(
     import matplotlib.pyplot as plt
 
     out_paths: list[str] = []
+    colorbar_position = _spatial_colorbar_position(ctx.span_x, ctx.span_y)
+    cbar_orientation: Literal["vertical", "horizontal"] = (
+        "horizontal" if colorbar_position == "bottom" else "vertical"
+    )
 
-    def _new_spatial() -> tuple[Any, Any]:
+    def _new_spatial() -> tuple[Any, tuple[Any, Any, Any]]:
         w, h = _compute_figure_size(ctx.span_x, ctx.span_y, layout="single")
         fig = plt.figure(figsize=(w, h))
-        gs = fig.add_gridspec(1, 2, width_ratios=(1.0, 0.055), wspace=0.08)
-        ax = fig.add_subplot(gs[0, 0])
-        cax = fig.add_subplot(gs[0, 1])
-        return fig, (ax, cax)
+        gs = fig.add_gridspec(1, 1)
+        ax, cax, legend_ax = _create_spatial_axes(
+            fig,
+            gs[0, 0],
+            colorbar_position=colorbar_position,
+        )
+        return fig, (ax, cax, legend_ax)
 
     if mode in {"speed", "all"}:
-        fig, (ax, cax) = _new_spatial()
+        fig, (ax, cax, legend_ax) = _new_spatial()
         _draw_spatial_panel(
             fig,
             ax,
@@ -636,16 +824,18 @@ def _render_split_plots(
             events=events,
             target=target,
             cax=cax,
+            legend_ax=legend_ax,
+            cbar_orientation=cbar_orientation,
             color_mode="speed",
             title="Trajectory by speed",
         )
-        fig.subplots_adjust(left=0.07, right=0.93, bottom=0.10, top=0.95, wspace=0.08)
+        fig.subplots_adjust(left=0.08, right=0.95, bottom=0.08, top=0.96)
         out_paths.append(
             _save_figure(fig, out_dir / "spatial_speed.png", max_side_px=max_side_px)
         )
 
     if mode in {"thrust", "all"}:
-        fig, (ax, cax) = _new_spatial()
+        fig, (ax, cax, legend_ax) = _new_spatial()
         _draw_spatial_panel(
             fig,
             ax,
@@ -653,15 +843,17 @@ def _render_split_plots(
             events=events,
             target=target,
             cax=cax,
+            legend_ax=legend_ax,
+            cbar_orientation=cbar_orientation,
             color_mode="thrust",
             title="Trajectory by thrust",
         )
-        fig.subplots_adjust(left=0.07, right=0.93, bottom=0.10, top=0.95, wspace=0.08)
+        fig.subplots_adjust(left=0.08, right=0.95, bottom=0.08, top=0.96)
         out_paths.append(
             _save_figure(fig, out_dir / "spatial_thrust.png", max_side_px=max_side_px)
         )
 
-        fig, (ax, cax) = _new_spatial()
+        fig, (ax, cax, legend_ax) = _new_spatial()
         _draw_vector_spatial_panel(
             fig,
             ax,
@@ -669,9 +861,11 @@ def _render_split_plots(
             events=events,
             target=target,
             cax=cax,
+            legend_ax=legend_ax,
+            cbar_orientation=cbar_orientation,
             title="Thrust direction vectors (time-sampled)",
         )
-        fig.subplots_adjust(left=0.07, right=0.93, bottom=0.10, top=0.95, wspace=0.08)
+        fig.subplots_adjust(left=0.08, right=0.95, bottom=0.08, top=0.96)
         out_paths.append(
             _save_figure(fig, out_dir / "spatial_thrust_vectors.png", max_side_px=max_side_px)
         )

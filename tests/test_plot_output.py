@@ -5,7 +5,12 @@ from pathlib import Path
 
 import matplotlib.image as mpimg
 
-from utils.plot import save_trajectory_plots
+from utils.plot import (
+    _build_plot_context,
+    _combined_spatial_arrangement,
+    _compute_figure_size,
+    save_trajectory_plots,
+)
 
 
 class _FlatTerrain:
@@ -24,6 +29,24 @@ def _samples() -> list[tuple[float, float, float, float, float, float, float, fl
         (60.0, 100.0, 16.0, 0.4, 0.1, 0.5, 8.0, -13.0),
         (120.0, 70.0, 18.0, 0.7, 0.2, 1.0, 10.0, -15.0),
         (170.0, 30.0, 22.0, 0.1, 0.4, 1.5, 14.0, -20.0),
+    ]
+
+
+def _tall_samples() -> list[tuple[float, float, float, float, float, float, float, float]]:
+    return [
+        (0.0, 0.0, 8.0, 0.1, 0.0, 0.0, 0.0, 8.0),
+        (20.0, 180.0, 9.0, 0.5, 0.1, 0.5, 3.0, 11.0),
+        (40.0, 420.0, 10.0, 0.8, 0.2, 1.0, 4.0, 12.0),
+        (65.0, 760.0, 11.0, 0.3, 0.3, 1.5, 5.0, 13.0),
+    ]
+
+
+def _shallow_samples() -> list[tuple[float, float, float, float, float, float, float, float]]:
+    return [
+        (0.0, 0.0, 8.0, 0.2, 0.0, 0.0, 0.0, 3.0),
+        (80.0, 12.0, 9.0, 0.4, 0.0, 0.5, 8.0, 2.0),
+        (160.0, 18.0, 10.0, 0.5, 0.1, 1.0, 9.0, -1.0),
+        (220.0, 5.0, 9.0, 0.1, 0.1, 1.5, 8.0, -3.0),
     ]
 
 
@@ -106,3 +129,74 @@ def test_save_trajectory_plots_writes_combined_to_overview_dir(tmp_path: Path) -
     combined = Path(result["plot_paths"][0])
     assert combined.exists()
     assert str(combined).startswith(str(overview_dir))
+
+
+def test_combined_spatial_arrangement_uses_columns_for_tall_paths() -> None:
+    assert _combined_spatial_arrangement(200.0, 900.0) == "columns"
+    assert _combined_spatial_arrangement(900.0, 200.0) == "rows"
+
+
+def test_build_plot_context_limits_wide_shallow_spatial_ratio() -> None:
+    ctx = _build_plot_context(_FlatTerrain(), _shallow_samples())
+    assert ctx.span_x / ctx.span_y <= 3.2
+
+
+def test_build_plot_context_widens_tall_spatial_ratio_for_column_layouts() -> None:
+    ctx = _build_plot_context(_FlatTerrain(), _tall_samples())
+    assert ctx.span_x / ctx.span_y >= 1.24
+
+
+def test_compute_figure_size_keeps_spatial_minimums_for_colorbar_space() -> None:
+    wide_w, wide_h = _compute_figure_size(640.0, 160.0, layout="single")
+    tall_w, tall_h = _compute_figure_size(160.0, 640.0, layout="all", arrangement="columns")
+    assert wide_h >= 6.3
+    assert tall_w >= 18.2
+    assert tall_h >= 12.5
+
+
+def test_save_trajectory_plots_tall_combined_prefers_wider_canvas(tmp_path: Path) -> None:
+    out_dir = tmp_path / "tall_combined"
+    result = save_trajectory_plots(
+        _FlatTerrain(),
+        _tall_samples(),
+        mode="all",
+        output_profile="combined",
+        out_dir=str(out_dir),
+        max_side_px=1200,
+        selector_tag="climb_slope_high_0",
+    )
+
+    image = mpimg.imread(Path(result["plot_path"]))
+    assert image.shape[1] > image.shape[0]
+
+
+def test_save_trajectory_plots_tall_split_does_not_become_overly_wide(tmp_path: Path) -> None:
+    out_dir = tmp_path / "tall_split"
+    result = save_trajectory_plots(
+        _FlatTerrain(),
+        _tall_samples(),
+        mode="speed",
+        output_profile="split",
+        out_dir=str(out_dir),
+        max_side_px=1200,
+        selector_tag="climb_slope_high_0",
+    )
+
+    image = mpimg.imread(Path(result["plot_path"]))
+    assert image.shape[1] / image.shape[0] < 1.3
+
+
+def test_save_trajectory_plots_shallow_split_is_not_extremely_flat(tmp_path: Path) -> None:
+    out_dir = tmp_path / "shallow_split"
+    result = save_trajectory_plots(
+        _FlatTerrain(),
+        _shallow_samples(),
+        mode="speed",
+        output_profile="split",
+        out_dir=str(out_dir),
+        max_side_px=1200,
+        selector_tag="launch_near_0",
+    )
+
+    image = mpimg.imread(Path(result["plot_path"]))
+    assert image.shape[1] / image.shape[0] < 2.6
