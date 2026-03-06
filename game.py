@@ -25,6 +25,7 @@ from runtime.actor_session import (
 from runtime.bot_loop import BotLoopContext, update_bot_steps
 from runtime.loop_timing import LoopTimers
 from runtime.metrics import BotLoopProfiler, RunMetricsTracker
+from runtime.physics_steps import PhysicsStepContext, update_physics_steps
 from runtime.interactive_session import (
     process_interactive_input,
     render_frame,
@@ -61,6 +62,8 @@ from core.config import (
     PHYSICS_FPS,
     TARGET_RENDERING_FPS,
 )
+
+
 class LanderGame:
     """Main application for lunar lander game."""
 
@@ -168,6 +171,18 @@ class LanderGame:
             sensor_update_system=self.sensor_update_system,
             profiler=self._bot_profiler,
             terrain=self.terrain,
+        )
+        self._physics_step_context = PhysicsStepContext(
+            actors=self.actors,
+            engine_adapter=self.engine_adapter,
+            scripted_control_system=self.scripted_control_system,
+            landing_site_motion_system=self.landing_site_motion_system,
+            landing_site_projection_system=self.landing_site_projection_system,
+            propulsion_system=self.propulsion_system,
+            force_application_system=self.force_application_system,
+            physics_sync_system=self.physics_sync_system,
+            contact_system=self.contact_system,
+            mass_resolver=get_mass,
         )
         if self.renderer is not None:
             self.renderer.bot = self._active_actor_bot()
@@ -349,23 +364,7 @@ class LanderGame:
         )
 
     def _update_physics_steps(self, timers: LoopTimers) -> None:
-        physics_dt = timers.physics_dt
-        while timers.should_step_physics():
-            timers.consume_physics()
-            self.scripted_control_system.update(physics_dt)
-            self.landing_site_motion_system.update(physics_dt)
-            self.landing_site_projection_system.update(physics_dt)
-            self.propulsion_system.update(physics_dt)
-            self.force_application_system.update(physics_dt)
-            if self.engine_adapter.enabled:
-                self._sync_actor_masses_to_engine()
-                self.engine_adapter.step(physics_dt)
-                self.physics_sync_system.update(physics_dt)
-                self.contact_system.update(physics_dt)
-
-    def _sync_actor_masses_to_engine(self) -> None:
-        for actor in self.actors:
-            self.engine_adapter.set_actor_mass(actor.uid, get_mass(actor))
+        update_physics_steps(timers, context=self._physics_step_context)
 
     def _update_bot_steps(self, timers: LoopTimers) -> dict[str, ControlTuple | None]:
         return update_bot_steps(timers, context=self._bot_loop_context)
