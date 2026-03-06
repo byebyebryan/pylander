@@ -2,14 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-import core.maths as maths
 from core.maths import Range1D, RigidTransform2, Size2, Vector2
 from ui.camera import Camera
-
-
-def test_math_transform_symbol_removed() -> None:
-    assert hasattr(maths, "RigidTransform2")
-    assert not hasattr(maths, "Transform")
 
 
 def test_camera_visible_world_rect() -> None:

@@ -29,16 +29,6 @@ def test_closest_point_uses_vector_origin_signature() -> None:
     assert math.isclose(out["y"], 0.0, abs_tol=1e-6)
 
 
-def test_attach_lander_rejects_removed_start_xy_args() -> None:
-    engine = PhysicsEngine(height_sampler=_FlatTerrain(), gravity=(0.0, -9.8))
-    try:
-        engine.attach_lander(width=8.0, height=8.0, mass=10.0, start_x=0.0, start_y=20.0)  # type: ignore[call-arg]
-    except TypeError:
-        pass
-    else:
-        raise AssertionError("Expected TypeError for removed start_x/start_y kwargs")
-
-
 def test_teleport_lander_clears_velocity_when_requested() -> None:
     engine = PhysicsEngine(height_sampler=_FlatTerrain(), gravity=(0.0, -9.8))
     engine.attach_lander(

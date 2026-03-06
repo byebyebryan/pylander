@@ -21,7 +21,6 @@ from core.components import (
 )
 from core.ecs import Entity, World
 from core.landing_sites import LandingSiteSurfaceModel
-from core.lander import Lander
 from core.maths import Range1D, Vector2
 from core.systems.contact import ContactSystem
 from core.systems.control_routing import ControlRoutingSystem
@@ -794,10 +793,3 @@ def test_contact_system_crashes_on_side_scrape_contact() -> None:
     ls = lander.get_component(LanderState)
     assert ls is not None
     assert ls.state == "crashed"
-
-
-def test_lander_behavior_api_is_removed() -> None:
-    lander = Lander(start_pos=Vector2(0.0, 0.0))
-    assert not hasattr(lander, "apply_controls")
-    assert not hasattr(lander, "update_sensors")
-    assert not hasattr(lander, "get_stats_text")

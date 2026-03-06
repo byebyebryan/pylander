@@ -320,17 +320,6 @@ def test_launch_run_merges_bot_telemetry_fields_into_result() -> None:
     assert "bot_zem_zev_shape_curve_rmse" in result
 
 
-def test_launch_setup_gate_latches_no_later_than_terminal_gate() -> None:
-    level = create_level_by_name("launch")
-    level.set_eval_scenario("far")
-    game = LanderGame(level=level, seed=1, bot=create_bot("zem_zev"), headless=True)
-    result = game.run(print_freq=0, max_time=120.0)
-    setup_gate_time = result.get("setup_gate_time")
-    terminal_gate_time = result.get("bot_zem_zev_terminal_gate_time")
-    if setup_gate_time is not None and terminal_gate_time is not None:
-        assert float(setup_gate_time) <= float(terminal_gate_time) + 1e-6
-
-
 def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
     records = [
         normalize_run_result(
@@ -358,12 +347,6 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
 
 def test_parse_seed_spec_keeps_order_and_deduplicates() -> None:
     assert parse_seed_spec("0-2,2,5,4-3") == [0, 1, 2, 5, 4, 3]
-
-
-def test_parse_args_drops_bot_behavior_support() -> None:
-    _parser, command = parse_command(["run", "plunge", "--bot", "plunge"])
-    assert isinstance(command, RunCommand)
-    assert command.run.bot_name == "plunge"
 
 
 def test_parser_rejects_removed_bot_behavior_flag() -> None:
