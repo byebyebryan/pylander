@@ -4,10 +4,10 @@ from dataclasses import dataclass
 
 from core.components import PhysicsState, Transform
 from core.level import Level
-from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 from core.maths import Vector2
 from core.ecs import require_component
 from levels.scenario_common import (
+    ScenarioCatalogMixin,
     ScenarioLevel,
     ScenarioLevelSpec,
     validate_scenario_recoverability,
@@ -76,42 +76,21 @@ def _make_spec(scenario: PlungeScenario) -> ScenarioLevelSpec:
     )
 
 
-class PlungeLevel(ScenarioLevel):
+class PlungeLevel(ScenarioCatalogMixin, ScenarioLevel):
     default_bot_name = "zem_zev"
+    _scenario_by_name = _SCENARIO_BY_NAME
+    _default_scenario_name = _DEFAULT_SCENARIO
+    _smoke_benchmark_scenarios = _SMOKE_BENCHMARK_SCENARIOS
+    _quick_benchmark_scenarios = _QUICK_BENCHMARK_SCENARIOS
 
     def __init__(self) -> None:
         super().__init__()
-        self._eval_scenario_name = _DEFAULT_SCENARIO
+        self._init_scenario_catalog()
         self.scenario = _make_spec(_SCENARIO_BY_NAME[self._eval_scenario_name])
-
-    @staticmethod
-    def list_batch_scenarios() -> list[str]:
-        return [item.name for item in _SCENARIOS]
-
-    @staticmethod
-    def list_quick_benchmark_scenarios() -> list[str]:
-        return [name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME]
-
-    @staticmethod
-    def benchmark_profile() -> LevelBenchmarkProfile:
-        full = tuple(item.name for item in _SCENARIOS)
-        quick = tuple(name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME)
-        smoke = tuple(name for name in _SMOKE_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME)
-        return LevelBenchmarkProfile(
-            policy="normal",
-            scenarios=BenchmarkScenarioSets(smoke=smoke, quick=quick, full=full),
-        )
-
-    def set_eval_scenario(self, name: str) -> None:
-        key = str(name).strip().lower()
-        if key not in _SCENARIO_BY_NAME:
-            known = ", ".join(sorted(_SCENARIO_BY_NAME))
-            raise ValueError(f"Unknown plunge scenario '{name}'. Expected one of: {known}")
-        self._eval_scenario_name = key
 
     def setup(self, game, seed: int) -> None:
         _ = seed
-        scenario = _SCENARIO_BY_NAME[self._eval_scenario_name]
+        scenario = self._active_scenario()
         self.scenario = _make_spec(scenario)
         super().setup(game, seed)
 

@@ -4,12 +4,12 @@ import core.terrain as _terrain
 from core.components import CargoHold, Transform
 from core.ecs import require_component
 from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
-from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 from core.level import Level
 from core.maths import Vector2
 from dataclasses import dataclass
 
 from levels.common import PresetLevel, SiteSpec, get_mass
+from levels.scenario_common import ScenarioCatalogMixin
 
 _SOURCE_PAD_X = 0.0
 
@@ -35,11 +35,17 @@ _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
     "slope_mid",
     "slope_high",
 )
-class ClimbLevel(PresetLevel):
+class ClimbLevel(ScenarioCatalogMixin, PresetLevel):
     """Pad-to-pad climb transfer with uphill destination profiles and no obstacles."""
 
     default_bot_name = "zem_zev"
     dynamic_site_enabled = False
+    _scenario_by_name = _SCENARIO_BY_NAME
+    _default_scenario_name = _DEFAULT_SCENARIO
+    _smoke_benchmark_scenarios = _SMOKE_BENCHMARK_SCENARIOS
+    _quick_benchmark_scenarios = _QUICK_BENCHMARK_SCENARIOS
+    _benchmark_policy = "observe_only"
+    _supported_eval_goals = (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
 
     site_specs = ()
     spawn_x = _SOURCE_PAD_X
@@ -49,37 +55,8 @@ class ClimbLevel(PresetLevel):
 
     def __init__(self) -> None:
         super().__init__()
-        self._eval_scenario_name = _DEFAULT_SCENARIO
+        self._init_scenario_catalog()
         self._benchmark_random_mode = "sample"
-
-    @staticmethod
-    def supported_eval_goals() -> tuple[str, ...]:
-        return (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
-
-    @staticmethod
-    def list_batch_scenarios() -> list[str]:
-        return [item.name for item in _SCENARIOS]
-
-    @staticmethod
-    def list_quick_benchmark_scenarios() -> list[str]:
-        return [name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME]
-
-    @staticmethod
-    def benchmark_profile() -> LevelBenchmarkProfile:
-        full = tuple(item.name for item in _SCENARIOS)
-        quick = tuple(name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME)
-        smoke = tuple(name for name in _SMOKE_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME)
-        return LevelBenchmarkProfile(
-            policy="observe_only",
-            scenarios=BenchmarkScenarioSets(smoke=smoke, quick=quick, full=full),
-        )
-
-    def set_eval_scenario(self, name: str) -> None:
-        key = str(name).strip().lower()
-        if key not in _SCENARIO_BY_NAME:
-            known = ", ".join(sorted(_SCENARIO_BY_NAME))
-            raise ValueError(f"Unknown climb scenario '{name}'. Expected one of: {known}")
-        self._eval_scenario_name = key
 
     def set_benchmark_mode(self, mode: str) -> None:
         key = str(mode or "sample").strip().lower()
@@ -89,9 +66,6 @@ class ClimbLevel(PresetLevel):
 
     def scenario_has_randomized_fields(self, _name: str | None = None) -> bool:
         return False
-
-    def _active_scenario(self) -> ClimbScenario:
-        return _SCENARIO_BY_NAME[self._eval_scenario_name]
 
     @staticmethod
     def _scenario_slope(scenario: ClimbScenario) -> float:

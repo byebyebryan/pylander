@@ -7,11 +7,11 @@ from dataclasses import dataclass
 from core.components import PhysicsState, Transform
 from core.ecs import require_component
 from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
-from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 from core.level import Level
 from core.maths import Vector2
 from levels.scenario_common import (
     SampleRange,
+    ScenarioCatalogMixin,
     ScenarioLevel,
     ScenarioLevelSpec,
     has_randomized_values,
@@ -82,12 +82,17 @@ def _make_spec(*, name: str, start_dx: float, start_dy: float, cargo_mass: float
     )
 
 
-class SetupLevel(ScenarioLevel):
+class SetupLevel(ScenarioCatalogMixin, ScenarioLevel):
     default_bot_name = "zem_zev"
+    _scenario_by_name = _SCENARIO_BY_NAME
+    _default_scenario_name = _DEFAULT_SCENARIO
+    _smoke_benchmark_scenarios = _SMOKE_BENCHMARK_SCENARIOS
+    _quick_benchmark_scenarios = _QUICK_BENCHMARK_SCENARIOS
+    _supported_eval_goals = (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
 
     def __init__(self) -> None:
         super().__init__()
-        self._eval_scenario_name = _DEFAULT_SCENARIO
+        self._init_scenario_catalog()
         self.scenario = _make_spec(
             name=self._eval_scenario_name,
             start_dx=0.0,
@@ -95,41 +100,12 @@ class SetupLevel(ScenarioLevel):
             cargo_mass=0.0,
         )
 
-    @staticmethod
-    def supported_eval_goals() -> tuple[str, ...]:
-        return (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
-
-    @staticmethod
-    def list_batch_scenarios() -> list[str]:
-        return [item.name for item in _SCENARIOS]
-
-    @staticmethod
-    def list_quick_benchmark_scenarios() -> list[str]:
-        return [name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME]
-
-    @staticmethod
-    def benchmark_profile() -> LevelBenchmarkProfile:
-        full = tuple(item.name for item in _SCENARIOS)
-        quick = tuple(name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME)
-        smoke = tuple(name for name in _SMOKE_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME)
-        return LevelBenchmarkProfile(
-            policy="normal",
-            scenarios=BenchmarkScenarioSets(smoke=smoke, quick=quick, full=full),
-        )
-
-    def set_eval_scenario(self, name: str) -> None:
-        key = str(name).strip().lower()
-        if key not in _SCENARIO_BY_NAME:
-            known = ", ".join(sorted(_SCENARIO_BY_NAME))
-            raise ValueError(f"Unknown setup scenario '{name}'. Expected one of: {known}")
-        self._eval_scenario_name = key
-
     def scenario_has_randomized_fields(self, _name: str | None = None) -> bool:
-        scenario = _SCENARIO_BY_NAME[self._eval_scenario_name]
+        scenario = self._active_scenario()
         return has_randomized_values((scenario.radius, scenario.angle_deviation_deg))
 
     def setup(self, game, seed: int) -> None:
-        scenario_base = _SCENARIO_BY_NAME[self._eval_scenario_name]
+        scenario_base = self._active_scenario()
         scenario_name_hash = sum(ord(ch) for ch in scenario_base.name)
         rng = random.Random(seed ^ (scenario_name_hash << 1))
 

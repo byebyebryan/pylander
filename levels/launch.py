@@ -7,12 +7,12 @@ import core.terrain as _terrain
 from core.components import CargoHold, Transform
 from core.ecs import require_component
 from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
-from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 from core.level import Level
 from core.maths import Vector2
 from levels.common import PresetLevel, SiteSpec, get_mass
 from levels.scenario_common import (
     SampleRange,
+    ScenarioCatalogMixin,
     has_randomized_values,
     resolve_sample_value,
 )
@@ -37,11 +37,16 @@ _SMOKE_BENCHMARK_SCENARIOS: tuple[str, ...] = ("mid",)
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = ("mid",)
 
 
-class LaunchLevel(PresetLevel):
+class LaunchLevel(ScenarioCatalogMixin, PresetLevel):
     """Two-pad flat transfer setup for repeated point-to-point launch runs."""
 
     default_bot_name = "zem_zev"
     dynamic_site_enabled = False
+    _scenario_by_name = _SCENARIO_BY_NAME
+    _default_scenario_name = _DEFAULT_SCENARIO
+    _smoke_benchmark_scenarios = _SMOKE_BENCHMARK_SCENARIOS
+    _quick_benchmark_scenarios = _QUICK_BENCHMARK_SCENARIOS
+    _supported_eval_goals = (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
 
     site_specs = ()
     spawn_x = _SOURCE_PAD_X
@@ -51,37 +56,8 @@ class LaunchLevel(PresetLevel):
 
     def __init__(self) -> None:
         super().__init__()
-        self._eval_scenario_name = _DEFAULT_SCENARIO
+        self._init_scenario_catalog()
         self._benchmark_random_mode = "sample"
-
-    @staticmethod
-    def supported_eval_goals() -> tuple[str, ...]:
-        return (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
-
-    @staticmethod
-    def list_batch_scenarios() -> list[str]:
-        return [item.name for item in _SCENARIOS]
-
-    @staticmethod
-    def list_quick_benchmark_scenarios() -> list[str]:
-        return [name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME]
-
-    @staticmethod
-    def benchmark_profile() -> LevelBenchmarkProfile:
-        full = tuple(item.name for item in _SCENARIOS)
-        quick = tuple(name for name in _QUICK_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME)
-        smoke = tuple(name for name in _SMOKE_BENCHMARK_SCENARIOS if name in _SCENARIO_BY_NAME)
-        return LevelBenchmarkProfile(
-            policy="normal",
-            scenarios=BenchmarkScenarioSets(smoke=smoke, quick=quick, full=full),
-        )
-
-    def set_eval_scenario(self, name: str) -> None:
-        key = str(name).strip().lower()
-        if key not in _SCENARIO_BY_NAME:
-            known = ", ".join(sorted(_SCENARIO_BY_NAME))
-            raise ValueError(f"Unknown launch scenario '{name}'. Expected one of: {known}")
-        self._eval_scenario_name = key
 
     def set_benchmark_mode(self, mode: str) -> None:
         key = str(mode or "sample").strip().lower()
@@ -97,7 +73,7 @@ class LaunchLevel(PresetLevel):
         return _terrain.LodGridGenerator(lambda _x: 0.0)
 
     def setup(self, game, seed: int) -> None:
-        scenario = _SCENARIO_BY_NAME[self._eval_scenario_name]
+        scenario = self._active_scenario()
         scenario_name_hash = sum(ord(ch) for ch in scenario.name)
         rng = random.Random(seed ^ (scenario_name_hash << 1))
         dest_dx = resolve_sample_value(

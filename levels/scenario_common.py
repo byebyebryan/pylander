@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Mapping
 
 import core.terrain as _terrain
 from core.components import (
@@ -26,8 +26,10 @@ from core.landing_sites import (
     to_view,
 )
 from core.level import Level, LevelWorld
+from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 from core.maths import Vector2
 from core.physics import PhysicsEngine
+from core.eval_goals import EVAL_GOAL_LANDING
 from landers import create_lander
 from core.ecs import require_component
 from levels.common import (
@@ -102,6 +104,68 @@ class ScenarioLevelSpec:
     target_offset_y: float = 0.0
     target_size: float = 100.0
     cargo_mass: float | None = None
+
+
+class ScenarioCatalogMixin:
+    """Shared scenario catalog plumbing for named scenario levels."""
+
+    _scenario_by_name: Mapping[str, object] = {}
+    _default_scenario_name: str = ""
+    _smoke_benchmark_scenarios: tuple[str, ...] = ()
+    _quick_benchmark_scenarios: tuple[str, ...] = ()
+    _benchmark_policy: str = "normal"
+    _supported_eval_goals: tuple[str, ...] = (EVAL_GOAL_LANDING,)
+
+    def _init_scenario_catalog(self) -> None:
+        default_name = str(type(self)._default_scenario_name).strip()
+        if not default_name:
+            raise ValueError(f"{type(self).__name__} must define _default_scenario_name")
+        self._eval_scenario_name = default_name
+
+    @classmethod
+    def _scenario_catalog_name(cls) -> str:
+        type_name = cls.__name__
+        if type_name.endswith("Level"):
+            type_name = type_name[:-5]
+        return type_name.lower() or "level"
+
+    @classmethod
+    def _scenario_names(cls) -> tuple[str, ...]:
+        return tuple(str(name) for name in cls._scenario_by_name)
+
+    def _active_scenario(self):
+        return type(self)._scenario_by_name[self._eval_scenario_name]
+
+    @classmethod
+    def supported_eval_goals(cls) -> tuple[str, ...]:
+        return tuple(str(goal) for goal in cls._supported_eval_goals)
+
+    @classmethod
+    def list_batch_scenarios(cls) -> list[str]:
+        return list(cls._scenario_names())
+
+    @classmethod
+    def list_quick_benchmark_scenarios(cls) -> list[str]:
+        return [name for name in cls._quick_benchmark_scenarios if name in cls._scenario_by_name]
+
+    @classmethod
+    def benchmark_profile(cls) -> LevelBenchmarkProfile:
+        full = cls._scenario_names()
+        quick = tuple(name for name in cls._quick_benchmark_scenarios if name in cls._scenario_by_name)
+        smoke = tuple(name for name in cls._smoke_benchmark_scenarios if name in cls._scenario_by_name)
+        return LevelBenchmarkProfile(
+            policy=cls._benchmark_policy,
+            scenarios=BenchmarkScenarioSets(smoke=smoke, quick=quick, full=full),
+        )
+
+    def set_eval_scenario(self, name: str) -> None:
+        key = str(name).strip().lower()
+        scenario_by_name = type(self)._scenario_by_name
+        if key not in scenario_by_name:
+            known = ", ".join(sorted(scenario_by_name))
+            label = type(self)._scenario_catalog_name()
+            raise ValueError(f"Unknown {label} scenario '{name}'. Expected one of: {known}")
+        self._eval_scenario_name = key
 
 
 def validate_scenario_recoverability(
@@ -337,4 +401,3 @@ class ScenarioLevel(Level):
                 if isinstance(value, (int, float, str, bool)):
                     result[f"scenario_{key}"] = value
         return result
-
