@@ -580,6 +580,16 @@ class LanderGame:
                     projected_dx_val = None
                 if projected_dx_val is not None:
                     label = f"{label} pdx={projected_dx_val:.1f}"
+                if event_name == "setup_gate":
+                    apex_over_target = snapshot.get("setup_gate_projected_apex_over_target")
+                    try:
+                        apex_over_target_val = (
+                            float(apex_over_target) if apex_over_target is not None else None
+                        )
+                    except (TypeError, ValueError):
+                        apex_over_target_val = None
+                    if apex_over_target_val is not None:
+                        label = f"{label} pax={apex_over_target_val:.1f}"
                 self.plotter.mark_event(
                     name=event_name,
                     x=float(trans.pos.x),

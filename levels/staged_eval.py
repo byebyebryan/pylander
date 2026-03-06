@@ -15,6 +15,8 @@ class ZemTelemetry:
     setup_gate_time: float | None = None
     setup_gate_altitude: float | None = None
     setup_gate_projected_dx: float | None = None
+    setup_gate_projected_apex_y: float | None = None
+    setup_gate_projected_apex_over_target: float | None = None
     terminal_gate_done: bool = False
     terminal_gate_time: float | None = None
     terminal_gate_altitude: float | None = None
@@ -121,6 +123,12 @@ class ZemStageEvalTracker:
         self.zem.setup_gate_projected_dx = self.to_optional_float(
             snapshot.get("setup_gate_projected_dx")
         )
+        self.zem.setup_gate_projected_apex_y = self.to_optional_float(
+            snapshot.get("setup_gate_projected_apex_y")
+        )
+        self.zem.setup_gate_projected_apex_over_target = self.to_optional_float(
+            snapshot.get("setup_gate_projected_apex_over_target")
+        )
         self.zem.terminal_gate_done = bool(snapshot.get("terminal_gate_done"))
         self.zem.terminal_gate_time = self.to_optional_float(snapshot.get("terminal_gate_time"))
         self.zem.terminal_gate_altitude = self.to_optional_float(
@@ -213,6 +221,10 @@ class ZemStageEvalTracker:
         result["zem_setup_gate_time"] = self.zem.setup_gate_time
         result["zem_setup_gate_altitude"] = self.zem.setup_gate_altitude
         result["zem_setup_gate_projected_dx"] = self.zem.setup_gate_projected_dx
+        result["zem_setup_gate_projected_apex_y"] = self.zem.setup_gate_projected_apex_y
+        result["zem_setup_gate_projected_apex_over_target"] = (
+            self.zem.setup_gate_projected_apex_over_target
+        )
         result["zem_terminal_gate_done"] = self.zem.terminal_gate_done
         result["zem_terminal_gate_time"] = self.zem.terminal_gate_time
         result["zem_terminal_gate_altitude"] = self.zem.terminal_gate_altitude

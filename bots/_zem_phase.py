@@ -4,6 +4,18 @@ import math
 
 from bots._ballistics import BallisticProjection
 from core.bot import PassiveSensors
+from core.config import GRAVITY
+
+_GRAVITY_MAG = abs(float(GRAVITY))
+
+
+def _projected_apex(y: float, vy_up: float, target_y: float) -> tuple[float, float]:
+    vy_pos = max(0.0, float(vy_up))
+    if _GRAVITY_MAG <= 1e-6:
+        apex_y = float(y)
+    else:
+        apex_y = float(y) + ((vy_pos * vy_pos) / (2.0 * _GRAVITY_MAG))
+    return apex_y, (apex_y - float(target_y))
 
 
 def update_phase_tracking(
@@ -18,8 +30,10 @@ def update_phase_tracking(
     cfg = bot._cfg
     projected_dx = float(projection.projected_dx)
     t_fall = max(0.0, float(projection.t_fall))
+    has_target_y_solution = bool(getattr(projection, "has_target_y_solution", True))
     bot._last_projection_dx = projected_dx
     bot._last_projection_t_fall = t_fall
+    bot._last_projection_has_target_y = has_target_y_solution
 
     track_vx = dx / max(0.75, t_fall)
     setup_dx_limit = max(
@@ -63,15 +77,24 @@ def update_phase_tracking(
                     bot._setup_burn_idle_since = bot._elapsed_time_s
                 idle_elapsed = bot._elapsed_time_s - bot._setup_burn_idle_since
                 if idle_elapsed >= cfg.setup_gate_burn_end_settle_s:
+                    target_y = float(bot._last_target_y)
+                    apex_y, apex_over_target = _projected_apex(
+                        y=float(passive.y),
+                        vy_up=float(passive.vy_up),
+                        target_y=target_y,
+                    )
                     bot._setup_gate_done = True
                     bot._setup_gate_time = bot._elapsed_time_s
                     bot._setup_gate_altitude = alt
                     bot._setup_gate_projected_dx = projected_dx
+                    bot._setup_gate_projected_apex_y = apex_y
+                    bot._setup_gate_projected_apex_over_target = apex_over_target
                     bot._debug_setup_post_end_time = bot._elapsed_time_s + 4.0
                     bot._debug_setup_print(
                         "gate_latch_burn_end "
                         f"t={bot._elapsed_time_s:6.2f} "
                         f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
+                        f"proj_apex_over_target={apex_over_target:8.2f} "
                         f"signed={shortfall_metric:8.2f} "
                         f"thrust={thrust_level:5.2f}"
                     )
@@ -142,14 +165,23 @@ def update_phase_tracking(
         bot._terminal_gate_altitude = alt
         bot._terminal_gate_projected_dx = projected_dx
         if not bot._setup_gate_done:
+            target_y = float(bot._last_target_y)
+            apex_y, apex_over_target = _projected_apex(
+                y=float(passive.y),
+                vy_up=float(passive.vy_up),
+                target_y=target_y,
+            )
             bot._setup_gate_done = True
             bot._setup_gate_time = bot._elapsed_time_s
             bot._setup_gate_altitude = alt
             bot._setup_gate_projected_dx = projected_dx
+            bot._setup_gate_projected_apex_y = apex_y
+            bot._setup_gate_projected_apex_over_target = apex_over_target
             bot._debug_setup_print(
                 "gate_latch_terminal_fallback "
                 f"t={bot._elapsed_time_s:6.2f} "
                 f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
+                f"proj_apex_over_target={apex_over_target:8.2f} "
                 f"signed={shortfall_metric:8.2f} "
                 f"thrust={thrust_level:5.2f}"
             )

@@ -85,6 +85,8 @@ class ZemZevBot(QueryBot):
         self._setup_gate_time: float | None = None
         self._setup_gate_altitude: float | None = None
         self._setup_gate_projected_dx: float | None = None
+        self._setup_gate_projected_apex_y: float | None = None
+        self._setup_gate_projected_apex_over_target: float | None = None
         self._setup_burn_started = False
         self._setup_burn_idle_since: float | None = None
         self._terminal_gate_done = False
@@ -93,6 +95,7 @@ class ZemZevBot(QueryBot):
         self._terminal_gate_projected_dx: float | None = None
         self._last_projection_dx: float | None = None
         self._last_projection_t_fall: float | None = None
+        self._last_projection_has_target_y: bool = False
         self._last_target_y: float = 0.0
         self._peak_alt_over_target = 0.0
         self._lateral_overshoot = 0.0
@@ -187,6 +190,8 @@ class ZemZevBot(QueryBot):
         self._setup_gate_time = None
         self._setup_gate_altitude = None
         self._setup_gate_projected_dx = None
+        self._setup_gate_projected_apex_y = None
+        self._setup_gate_projected_apex_over_target = None
         self._setup_burn_started = False
         self._setup_burn_idle_since = None
         self._terminal_gate_done = False
@@ -195,6 +200,7 @@ class ZemZevBot(QueryBot):
         self._terminal_gate_projected_dx = None
         self._last_projection_dx = None
         self._last_projection_t_fall = None
+        self._last_projection_has_target_y = False
         self._last_target_y = 0.0
         self._peak_alt_over_target = 0.0
         self._lateral_overshoot = 0.0

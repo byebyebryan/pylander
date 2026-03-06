@@ -148,6 +148,12 @@ def normalize_run_result(
         "zem_setup_gate_projected_dx": _to_optional_float(
             result.get("zem_setup_gate_projected_dx")
         ),
+        "zem_setup_gate_projected_apex_y": _to_optional_float(
+            result.get("zem_setup_gate_projected_apex_y")
+        ),
+        "zem_setup_gate_projected_apex_over_target": _to_optional_float(
+            result.get("zem_setup_gate_projected_apex_over_target")
+        ),
         "zem_terminal_gate_done": _to_optional_bool(result.get("zem_terminal_gate_done")),
         "zem_terminal_gate_time": _to_optional_float(result.get("zem_terminal_gate_time")),
         "zem_terminal_gate_altitude": _to_optional_float(
