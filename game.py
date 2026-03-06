@@ -37,6 +37,7 @@ from runtime.result_pipeline import (
     merge_bot_snapshots_into_result,
     resolve_headless_bot_eval_decision,
 )
+from runtime.session_loop import SessionLoopContext, run_session_loop
 from runtime.sensors import (
     build_headless_stats,
     resolve_eval_target_pos,
@@ -262,7 +263,6 @@ class LanderGame:
     ):
         physics_dt = 1.0 / PHYSICS_FPS
         bot_dt = 1.0 / BOT_FPS
-        step_count = 0
         frame_dt = 1.0 / TARGET_RENDERING_FPS
         timers = LoopTimers(physics_dt=physics_dt, bot_dt=bot_dt, frame_dt=frame_dt)
 
@@ -286,94 +286,47 @@ class LanderGame:
             start_pos=start_pos,
             eval_target_pos=eval_target_pos,
         )
-        controls_by_uid: dict[str, ControlTuple | None] = {}
-        state_before: dict[str, str] = {}
-
-        while self.running:
-            if self.headless and max_time is not None and timers.elapsed_time >= max_time:
-                break
-            if max_steps is not None and step_count >= max_steps:
-                break
-
-            user_controls, _ = self._process_input(frame_dt)
-            if not self.running:
-                break
-
-            timers.advance_frame(frame_dt)
-            self._elapsed_time = timers.elapsed_time
-
-            self._update_physics_steps(timers)
-            bot_controls = self._update_bot_steps(timers)
-            if self._bot_profiler.enabled:
-                for line in self._bot_profiler.maybe_report_lines(timers.elapsed_time):
-                    print(line)
-
-            if user_controls is not None:
-                self._bot_override_timer = self.bot_override_delay
-            else:
-                self._bot_override_timer = max(0.0, self._bot_override_timer - frame_dt)
-
-            controls_by_uid.clear()
-            if user_controls is not None:
-                controls_by_uid[self.active_player_actor_uid] = user_controls
-            if self._bot_override_timer == 0.0:
-                for uid, controls in bot_controls.items():
-                    # Human input only suppresses bot control on the currently active actor.
-                    if uid == self.active_player_actor_uid and user_controls is not None:
-                        continue
-                    controls_by_uid[uid] = controls
-
-            state_before.clear()
-            for actor in self.actors:
-                ls = actor.get_component(LanderState)
-                if ls is not None:
-                    state_before[actor.uid] = ls.state
-
-            self.control_routing_system.set_controls_map(controls_by_uid)
-            self.control_routing_system.update(frame_dt)
-            self.refuel_system.update(frame_dt)
-            self.state_transition_system.update(frame_dt)
-
-            if self.engine_adapter.enabled:
-                for actor in self.actors:
-                    before = state_before.get(actor.uid)
-                    ls = actor.get_component(LanderState)
-                    trans = actor.get_component(Transform)
-                    if before != "landed" or ls is None or trans is None:
-                        continue
-                    if ls.state == "flying":
-                        self.engine_adapter.teleport_lander(
-                            trans.pos,
-                            angle=trans.rotation,
-                            clear_velocity=True,
-                            uid=actor.uid,
-                        )
-
-            self.sensor_update_system.update(frame_dt)
-            self.level.update(self, frame_dt)
-            self._track_plot_events()
-            self.plotter.update(frame_dt)
-            frame_dt = self._render(frame_dt)
-            step_count += 1
-
-            if self.headless and print_freq > 0 and step_count % print_freq == 0:
-                self._print_headless_stats(timers)
-
-            active_actor = self.get_active_actor()
-            metrics.update_for_actor(active_actor, dt_used=max(0.0, float(frame_dt)))
-            metrics.update_state_counters(active_actor, elapsed_time=timers.elapsed_time)
-
-            decision = self._resolve_headless_bot_eval_decision()
-            if decision is not None and decision.should_end:
-                self._bot_eval_decision = decision
-                break
-
-            if self.level.should_end(self):
-                break
+        loop_result = run_session_loop(
+            context=SessionLoopContext(
+                headless=self.headless,
+                actors=self.actors,
+                engine_adapter=self.engine_adapter,
+                control_routing_system=self.control_routing_system,
+                refuel_system=self.refuel_system,
+                state_transition_system=self.state_transition_system,
+                sensor_update_system=self.sensor_update_system,
+                plotter=self.plotter,
+                bot_profiler=self._bot_profiler,
+                metrics=metrics,
+                bot_override_delay=self.bot_override_delay,
+                bot_override_timer=self._bot_override_timer,
+                is_running=lambda: self.running,
+                active_uid=lambda: self.active_player_actor_uid,
+                get_active_actor=self.get_active_actor,
+                process_input=self._process_input,
+                set_elapsed_time=lambda elapsed: setattr(self, "_elapsed_time", elapsed),
+                update_physics_steps=self._update_physics_steps,
+                update_bot_steps=self._update_bot_steps,
+                level_update=lambda dt: self.level.update(self, dt),
+                track_plot_events=self._track_plot_events,
+                render=self._render,
+                print_headless_stats=self._print_headless_stats,
+                resolve_headless_bot_eval_decision=self._resolve_headless_bot_eval_decision,
+                level_should_end=lambda: self.level.should_end(self),
+            ),
+            timers=timers,
+            print_freq=print_freq,
+            max_time=max_time,
+            max_steps=max_steps,
+        )
 
         if self.renderer:
             self.renderer.shutdown()
 
+        timers = loop_result.timers
+        metrics = loop_result.metrics
+        self._bot_eval_decision = loop_result.bot_eval_decision
+        self._bot_override_timer = loop_result.bot_override_timer
         self._elapsed_time = timers.elapsed_time
         self._landing_count = metrics.landing_count
         self._crash_count = metrics.crash_count
