@@ -5,6 +5,31 @@ from typing import Any
 from core.bot import Bot, BotEvalDecision, FlightPhaseSnapshot, SetupGateMetrics
 from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
 
+_SETUP_GATE_RESULT_TO_ATTR: tuple[tuple[str, str], ...] = (
+    ("setup_gate_time", "time_s"),
+    ("setup_gate_altitude", "altitude"),
+    ("setup_gate_projected_apex_y", "projected_apex_y"),
+    ("setup_gate_projected_apex_over_target", "projected_apex_over_target"),
+    ("setup_gate_has_target_y_solution", "has_target_y_solution"),
+    ("setup_gate_projected_dx", "projected_impact_dx"),
+    ("setup_gate_projected_impact_angle_deg", "projected_impact_angle_deg"),
+    ("setup_gate_burn_duration_s", "burn_duration_s"),
+    ("setup_gate_burn_fuel_used", "burn_fuel_used"),
+    ("setup_gate_burn_avg_thrust_level", "burn_avg_thrust_level"),
+)
+
+_SETUP_GATE_TO_SETUP_GOAL_FIELDS: tuple[tuple[str, str], ...] = (
+    ("setup_goal_time", "setup_gate_time"),
+    ("setup_goal_altitude", "setup_gate_altitude"),
+    ("setup_goal_projected_apex_y", "setup_gate_projected_apex_y"),
+    ("setup_goal_projected_apex_over_target", "setup_gate_projected_apex_over_target"),
+    ("setup_goal_has_target_y_solution", "setup_gate_has_target_y_solution"),
+    ("setup_goal_projected_dx", "setup_gate_projected_dx"),
+    ("setup_goal_projected_impact_angle_deg", "setup_gate_projected_impact_angle_deg"),
+    ("setup_goal_fuel_consumed", "setup_gate_burn_fuel_used"),
+    ("setup_goal_burn_avg_thrust_level", "setup_gate_burn_avg_thrust_level"),
+)
+
 
 def _safe_bot_telemetry(bot: Any) -> dict[str, Any]:
     getter = getattr(bot, "get_bot_telemetry", None)
@@ -48,53 +73,16 @@ def _merge_setup_gate_snapshot_into_result(
     setup_gate = phase_snapshot.setup_gate
     if not isinstance(setup_gate, SetupGateMetrics):
         return
-
-    result.setdefault("setup_gate_time", setup_gate.time_s)
-    result.setdefault("setup_gate_altitude", setup_gate.altitude)
-    result.setdefault("setup_gate_projected_apex_y", setup_gate.projected_apex_y)
-    result.setdefault(
-        "setup_gate_projected_apex_over_target",
-        setup_gate.projected_apex_over_target,
-    )
-    result.setdefault("setup_gate_has_target_y_solution", setup_gate.has_target_y_solution)
-    result.setdefault("setup_gate_projected_dx", setup_gate.projected_impact_dx)
-    result.setdefault(
-        "setup_gate_projected_impact_angle_deg",
-        setup_gate.projected_impact_angle_deg,
-    )
-    result.setdefault("setup_gate_burn_duration_s", setup_gate.burn_duration_s)
-    result.setdefault("setup_gate_burn_fuel_used", setup_gate.burn_fuel_used)
-    result.setdefault("setup_gate_burn_avg_thrust_level", setup_gate.burn_avg_thrust_level)
+    for result_key, attr_name in _SETUP_GATE_RESULT_TO_ATTR:
+        result.setdefault(result_key, getattr(setup_gate, attr_name))
 
 
 def _copy_setup_gate_result_to_setup_goal(result: dict[str, Any]) -> None:
     if not bool(result.get("setup_gate_done")):
         return
     result.setdefault("setup_goal_done", True)
-    result.setdefault("setup_goal_time", result.get("setup_gate_time"))
-    result.setdefault("setup_goal_altitude", result.get("setup_gate_altitude"))
-    result.setdefault(
-        "setup_goal_projected_apex_y",
-        result.get("setup_gate_projected_apex_y"),
-    )
-    result.setdefault(
-        "setup_goal_projected_apex_over_target",
-        result.get("setup_gate_projected_apex_over_target"),
-    )
-    result.setdefault(
-        "setup_goal_has_target_y_solution",
-        result.get("setup_gate_has_target_y_solution"),
-    )
-    result.setdefault("setup_goal_projected_dx", result.get("setup_gate_projected_dx"))
-    result.setdefault(
-        "setup_goal_projected_impact_angle_deg",
-        result.get("setup_gate_projected_impact_angle_deg"),
-    )
-    result.setdefault("setup_goal_fuel_consumed", result.get("setup_gate_burn_fuel_used"))
-    result.setdefault(
-        "setup_goal_burn_avg_thrust_level",
-        result.get("setup_gate_burn_avg_thrust_level"),
-    )
+    for setup_goal_key, setup_gate_key in _SETUP_GATE_TO_SETUP_GOAL_FIELDS:
+        result.setdefault(setup_goal_key, result.get(setup_gate_key))
 
 
 def merge_bot_snapshots_into_result(

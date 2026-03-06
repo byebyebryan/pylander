@@ -6,8 +6,62 @@ import json
 from pathlib import Path
 from typing import Any
 
-from core.eval_schema import EFFICIENCY_METRIC_FIELDS
+from core.eval_schema import (
+    ARRIVAL_RESULT_FIELDS,
+    BOT_PROFILE_RESULT_FIELDS,
+    EFFICIENCY_METRIC_FIELDS,
+    SETUP_GATE_RESULT_FIELDS,
+    SETUP_GOAL_RESULT_FIELDS,
+)
 from core.selector_codec import render_record_selector
+
+_DEFAULT_FLOAT_RESULT_FIELDS: tuple[str, ...] = (
+    "time",
+    "credits",
+    "fuel",
+    "fuel_remaining",
+    "score",
+    "distance_flown",
+    "avg_speed",
+    "fuel_consumed",
+    "fuel_per_distance",
+    "overdrive_time",
+    "overdrive_fraction",
+    "overdrive_excess",
+)
+
+_OPTIONAL_FLOAT_RESULT_FIELDS: tuple[str, ...] = (
+    "landing_offset",
+    "path_efficiency",
+    "time_to_first_land",
+    "spawn_to_target_distance",
+    *tuple(
+        field
+        for field in SETUP_GOAL_RESULT_FIELDS
+        if field not in {"setup_goal_done", "setup_goal_has_target_y_solution"}
+    ),
+    *tuple(
+        field
+        for field in SETUP_GATE_RESULT_FIELDS
+        if field not in {"setup_gate_done", "setup_gate_has_target_y_solution"}
+    ),
+    *tuple(field for field in BOT_PROFILE_RESULT_FIELDS if field != "bot_profile_enabled"),
+)
+
+_OPTIONAL_BOOL_RESULT_FIELDS: tuple[str, ...] = (
+    "eval_early_end",
+    "setup_goal_done",
+    "setup_goal_has_target_y_solution",
+    "setup_gate_done",
+    "setup_gate_has_target_y_solution",
+    *tuple(field for field in ARRIVAL_RESULT_FIELDS if field.endswith("_arrived")),
+    "bot_profile_enabled",
+)
+
+_PASSTHROUGH_RESULT_FIELDS: tuple[str, ...] = (
+    "eval_end_reason",
+    *tuple(field for field in ARRIVAL_RESULT_FIELDS if not field.endswith("_arrived")),
+)
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
@@ -105,120 +159,32 @@ def normalize_run_result(
     else:
         failure_mode = "none" if success else state
     eval_goal = str(result.get("eval_goal") or "landing")
-    eval_early_end = _to_optional_bool(result.get("eval_early_end"))
-    eval_end_reason = result.get("eval_end_reason")
     record = {
         "bot": bot_name,
         "level": level_name,
         "scenario": scenario,
         "seed": seed,
         "state": state,
-        "time": _to_float(result.get("time", 0.0), 0.0),
         "landing_count": landing_count,
         "crash_count": crash_count,
-        "credits": _to_float(result.get("credits", 0.0), 0.0),
-        "fuel": _to_float(result.get("fuel", 0.0), 0.0),
-        "fuel_remaining": _to_float(
-            result.get("fuel_remaining", result.get("fuel", 0.0)),
-            0.0,
-        ),
-        "score": _to_float(result.get("score", 0.0), 0.0),
-        "distance_flown": _to_float(result.get("distance_flown", 0.0), 0.0),
-        "landing_offset": _to_optional_float(result.get("landing_offset")),
-        "avg_speed": _to_float(result.get("avg_speed", 0.0), 0.0),
-        "fuel_consumed": _to_float(result.get("fuel_consumed", 0.0), 0.0),
-        "fuel_per_distance": _to_float(result.get("fuel_per_distance", 0.0), 0.0),
-        "overdrive_time": _to_float(result.get("overdrive_time", 0.0), 0.0),
-        "overdrive_fraction": _to_float(result.get("overdrive_fraction", 0.0), 0.0),
-        "overdrive_excess": _to_float(result.get("overdrive_excess", 0.0), 0.0),
-        "path_efficiency": _to_optional_float(result.get("path_efficiency")),
-        "time_to_first_land": _to_optional_float(result.get("time_to_first_land")),
-        "spawn_to_target_distance": _to_optional_float(
-            result.get("spawn_to_target_distance")
-        ),
         "success": success,
         "failure_mode": failure_mode,
         "eval_goal": eval_goal,
-        "eval_early_end": eval_early_end,
-        "eval_end_reason": eval_end_reason,
-        "setup_goal_time": _to_optional_float(result.get("setup_goal_time")),
-        "setup_goal_fuel_consumed": _to_optional_float(
-            result.get("setup_goal_fuel_consumed")
-        ),
-        "setup_goal_done": _to_optional_bool(result.get("setup_goal_done")),
-        "setup_goal_altitude": _to_optional_float(result.get("setup_goal_altitude")),
-        "setup_goal_projected_apex_y": _to_optional_float(
-            result.get("setup_goal_projected_apex_y")
-        ),
-        "setup_goal_projected_apex_over_target": _to_optional_float(
-            result.get("setup_goal_projected_apex_over_target")
-        ),
-        "setup_goal_has_target_y_solution": _to_optional_bool(
-            result.get("setup_goal_has_target_y_solution")
-        ),
-        "setup_goal_projected_dx": _to_optional_float(result.get("setup_goal_projected_dx")),
-        "setup_goal_projected_impact_angle_deg": _to_optional_float(
-            result.get("setup_goal_projected_impact_angle_deg")
-        ),
-        "setup_goal_burn_avg_thrust_level": _to_optional_float(
-            result.get("setup_goal_burn_avg_thrust_level")
-        ),
-        "setup_goal_time_to_target": _to_optional_float(
-            result.get("setup_goal_time_to_target")
-        ),
-        "launch_arrived": _to_optional_bool(result.get("launch_arrived")),
-        "launch_landed_site_uid": result.get("launch_landed_site_uid"),
-        "climb_arrived": _to_optional_bool(result.get("climb_arrived")),
-        "climb_landed_site_uid": result.get("climb_landed_site_uid"),
-        "setup_gate_done": _to_optional_bool(result.get("setup_gate_done")),
-        "setup_gate_time": _to_optional_float(result.get("setup_gate_time")),
-        "setup_gate_altitude": _to_optional_float(result.get("setup_gate_altitude")),
-        "setup_gate_projected_apex_y": _to_optional_float(
-            result.get("setup_gate_projected_apex_y")
-        ),
-        "setup_gate_projected_apex_over_target": _to_optional_float(
-            result.get("setup_gate_projected_apex_over_target")
-        ),
-        "setup_gate_has_target_y_solution": _to_optional_bool(
-            result.get("setup_gate_has_target_y_solution")
-        ),
-        "setup_gate_projected_dx": _to_optional_float(result.get("setup_gate_projected_dx")),
-        "setup_gate_projected_impact_angle_deg": _to_optional_float(
-            result.get("setup_gate_projected_impact_angle_deg")
-        ),
-        "setup_gate_burn_duration_s": _to_optional_float(
-            result.get("setup_gate_burn_duration_s")
-        ),
-        "setup_gate_burn_fuel_used": _to_optional_float(
-            result.get("setup_gate_burn_fuel_used")
-        ),
-        "setup_gate_burn_avg_thrust_level": _to_optional_float(
-            result.get("setup_gate_burn_avg_thrust_level")
-        ),
-        "bot_profile_enabled": _to_optional_bool(result.get("bot_profile_enabled")),
-        "bot_profile_ticks": _to_optional_float(result.get("bot_profile_ticks")),
-        "bot_profile_passive_ms_per_tick": _to_optional_float(
-            result.get("bot_profile_passive_ms_per_tick")
-        ),
-        "bot_profile_update_ms_per_tick": _to_optional_float(
-            result.get("bot_profile_update_ms_per_tick")
-        ),
-        "bot_profile_total_ms_per_tick": _to_optional_float(
-            result.get("bot_profile_total_ms_per_tick")
-        ),
-        "bot_profile_update_ms_per_tick_p90": _to_optional_float(
-            result.get("bot_profile_update_ms_per_tick_p90")
-        ),
-        "bot_profile_update_ms_per_tick_p99": _to_optional_float(
-            result.get("bot_profile_update_ms_per_tick_p99")
-        ),
-        "bot_profile_total_ms_per_tick_p90": _to_optional_float(
-            result.get("bot_profile_total_ms_per_tick_p90")
-        ),
-        "bot_profile_total_ms_per_tick_p99": _to_optional_float(
-            result.get("bot_profile_total_ms_per_tick_p99")
-        ),
     }
+    record["fuel_remaining"] = _to_float(
+        result.get("fuel_remaining", result.get("fuel", 0.0)),
+        0.0,
+    )
+    for field in _DEFAULT_FLOAT_RESULT_FIELDS:
+        if field == "fuel_remaining":
+            continue
+        record[field] = _to_float(result.get(field, 0.0), 0.0)
+    for field in _OPTIONAL_FLOAT_RESULT_FIELDS:
+        record[field] = _to_optional_float(result.get(field))
+    for field in _OPTIONAL_BOOL_RESULT_FIELDS:
+        record[field] = _to_optional_bool(result.get(field))
+    for field in _PASSTHROUGH_RESULT_FIELDS:
+        record[field] = result.get(field)
     for key, value in result.items():
         if not isinstance(key, str):
             continue

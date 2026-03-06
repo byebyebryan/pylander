@@ -2,95 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.eval_schema import BOT_ZEM_RESULT_FIELDS, EFFICIENCY_METRIC_FIELDS
-
-_RUN_FIELDS: tuple[str, ...] = (
-    "state",
-    "eval_goal",
-    "eval_early_end",
-    "eval_end_reason",
-    "time",
-)
-
-_OUTCOME_FIELDS: tuple[str, ...] = (
-    "landing_count",
-    "crash_count",
-    "credits",
-    "fuel",
-    "score",
-)
-
-_FLIGHT_FIELDS: tuple[str, ...] = (
-    "distance_flown",
-    "landing_offset",
-    "avg_speed",
-    "fuel_consumed",
-    "fuel_per_distance",
-    "spawn_to_target_distance",
-    "path_efficiency",
-)
-
-_SETUP_GOAL_FIELDS: tuple[str, ...] = (
-    "setup_goal_done",
-    "setup_goal_time",
-    "setup_goal_fuel_consumed",
-    "setup_goal_altitude",
-    "setup_goal_projected_apex_y",
-    "setup_goal_projected_apex_over_target",
-    "setup_goal_has_target_y_solution",
-    "setup_goal_projected_dx",
-    "setup_goal_projected_impact_angle_deg",
-    "setup_goal_burn_avg_thrust_level",
-    "setup_goal_time_to_target",
-)
-
-_SETUP_GATE_FIELDS: tuple[str, ...] = (
-    "setup_gate_done",
-    "setup_gate_time",
-    "setup_gate_altitude",
-    "setup_gate_projected_apex_y",
-    "setup_gate_projected_apex_over_target",
-    "setup_gate_has_target_y_solution",
-    "setup_gate_projected_dx",
-    "setup_gate_projected_impact_angle_deg",
-    "setup_gate_burn_duration_s",
-    "setup_gate_burn_fuel_used",
-    "setup_gate_burn_avg_thrust_level",
-)
-
-_ARRIVAL_FIELDS: tuple[str, ...] = (
-    "launch_arrived",
-    "launch_landed_site_uid",
-    "climb_arrived",
-    "climb_landed_site_uid",
-)
-
-_PROFILER_FIELDS: tuple[str, ...] = (
-    "bot_profile_enabled",
-    "bot_profile_ticks",
-    "bot_profile_passive_ms_per_tick",
-    "bot_profile_update_ms_per_tick",
-    "bot_profile_total_ms_per_tick",
-    "bot_profile_update_ms_per_tick_p90",
-    "bot_profile_update_ms_per_tick_p99",
-    "bot_profile_total_ms_per_tick_p90",
-    "bot_profile_total_ms_per_tick_p99",
-)
-
-_PLOT_FIELDS: tuple[str, ...] = (
-    "plot_bundle_dir",
-    "plot_manifest_path",
-)
-
-_FINAL_RESULT_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
-    ("Run", _RUN_FIELDS),
-    ("Outcome", _OUTCOME_FIELDS),
-    ("Flight", _FLIGHT_FIELDS),
-    ("Setup Goal", _SETUP_GOAL_FIELDS),
-    ("Setup Gate", _SETUP_GATE_FIELDS),
-    ("Arrivals", _ARRIVAL_FIELDS),
-    ("Profiler", _PROFILER_FIELDS),
-    ("Plots", _PLOT_FIELDS),
+from core.eval_schema import (
+    BOT_ZEM_RESULT_FIELDS,
+    EFFICIENCY_METRIC_FIELDS,
+    FINAL_RESULT_SECTIONS,
 )
 _FINAL_RESULTS_BAR_WIDTH = 60
 _FINAL_RESULTS_VALUE_GAP = 4
@@ -174,7 +89,7 @@ def print_headless_results(result: dict[str, Any]) -> None:
     print("FINAL RESULTS")
     print("=" * _FINAL_RESULTS_BAR_WIDTH)
     section_rows = [
-        _collect_section_rows(result, fields) for _title, fields in _FINAL_RESULT_SECTIONS
+        _collect_section_rows(result, fields) for _title, fields in FINAL_RESULT_SECTIONS
     ]
     bot_sections = _collect_bot_sections(result)
     plot_rows: list[tuple[str, Any]] = []
@@ -186,7 +101,7 @@ def print_headless_results(result: dict[str, Any]) -> None:
         plot_rows.append(("plot_error", result["plot_error"]))
     label_width = _label_width(section_rows, bot_sections, plot_rows)
     printed = 0
-    for (title, _fields), rows in zip(_FINAL_RESULT_SECTIONS, section_rows, strict=False):
+    for (title, _fields), rows in zip(FINAL_RESULT_SECTIONS, section_rows, strict=False):
         printed += _print_section(title, rows, label_width=label_width)
     for bot_name, rows in bot_sections:
         if not rows:
