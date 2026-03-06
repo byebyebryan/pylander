@@ -87,39 +87,47 @@ def command_from_plan(
         and (not bot._setup_gate_done)
         and (not bot._terminal_gate_done)
         and (bot._last_projection_dx is not None)
-        and abs(float(dx)) > 1e-3
-        and float(dy) <= 0.0
     ):
-        signed_shortfall = float(bot._last_projection_dx) * math.copysign(1.0, float(dx))
-        if signed_shortfall > 0.0:
-            taper_start = max(
-                cfg.setup_burn_taper_start_abs,
-                cfg.setup_burn_taper_start_ratio * bot._last_target_half,
-            )
-        else:
-            taper_start = max(
-                cfg.setup_burn_taper_overshoot_abs,
-                cfg.setup_burn_taper_overshoot_ratio * bot._last_target_half,
-            )
-        overshoot_guard = max(
-            cfg.setup_burn_cut_overshoot_abs,
-            cfg.setup_burn_cut_overshoot_ratio * bot._last_target_half,
-        )
-        if signed_shortfall <= taper_start:
-            taper_den = max(1e-3, taper_start + overshoot_guard)
-            taper_scale = clamp((signed_shortfall + overshoot_guard) / taper_den, 0.0, 1.0)
-            thrust = min(thrust, max_throttle * taper_scale)
-        if signed_shortfall <= -overshoot_guard:
-            thrust = 0.0
-            bot._thrust_enabled = False
-            if bot._debug_setup and (bot._elapsed_time_s - bot._debug_setup_last_print_t) >= 0.25:
-                bot._debug_setup_last_print_t = bot._elapsed_time_s
-                bot._debug_setup_print(
-                    "overshoot_cut "
-                    f"t={bot._elapsed_time_s:6.2f} "
-                    f"dx={dx:8.2f} proj_dx={float(bot._last_projection_dx):8.2f} "
-                    f"signed={signed_shortfall:8.2f} guard={overshoot_guard:6.2f}"
+        has_target_y_solution = bool(getattr(bot, "_last_projection_has_target_y", True))
+        if not has_target_y_solution:
+            thrust = max(thrust, min_throttle)
+        elif abs(float(dx)) > 1e-3:
+            signed_shortfall = float(bot._last_projection_dx) * math.copysign(1.0, float(dx))
+            if signed_shortfall > 0.0:
+                taper_start = max(
+                    cfg.setup_burn_taper_start_abs,
+                    cfg.setup_burn_taper_start_ratio * bot._last_target_half,
                 )
+            else:
+                taper_start = max(
+                    cfg.setup_burn_taper_overshoot_abs,
+                    cfg.setup_burn_taper_overshoot_ratio * bot._last_target_half,
+                )
+            overshoot_guard = max(
+                cfg.setup_burn_cut_overshoot_abs,
+                cfg.setup_burn_cut_overshoot_ratio * bot._last_target_half,
+            )
+            # Keep setup burn continuous while still far from projected centerline.
+            if signed_shortfall > taper_start:
+                thrust = max(thrust, min_throttle)
+            if signed_shortfall <= taper_start:
+                taper_den = max(1e-3, taper_start + overshoot_guard)
+                taper_scale = clamp((signed_shortfall + overshoot_guard) / taper_den, 0.0, 1.0)
+                thrust = min(thrust, max_throttle * taper_scale)
+            if (
+                signed_shortfall <= -overshoot_guard
+                and float(passive.vy_up) <= cfg.setup_gate_vy_up_max
+            ):
+                thrust = 0.0
+                bot._thrust_enabled = False
+                if bot._debug_setup and (bot._elapsed_time_s - bot._debug_setup_last_print_t) >= 0.25:
+                    bot._debug_setup_last_print_t = bot._elapsed_time_s
+                    bot._debug_setup_print(
+                        "overshoot_cut "
+                        f"t={bot._elapsed_time_s:6.2f} "
+                        f"dx={dx:8.2f} proj_dx={float(bot._last_projection_dx):8.2f} "
+                        f"signed={signed_shortfall:8.2f} guard={overshoot_guard:6.2f}"
+                    )
 
     idle_angle_target: float | None = None
     off_threshold = cfg.throttle_off_threshold_scale * min_throttle

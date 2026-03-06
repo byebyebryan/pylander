@@ -27,10 +27,29 @@ class PDGOptimizerConfig:
     w_terminal_y: float = 34.0
     w_terminal_vx: float = 15.0
     w_terminal_vy: float = 3.0
+    w_projected_dx_terminal: float = 220.0
+    w_projected_dx_tail: float = 70.0
+    projected_dx_tail_ratio: float = 0.55
+    w_apex_shortfall: float = 95.0
+    w_apex_overshoot: float = 120.0
+    w_apex_upward_vy: float = 40.0
+    apex_index_ratio: float = 0.45
+    # End-of-horizon setup-goal slacks (keep zero to disable).
+    w_goal_projected_dx_slack: float = 0.0
+    w_goal_apex_y_slack: float = 0.0
+    w_goal_apex_vy_slack: float = 0.0
+    w_burn_hold: float = 12.0
+    burn_hold_ratio: float = 0.60
+    burn_hold_floor_ratio: float = 0.36
+    w_burn_drop: float = 8.0
+    w_burn_tail: float = 2.0
+    burn_tail_ratio: float = 0.30
     w_effort: float = 0.020
     w_smooth: float = 0.12
     w_path_x: float = 0.030
     w_path_y: float = 0.015
+    w_path_vx: float = 0.0
+    w_path_vy: float = 0.0
     w_upward_vy: float = 1.20
 
     # Soft floor around minimum thrust acceleration (convex hinge penalty)
@@ -41,6 +60,7 @@ class PDGOptimizerConfig:
     w_thrust_linear: float = 0.14
     w_overdrive_linear: float = 1.40
     w_overdrive_quadratic: float = 6.00
+    tilt_relax_accel: float = 0.0
 
     # Altitude-adaptive reference profile (lateral-first then descend).
     ref_hold_frac_min: float = 0.0
@@ -120,6 +140,12 @@ class PDGOptimizer:
         self._vy_floor: cp.Parameter | None = None
         self._g_param: cp.Parameter | None = None
         self._x_tol: cp.Parameter | None = None
+        self._proj_t_fall: cp.Parameter | None = None
+        self._apex_target_y: cp.Parameter | None = None
+        self._goal_projected_dx_tol: cp.Parameter | None = None
+        self._goal_apex_y_tol: cp.Parameter | None = None
+        self._goal_apex_vy_target: cp.Parameter | None = None
+        self._goal_apex_vy_tol: cp.Parameter | None = None
 
         self._build_problem()
 
@@ -196,8 +222,17 @@ class PDGOptimizer:
         y_ref = cp.Parameter(n + 1)
         vy_floor = cp.Parameter()
         x_tol = cp.Parameter(nonneg=True)
+        proj_t_fall = cp.Parameter(nonneg=True)
+        apex_target_y = cp.Parameter()
+        goal_projected_dx_tol = cp.Parameter(nonneg=True)
+        goal_apex_y_tol = cp.Parameter(nonneg=True)
+        goal_apex_vy_target = cp.Parameter()
+        goal_apex_vy_tol = cp.Parameter(nonneg=True)
         thrust_norm = cp.Variable(n, nonneg=True)
         od_slack = cp.Variable(n, nonneg=True)
+        goal_projected_dx_slack = cp.Variable(nonneg=True)
+        goal_apex_y_slack = cp.Variable(nonneg=True)
+        goal_apex_vy_slack = cp.Variable(nonneg=True)
 
         constraints: list[cp.Expression] = [
             x[0] == x0,
@@ -206,6 +241,7 @@ class PDGOptimizer:
             vy[0] == vy0,
             y >= y_floor,
         ]
+        tilt_relax_accel = max(0.0, float(cfg.tilt_relax_accel))
 
         for k in range(n):
             constraints.extend(
@@ -217,7 +253,7 @@ class PDGOptimizer:
                     vy[k + 1] == vy[k] + ((ay[k] - g_param) * dt),
                     ay[k] >= 0.0,
                     cp.norm(cp.hstack([ax[k], ay[k]]), 2) <= a_max,
-                    cp.abs(ax[k]) <= tilt_tan * ay[k],
+                    cp.abs(ax[k]) <= tilt_tan * (ay[k] + tilt_relax_accel),
                     thrust_norm[k] >= cp.norm(cp.hstack([ax[k], ay[k]]), 2),
                     thrust_norm[k] <= a_nom + od_slack[k],
                     od_slack[k] <= (a_max - a_nom),
@@ -226,10 +262,41 @@ class PDGOptimizer:
 
         effort = cp.sum_squares(ax) + cp.sum_squares(ay)
         smooth = cp.sum_squares(ax[1:] - ax[:-1]) + cp.sum_squares(ay[1:] - ay[:-1])
-        path = cp.sum_squares(x - x_ref) + cp.sum_squares(y - y_ref)
+        x_ref_v = (x_ref[1:] - x_ref[:-1]) / dt
+        y_ref_v = (y_ref[1:] - y_ref[:-1]) / dt
+        path_vx = cp.sum_squares(vx[:-1] - x_ref_v)
+        path_vy = cp.sum_squares(vy[:-1] - y_ref_v)
         upward_penalty = cp.sum_squares(cp.pos(vy[:-1]))
         descent_floor_penalty = cp.sum_squares(cp.pos(vy[:-1] - vy_floor))
         min_accel_soft = cp.sum_squares(cp.pos(a_min - ay))
+        projected_dx = (x - target_x) + (vx * proj_t_fall)
+        tail_start = int(np.clip(round(cfg.projected_dx_tail_ratio * n), 0, n))
+        apex_idx = int(np.clip(round(cfg.apex_index_ratio * n), 0, n))
+        hold_steps = int(np.clip(round(cfg.burn_hold_ratio * n), 1, n))
+        tail_steps = int(np.clip(round(cfg.burn_tail_ratio * n), 1, n))
+        tail_idx = max(0, n - tail_steps)
+        hold_floor = max(0.0, float(cfg.burn_hold_floor_ratio)) * a_nom
+
+        projected_dx_terminal = cp.square(projected_dx[n])
+        projected_dx_tail = cp.sum_squares(projected_dx[tail_start:])
+        apex_shortfall = cp.square(cp.pos(apex_target_y - y[apex_idx]))
+        apex_overshoot = cp.sum_squares(cp.pos(y[apex_idx:] - apex_target_y))
+        apex_upward_vy = cp.sum_squares(cp.pos(vy[apex_idx:]))
+        constraints.extend(
+            [
+                cp.abs(projected_dx[n]) <= goal_projected_dx_tol + goal_projected_dx_slack,
+                cp.abs(y[n] - apex_target_y) <= goal_apex_y_tol + goal_apex_y_slack,
+                cp.abs(vy[n] - goal_apex_vy_target) <= goal_apex_vy_tol + goal_apex_vy_slack,
+            ]
+        )
+        burn_hold = cp.sum_squares(cp.pos(hold_floor - thrust_norm[:hold_steps]))
+        if hold_steps > 1:
+            burn_drop = cp.sum_squares(
+                cp.pos(thrust_norm[: hold_steps - 1] - thrust_norm[1:hold_steps])
+            )
+        else:
+            burn_drop = cp.Constant(0.0)
+        burn_tail = cp.sum_squares(thrust_norm[tail_idx:])
 
         terminal = (
             # Penalize only outside the pad corridor to avoid over-centering waste.
@@ -238,6 +305,9 @@ class PDGOptimizer:
             + cfg.w_terminal_vx * cp.square(vx[n])
             + cfg.w_terminal_vy * cp.square(vy[n] - target_vy)
         )
+        goal_projected_dx = cp.square(goal_projected_dx_slack)
+        goal_apex_y = cp.square(goal_apex_y_slack)
+        goal_apex_vy = cp.square(goal_apex_vy_slack)
 
         objective = cp.Minimize(
             terminal
@@ -245,12 +315,22 @@ class PDGOptimizer:
             + (cfg.w_smooth * smooth)
             + (cfg.w_path_x * cp.sum_squares(x - x_ref))
             + (cfg.w_path_y * cp.sum_squares(y - y_ref))
+            + (cfg.w_path_vx * path_vx)
+            + (cfg.w_path_vy * path_vy)
             + (cfg.w_upward_vy * upward_penalty)
             + (cfg.w_descent_floor * descent_floor_penalty)
             + (cfg.w_min_accel * min_accel_soft)
-            + (0.02 * path)
-            + (cfg.w_altitude_progress * cp.sum(y[:-1] - target_y))
-            + (cfg.w_downspeed_progress * cp.sum(vy[:-1]))
+            + (cfg.w_projected_dx_terminal * projected_dx_terminal)
+            + (cfg.w_projected_dx_tail * projected_dx_tail)
+            + (cfg.w_apex_shortfall * apex_shortfall)
+            + (cfg.w_apex_overshoot * apex_overshoot)
+            + (cfg.w_apex_upward_vy * apex_upward_vy)
+            + (cfg.w_goal_projected_dx_slack * goal_projected_dx)
+            + (cfg.w_goal_apex_y_slack * goal_apex_y)
+            + (cfg.w_goal_apex_vy_slack * goal_apex_vy)
+            + (cfg.w_burn_hold * burn_hold)
+            + (cfg.w_burn_drop * burn_drop)
+            + (cfg.w_burn_tail * burn_tail)
             + (cfg.w_thrust_linear * cp.sum(thrust_norm))
             + (cfg.w_overdrive_linear * cp.sum(od_slack))
             + (cfg.w_overdrive_quadratic * cp.sum_squares(od_slack))
@@ -282,6 +362,12 @@ class PDGOptimizer:
         self._vy_floor = vy_floor
         self._g_param = g_param
         self._x_tol = x_tol
+        self._proj_t_fall = proj_t_fall
+        self._apex_target_y = apex_target_y
+        self._goal_projected_dx_tol = goal_projected_dx_tol
+        self._goal_apex_y_tol = goal_apex_y_tol
+        self._goal_apex_vy_target = goal_apex_vy_target
+        self._goal_apex_vy_tol = goal_apex_vy_tol
 
     def solve(
         self,
@@ -303,6 +389,12 @@ class PDGOptimizer:
         pad_half_width: float,
         altitude_hint: float,
         warm_start: PDGPlan | None,
+        projected_t_fall: float | None = None,
+        apex_target_y: float | None = None,
+        goal_projected_dx_tol: float | None = None,
+        goal_apex_y_tol: float | None = None,
+        goal_apex_vy_target: float | None = None,
+        goal_apex_vy_tol: float | None = None,
         terminal_x_tol: float | None = None,
         y_ref_override: list[float] | tuple[float, ...] | np.ndarray | None = None,
     ) -> PDGPlan | None:
@@ -338,6 +430,31 @@ class PDGOptimizer:
         self._tilt_tan.value = max(1e-3, math.tan(max(0.02, float(max_tilt_rad))))
         self._vy_floor.value = float(descent_floor_vy)
         self._g_param.value = max(0.0, float(gravity_mag))
+        if projected_t_fall is None:
+            fallback_t = max(
+                0.5,
+                max(0.0, float(altitude_hint))
+                / max(1.0, max(0.0, -float(vy)) + 1.0),
+            )
+            self._proj_t_fall.value = fallback_t
+        else:
+            self._proj_t_fall.value = max(0.25, float(projected_t_fall))
+        self._apex_target_y.value = float(target_y if apex_target_y is None else apex_target_y)
+        self._goal_projected_dx_tol.value = max(
+            0.0,
+            float(pad_half_width if goal_projected_dx_tol is None else goal_projected_dx_tol),
+        )
+        self._goal_apex_y_tol.value = max(
+            0.0,
+            float(35.0 if goal_apex_y_tol is None else goal_apex_y_tol),
+        )
+        self._goal_apex_vy_target.value = float(
+            0.0 if goal_apex_vy_target is None else goal_apex_vy_target
+        )
+        self._goal_apex_vy_tol.value = max(
+            0.0,
+            float(3.5 if goal_apex_vy_tol is None else goal_apex_vy_tol),
+        )
         x_tol = float(pad_half_width) if terminal_x_tol is None else float(terminal_x_tol)
         self._x_tol.value = max(0.0, x_tol)
 

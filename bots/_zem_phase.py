@@ -55,6 +55,8 @@ def update_phase_tracking(
     not_overshooting_setup = shortfall_metric >= -shortfall_guard
     thrust_level = float(passive.thrust_level)
     setup_ready_diag = (
+        has_target_y_solution
+        and
         abs(projected_dx) <= setup_dx_limit
         and abs(float(passive.vx) - track_vx) <= setup_vx_limit
         and float(passive.vy_up) <= cfg.setup_gate_vy_up_max
@@ -69,6 +71,7 @@ def update_phase_tracking(
                 "burn_start "
                 f"t={bot._elapsed_time_s:6.2f} "
                 f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
+                f"ty={int(has_target_y_solution)} "
                 f"thrust={thrust_level:5.2f}"
             )
         if bot._setup_burn_started:
@@ -94,6 +97,7 @@ def update_phase_tracking(
                         "gate_latch_burn_end "
                         f"t={bot._elapsed_time_s:6.2f} "
                         f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
+                        f"ty={int(has_target_y_solution)} "
                         f"proj_apex_over_target={apex_over_target:8.2f} "
                         f"signed={shortfall_metric:8.2f} "
                         f"thrust={thrust_level:5.2f}"
@@ -113,6 +117,7 @@ def update_phase_tracking(
                     f"t={bot._elapsed_time_s:6.2f} "
                     f"ph={bot._active_phase:8s} "
                     f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
+                    f"ty={int(has_target_y_solution)} "
                     f"signed={shortfall_metric:8.2f} "
                     f"thrust={thrust_level:5.2f} "
                     f"ready={int(setup_ready_diag)} "
@@ -133,6 +138,8 @@ def update_phase_tracking(
     )
     not_overshooting_far = shortfall_metric >= -coast_overshoot_guard
     coast_hold = (
+        has_target_y_solution
+        and
         abs(projected_dx) <= coast_dx_limit
         and abs(float(passive.vx) - track_vx) <= coast_vx_limit
         and float(passive.vy_up) <= cfg.setup_gate_vy_up_max
@@ -148,11 +155,15 @@ def update_phase_tracking(
         cfg.terminal_entry_projected_dx_target_ratio * bot._last_target_half,
     )
     terminal_ready = (
+        has_target_y_solution
+        and
         t_fall <= cfg.terminal_gate_t_fall_s
         and abs(projected_dx) <= terminal_dx_limit
         and float(passive.vy_up) <= cfg.terminal_gate_vy_up_max
     )
     terminal_entry_ready = (
+        has_target_y_solution
+        and
         t_fall <= cfg.terminal_gate_t_fall_s
         and alt <= cfg.terminal_entry_altitude_max
         and abs(projected_dx) <= terminal_entry_dx_limit
@@ -181,6 +192,7 @@ def update_phase_tracking(
                 "gate_latch_terminal_fallback "
                 f"t={bot._elapsed_time_s:6.2f} "
                 f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
+                f"ty={int(has_target_y_solution)} "
                 f"proj_apex_over_target={apex_over_target:8.2f} "
                 f"signed={shortfall_metric:8.2f} "
                 f"thrust={thrust_level:5.2f}"
@@ -198,7 +210,7 @@ def update_phase_tracking(
     elif bot._terminal_gate_done or terminal_phase_ready:
         bot._active_phase = "terminal"
     elif bot._setup_gate_done:
-        if bot._uphill_transfer:
+        if bot._uphill_transfer and float(passive.vy_up) > cfg.setup_gate_vy_up_max:
             bot._active_phase = "setup"
         else:
             bot._active_phase = "coast"
@@ -218,6 +230,7 @@ def update_phase_tracking(
             f"t={bot._elapsed_time_s:6.2f} "
             f"ph={bot._active_phase:8s} "
             f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
+            f"ty={int(has_target_y_solution)} "
             f"signed={shortfall_metric:8.2f} "
             f"thrust={float(passive.thrust_level):5.2f} "
             f"coast_hold={int(coast_hold)}"

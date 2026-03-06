@@ -193,8 +193,6 @@ class ClimbLevel(PresetLevel):
         _ = dt
         actor = self.world.actors[0]
         self._stage_eval.update_motion(actor)
-        if self._stage_eval.phase_done:
-            return
         snapshot = self._resolve_zem_snapshot(game)
         if isinstance(snapshot, dict):
             target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))

@@ -42,12 +42,49 @@ class ZemZevBot(QueryBot):
     def __init__(self, behavior: str = "zem_zev") -> None:
         super().__init__()
         self._cfg = ZemZevConfig()
+        setup_optimizer_cfg = PDGOptimizerConfig(
+            horizon_steps=40,
+            w_terminal_x=0.2,
+            w_terminal_y=0.0,
+            w_terminal_vx=0.8,
+            w_terminal_vy=0.0,
+            w_projected_dx_terminal=280.0,
+            w_projected_dx_tail=40.0,
+            projected_dx_tail_ratio=0.58,
+            w_apex_shortfall=0.0,
+            w_apex_overshoot=0.0,
+            w_apex_upward_vy=0.0,
+            apex_index_ratio=0.38,
+            w_goal_projected_dx_slack=130.0,
+            w_goal_apex_y_slack=130.0,
+            w_goal_apex_vy_slack=70.0,
+            w_burn_hold=10.0,
+            burn_hold_ratio=0.55,
+            burn_hold_floor_ratio=0.20,
+            w_burn_drop=2.0,
+            w_burn_tail=3.0,
+            burn_tail_ratio=0.35,
+            w_effort=0.010,
+            w_smooth=0.050,
+            w_path_x=0.0,
+            w_path_y=0.0,
+            w_path_vx=0.0,
+            w_path_vy=0.0,
+            w_upward_vy=0.0,
+            w_descent_floor=0.0,
+            w_min_accel=0.0,
+            w_thrust_linear=0.020,
+            w_overdrive_linear=0.8,
+            w_overdrive_quadratic=3.0,
+            tilt_relax_accel=7.0,
+        )
         self._optimizer_setup = PDGOptimizer(
-            PDGOptimizerConfig(
-                horizon_steps=36,
-                w_terminal_x=48.0,
-                w_path_x=0.09,
+            replace(
+                setup_optimizer_cfg,
+                w_path_x=0.004,
                 w_path_y=0.025,
+                w_path_vx=0.010,
+                w_path_vy=0.016,
             )
         )
         self._optimizer_coast = PDGOptimizer(
@@ -58,7 +95,26 @@ class ZemZevBot(QueryBot):
                 w_path_y=0.020,
             )
         )
-        self._optimizer_terminal = PDGOptimizer(PDGOptimizerConfig(horizon_steps=28))
+        self._optimizer_terminal = PDGOptimizer(
+            PDGOptimizerConfig(
+                horizon_steps=34,
+                w_terminal_x=40.0,
+                w_terminal_y=42.0,
+                w_terminal_vx=40.0,
+                w_terminal_vy=14.0,
+                w_projected_dx_terminal=150.0,
+                w_projected_dx_tail=30.0,
+                projected_dx_tail_ratio=0.60,
+                w_effort=0.010,
+                w_smooth=0.08,
+                w_path_x=0.05,
+                w_path_y=0.02,
+                w_descent_floor=0.10,
+                w_thrust_linear=0.04,
+                w_overdrive_linear=1.0,
+                w_overdrive_quadratic=4.0,
+            )
+        )
 
         self._behavior = "zem_zev"
         self._prev_angle_cmd = 0.0
@@ -344,12 +400,21 @@ class ZemZevBot(QueryBot):
                 tilt = cfg.max_tilt_low_alt_far
         else:
             tilt = cfg.max_tilt
+        initial_dy = float(dy)
+        if self._shape_window_started:
+            initial_dy = float(self._shape_target_y - self._shape_start_y)
         if (
             phase == "setup"
             and float(dy) >= cfg.uphill_setup_dy_min
             and alt <= cfg.uphill_setup_tilt_alt
         ):
             tilt = min(tilt, cfg.uphill_setup_tilt_max)
+        if (
+            phase == "setup"
+            and initial_dy >= cfg.uphill_setup_high_dy_tighten_start
+            and alt <= cfg.uphill_setup_high_dy_tilt_alt
+        ):
+            tilt = min(tilt, cfg.uphill_setup_high_dy_tilt_max)
         return tilt
 
     def _phase_terminal_x_tol(self, phase: str) -> float:

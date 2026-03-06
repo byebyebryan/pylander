@@ -37,6 +37,9 @@ class ZemZevConfig:
     uphill_setup_dy_min: float = 20.0
     uphill_setup_tilt_alt: float = 140.0
     uphill_setup_tilt_max: float = 0.26
+    uphill_setup_high_dy_tighten_start: float = 600.0
+    uphill_setup_high_dy_tilt_alt: float = 10_000.0
+    uphill_setup_high_dy_tilt_max: float = 0.12
     angle_rate: float = 2.4
     throttle_off_threshold_scale: float = 0.85
 
@@ -77,10 +80,18 @@ class ZemZevConfig:
     setup_gate_idle_thrust_max: float = 0.03
     setup_gate_burn_start_thrust: float = 0.20
     setup_gate_burn_end_settle_s: float = 0.25
-    setup_burn_taper_start_abs: float = 72.0
-    setup_burn_taper_start_ratio: float = 1.30
-    setup_burn_taper_overshoot_abs: float = 120.0
-    setup_burn_taper_overshoot_ratio: float = 2.20
+    setup_goal_projected_dx_tol_abs: float = 18.0
+    setup_goal_projected_dx_tol_ratio: float = 0.35
+    setup_goal_apex_y_tol: float = 14.0
+    setup_goal_apex_vy_tol: float = 1.8
+    setup_apex_offset_per_dy: float = 0.20
+    setup_apex_offset_per_projected_dx: float = 0.08
+    setup_apex_offset_min: float = 25.0
+    setup_apex_offset_max: float = 120.0
+    setup_burn_taper_start_abs: float = 45.0
+    setup_burn_taper_start_ratio: float = 0.95
+    setup_burn_taper_overshoot_abs: float = 90.0
+    setup_burn_taper_overshoot_ratio: float = 1.60
     setup_burn_cut_overshoot_abs: float = 4.0
     setup_burn_cut_overshoot_ratio: float = 0.08
     coast_hold_projected_dx_abs: float = 24.0
