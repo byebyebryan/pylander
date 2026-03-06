@@ -132,7 +132,7 @@ PYLANDER_ZEM_DEBUG_SETUP=1 uv run python main.py sim launch:near:0 --bot zem_zev
 
 Goal-based eval boundary:
 
-- `--bot zem_zev:setup` -> early stop on `zem_setup_gate_done`
+- selector goal `setup` (for example `setup:mid_near:setup:0 --bot zem_zev`) -> early stop on `zem_setup_gate_done`
 
 ## Tuning knobs
 

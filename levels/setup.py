@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from core.components import PhysicsState, Transform
 from core.ecs import require_component
+from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
 from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 from core.level import Level
 from core.maths import Vector2
@@ -93,6 +94,10 @@ class SetupLevel(ScenarioLevel):
             start_dy=800.0,
             cargo_mass=0.0,
         )
+
+    @staticmethod
+    def supported_eval_goals() -> tuple[str, ...]:
+        return (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
 
     @staticmethod
     def list_batch_scenarios() -> list[str]:

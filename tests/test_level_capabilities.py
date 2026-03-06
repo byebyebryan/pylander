@@ -12,9 +12,11 @@ from core.level_capabilities import (
     level_scenario_tag,
     list_batch_scenarios_safe,
     resolve_default_bot_name,
+    resolve_level_eval_goals,
     resolve_level_benchmark_profile,
     scenario_has_randomized_fields_safe,
     set_benchmark_mode_checked,
+    set_eval_goal_checked,
     set_eval_scenario_checked,
 )
 from levels import create_level, list_available_levels
@@ -33,6 +35,22 @@ def test_set_eval_scenario_checked_requires_capability() -> None:
 
     with pytest.raises(ValueError, match="does not support scenario selection"):
         set_eval_scenario_checked(_NoScenario(), "mid")
+
+
+def test_resolve_level_eval_goals_defaults_to_landing() -> None:
+    class _Level:
+        pass
+
+    assert resolve_level_eval_goals(_Level()) == ("landing",)
+
+
+def test_set_eval_goal_checked_rejects_unsupported_goal() -> None:
+    class _Level:
+        def supported_eval_goals(self) -> tuple[str, ...]:
+            return ("landing",)
+
+    with pytest.raises(ValueError, match="does not support eval goal 'setup'"):
+        set_eval_goal_checked(_Level(), "setup")
 
 
 def test_set_benchmark_mode_checked_calls_supported_level() -> None:

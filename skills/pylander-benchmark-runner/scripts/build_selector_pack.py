@@ -144,10 +144,21 @@ def _resolve_effective_policy(
     return out
 
 
-def _selector(level: str, scenario: str | None, seed_spec: str) -> str:
+def _selector(
+    level: str,
+    scenario: str | None,
+    seed_spec: str,
+    *,
+    eval_goal: str = "landing",
+) -> str:
+    goal = str(eval_goal or "landing").strip().lower() or "landing"
+    if goal == "landing":
+        if scenario:
+            return f"{level}:{scenario}:{seed_spec}"
+        return f"{level}::{seed_spec}"
     if scenario:
-        return f"{level}:{scenario}:{seed_spec}"
-    return f"{level}::{seed_spec}"
+        return f"{level}:{scenario}:{goal}:{seed_spec}"
+    return f"{level}::{goal}:{seed_spec}"
 
 
 def _scenarios_for_mode(profile: LevelBenchmarkProfile, mode: str) -> tuple[str, ...]:
@@ -178,7 +189,10 @@ def _build_auto_mode(
             raise ValueError(
                 f"Level '{level_name}' has no {mode} scenarios under policy '{policy}'"
             )
-        selectors.extend(_selector(level_name, scenario, seed_spec) for scenario in scenarios)
+        selectors.extend(
+            _selector(level_name, scenario, seed_spec, eval_goal="landing")
+            for scenario in scenarios
+        )
         included.add(level_name)
     return selectors, included
 
@@ -199,6 +213,7 @@ def _build_focused_mode(
         level_name = parsed.level_name
         profile = profiles[level_name]
         local_seed = _seed_spec_str((parsed.seed_token or seed_spec).strip())
+        local_goal = str(parsed.goal or "landing").strip().lower() or "landing"
 
         if parsed.scenario_name:
             full_scenarios = set(profile.scenarios.full)
@@ -213,15 +228,32 @@ def _build_focused_mode(
                     f"Unknown scenario '{parsed.scenario_name}' for level '{level_name}' in "
                     f"selector '{raw}'. Expected one of: {known}"
                 )
-            selectors.append(_selector(level_name, parsed.scenario_name, local_seed))
+            selectors.append(
+                _selector(
+                    level_name,
+                    parsed.scenario_name,
+                    local_seed,
+                    eval_goal=local_goal,
+                )
+            )
             included.add(level_name)
             continue
 
         scenarios = profile.scenarios.full
         if scenarios:
-            selectors.extend(_selector(level_name, scenario, local_seed) for scenario in scenarios)
+            selectors.extend(
+                _selector(
+                    level_name,
+                    scenario,
+                    local_seed,
+                    eval_goal=local_goal,
+                )
+                for scenario in scenarios
+            )
         else:
-            selectors.append(_selector(level_name, None, local_seed))
+            selectors.append(
+                _selector(level_name, None, local_seed, eval_goal=local_goal)
+            )
         included.add(level_name)
 
     _ = policy_by_level  # Explicit selectors win in focused mode; policy is used for reporting only.
@@ -341,7 +373,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Build Pylander benchmark selector packs")
     ap.add_argument("--mode", choices=("smoke", "quick", "full", "focused"), required=True)
     ap.add_argument("--seed-spec", default=None, help="Override default seed range, e.g. 0-9")
-    ap.add_argument("--selectors", nargs="*", default=[], help="Focused selectors (level[:scenario[:seed]])")
+    ap.add_argument(
+        "--selectors",
+        nargs="*",
+        default=[],
+        help="Focused selectors (level[:scenario[:goal[:seed]]])",
+    )
     ap.add_argument(
         "--exclude-levels",
         nargs="*",

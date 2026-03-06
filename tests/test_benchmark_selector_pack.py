@@ -87,6 +87,14 @@ def test_focused_selector_preserves_csv_seed_specs() -> None:
     assert pack.selectors == ["launch:mid:0,2"]
 
 
+def test_focused_selector_preserves_goal_slot() -> None:
+    pack = selector_pack.build_selectors(
+        mode="focused",
+        focused_selectors=["launch:mid:setup:0-2"],
+    )
+    assert pack.selectors == ["launch:mid:setup:0-2"]
+
+
 def test_build_bench_command_includes_profile_flags() -> None:
     cmd = selector_pack.build_bench_command(
         selectors=["launch:mid:0-1"],

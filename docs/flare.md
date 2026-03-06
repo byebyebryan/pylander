@@ -32,7 +32,7 @@ Defaults:
 ## Eval behavior
 
 - Single end-to-end evaluation path (entry-to-touchdown).
-- Optional bot-goal metadata is emitted when using goal selectors (for example `--bot zem_zev:setup`).
+- Optional goal metadata is emitted when using goal selectors (for example `flare:mid:setup:0 --bot zem_zev`).
 
 ## Commands
 

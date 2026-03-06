@@ -8,7 +8,7 @@
 - Force trajectory establishment from a cold state.
 - Measure whether the controller reaches a strong setup gate before coast/terminal progression.
 
-Goal-based eval option: run with `--bot zem_zev:setup` to stop when `zem_setup_gate_done` latches.
+Goal-based eval option: run with selector goal `setup` (for example `setup:mid_near:setup:0`) to stop when `zem_setup_gate_done` latches.
 
 Trajectory-shape diagnostics are also exported through `zem_shape_*` fields to
 quantify setup ballistic quality (apex target/actual, curve RMSE, projected-dx
@@ -40,7 +40,8 @@ Defaults:
 
 ## Metrics
 
-- `bot_eval_goal`, `bot_eval_early_end`, `bot_eval_end_reason`
+- `eval_goal`, `eval_early_end`, `eval_end_reason` (`bot_eval_*` aliases are also emitted)
+- `setup_goal_time`, `setup_goal_fuel_consumed`, `setup_goal_projected_dx`, `setup_goal_time_to_target`
 - `zem_setup_gate_done`, `zem_setup_gate_time`, `zem_setup_gate_altitude`, `zem_setup_gate_projected_dx`
 - `zem_shape_*` diagnostics for setup-trajectory quality
 
@@ -56,6 +57,7 @@ Common `zem_zev` setup-shape tuning knobs for this level:
 ```bash
 uv run python main.py run --interactive setup
 uv run python main.py sim setup:mid_near:0 --bot zem_zev
+uv run python main.py sim setup:mid_near:setup:0 --bot zem_zev
 uv run python main.py bench \
   setup:shallow_near:0-9 \
   setup:mid_far:0-9 \

@@ -40,6 +40,9 @@ _RESULT_LABELS: tuple[str, ...] = tuple(
 def _selector_from_record(record: dict[str, Any]) -> str:
     level = str(record.get("level") or "").strip() or "unknown"
     scenario = str(record.get("scenario") or "").strip()
+    eval_goal = str(record.get("eval_goal") or record.get("bot_eval_goal") or "landing").strip().lower()
+    if not eval_goal:
+        eval_goal = "landing"
     seed = record.get("seed")
     seed_token: str | None = None
     if seed is not None:
@@ -53,16 +56,33 @@ def _selector_from_record(record: dict[str, Any]) -> str:
         base = f"{level}:{scenario}"
     else:
         base = level
+    if eval_goal == "landing":
+        if seed_token is None:
+            return base
+        if has_scenario:
+            return f"{base}:{seed_token}"
+        return f"{base}::{seed_token}"
+
+    goal_base = (
+        f"{level}:{scenario}:{eval_goal}"
+        if has_scenario
+        else f"{level}::{eval_goal}"
+    )
     if seed_token is None:
-        return base
-    if has_scenario:
-        return f"{base}:{seed_token}"
-    return f"{base}::{seed_token}"
+        return goal_base
+    return f"{goal_base}:{seed_token}"
 
 
-def _selector_from_triplet(level: Any, scenario: Any, seed: Any) -> str:
+def _selector_from_triplet(
+    level: Any,
+    scenario: Any,
+    seed: Any,
+    *,
+    eval_goal: Any = "landing",
+) -> str:
     level_token = str(level or "").strip() or "unknown"
     scenario_token = str(scenario or "").strip()
+    goal_token = str(eval_goal or "landing").strip().lower() or "landing"
 
     seed_token: str
     try:
@@ -70,9 +90,13 @@ def _selector_from_triplet(level: Any, scenario: Any, seed: Any) -> str:
     except (TypeError, ValueError):
         seed_token = "0"
 
+    if goal_token == "landing":
+        if scenario_token and scenario_token != level_token:
+            return f"{level_token}:{scenario_token}:{seed_token}"
+        return f"{level_token}::{seed_token}"
     if scenario_token and scenario_token != level_token:
-        return f"{level_token}:{scenario_token}:{seed_token}"
-    return f"{level_token}::{seed_token}"
+        return f"{level_token}:{scenario_token}:{goal_token}:{seed_token}"
+    return f"{level_token}::{goal_token}:{seed_token}"
 
 
 def _repro_commands(
@@ -318,6 +342,7 @@ def _findings_from_compare(
             crash.get("level"),
             crash.get("scenario"),
             crash.get("seed"),
+            eval_goal=crash.get("eval_goal"),
         )
         findings.append(
             _make_finding(

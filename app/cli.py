@@ -8,7 +8,7 @@ from landers import list_available_landers
 from levels import list_available_levels
 
 from app.config import BenchCommand, BenchSettings, BenchTarget, Command, RunCommand, RunSettings
-from app.selector import parse_bot_selector, parse_seed_spec, parse_selector
+from app.selector import parse_seed_spec, parse_selector, render_selector
 
 
 def _format_list(title: str, items: list[str]) -> str:
@@ -36,7 +36,7 @@ def _add_common_run_args(
         "selector",
         nargs="?",
         default=None,
-        help="Run selector: level[:scenario[:seed]]",
+        help="Run selector: level[:scenario[:goal[:seed]]]",
     )
     parser.add_argument(
         "-b",
@@ -153,7 +153,7 @@ def build_parser() -> argparse.ArgumentParser:
     bench.add_argument(
         "selectors",
         nargs="+",
-        help="Benchmark selectors: level[:scenario[:seed_spec]]",
+        help="Benchmark selectors: level[:scenario[:goal[:seed_spec]]]",
     )
     bench.add_argument("-b", "--bot", dest="bot", default=None)
     bench.add_argument(
@@ -217,14 +217,9 @@ def _validate_bot_lander_choices(
     lander_name: str | None,
     landers: set[str],
 ) -> None:
-    if bot_name is not None:
-        try:
-            parsed = parse_bot_selector(bot_name)
-        except ValueError as exc:
-            parser.error(str(exc))
-        if parsed.bot_name not in bots:
-            known = ", ".join(sorted(bots))
-            parser.error(f"Unknown bot '{parsed.bot_name}'. Expected one of: {known}")
+    if bot_name is not None and bot_name not in bots:
+        known = ", ".join(sorted(bots))
+        parser.error(f"Unknown bot '{bot_name}'. Expected one of: {known}")
     if lander_name is not None and lander_name not in landers:
         known = ", ".join(sorted(landers))
         parser.error(f"Unknown lander '{lander_name}'. Expected one of: {known}")
@@ -272,6 +267,7 @@ def _build_run_settings(
         bot_config_path=args.bot_config,
         seed=seed_value,
         scenario_name=selector.scenario_name,
+        eval_goal=selector.goal or "landing",
         lander_name=args.lander,
         print_freq=print_freq,
         max_time=300.0 if args.time is None else float(args.time),
@@ -372,6 +368,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
                     level_name=parsed.level_name,
                     scenario_name=parsed.scenario_name,
                     seed_spec=parsed.seed_token,
+                    eval_goal=parsed.goal or "landing",
                 )
             )
         bench_cfg = BenchSettings(
@@ -426,23 +423,21 @@ def announce_command(command: Command) -> None:
 
 
 def _render_bench_target(target: BenchTarget) -> str:
-    scenario_token = target.scenario_name or ""
-    seed_token = target.seed_spec or ""
-    if scenario_token and seed_token:
-        return f"{target.level_name}:{scenario_token}:{seed_token}"
-    if scenario_token:
-        return f"{target.level_name}:{scenario_token}"
-    if seed_token:
-        return f"{target.level_name}::{seed_token}"
-    return target.level_name
+    return render_selector(
+        level_name=target.level_name,
+        scenario_name=target.scenario_name,
+        goal=target.eval_goal,
+        seed_token=target.seed_spec,
+    )
 
 
 def _print_run_summary(cfg: RunSettings) -> None:
-    selector = cfg.level_name
-    if cfg.scenario_name:
-        selector = f"{selector}:{cfg.scenario_name}"
-    if cfg.seed is not None:
-        selector = f"{selector}:{cfg.seed}" if cfg.scenario_name else f"{selector}::{cfg.seed}"
+    selector = render_selector(
+        level_name=cfg.level_name,
+        scenario_name=cfg.scenario_name,
+        goal=cfg.eval_goal,
+        seed_token=cfg.seed,
+    )
     print(f"Selector: {selector}")
     if cfg.bot_name:
         print(f"Bot: {cfg.bot_name}")

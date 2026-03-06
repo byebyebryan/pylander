@@ -52,7 +52,7 @@ uv run python main.py run --interactive flat --bot zem_zev
 
 ```bash
 uv run python main.py sim flare:mid:0 --bot zem_zev
-uv run python main.py sim setup:mid_near:0 --bot zem_zev:setup
+uv run python main.py sim setup:mid_near:setup:0 --bot zem_zev
 uv run python main.py sim coast:mid_wide:3 --bot zem_zev
 uv run python main.py sim climb:slope_mid:0 --bot zem_zev
 uv run python main.py sim plunge:mid_normal:0 --bot plunge
@@ -60,9 +60,11 @@ uv run python main.py sim plunge:mid_normal:0 --bot plunge
 
 Selector format:
 
-- run/sim/plot selector: `level[:scenario[:seed]]`
+- run/sim/plot selector: `level[:scenario[:goal[:seed]]]`
 - Use `level::seed` when setting a seed without a scenario.
-- Bot selector: `bot[:goal]` (current non-landing goal support: `zem_zev:setup`).
+- Omit goal to default to `landing`.
+- Setup-goal support is currently exposed by levels: `setup`, `launch`, `climb`.
+- Bot selector remains bot-only: `--bot <name>`.
 
 ### Plot run (`plot`)
 
@@ -98,8 +100,9 @@ uv run python main.py bench \
 
 Bench selector format:
 
-- `level[:scenario[:seed_spec]]`
+- `level[:scenario[:goal[:seed_spec]]]`
 - `seed_spec` supports comma/range syntax, e.g. `0-9`, `0,2,4`, `3-1`.
+- Omit goal to default to `landing`.
 - If seed spec is omitted, deterministic scenarios run with seed `0`.
 - If seed spec is omitted and the scenario has randomized fields, seeds auto-expand to `0-9`.
 
@@ -119,8 +122,8 @@ Default policy profile:
 
 ### `run` / `sim` / `plot`
 
-- selector: `level[:scenario[:seed]]`
-- `-b, --bot NAME[:goal]` (for example: `zem_zev:setup`)
+- selector: `level[:scenario[:goal[:seed]]]`
+- `-b, --bot NAME`
 - `--bot-config PATH` (JSON override config for supported bots)
 - `-l, --lander NAME`
 - `-n, --steps N`
@@ -136,8 +139,8 @@ Default policy profile:
 
 ### `bench`
 
-- selectors: `level[:scenario[:seed_spec]]` (one or more)
-- `-b, --bot NAME[:goal]`
+- selectors: `level[:scenario[:goal[:seed_spec]]]` (one or more)
+- `-b, --bot NAME`
 - `--bot-config PATH` (JSON override config for supported bots)
 - `-l, --lander NAME`
 - `-n, --steps N`

@@ -8,6 +8,7 @@ class BenchTarget:
     level_name: str
     scenario_name: str | None
     seed_spec: str | None
+    eval_goal: str = "landing"
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,7 @@ class RunSettings:
     stop_on_out_of_fuel: bool
     stop_on_first_land: bool
     headless: bool
+    eval_goal: str = "landing"
     bot_profile_enabled: bool | None = None
     bot_profile_interval_s: float | None = None
     bot_profile_log_lines: bool | None = None

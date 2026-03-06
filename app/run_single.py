@@ -5,10 +5,12 @@ from pathlib import Path
 from typing import Any
 
 from bots import create_bot
+from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal, normalize_eval_goals
 from core.eval import normalize_run_result
 from core.level_capabilities import (
     resolve_default_bot_name,
     set_benchmark_mode_checked,
+    set_eval_goal_checked,
     set_eval_scenario_checked,
 )
 from game import LanderGame
@@ -16,7 +18,6 @@ from levels import create_level
 
 from app.config import RunSettings
 from app.reporting import print_headless_results
-from app.selector import parse_bot_selector
 
 
 def resolve_default_bot(level_name: str) -> str | None:
@@ -33,16 +34,27 @@ def resolve_run_bot_name(settings: RunSettings, level) -> str | None:
     return resolve_default_bot_name(level)
 
 
-def resolve_run_bot_spec(settings: RunSettings, level) -> tuple[str | None, str]:
-    selector = resolve_run_bot_name(settings, level)
-    if selector is None:
-        return None, "landing"
-    parsed = parse_bot_selector(selector)
-    return parsed.bot_name, parsed.goal or "landing"
-
-
 def set_eval_scenario(level, name: str | None) -> None:
     set_eval_scenario_checked(level, name)
+
+
+def set_eval_goal(level, name: str | None) -> str:
+    return set_eval_goal_checked(level, name)
+
+
+def resolve_run_goal(
+    settings: RunSettings,
+    *,
+    eval_goal_name: str | None = None,
+) -> str:
+    return normalize_eval_goal(eval_goal_name or settings.eval_goal)
+
+
+def _resolve_bot_eval_goals(bot) -> tuple[str, ...]:
+    getter = getattr(bot, "supported_eval_goals", None)
+    if not callable(getter):
+        return (EVAL_GOAL_LANDING,)
+    return normalize_eval_goals(getter())
 
 
 def _load_bot_config(path: str | None) -> dict[str, Any] | None:
@@ -89,6 +101,7 @@ def run_once(
     seed: int | None = None,
     level_name: str | None = None,
     eval_scenario_name: str | None = None,
+    eval_goal_name: str | None = None,
     print_results: bool = True,
     benchmark_mode: str | None = None,
 ) -> dict[str, Any]:
@@ -98,25 +111,39 @@ def run_once(
 
     chosen_scenario = eval_scenario_name if eval_scenario_name is not None else settings.scenario_name
     set_eval_scenario(level, chosen_scenario)
+    run_goal = resolve_run_goal(settings, eval_goal_name=eval_goal_name)
+    run_goal = set_eval_goal(level, run_goal)
     configure_level(level, settings, benchmark_mode=benchmark_mode)
 
-    run_bot_selector = resolve_run_bot_name(settings, level)
-    run_bot_name, run_bot_goal = resolve_run_bot_spec(settings, level)
+    run_bot_name = resolve_run_bot_name(settings, level)
     bot_config = _load_bot_config(settings.bot_config_path)
     bot = (
         create_bot(run_bot_name, config_override=bot_config)
         if run_bot_name is not None
         else None
     )
-    if bot is not None and run_bot_selector is not None:
-        bot.set_eval_goal(run_bot_goal)
-        setattr(bot, "_bot_name", run_bot_selector)
+    if bot is not None and run_bot_name is not None:
+        supported_goals = _resolve_bot_eval_goals(bot)
+        if run_goal not in supported_goals:
+            supported_csv = ", ".join(supported_goals)
+            raise ValueError(
+                f"Bot '{run_bot_name}' does not support eval goal '{run_goal}'. "
+                f"Supported goals: {supported_csv}"
+            )
+        bot.set_eval_goal(run_goal)
+        setattr(bot, "_bot_name", run_bot_name)
+    if run_goal != EVAL_GOAL_LANDING and bot is None:
+        raise ValueError(
+            f"Eval goal '{run_goal}' requires a bot. "
+            "Provide --bot or choose the default landing goal."
+        )
 
     game = LanderGame(
         seed=seed,
         bot=bot,
         headless=settings.headless,
         level=level,
+        eval_goal=run_goal,
         bot_profile_enabled=settings.bot_profile_enabled,
         bot_profile_interval_s=settings.bot_profile_interval_s,
         bot_profile_log_lines=settings.bot_profile_log_lines,
@@ -127,10 +154,11 @@ def run_once(
         max_steps=settings.max_steps,
     )
 
-    if run_bot_selector is not None:
-        result["_bot_name"] = run_bot_selector
+    if run_bot_name is not None:
+        result["_bot_name"] = run_bot_name
     result["_level_name"] = run_name
     result["_scenario_name"] = getattr(level, "scenario_name", run_name)
+    result["_eval_goal"] = run_goal
 
     if settings.headless and print_results:
         print_headless_results(result)
@@ -143,6 +171,7 @@ def run_once_record(
     seed: int | None,
     level_name: str,
     eval_scenario_name: str | None = None,
+    eval_goal_name: str | None = None,
     benchmark_mode: str | None = None,
 ) -> dict[str, Any]:
     result = run_once(
@@ -150,6 +179,7 @@ def run_once_record(
         seed=seed,
         level_name=level_name,
         eval_scenario_name=eval_scenario_name,
+        eval_goal_name=eval_goal_name,
         print_results=False,
         benchmark_mode=benchmark_mode,
     )

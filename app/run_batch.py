@@ -13,6 +13,7 @@ from core.eval import (
 from core.level_capabilities import (
     list_batch_scenarios_safe,
     scenario_has_randomized_fields_safe,
+    set_eval_goal_checked,
     set_eval_scenario_checked,
 )
 from levels import create_level
@@ -50,7 +51,7 @@ def resolve_selector_plan(
     *,
     scenario_resolver: Callable[[str], list[str]] | None = None,
     randomized_checker: Callable[[str, str | None], bool] | None = None,
-) -> list[tuple[int, str, str | None]]:
+) -> list[tuple[int, str, str | None, str]]:
     resolver = scenario_resolver or resolve_level_scenarios
     checker = randomized_checker or _scenario_has_randomized_fields
     explicit_seeds = parse_seed_spec(target.seed_spec) if target.seed_spec else None
@@ -67,7 +68,10 @@ def resolve_selector_plan(
         listed = resolver(target.level_name)
         scenarios = listed if listed else [None]
 
-    run_plan: list[tuple[int, str, str | None]] = []
+    level = create_level(target.level_name)
+    resolved_goal = set_eval_goal_checked(level, target.eval_goal)
+
+    run_plan: list[tuple[int, str, str | None, str]] = []
     for scenario_name in scenarios:
         if explicit_seeds is not None:
             seeds = explicit_seeds
@@ -75,11 +79,11 @@ def resolve_selector_plan(
             seeds = list(_AUTO_RANDOMIZED_BATCH_SEEDS)
         else:
             seeds = [0]
-        run_plan.extend((seed, target.level_name, scenario_name) for seed in seeds)
+        run_plan.extend((seed, target.level_name, scenario_name, resolved_goal) for seed in seeds)
     return run_plan
 
 
-def resolve_benchmark_plan(cfg: BenchSettings) -> list[tuple[int, str, str | None]]:
+def resolve_benchmark_plan(cfg: BenchSettings) -> list[tuple[int, str, str | None, str]]:
     if not cfg.selectors:
         raise ValueError("Benchmark requires at least one selector")
 
@@ -97,7 +101,7 @@ def resolve_benchmark_plan(cfg: BenchSettings) -> list[tuple[int, str, str | Non
             scenario_randomized_cache[key] = _scenario_has_randomized_fields(level_name, scenario_name)
         return scenario_randomized_cache[key]
 
-    run_plan: list[tuple[int, str, str | None]] = []
+    run_plan: list[tuple[int, str, str | None, str]] = []
     for target in cfg.selectors:
         run_plan.extend(
             resolve_selector_plan(
@@ -117,6 +121,7 @@ def _to_run_settings(cfg: BenchSettings) -> RunSettings:
         bot_config_path=cfg.bot_config_path,
         seed=None,
         scenario_name=None,
+        eval_goal=cfg.selectors[0].eval_goal,
         lander_name=cfg.lander_name,
         print_freq=0,
         max_time=cfg.max_time,
@@ -136,23 +141,28 @@ def _to_run_settings(cfg: BenchSettings) -> RunSettings:
 
 def _run_batch_sequential(
     run_settings: RunSettings,
-    run_plan: list[tuple[int, str, str | None]],
+    run_plan: list[tuple[int, str, str | None, str]],
     *,
     benchmark_mode: str,
 ) -> list[dict[str, Any]]:
     total = len(run_plan)
     records: list[dict[str, Any]] = []
-    for run_idx, (seed, level_name, scenario_name) in enumerate(run_plan, start=1):
+    for run_idx, (seed, level_name, scenario_name, eval_goal_name) in enumerate(run_plan, start=1):
+        goal_label = "" if eval_goal_name == "landing" else f" goal={eval_goal_name}"
         if scenario_name is not None:
-            print(f"[{run_idx}/{total}] seed={seed} level={level_name} scenario={scenario_name}")
+            print(
+                f"[{run_idx}/{total}] seed={seed} level={level_name} "
+                f"scenario={scenario_name}{goal_label}"
+            )
         else:
-            print(f"[{run_idx}/{total}] seed={seed} level={level_name}")
+            print(f"[{run_idx}/{total}] seed={seed} level={level_name}{goal_label}")
         records.append(
             run_once_record(
                 run_settings,
                 seed=seed,
                 level_name=level_name,
                 eval_scenario_name=scenario_name,
+                eval_goal_name=eval_goal_name,
                 benchmark_mode=benchmark_mode,
             )
         )
@@ -166,7 +176,7 @@ def run_benchmark(cfg: BenchSettings) -> int:
     if total <= 0:
         raise ValueError("Benchmark resolved no runs")
 
-    unique_levels = sorted({level_name for _seed, level_name, _scenario in run_plan})
+    unique_levels = sorted({level_name for _seed, level_name, _scenario, _goal in run_plan})
     if cfg.bot_name is None:
         missing_defaults = [
             level_name for level_name in unique_levels if resolve_default_bot(level_name) is None
@@ -193,37 +203,42 @@ def run_benchmark(cfg: BenchSettings) -> int:
         try:
             with ProcessPoolExecutor(max_workers=worker_count) as pool:
                 future_map = {}
-                for run_idx, (seed, level_name, scenario_name) in enumerate(run_plan, start=1):
+                for run_idx, (seed, level_name, scenario_name, eval_goal_name) in enumerate(
+                    run_plan, start=1
+                ):
                     fut = pool.submit(
                         run_once_record,
                         run_settings,
                         seed=seed,
                         level_name=level_name,
                         eval_scenario_name=scenario_name,
+                        eval_goal_name=eval_goal_name,
                         benchmark_mode=benchmark_mode,
                     )
-                    future_map[fut] = (run_idx, seed, level_name, scenario_name)
+                    future_map[fut] = (run_idx, seed, level_name, scenario_name, eval_goal_name)
 
                 done = 0
                 for fut in as_completed(future_map):
-                    run_idx, seed, level_name, scenario_name = future_map[fut]
+                    run_idx, seed, level_name, scenario_name, eval_goal_name = future_map[fut]
                     try:
                         record = fut.result()
                     except Exception as exc:
                         scenario_label = f" scenario={scenario_name}" if scenario_name is not None else ""
+                        goal_label = "" if eval_goal_name == "landing" else f" goal={eval_goal_name}"
                         raise RuntimeError(
                             f"run {run_idx}/{total} seed={seed} level={level_name}"
-                            f"{scenario_label} failed ({type(exc).__name__}: {exc})"
+                            f"{scenario_label}{goal_label} failed ({type(exc).__name__}: {exc})"
                         ) from exc
 
                     done += 1
+                    goal_label = "" if eval_goal_name == "landing" else f" goal={eval_goal_name}"
                     if scenario_name is not None:
                         print(
                             f"[{done}/{total}] done seed={seed} level={level_name} "
-                            f"scenario={scenario_name}"
+                            f"scenario={scenario_name}{goal_label}"
                         )
                     else:
-                        print(f"[{done}/{total}] done seed={seed} level={level_name}")
+                        print(f"[{done}/{total}] done seed={seed} level={level_name}{goal_label}")
                     indexed_records[run_idx] = record
 
             records = [indexed_records[i] for i in range(1, total + 1)]
@@ -238,14 +253,26 @@ def run_benchmark(cfg: BenchSettings) -> int:
 
     summary = aggregate_eval_records(records)
     failed = [r for r in records if not r.get("success", False)]
-    used_seeds = sorted({seed for seed, _level_name, _scenario_name in run_plan})
+    used_seeds = sorted({seed for seed, _level_name, _scenario_name, _goal in run_plan})
 
     batch_bot_name = cfg.bot_name or "level_default"
     artifact_level = unique_levels[0] if len(unique_levels) == 1 else "batch"
     artifact_tags = sorted(
         {
-            f"{level_name}:{scenario_name}" if scenario_name is not None else level_name
-            for _seed, level_name, scenario_name in run_plan
+            (
+                (
+                    f"{level_name}:{scenario_name}"
+                    if scenario_name is not None
+                    else level_name
+                )
+                if eval_goal_name == "landing"
+                else (
+                    f"{level_name}:{scenario_name}:{eval_goal_name}"
+                    if scenario_name is not None
+                    else f"{level_name}::{eval_goal_name}"
+                )
+            )
+            for _seed, level_name, scenario_name, eval_goal_name in run_plan
         }
     )
 

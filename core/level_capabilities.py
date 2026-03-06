@@ -3,10 +3,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
+from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal, normalize_eval_goals
+
 
 @runtime_checkable
 class SupportsEvalScenario(Protocol):
     def set_eval_scenario(self, name: str) -> None: ...
+
+
+@runtime_checkable
+class SupportsEvalGoal(Protocol):
+    def set_eval_goal(self, goal: str) -> None: ...
 
 
 @runtime_checkable
@@ -22,6 +29,11 @@ class SupportsBatchScenarioListing(Protocol):
 @runtime_checkable
 class SupportsScenarioRandomizedFields(Protocol):
     def scenario_has_randomized_fields(self, name: str | None = None) -> bool: ...
+
+
+@runtime_checkable
+class SupportsEvalGoalListing(Protocol):
+    def supported_eval_goals(self) -> tuple[str, ...]: ...
 
 
 BenchmarkLevelPolicy = Literal["normal", "observe_only", "excluded"]
@@ -60,6 +72,35 @@ def set_eval_scenario_checked(level, name: str | None) -> None:
         level_type_name = type(level).__name__
         raise ValueError(f"Level '{level_type_name}' does not support scenario selection")
     level.set_eval_scenario(name)
+
+
+def resolve_level_eval_goals(level) -> tuple[str, ...]:
+    getter = getattr(level, "supported_eval_goals", None)
+    if not callable(getter):
+        return (EVAL_GOAL_LANDING,)
+    raw = getter()
+    try:
+        return normalize_eval_goals(raw)
+    except Exception as exc:
+        level_type_name = type(level).__name__
+        raise ValueError(
+            f"Level '{level_type_name}' returned invalid supported_eval_goals(): {exc}"
+        ) from exc
+
+
+def set_eval_goal_checked(level, goal: str | None) -> str:
+    key = normalize_eval_goal(goal)
+    supported = resolve_level_eval_goals(level)
+    if key not in supported:
+        level_type_name = type(level).__name__
+        supported_csv = ", ".join(supported)
+        raise ValueError(
+            f"Level '{level_type_name}' does not support eval goal '{key}'. "
+            f"Supported goals: {supported_csv}"
+        )
+    if isinstance(level, SupportsEvalGoal):
+        level.set_eval_goal(key)
+    return key
 
 
 def set_benchmark_mode_checked(level, benchmark_mode: str | None) -> None:

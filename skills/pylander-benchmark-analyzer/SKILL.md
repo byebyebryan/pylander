@@ -61,8 +61,8 @@ Focused run:
 
 Per-case reproduction:
 
-- `uv run python main.py plot <level[:scenario[:seed]]> --bot <bot> --plot all`
-- `uv run python main.py sim <level[:scenario[:seed]]> --bot <bot> --freq 1`
+- `uv run python main.py plot <level[:scenario[:goal[:seed]]]> --bot <bot> --plot all`
+- `uv run python main.py sim <level[:scenario[:goal[:seed]]]> --bot <bot> --freq 1`
 - `PYLANDER_BOT_PROFILE=1 uv run python main.py sim <selector> --bot <bot> --freq 1`
 
 ## Mode Workflow

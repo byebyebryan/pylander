@@ -12,7 +12,7 @@ The in-flight path is a single owner with internal phases (`setup -> coast -> te
 ## How to iterate
 
 - Prefer headless mode while tuning:
-  - `uv run python main.py sim <level[:scenario[:seed]]>`
+  - `uv run python main.py sim <level[:scenario[:goal[:seed]]]>`
 - Fix selector seed/scenario while tuning one change.
 - Use selector-based bench packs for fast regressions.
 - In benchmark mode, selectors without seed specs auto-run seeds `0-9` for randomized scenarios.
@@ -24,7 +24,7 @@ Core metrics from game + batch aggregation:
 - Outcome: `state`, `success`, `landing_offset`
 - Efficiency: `fuel_consumed`, `fuel_per_distance`, `path_efficiency`
 - Timing: `time`, `time_to_first_land`
-- Bot eval metadata: `bot_eval_goal`, `bot_eval_early_end`, `bot_eval_end_reason`
+- Eval metadata: `eval_goal`, `eval_early_end`, `eval_end_reason` (plus `bot_eval_*` aliases)
 - Unified optimizer telemetry: `zem_*` gate + solver fields
 
 ## Where things live

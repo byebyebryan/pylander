@@ -3,6 +3,7 @@ from __future__ import annotations
 import core.terrain as _terrain
 from core.components import CargoHold, Transform
 from core.ecs import require_component
+from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
 from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 from core.level import Level
 from core.maths import Vector2
@@ -50,6 +51,10 @@ class ClimbLevel(PresetLevel):
         super().__init__()
         self._eval_scenario_name = _DEFAULT_SCENARIO
         self._benchmark_random_mode = "sample"
+
+    @staticmethod
+    def supported_eval_goals() -> tuple[str, ...]:
+        return (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
 
     @staticmethod
     def list_batch_scenarios() -> list[str]:

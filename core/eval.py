@@ -103,6 +103,11 @@ def normalize_run_result(
         failure_mode = failure_mode_raw.strip()
     else:
         failure_mode = "none" if success else state
+    eval_goal = str(result.get("eval_goal") or result.get("bot_eval_goal") or "landing")
+    eval_early_end = _to_optional_bool(
+        result.get("eval_early_end", result.get("bot_eval_early_end"))
+    )
+    eval_end_reason = result.get("eval_end_reason", result.get("bot_eval_end_reason"))
     record = {
         "bot": bot_name,
         "level": level_name,
@@ -134,9 +139,20 @@ def normalize_run_result(
         ),
         "success": success,
         "failure_mode": failure_mode,
-        "bot_eval_goal": result.get("bot_eval_goal"),
-        "bot_eval_early_end": _to_optional_bool(result.get("bot_eval_early_end")),
-        "bot_eval_end_reason": result.get("bot_eval_end_reason"),
+        "eval_goal": eval_goal,
+        "eval_early_end": eval_early_end,
+        "eval_end_reason": eval_end_reason,
+        "bot_eval_goal": eval_goal,
+        "bot_eval_early_end": eval_early_end,
+        "bot_eval_end_reason": eval_end_reason,
+        "setup_goal_time": _to_optional_float(result.get("setup_goal_time")),
+        "setup_goal_fuel_consumed": _to_optional_float(
+            result.get("setup_goal_fuel_consumed")
+        ),
+        "setup_goal_projected_dx": _to_optional_float(result.get("setup_goal_projected_dx")),
+        "setup_goal_time_to_target": _to_optional_float(
+            result.get("setup_goal_time_to_target")
+        ),
         "launch_arrived": _to_optional_bool(result.get("launch_arrived")),
         "launch_landed_site_uid": result.get("launch_landed_site_uid"),
         "climb_arrived": _to_optional_bool(result.get("climb_arrived")),
@@ -254,7 +270,13 @@ def aggregate_eval_records(records: list[dict[str, Any]]) -> dict[str, Any]:
 
     by_scenario: dict[str, dict[str, Any]] = {}
     for record in records:
-        key = str(record.get("scenario") or "default")
+        scenario_name = str(record.get("scenario") or "default")
+        goal_token = str(
+            record.get("eval_goal")
+            or record.get("bot_eval_goal")
+            or "landing"
+        ).strip().lower() or "landing"
+        key = scenario_name if goal_token == "landing" else f"{scenario_name}@{goal_token}"
         item = by_scenario.setdefault(
             key,
             {

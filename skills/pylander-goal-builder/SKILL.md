@@ -34,7 +34,7 @@ Use this skill when the user asks to add or evolve a level to represent a new bo
 3. Ensure scenario names are stable and meaningful.
 4. Wire `benchmark_profile()` with explicit scenario lists for all pack modes.
 5. Run:
-- `uv run python main.py sim <level[:scenario[:seed]]> --bot zem_zev`
+- `uv run python main.py sim <level[:scenario[:goal[:seed]]]> --bot zem_zev`
 - `uv run python main.py plot <selector> --bot zem_zev --plot all --plot-output both`
 - `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors <selector> --seed-spec 0-4 --bot zem_zev`
 6. Update docs (`README.md` and level-specific docs) when behavior/scope changed.

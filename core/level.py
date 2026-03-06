@@ -11,6 +11,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
 
+from core.eval_goals import EVAL_GOAL_LANDING
 
 @dataclass
 class LevelWorld:
@@ -73,6 +74,10 @@ class Level(ABC):
             "time": getattr(game, "_elapsed_time", 0.0),
             "state": state,
         }
+
+    def supported_eval_goals(self) -> tuple[str, ...]:
+        """Return eval goals supported by this level."""
+        return (EVAL_GOAL_LANDING,)
 
     # Convenience properties forwarding to world
     @property

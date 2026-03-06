@@ -33,6 +33,7 @@ from bots._optimizer_pdg import PDGOptimizer, PDGOptimizerConfig, PDGPlan
 from bots._targeting import pick_target, target_half_width
 from core.bot import Bot, BotAction, BotEvalDecision, Sensors
 from core.config import GRAVITY
+from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
 
 _GRAVITY_MAG = abs(float(GRAVITY))
 
@@ -125,13 +126,8 @@ class ZemZevBot(Bot):
         self._launch_takeoff_active = False
         self._last_flight_snapshot = None
 
-    def set_eval_goal(self, goal: str) -> None:
-        key = str(goal or "landing").strip().lower()
-        if key not in {"landing", "setup"}:
-            raise ValueError(
-                f"Unknown zem_zev goal '{goal}'. Expected one of: landing, setup"
-            )
-        self._eval_goal = key
+    def supported_eval_goals(self) -> tuple[str, ...]:
+        return (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
 
     def apply_config_override(self, overrides: dict[str, Any]) -> None:
         if not isinstance(overrides, dict):
@@ -789,7 +785,7 @@ class ZemZevBot(Bot):
         return _resolve_evaluation_snapshot_impl(self)
 
     def get_evaluation_decision(self) -> BotEvalDecision | None:
-        if self.get_eval_goal() == "setup" and self._setup_gate_done:
+        if self.get_eval_goal() == EVAL_GOAL_SETUP and self._setup_gate_done:
             return BotEvalDecision(
                 should_end=True,
                 success=True,

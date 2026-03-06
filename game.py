@@ -18,6 +18,7 @@ from core.components import (
 )
 from core.controllers import PlayerController
 from core.ecs import Entity, World, require_component
+from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal
 from core.engine_adapter import EngineAdapter
 from core.level import Level
 from core.maths import Vector2
@@ -85,6 +86,7 @@ class LanderGame:
         seed: int | None = None,
         bot: Bot | None = None,
         headless: bool = False,
+        eval_goal: str = EVAL_GOAL_LANDING,
         bot_profile_enabled: bool | None = None,
         bot_profile_interval_s: float | None = None,
         bot_profile_log_lines: bool | None = None,
@@ -92,6 +94,7 @@ class LanderGame:
         self.headless = headless
         self.bot = bot
         self.level = level
+        self.eval_goal = normalize_eval_goal(eval_goal)
         seed = random.randint(0, 1000000) if seed is None else seed
         self.seed = int(seed)
         self._bot_profiler = BotLoopProfiler.from_settings(
@@ -444,6 +447,7 @@ class LanderGame:
             result,
             elapsed_time=timers.elapsed_time,
             final_actor=final_actor,
+            eval_goal=self.eval_goal,
         )
         self._bot_profiler.apply_to_result(result)
         plot_extras = self.plotter.finalize()
@@ -641,42 +645,32 @@ class LanderGame:
             return decision
         return None
 
-    def _bot_eval_goal(self) -> str | None:
-        bot = self._active_actor_bot()
-        if bot is None:
-            return None
-        getter = getattr(bot, "get_eval_goal", None)
-        if not callable(getter):
-            return "landing"
-        try:
-            goal = str(getter() or "landing").strip().lower()
-        except Exception:
-            return "landing"
-        return goal or "landing"
-
     def _apply_bot_eval_to_result(self, result: dict) -> None:
-        goal = self._bot_eval_goal()
-        if goal is None:
-            return
+        goal = self.eval_goal
+        result["eval_goal"] = goal
         result["bot_eval_goal"] = goal
 
         decision = self._bot_eval_decision
+        result["eval_early_end"] = bool(decision.should_end) if decision else False
         result["bot_eval_early_end"] = bool(decision.should_end) if decision else False
         if decision is not None:
             if decision.end_reason:
-                result["bot_eval_end_reason"] = str(decision.end_reason)
+                reason = str(decision.end_reason)
+                result["eval_end_reason"] = reason
+                result["bot_eval_end_reason"] = reason
             for key, value in (decision.metrics or {}).items():
                 if not isinstance(key, str):
                     continue
                 result[str(key)] = value
 
-        if goal != "landing":
+        if goal != EVAL_GOAL_LANDING:
             if decision is not None and decision.success is True:
                 result["success"] = True
                 result["failure_mode"] = "none"
             else:
                 result["success"] = False
                 result["failure_mode"] = "goal_not_reached"
+                result.setdefault("eval_end_reason", "goal_not_reached")
                 result.setdefault("bot_eval_end_reason", "goal_not_reached")
             return
 

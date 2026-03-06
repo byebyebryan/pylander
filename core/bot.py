@@ -3,6 +3,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
+
+from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal, normalize_eval_goals
 from core.sensor import RadarContact, ProximityContact
 
 
@@ -92,7 +94,7 @@ class Bot(ABC):
         self.status = ""
         self.vehicle_info: VehicleInfo | None = None
         self._pinned_target_uid: str | None = None
-        self._eval_goal = "landing"
+        self._eval_goal = EVAL_GOAL_LANDING
 
     @abstractmethod
     def update(self, dt: float, sensors: Sensors) -> BotAction:
@@ -128,18 +130,24 @@ class Bot(ABC):
         normalized = str(target_uid).strip()
         self._pinned_target_uid = normalized if normalized else None
 
+    def supported_eval_goals(self) -> tuple[str, ...]:
+        """Return supported evaluation goals for this bot."""
+        return (EVAL_GOAL_LANDING,)
+
     def set_eval_goal(self, goal: str) -> None:
         """Set evaluation goal for this bot.
 
         Default behavior supports only the end-to-end landing goal.
         """
-        key = str(goal or "landing").strip().lower()
-        if key != "landing":
+        key = normalize_eval_goal(goal)
+        supported = normalize_eval_goals(self.supported_eval_goals())
+        if key not in supported:
+            supported_csv = ", ".join(supported)
             raise ValueError(
                 f"Bot '{type(self).__name__}' does not support goal '{goal}'. "
-                "Supported goals: landing"
+                f"Supported goals: {supported_csv}"
             )
-        self._eval_goal = "landing"
+        self._eval_goal = key
 
     def get_eval_goal(self) -> str:
         return self._eval_goal

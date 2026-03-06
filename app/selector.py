@@ -2,18 +2,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from core.eval_goals import (
+    EVAL_GOAL_LANDING,
+    KNOWN_EVAL_GOAL_SET,
+    normalize_eval_goal,
+)
+
 
 @dataclass(frozen=True)
 class ParsedSelector:
     level_name: str
     scenario_name: str | None
-    seed_token: str | None
-
-
-@dataclass(frozen=True)
-class ParsedBotSelector:
-    bot_name: str
     goal: str | None
+    seed_token: str | None
 
 
 def parse_seed_spec(spec: str) -> list[int]:
@@ -50,18 +51,23 @@ def parse_selector(
     if not selector:
         if default_level is None:
             raise ValueError("Missing selector and no default level is available")
-        return ParsedSelector(level_name=default_level, scenario_name=None, seed_token=None)
+        return ParsedSelector(
+            level_name=default_level,
+            scenario_name=None,
+            goal=None,
+            seed_token=None,
+        )
 
     parts = selector.split(":")
-    if len(parts) > 3:
+    if len(parts) > 4:
         raise ValueError(
-            f"Invalid selector '{selector}'. Expected format 'level[:scenario[:seed]]'"
+            f"Invalid selector '{selector}'. Expected format 'level[:scenario[:goal[:seed]]]'"
         )
 
     level_name = parts[0].strip()
     if not level_name:
         raise ValueError(
-            f"Invalid selector '{selector}'. Level is required in 'level[:scenario[:seed]]'"
+            f"Invalid selector '{selector}'. Level is required in 'level[:scenario[:goal[:seed]]]'"
         )
     if level_name not in known_levels:
         known = ", ".join(sorted(known_levels))
@@ -72,42 +78,60 @@ def parse_selector(
         scenario = parts[1].strip()
         scenario_name = scenario if scenario else None
 
+    goal = None
     seed_token = None
     if len(parts) >= 3:
-        seed = parts[2].strip()
-        seed_token = seed if seed else None
+        third = parts[2].strip()
+        if len(parts) == 4:
+            if not third:
+                raise ValueError(
+                    f"Invalid selector '{selector}'. Goal is required in "
+                    "'level[:scenario[:goal[:seed]]]' when 4 tokens are provided"
+                )
+            goal = normalize_eval_goal(third)
+            seed = parts[3].strip()
+            seed_token = seed if seed else None
+        else:
+            if third:
+                lowered = third.lower()
+                if lowered in KNOWN_EVAL_GOAL_SET:
+                    goal = normalize_eval_goal(lowered)
+                else:
+                    seed_token = third
 
     return ParsedSelector(
         level_name=level_name,
         scenario_name=scenario_name,
+        goal=goal,
         seed_token=seed_token,
     )
 
 
-def parse_bot_selector(raw_bot: str) -> ParsedBotSelector:
-    token = str(raw_bot or "").strip()
-    if not token:
-        raise ValueError("Bot selector cannot be empty")
+def render_selector(
+    *,
+    level_name: str,
+    scenario_name: str | None,
+    goal: str | None,
+    seed_token: str | int | None,
+) -> str:
+    level = str(level_name or "").strip() or "unknown"
+    scenario = str(scenario_name or "").strip() or None
+    seed = str(seed_token).strip() if seed_token is not None else None
+    goal_token = normalize_eval_goal(goal)
 
-    parts = token.split(":")
-    if len(parts) > 2:
-        raise ValueError(
-            f"Invalid bot selector '{token}'. Expected format 'bot[:goal]'"
-        )
+    if goal_token == EVAL_GOAL_LANDING:
+        if scenario and seed:
+            return f"{level}:{scenario}:{seed}"
+        if scenario:
+            return f"{level}:{scenario}"
+        if seed:
+            return f"{level}::{seed}"
+        return level
 
-    bot_name = parts[0].strip()
-    if not bot_name:
-        raise ValueError(
-            f"Invalid bot selector '{token}'. Bot name is required in 'bot[:goal]'"
-        )
-
-    goal = None
-    if len(parts) == 2:
-        parsed_goal = parts[1].strip().lower()
-        if not parsed_goal:
-            raise ValueError(
-                f"Invalid bot selector '{token}'. Goal cannot be empty in 'bot[:goal]'"
-            )
-        goal = parsed_goal
-
-    return ParsedBotSelector(bot_name=bot_name, goal=goal)
+    if scenario:
+        base = f"{level}:{scenario}:{goal_token}"
+    else:
+        base = f"{level}::{goal_token}"
+    if seed:
+        return f"{base}:{seed}"
+    return base

@@ -38,7 +38,7 @@ Defaults:
 
 - End-to-end objective metrics: `state`, `success`, `climb_arrived`, `climb_landed_site_uid`
 - Unified gate telemetry: `zem_setup_gate_*`, `zem_terminal_gate_*`
-- Goal metadata when using bot goals: `bot_eval_goal`, `bot_eval_early_end`, `bot_eval_end_reason`
+- Goal metadata when using goal selectors: `eval_goal`, `eval_early_end`, `eval_end_reason` (`bot_eval_*` aliases are also emitted)
 
 Additional `zem_zev` diagnostics exported for climb tuning:
 

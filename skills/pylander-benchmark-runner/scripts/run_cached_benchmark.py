@@ -270,6 +270,9 @@ def _run_diag(record: dict[str, Any]) -> dict[str, Any]:
 def _selector_from_record(record: dict[str, Any]) -> str:
     level = str(record.get("level") or "unknown").strip() or "unknown"
     scenario = str(record.get("scenario") or "").strip()
+    eval_goal = str(record.get("eval_goal") or record.get("bot_eval_goal") or "landing").strip().lower()
+    if not eval_goal:
+        eval_goal = "landing"
     seed = record.get("seed")
     seed_token = None
     if seed is not None:
@@ -283,25 +286,38 @@ def _selector_from_record(record: dict[str, Any]) -> str:
         base = f"{level}:{scenario}"
     else:
         base = level
+    if eval_goal == "landing":
+        if seed_token is None:
+            return base
+        if has_scenario:
+            return f"{base}:{seed_token}"
+        return f"{base}::{seed_token}"
+
+    goal_base = (
+        f"{level}:{scenario}:{eval_goal}"
+        if has_scenario
+        else f"{level}::{eval_goal}"
+    )
     if seed_token is None:
-        return base
-    if has_scenario:
-        return f"{base}:{seed_token}"
-    return f"{base}::{seed_token}"
+        return goal_base
+    return f"{goal_base}:{seed_token}"
 
 
-def _records_by_key(payload: dict[str, Any]) -> dict[tuple[str, str, int], dict[str, Any]]:
-    out: dict[tuple[str, str, int], dict[str, Any]] = {}
+def _records_by_key(payload: dict[str, Any]) -> dict[tuple[str, str, str, int], dict[str, Any]]:
+    out: dict[tuple[str, str, str, int], dict[str, Any]] = {}
     for rec_raw in payload.get("records") or []:
         if not isinstance(rec_raw, dict):
             continue
         rec = dict(rec_raw)
         level = str(rec.get("level") or "").strip()
         scenario = str(rec.get("scenario") or "").strip()
+        eval_goal = str(rec.get("eval_goal") or rec.get("bot_eval_goal") or "landing").strip().lower()
+        if not eval_goal:
+            eval_goal = "landing"
         seed = _to_int(rec.get("seed"), 0)
         if not level:
             continue
-        out[(level, scenario, seed)] = rec
+        out[(level, scenario, eval_goal, seed)] = rec
     return out
 
 
@@ -347,7 +363,8 @@ def _crash_deltas(
             entry = {
                 "level": key[0],
                 "scenario": key[1],
-                "seed": key[2],
+                "eval_goal": key[2],
+                "seed": key[3],
                 "candidate_state": c_state,
                 "baseline_state": b_state,
                 "candidate_failure_mode": c_rec.get("failure_mode"),
@@ -366,7 +383,8 @@ def _crash_deltas(
                 {
                     "level": key[0],
                     "scenario": key[1],
-                    "seed": key[2],
+                    "eval_goal": key[2],
+                    "seed": key[3],
                     "baseline_state": b_state,
                     "candidate_state": c_state,
                     "baseline_failure_mode": b_rec.get("failure_mode"),
@@ -389,7 +407,14 @@ def _scenario_regressions(
         for rec in _payload_records(payload):
             level = str(rec.get("level") or "unknown").strip() or "unknown"
             scenario = str(rec.get("scenario") or "default").strip() or "default"
-            key = f"{level}:{scenario}"
+            eval_goal = str(rec.get("eval_goal") or rec.get("bot_eval_goal") or "landing").strip().lower()
+            if not eval_goal:
+                eval_goal = "landing"
+            key = (
+                f"{level}:{scenario}"
+                if eval_goal == "landing"
+                else f"{level}:{scenario}@{eval_goal}"
+            )
             buckets.setdefault(key, []).append(rec)
 
         out: dict[str, dict[str, Any]] = {}

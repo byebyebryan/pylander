@@ -9,7 +9,7 @@ Use this skill when the user wants failure analysis and strategy selection for a
 
 ## Inputs
 
-- `selector_scope`: `level[:scenario[:seed]]` or a focused set
+- `selector_scope`: `level[:scenario[:goal[:seed]]]` or a focused set
 - `bot`: default `zem_zev`
 - `goal`: what must improve
 - optional `baseline_ref`: compare against baseline behavior

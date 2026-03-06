@@ -190,7 +190,7 @@ def test_zem_setup_goal_ends_headless_run_early() -> None:
     level = create_level_by_name("setup")
     bot = create_bot("zem_zev")
     bot.set_eval_goal("setup")
-    game = LanderGame(level=level, seed=0, bot=bot, headless=True)
+    game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="setup")
 
     result = game.run(print_freq=0, max_time=120.0)
     assert result["bot_eval_goal"] == "setup"
@@ -215,7 +215,13 @@ def test_non_landing_goal_without_decision_fails_goal_not_reached() -> None:
 
     bot = _NoGoalBot()
     bot.set_eval_goal("setup")
-    game = LanderGame(level=create_level_by_name("flat"), seed=0, bot=bot, headless=True)
+    game = LanderGame(
+        level=create_level_by_name("flat"),
+        seed=0,
+        bot=bot,
+        headless=True,
+        eval_goal="setup",
+    )
     result = game.run(print_freq=0, max_steps=5, max_time=5.0)
 
     assert result["bot_eval_goal"] == "setup"
@@ -258,6 +264,9 @@ def test_normalize_run_result_includes_bot_eval_fields() -> None:
         },
     )
     assert record["success"] is True
+    assert record["eval_goal"] == "setup"
+    assert record["eval_early_end"] is True
+    assert record["eval_end_reason"] == "goal_reached"
     assert record["bot_eval_goal"] == "setup"
     assert record["bot_eval_early_end"] is True
     assert record["bot_eval_end_reason"] == "goal_reached"
@@ -324,7 +333,7 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
     assert summary["runs"] == 1
     assert summary["successes"] == 1
     assert summary["success_rate"] == pytest.approx(1.0)
-    assert summary["by_scenario"]["mid_near"]["success_rate"] == pytest.approx(1.0)
+    assert summary["by_scenario"]["mid_near@setup"]["success_rate"] == pytest.approx(1.0)
 
 
 def test_parse_seed_spec_keeps_order_and_deduplicates() -> None:
@@ -367,8 +376,8 @@ def test_resolve_batch_plan_expands_all_scenarios_without_seed_spec(monkeypatch)
     monkeypatch.setattr(run_batch_module, "_scenario_has_randomized_fields", lambda _l, _s: False)
     plan = resolve_benchmark_plan(config)
     assert plan == [
-        (0, "plunge", "low_normal"),
-        (0, "plunge", "mid_normal"),
+        (0, "plunge", "low_normal", "landing"),
+        (0, "plunge", "mid_normal", "landing"),
     ]
 
 
@@ -390,9 +399,9 @@ def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
     monkeypatch.setattr(run_batch_module, "_scenario_has_randomized_fields", lambda _l, _s: False)
     plan = resolve_benchmark_plan(config)
     assert plan == [
-        (0, "launch", "far"),
-        (1, "launch", "far"),
-        (2, "launch", "far"),
+        (0, "launch", "far", "landing"),
+        (1, "launch", "far", "landing"),
+        (2, "launch", "far", "landing"),
     ]
 
 
@@ -416,10 +425,11 @@ def test_hud_display_state_prefers_phase_token() -> None:
     assert stage == "setup"
 
 
-def test_parse_args_accepts_bot_goal_selector() -> None:
-    _parser, command = parse_command(["sim", "setup:mid_near:0", "--bot", "zem_zev:setup"])
+def test_parse_args_accepts_level_goal_selector() -> None:
+    _parser, command = parse_command(["sim", "setup:mid_near:setup:0", "--bot", "zem_zev"])
     assert isinstance(command, RunCommand)
-    assert command.run.bot_name == "zem_zev:setup"
+    assert command.run.bot_name == "zem_zev"
+    assert command.run.eval_goal == "setup"
 
 
 def test_cli_requires_subcommand() -> None:
@@ -524,7 +534,7 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
     monkeypatch.setattr(
         run_batch_module,
         "resolve_benchmark_plan",
-        lambda _cfg: [(0, "launch", "mid"), (1, "launch", "mid")],
+        lambda _cfg: [(0, "launch", "mid", "landing"), (1, "launch", "mid", "landing")],
     )
 
     cfg = BenchSettings(

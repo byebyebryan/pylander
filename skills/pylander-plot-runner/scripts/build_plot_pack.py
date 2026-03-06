@@ -31,6 +31,9 @@ def _split_csv(values: list[str]) -> list[str]:
 def _selector_from_record(record: dict[str, Any]) -> str:
     level = str(record.get("level") or "").strip() or "unknown"
     scenario = str(record.get("scenario") or "").strip()
+    eval_goal = str(record.get("eval_goal") or record.get("bot_eval_goal") or "landing").strip().lower()
+    if not eval_goal:
+        eval_goal = "landing"
     seed = record.get("seed")
     seed_token: str | None = None
     if seed is not None:
@@ -44,20 +47,41 @@ def _selector_from_record(record: dict[str, Any]) -> str:
         base = f"{level}:{scenario}"
     else:
         base = level
+    if eval_goal == "landing":
+        if seed_token is None:
+            return base
+        if has_scenario:
+            return f"{base}:{seed_token}"
+        return f"{base}::{seed_token}"
+
+    goal_base = (
+        f"{level}:{scenario}:{eval_goal}"
+        if has_scenario
+        else f"{level}::{eval_goal}"
+    )
     if seed_token is None:
-        return base
-    if has_scenario:
-        return f"{base}:{seed_token}"
-    return f"{base}::{seed_token}"
+        return goal_base
+    return f"{goal_base}:{seed_token}"
 
 
-def _selector_from_triplet(level: str, scenario: str, seed: int | str | None) -> str:
+def _selector_from_triplet(
+    level: str,
+    scenario: str,
+    seed: int | str | None,
+    *,
+    eval_goal: str = "landing",
+) -> str:
     level_t = str(level or "").strip() or "unknown"
     scenario_t = str(scenario or "").strip()
     seed_t = "0" if seed is None else str(seed)
+    goal_t = str(eval_goal or "landing").strip().lower() or "landing"
+    if goal_t == "landing":
+        if scenario_t and scenario_t != level_t:
+            return f"{level_t}:{scenario_t}:{seed_t}"
+        return f"{level_t}::{seed_t}"
     if scenario_t and scenario_t != level_t:
-        return f"{level_t}:{scenario_t}:{seed_t}"
-    return f"{level_t}::{seed_t}"
+        return f"{level_t}:{scenario_t}:{goal_t}:{seed_t}"
+    return f"{level_t}::{goal_t}:{seed_t}"
 
 
 def _abs_float(value: Any) -> float:
@@ -143,6 +167,7 @@ def _build_cases_from_compare(compare: dict[str, Any], *, top_n: int) -> list[di
                     str(item.get("level") or "unknown"),
                     str(item.get("scenario") or ""),
                     item.get("seed"),
+                    eval_goal=str(item.get("eval_goal") or "landing"),
                 ),
                 "severity": "critical",
                 "reason": "new_global_crash",
