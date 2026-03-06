@@ -18,17 +18,19 @@ from bots._ballistics import (
 from bots._bot_math import clamp, engine_profile, finite_altitude, stable
 from bots._zem_actuation import command_from_plan as _command_from_plan_impl
 from bots._zem_config import ZemZevConfig
+from bots._zem_eval import (
+    build_evaluation_decision as _build_evaluation_decision_impl,
+    build_evaluation_snapshot as _build_evaluation_snapshot_impl,
+    percentile as _percentile_impl,
+    reset_evaluation_state as _reset_evaluation_state_impl,
+    resolve_evaluation_snapshot as _resolve_evaluation_snapshot_impl,
+)
 from bots._zem_phase import (
     maybe_start_shape_window as _maybe_start_shape_window_impl,
     update_phase_tracking as _update_phase_tracking_impl,
     update_shape_window_metrics as _update_shape_window_metrics_impl,
 )
 from bots._zem_planner import solve_plan as _solve_plan_impl
-from bots._zem_telemetry import (
-    build_evaluation_snapshot as _build_evaluation_snapshot_impl,
-    percentile as _percentile_impl,
-    resolve_evaluation_snapshot as _resolve_evaluation_snapshot_impl,
-)
 from bots._optimizer_pdg import PDGOptimizer, PDGOptimizerConfig, PDGPlan
 from bots._targeting import pick_target, target_half_width
 from core.bot import Bot, BotAction, BotEvalDecision, Sensors
@@ -77,31 +79,6 @@ class ZemZevBot(Bot):
         self._solve_ms_samples: list[float] = []
         self._fallback_frames = 0
 
-        self._elapsed_time_s = 0.0
-        self._active_phase = "setup"
-        self._setup_gate_done = False
-        self._setup_gate_time: float | None = None
-        self._setup_gate_altitude: float | None = None
-        self._setup_gate_projected_dx: float | None = None
-        self._setup_gate_projected_apex_y: float | None = None
-        self._setup_gate_projected_apex_over_target: float | None = None
-        self._setup_burn_started = False
-        self._setup_burn_idle_since: float | None = None
-        self._terminal_gate_done = False
-        self._terminal_gate_time: float | None = None
-        self._terminal_gate_altitude: float | None = None
-        self._terminal_gate_projected_dx: float | None = None
-        self._last_projection_dx: float | None = None
-        self._last_projection_t_fall: float | None = None
-        self._last_projection_has_target_y: bool = False
-        self._last_target_y: float = 0.0
-        self._peak_alt_over_target = 0.0
-        self._lateral_overshoot = 0.0
-        self._hover_time = 0.0
-        self._clearance_margin = 0.0
-        self._clearance_scale = 0.0
-        self._clearance_active = False
-        self._uphill_transfer = False
         self._auto_target_uid: str | None = None
         self._launch_takeoff_active = False
         self._reset_shape_window_state()
@@ -109,8 +86,7 @@ class ZemZevBot(Bot):
         self._debug_setup = (
             os.getenv("PYLANDER_ZEM_DEBUG_SETUP", "").strip().lower() in ("1", "true", "yes", "on")
         )
-        self._debug_setup_last_print_t = -1.0
-        self._debug_setup_post_end_time: float | None = None
+        _reset_evaluation_state_impl(self, clear_last_flight_snapshot=True)
 
         self.set_behavior(behavior)
 
@@ -185,34 +161,7 @@ class ZemZevBot(Bot):
         self._solve_ms_sum = 0.0
         self._solve_ms_samples = []
         self._fallback_frames = 0
-        self._elapsed_time_s = 0.0
-        self._active_phase = "setup"
-        self._setup_gate_done = False
-        self._setup_gate_time = None
-        self._setup_gate_altitude = None
-        self._setup_gate_projected_dx = None
-        self._setup_gate_projected_apex_y = None
-        self._setup_gate_projected_apex_over_target = None
-        self._setup_burn_started = False
-        self._setup_burn_idle_since = None
-        self._terminal_gate_done = False
-        self._terminal_gate_time = None
-        self._terminal_gate_altitude = None
-        self._terminal_gate_projected_dx = None
-        self._last_projection_dx = None
-        self._last_projection_t_fall = None
-        self._last_projection_has_target_y = False
-        self._last_target_y = 0.0
-        self._peak_alt_over_target = 0.0
-        self._lateral_overshoot = 0.0
-        self._hover_time = 0.0
-        self._clearance_margin = 0.0
-        self._clearance_scale = 0.0
-        self._clearance_active = False
-        self._uphill_transfer = False
-        self._reset_shape_window_state()
-        self._debug_setup_last_print_t = -1.0
-        self._debug_setup_post_end_time = None
+        _reset_evaluation_state_impl(self)
 
     def _debug_setup_print(self, line: str) -> None:
         if not self._debug_setup:
@@ -785,20 +734,7 @@ class ZemZevBot(Bot):
         return _resolve_evaluation_snapshot_impl(self)
 
     def get_evaluation_decision(self) -> BotEvalDecision | None:
-        if self.get_eval_goal() == EVAL_GOAL_SETUP and self._setup_gate_done:
-            return BotEvalDecision(
-                should_end=True,
-                success=True,
-                failure_mode="none",
-                end_reason="goal_reached",
-                metrics={
-                    "zem_goal_setup_done": True,
-                    "zem_goal_setup_time": self._setup_gate_time,
-                    "zem_goal_setup_altitude": self._setup_gate_altitude,
-                    "zem_goal_setup_projected_dx": self._setup_gate_projected_dx,
-                },
-            )
-        return None
+        return _build_evaluation_decision_impl(self)
 
 def create_bot() -> Bot:
     return ZemZevBot()

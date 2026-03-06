@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from core.bot import BotEvalDecision
+from core.eval_goals import EVAL_GOAL_SETUP
+
 from bots._bot_math import clamp
 
 
@@ -17,6 +20,43 @@ def percentile(values: list[float], p: float) -> float:
         return sorted_values[lo]
     frac = idx - lo
     return (sorted_values[lo] * (1.0 - frac)) + (sorted_values[hi] * frac)
+
+
+def reset_evaluation_state(
+    bot,
+    *,
+    clear_last_flight_snapshot: bool = False,
+) -> None:
+    bot._elapsed_time_s = 0.0
+    bot._active_phase = "setup"
+    bot._setup_gate_done = False
+    bot._setup_gate_time = None
+    bot._setup_gate_altitude = None
+    bot._setup_gate_projected_dx = None
+    bot._setup_gate_projected_apex_y = None
+    bot._setup_gate_projected_apex_over_target = None
+    bot._setup_burn_started = False
+    bot._setup_burn_idle_since = None
+    bot._terminal_gate_done = False
+    bot._terminal_gate_time = None
+    bot._terminal_gate_altitude = None
+    bot._terminal_gate_projected_dx = None
+    bot._last_projection_dx = None
+    bot._last_projection_t_fall = None
+    bot._last_projection_has_target_y = False
+    bot._last_target_y = 0.0
+    bot._peak_alt_over_target = 0.0
+    bot._lateral_overshoot = 0.0
+    bot._hover_time = 0.0
+    bot._clearance_margin = 0.0
+    bot._clearance_scale = 0.0
+    bot._clearance_active = False
+    bot._uphill_transfer = False
+    bot._reset_shape_window_state()
+    bot._debug_setup_last_print_t = -1.0
+    bot._debug_setup_post_end_time = None
+    if clear_last_flight_snapshot:
+        bot._last_flight_snapshot = None
 
 
 def build_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | None]:
@@ -80,3 +120,22 @@ def resolve_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | Non
     if has_live_progress or bot._last_flight_snapshot is None:
         return snapshot
     return dict(bot._last_flight_snapshot)
+
+
+def build_evaluation_decision(bot) -> BotEvalDecision | None:
+    if bot.get_eval_goal() != EVAL_GOAL_SETUP:
+        return None
+    if not bot._setup_gate_done:
+        return None
+    return BotEvalDecision(
+        should_end=True,
+        success=True,
+        failure_mode="none",
+        end_reason="goal_reached",
+        metrics={
+            "zem_goal_setup_done": True,
+            "zem_goal_setup_time": bot._setup_gate_time,
+            "zem_goal_setup_altitude": bot._setup_gate_altitude,
+            "zem_goal_setup_projected_dx": bot._setup_gate_projected_dx,
+        },
+    )
