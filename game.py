@@ -6,13 +6,10 @@ import random
 
 from core.bot import Bot, BotEvalDecision
 from core.components import (
-    ActorControlRole,
     ControlIntent,
     Engine,
     FuelTank,
     LanderState,
-    PlayerControlled,
-    PlayerSelectable,
     PhysicsState,
     Transform,
 )
@@ -23,12 +20,20 @@ from core.engine_adapter import EngineAdapter
 from core.level import Level
 from core.maths import Vector2
 from runtime.bootstrap import create_systems
+from runtime.actor_session import (
+    active_actor_bot,
+    attach_primary_bot,
+    collect_actor_entities,
+    find_initial_player_actor_uid,
+    install_world_actor_bots,
+    set_active_actor,
+    switch_active_actor,
+)
 from runtime.bot_loop import BotLoopContext, update_bot_steps
 from runtime.loop_timing import LoopTimers
 from runtime.metrics import BotLoopProfiler, RunMetricsTracker
 from runtime.sensors import (
     build_headless_stats,
-    build_vehicle_info,
     resolve_eval_target_pos,
 )
 from core.level_capabilities import (
@@ -109,10 +114,10 @@ class LanderGame:
 
         self.running = True
         self.level.setup(self, seed)
-        self.actors = self._collect_actor_entities()
+        self.actors = collect_actor_entities(self.level)
         if not self.actors:
             raise RuntimeError("Level did not provide any actor entities")
-        self.active_player_actor_uid = self._find_initial_player_actor_uid()
+        self.active_player_actor_uid = find_initial_player_actor_uid(self.actors)
         self.lander = next(
             (actor for actor in self.actors if actor.uid == self.active_player_actor_uid),
             self.actors[0],
@@ -163,25 +168,19 @@ class LanderGame:
             self.player_controller = None
 
         self.actor_bots: dict[str, Bot] = {}
-        world_bots = getattr(self.level.world, "actor_bots", None)
-        if isinstance(world_bots, dict):
-            for uid, actor_bot in world_bots.items():
-                if isinstance(actor_bot, Bot):
-                    self.actor_bots[uid] = actor_bot
+        install_world_actor_bots(
+            actor_bots=self.actor_bots,
+            ecs_world=self.ecs_world,
+            world_bots=getattr(self.level.world, "actor_bots", None),
+        )
         if self.bot is not None:
-            bot_uid = self._find_first_actor_for_role("bot")
-            if bot_uid is None:
-                bot_uid = next(
-                    (a.uid for a in self.actors if a.uid != self.active_player_actor_uid),
-                    self.active_player_actor_uid,
-                )
-            if bot_uid is not None:
-                self.actor_bots[bot_uid] = self.bot
-        for uid, actor_bot in list(self.actor_bots.items()):
-            actor = self.ecs_world.get_entity_by_id(uid)
-            if actor is None:
-                continue
-            self._install_actor_bot(uid, actor, actor_bot)
+            attach_primary_bot(
+                actors=self.actors,
+                actor_bots=self.actor_bots,
+                ecs_world=self.ecs_world,
+                active_uid=self.active_player_actor_uid,
+                bot=self.bot,
+            )
         self._bot_loop_context = BotLoopContext(
             ecs_world=self.ecs_world,
             actor_bots=self.actor_bots,
@@ -211,45 +210,6 @@ class LanderGame:
         self._plot_events_seen: set[tuple[str, str]] = set()
         self._bot_eval_decision: BotEvalDecision | None = None
 
-    def _collect_actor_entities(self) -> list[Entity]:
-        world = self.level.world
-        actors = list(getattr(world, "actors", []) or [])
-        if not actors and getattr(world, "lander", None) is not None:
-            actors = [world.lander]
-        return actors
-
-    @staticmethod
-    def _get_actor_control_role(entity: Entity) -> str:
-        role = entity.get_component(ActorControlRole)
-        if role is None:
-            return "none"
-        return role.role
-
-    def _find_first_actor_for_role(self, role: str) -> str | None:
-        for actor in self.actors:
-            if self._get_actor_control_role(actor) == role:
-                return actor.uid
-        return None
-
-    def _find_initial_player_actor_uid(self) -> str:
-        # Explicitly selected actor wins first.
-        for actor in self.actors:
-            selected = actor.get_component(PlayerControlled)
-            if selected is not None and selected.active:
-                return actor.uid
-
-        # Otherwise pick the first selectable actor by declared order.
-        selectable: list[tuple[int, str]] = []
-        for actor in self.actors:
-            marker = actor.get_component(PlayerSelectable)
-            if marker is not None:
-                selectable.append((marker.order, actor.uid))
-        if selectable:
-            selectable.sort(key=lambda item: item[0])
-            return selectable[0][1]
-
-        return self.actors[0].uid
-
     def get_active_actor(self) -> Entity:
         actor = self.ecs_world.get_entity_by_id(self.active_player_actor_uid)
         if actor is None:
@@ -257,60 +217,37 @@ class LanderGame:
         return actor
 
     def _set_active_actor(self, uid: str) -> None:
-        if self.ecs_world.get_entity_by_id(uid) is None:
+        actor = set_active_actor(
+            actors=self.actors,
+            ecs_world=self.ecs_world,
+            level=self.level,
+            engine_adapter=self.engine_adapter,
+            uid=uid,
+        )
+        if actor is None:
             return
-        for actor in self.actors:
-            marker = actor.get_component(PlayerControlled)
-            is_active = actor.uid == uid
-            if marker is None and is_active:
-                actor.add_component(PlayerControlled(active=True))
-            elif marker is not None:
-                marker.active = is_active
         self.active_player_actor_uid = uid
-        self.lander = self.get_active_actor()  # compatibility alias
-        if getattr(self.level, "world", None) is not None:
-            self.level.world.primary_actor_uid = uid
-            self.level.world.lander = self.lander
-        self.engine_adapter.set_primary_actor(uid)
+        self.lander = actor  # compatibility alias
 
     def _switch_active_actor(self, delta: int = 1) -> None:
-        selectable: list[tuple[int, str]] = []
-        for actor in self.actors:
-            marker = actor.get_component(PlayerSelectable)
-            if marker is not None:
-                selectable.append((marker.order, actor.uid))
-        if not selectable:
+        switched = switch_active_actor(
+            actors=self.actors,
+            ecs_world=self.ecs_world,
+            level=self.level,
+            engine_adapter=self.engine_adapter,
+            active_uid=self.active_player_actor_uid,
+            delta=delta,
+        )
+        if switched is None:
             return
-        selectable.sort(key=lambda item: item[0])
-        ordered_ids = [uid for _, uid in selectable]
-        if self.active_player_actor_uid not in ordered_ids:
-            self._set_active_actor(ordered_ids[0])
-            return
-        idx = ordered_ids.index(self.active_player_actor_uid)
-        next_uid = ordered_ids[(idx + delta) % len(ordered_ids)]
-        self._set_active_actor(next_uid)
+        self.active_player_actor_uid, self.lander = switched
 
     def _active_actor_bot(self) -> Bot | None:
-        active_uid = self.active_player_actor_uid
-        if active_uid in self.actor_bots:
-            return self.actor_bots[active_uid]
-        return self.bot
-
-    def _ensure_bot_identity_fields(self, bot: Bot) -> None:
-        bot_name = getattr(bot, "_bot_name", None)
-        if not isinstance(bot_name, str) or not bot_name:
-            setattr(bot, "_bot_name", bot.__class__.__module__.split(".")[-1])
-
-    def _install_actor_bot(
-        self,
-        uid: str,
-        actor: Entity,
-        bot: Bot,
-    ) -> None:
-        self.actor_bots[uid] = bot
-        self._ensure_bot_identity_fields(bot)
-        if hasattr(bot, "set_vehicle_info"):
-            bot.set_vehicle_info(build_vehicle_info(actor))
+        return active_actor_bot(
+            actor_bots=self.actor_bots,
+            active_uid=self.active_player_actor_uid,
+            primary_bot=self.bot,
+        )
 
     def run(
         self,
