@@ -102,8 +102,8 @@ def _compute_figure_size(
     if layout == "all":
         if arrangement == "columns":
             panel_width = max(9.2, width)
-            return max(18.2, min(26.0, panel_width * 3.15)), max(12.5, min(22.0, height + 5.8))
-        return max(10.2, width), max(19.0, min(28.0, (height * 3.0) + 5.0))
+            return max(15.0, min(26.0, panel_width * 2.15)), max(17.2, min(30.0, (height * 2.0) + 7.8))
+        return max(10.2, width), max(25.4, min(36.0, (height * 4.0) + 6.8))
     if layout == "series":
         return max(10.0, min(24.0, width * 1.1)), 3.6
     return width, height
@@ -523,6 +523,92 @@ def _draw_vector_spatial_panel(
     )
 
 
+def _draw_velocity_vector_spatial_panel(
+    fig,
+    ax,
+    *,
+    ctx: _PlotContext,
+    events,
+    target,
+    cax=None,
+    legend_ax=None,
+    cbar_orientation: Literal["vertical", "horizontal"] = "vertical",
+    title: str,
+    show_xlabel: bool = True,
+) -> None:
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    ax.plot(
+        ctx.terrain_xs,
+        ctx.terrain_ys,
+        color="#444444",
+        linewidth=1.0,
+        alpha=0.85,
+        label="terrain",
+    )
+    ax.plot(ctx.xs, ctx.ys, color="#777777", linewidth=1.25, alpha=0.42, label="trajectory")
+
+    sampled = np.array(_vector_sample_indices(ctx.sample_times), dtype=int)
+    sampled_vx = np.array(ctx.vxs, dtype=float)[sampled]
+    sampled_vy = np.array(ctx.vys, dtype=float)[sampled]
+    sampled_speed = np.sqrt((sampled_vx * sampled_vx) + (sampled_vy * sampled_vy))
+    speed_max = float(max(ctx.speeds) if ctx.speeds else 1.0)
+    if speed_max <= 0.0:
+        speed_max = 1.0
+
+    vector_len = 0.045 * max(ctx.span_x, ctx.span_y, 1.0)
+    norm = np.maximum(sampled_speed / speed_max, 0.0)
+    q = ax.quiver(
+        ctx.points[sampled, 0],
+        ctx.points[sampled, 1],
+        sampled_vx * vector_len / speed_max,
+        sampled_vy * vector_len / speed_max,
+        sampled_speed,
+        cmap="RdYlGn_r",
+        norm=plt.Normalize(vmin=0.0, vmax=speed_max),
+        angles="xy",
+        scale_units="xy",
+        scale=1.0,
+        width=0.0024,
+        headwidth=5.2,
+        headlength=6.6,
+        headaxislength=5.5,
+        alpha=0.95,
+        zorder=5,
+    )
+    if cax is not None:
+        cbar = fig.colorbar(q, cax=cax, orientation=cbar_orientation)
+    else:
+        cbar = fig.colorbar(q, ax=ax, pad=0.01)
+    cbar.set_label("speed (world units/s)")
+
+    low_speed_mask = norm <= 0.04
+    if np.any(low_speed_mask):
+        ax.scatter(
+            ctx.points[sampled[low_speed_mask], 0],
+            ctx.points[sampled[low_speed_mask], 1],
+            s=14.0,
+            marker="o",
+            facecolors="#f8fbff",
+            edgecolors="#4f79a7",
+            linewidths=0.8,
+            alpha=0.95,
+            zorder=6,
+            label="low speed",
+        )
+
+    _draw_spatial_common(
+        ax,
+        ctx=ctx,
+        events=events,
+        target=target,
+        title=title,
+        legend_ax=legend_ax,
+        show_xlabel=show_xlabel,
+    )
+
+
 def _draw_speed_thrust_timeseries_panel(ax, *, ctx: _PlotContext, title: str, show_xlabel: bool) -> None:
     import numpy as np
 
@@ -531,6 +617,8 @@ def _draw_speed_thrust_timeseries_panel(ax, *, ctx: _PlotContext, title: str, sh
         t, ctx.speeds, color="#d62728", linewidth=1.2, label="speed"
     )[0]
     ax.set_ylabel("speed")
+    max_speed = max(ctx.speeds) if ctx.speeds else 1.0
+    ax.set_ylim(0.0, max(1.0, max_speed * 1.14))
     ax.grid(True, linestyle=":", alpha=0.25)
 
     ax_thrust = ax.twinx()
@@ -555,11 +643,45 @@ def _draw_hv_timeseries_panel(ax, *, ctx: _PlotContext, title: str, show_xlabel:
     import numpy as np
 
     t = np.array(ctx.sample_times, dtype=float)
-    ax.plot(t, ctx.vxs, color="#2ca02c", linewidth=1.1, label="vx")
-    ax.plot(t, ctx.vys, color="#9467bd", linewidth=1.1, label="vy_up")
+    vx = np.array(ctx.vxs, dtype=float)
+    vy = np.array(ctx.vys, dtype=float)
+    ax.plot(t, vx, color="#2ca02c", linewidth=1.1, label="vx")
+    ax.plot(t, vy, color="#9467bd", linewidth=1.1, label="vy_up")
     ax.axhline(0.0, color="#777777", linewidth=0.8, linestyle=":")
+    y_min = min(float(vx.min(initial=0.0)), float(vy.min(initial=0.0)), 0.0)
+    y_max = max(float(vx.max(initial=0.0)), float(vy.max(initial=0.0)), 0.0)
+    span = max(1.0, y_max - y_min)
+    ax.set_ylim(y_min - (0.04 * span), y_max + (0.16 * span))
     ax.set_xlabel("time (s)" if show_xlabel else "")
     ax.set_ylabel("velocity")
+    ax.set_title(title)
+    ax.grid(True, linestyle=":", alpha=0.25)
+    ax.legend(loc="upper right", fontsize=8)
+    ax.tick_params(labelbottom=True)
+
+
+def _draw_thrust_component_timeseries_panel(
+    ax,
+    *,
+    ctx: _PlotContext,
+    title: str,
+    show_xlabel: bool,
+) -> None:
+    import numpy as np
+
+    t = np.array(ctx.sample_times, dtype=float)
+    thrust = np.array(ctx.thrusts, dtype=float)
+    thrust_x = thrust * np.sin(ctx.angle_arr)
+    thrust_y = thrust * np.cos(ctx.angle_arr)
+    ax.plot(t, thrust_x, color="#1f77b4", linewidth=1.1, label="thrust_x")
+    ax.plot(t, thrust_y, color="#ff7f0e", linewidth=1.1, label="thrust_y")
+    ax.axhline(0.0, color="#777777", linewidth=0.8, linestyle=":")
+    y_min = min(float(thrust_x.min(initial=0.0)), float(thrust_y.min(initial=0.0)), 0.0)
+    y_max = max(float(thrust_x.max(initial=0.0)), float(thrust_y.max(initial=0.0)), 0.0)
+    span = max(1.0, y_max - y_min)
+    ax.set_ylim(y_min - (0.04 * span), y_max + (0.16 * span))
+    ax.set_xlabel("time (s)" if show_xlabel else "")
+    ax.set_ylabel("thrust component")
     ax.set_title(title)
     ax.grid(True, linestyle=":", alpha=0.25)
     ax.legend(loc="upper right", fontsize=8)
@@ -631,10 +753,10 @@ def _render_combined_plot(
         fig = plt.figure(figsize=(fig_w, fig_h))
         if arrangement == "columns":
             grid = fig.add_gridspec(
-                3,
-                3,
-                height_ratios=(5.0, 1.35, 1.35),
-                hspace=0.30,
+                5,
+                2,
+                height_ratios=(4.2, 4.2, 1.35, 1.35, 1.35),
+                hspace=0.24,
                 wspace=0.06,
             )
             ax_speed, cax_speed, lax_speed = _create_spatial_axes(
@@ -642,51 +764,67 @@ def _render_combined_plot(
                 grid[0, 0],
                 colorbar_position="bottom",
             )
-            ax_thrust, cax_thrust, lax_thrust = _create_spatial_axes(
+            ax_velocity, cax_velocity, lax_velocity = _create_spatial_axes(
                 fig,
                 grid[0, 1],
                 colorbar_position="bottom",
                 sharex=ax_speed,
                 sharey=ax_speed,
             )
-            ax_vectors, cax_vectors, lax_vectors = _create_spatial_axes(
+            ax_thrust, cax_thrust, lax_thrust = _create_spatial_axes(
                 fig,
-                grid[0, 2],
+                grid[1, 0],
                 colorbar_position="bottom",
                 sharex=ax_speed,
                 sharey=ax_speed,
             )
-            ax_series = fig.add_subplot(grid[1, :])
-            ax_hv = fig.add_subplot(grid[2, :], sharex=ax_series)
+            ax_vectors, cax_vectors, lax_vectors = _create_spatial_axes(
+                fig,
+                grid[1, 1],
+                colorbar_position="bottom",
+                sharex=ax_speed,
+                sharey=ax_speed,
+            )
+            ax_series = fig.add_subplot(grid[2, :])
+            ax_hv = fig.add_subplot(grid[3, :], sharex=ax_series)
+            ax_thrust_components = fig.add_subplot(grid[4, :], sharex=ax_series)
             cbar_orientation: Literal["vertical", "horizontal"] = "horizontal"
         else:
             grid = fig.add_gridspec(
-                5,
+                7,
                 1,
-                height_ratios=(3.0, 3.0, 3.0, 1.3, 1.3),
-                hspace=0.28,
+                height_ratios=(3.0, 3.0, 3.0, 3.0, 1.3, 1.3, 1.3),
+                hspace=0.22,
             )
             ax_speed, cax_speed, lax_speed = _create_spatial_axes(
                 fig,
                 grid[0, 0],
                 colorbar_position="right",
             )
-            ax_thrust, cax_thrust, lax_thrust = _create_spatial_axes(
+            ax_velocity, cax_velocity, lax_velocity = _create_spatial_axes(
                 fig,
                 grid[1, 0],
                 colorbar_position="right",
                 sharex=ax_speed,
                 sharey=ax_speed,
             )
-            ax_vectors, cax_vectors, lax_vectors = _create_spatial_axes(
+            ax_thrust, cax_thrust, lax_thrust = _create_spatial_axes(
                 fig,
                 grid[2, 0],
                 colorbar_position="right",
                 sharex=ax_speed,
                 sharey=ax_speed,
             )
-            ax_series = fig.add_subplot(grid[3, 0])
-            ax_hv = fig.add_subplot(grid[4, 0], sharex=ax_series)
+            ax_vectors, cax_vectors, lax_vectors = _create_spatial_axes(
+                fig,
+                grid[3, 0],
+                colorbar_position="right",
+                sharex=ax_speed,
+                sharey=ax_speed,
+            )
+            ax_series = fig.add_subplot(grid[4, 0])
+            ax_hv = fig.add_subplot(grid[5, 0], sharex=ax_series)
+            ax_thrust_components = fig.add_subplot(grid[6, 0], sharex=ax_series)
             cbar_orientation = "vertical"
 
         _draw_spatial_panel(
@@ -700,6 +838,18 @@ def _render_combined_plot(
             cbar_orientation=cbar_orientation,
             color_mode="speed",
             title="Trajectory by speed",
+            show_xlabel=False,
+        )
+        _draw_velocity_vector_spatial_panel(
+            fig,
+            ax_velocity,
+            ctx=ctx,
+            events=events,
+            target=target,
+            cax=cax_velocity,
+            legend_ax=lax_velocity,
+            cbar_orientation=cbar_orientation,
+            title="Velocity vectors (time-sampled)",
             show_xlabel=False,
         )
         _draw_spatial_panel(
@@ -737,6 +887,12 @@ def _render_combined_plot(
             ax_hv,
             ctx=ctx,
             title="Horizontal/vertical velocity",
+            show_xlabel=False,
+        )
+        _draw_thrust_component_timeseries_panel(
+            ax_thrust_components,
+            ctx=ctx,
+            title="Horizontal/vertical thrust components",
             show_xlabel=False,
         )
 
@@ -833,6 +989,23 @@ def _render_split_plots(
         out_paths.append(
             _save_figure(fig, out_dir / "spatial_speed.png", max_side_px=max_side_px)
         )
+        if mode == "all":
+            fig, (ax, cax, legend_ax) = _new_spatial()
+            _draw_velocity_vector_spatial_panel(
+                fig,
+                ax,
+                ctx=ctx,
+                events=events,
+                target=target,
+                cax=cax,
+                legend_ax=legend_ax,
+                cbar_orientation=cbar_orientation,
+                title="Velocity vectors (time-sampled)",
+            )
+            fig.subplots_adjust(left=0.08, right=0.95, bottom=0.08, top=0.96)
+            out_paths.append(
+                _save_figure(fig, out_dir / "spatial_velocity_vectors.png", max_side_px=max_side_px)
+            )
 
     if mode in {"thrust", "all"}:
         fig, (ax, cax, legend_ax) = _new_spatial()
@@ -895,6 +1068,18 @@ def _render_split_plots(
         fig.tight_layout()
         out_paths.append(
             _save_figure(fig, out_dir / "timeseries_hv_speed.png", max_side_px=max_side_px)
+        )
+
+        fig, ax = plt.subplots(figsize=(ts_w, ts_h))
+        _draw_thrust_component_timeseries_panel(
+            ax,
+            ctx=ctx,
+            title="Horizontal/vertical thrust components",
+            show_xlabel=True,
+        )
+        fig.tight_layout()
+        out_paths.append(
+            _save_figure(fig, out_dir / "timeseries_thrust_components.png", max_side_px=max_side_px)
         )
 
     return out_paths

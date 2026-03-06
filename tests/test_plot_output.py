@@ -87,10 +87,12 @@ def test_save_trajectory_plots_split_all_writes_expected_files(tmp_path: Path) -
     names = {Path(p).name for p in (result.get("plot_paths") or [])}
     assert {
         "spatial_speed.png",
+        "spatial_velocity_vectors.png",
         "spatial_thrust.png",
         "spatial_thrust_vectors.png",
         "timeseries_speed_thrust.png",
         "timeseries_hv_speed.png",
+        "timeseries_thrust_components.png",
     }.issubset(names)
     assert Path(result["plot_manifest_path"]).exists()
 
@@ -150,11 +152,11 @@ def test_compute_figure_size_keeps_spatial_minimums_for_colorbar_space() -> None
     wide_w, wide_h = _compute_figure_size(640.0, 160.0, layout="single")
     tall_w, tall_h = _compute_figure_size(160.0, 640.0, layout="all", arrangement="columns")
     assert wide_h >= 6.3
-    assert tall_w >= 18.2
-    assert tall_h >= 12.5
+    assert tall_w >= 15.0
+    assert tall_h >= 17.2
 
 
-def test_save_trajectory_plots_tall_combined_prefers_wider_canvas(tmp_path: Path) -> None:
+def test_save_trajectory_plots_tall_combined_stays_close_to_square(tmp_path: Path) -> None:
     out_dir = tmp_path / "tall_combined"
     result = save_trajectory_plots(
         _FlatTerrain(),
@@ -167,7 +169,7 @@ def test_save_trajectory_plots_tall_combined_prefers_wider_canvas(tmp_path: Path
     )
 
     image = mpimg.imread(Path(result["plot_path"]))
-    assert image.shape[1] > image.shape[0]
+    assert image.shape[1] / image.shape[0] > 0.88
 
 
 def test_save_trajectory_plots_tall_split_does_not_become_overly_wide(tmp_path: Path) -> None:
