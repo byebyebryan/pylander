@@ -16,6 +16,7 @@ from game import LanderGame
 from levels import create_level as create_level_by_name, list_available_levels
 from app.run_batch import ResolvedBenchRun, parse_seed_spec, resolve_benchmark_plan
 from ui.hud import HudOverlay
+from core.bot import BotDisplayState
 
 
 def test_bot_registry_exposes_only_supported_bots() -> None:
@@ -432,16 +433,14 @@ def test_hud_display_state_returns_none_when_display_state_is_missing() -> None:
 
 
 def test_hud_display_state_prefers_structured_display_state() -> None:
-    class _Display:
-        bot_name = "zem_zev"
-        mode = "opt"
-        phase = "setup"
-        summary = "dx=12.3 pdx=-4.0"
-        detail = ""
-
     class _Bot:
         def get_display_state(self):
-            return _Display()
+            return BotDisplayState(
+                bot_name="zem_zev",
+                mode="opt",
+                phase="setup",
+                summary="dx=12.3 pdx=-4.0",
+            )
 
     display = HudOverlay._resolve_bot_display_state(_Bot())
     assert display is not None

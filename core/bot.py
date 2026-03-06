@@ -116,7 +116,6 @@ class FlightPhaseSnapshot:
     setup_gate: SetupGateMetrics | None = None
 
 
-
 @dataclass(frozen=True)
 class BotDisplayState:
     """Structured bot status for UI and headless presentation."""
@@ -138,6 +137,33 @@ class PlotMarker:
     x: float | None = None
     y: float | None = None
     metadata: dict[str, float | str | None] = field(default_factory=dict)
+
+
+def resolve_bot_name(bot: Any) -> str:
+    bot_name = getattr(bot, "_bot_name", None)
+    if isinstance(bot_name, str) and bot_name:
+        return bot_name
+    return bot.__class__.__module__.split(".")[-1]
+
+
+def resolve_bot_status(bot: Any) -> str:
+    get_status = getattr(bot, "get_status", None)
+    if callable(get_status):
+        resolved_status = get_status()
+        return resolved_status.strip() if isinstance(resolved_status, str) else ""
+    status = getattr(bot, "status", None)
+    return status.strip() if isinstance(status, str) else ""
+
+
+def resolve_bot_display_state(bot: Any) -> BotDisplayState | None:
+    getter = getattr(bot, "get_display_state", None)
+    if not callable(getter):
+        return None
+    try:
+        display = getter()
+    except Exception:
+        return None
+    return display if isinstance(display, BotDisplayState) else None
 
 
 class Bot(ABC):
@@ -214,10 +240,10 @@ class Bot(ABC):
 
         Default shows only the current status, if any. Bots can override.
         """
-        display = self.get_display_state()
+        display = resolve_bot_display_state(self)
         if display is not None:
             lines = [""]
-            bot_label = display.bot_name or type(self).__name__
+            bot_label = display.bot_name or resolve_bot_name(self)
             if display.mode and display.phase:
                 lines.append(f"BOT: {bot_label} [{display.mode}/{display.phase}]")
             elif display.phase:
@@ -229,7 +255,7 @@ class Bot(ABC):
             if display.detail:
                 lines.append(f"BOT DETAIL: {display.detail}")
             return lines
-        s = self.get_status() if hasattr(self, "get_status") else ""
+        s = resolve_bot_status(self)
         if s:
             return ["", f"BOT: {s}"]
         return []
@@ -239,10 +265,10 @@ class Bot(ABC):
 
         Default uses status if available; bots can override to add more.
         """
-        display = self.get_display_state()
+        display = resolve_bot_display_state(self)
         if display is not None:
             parts: list[str] = []
-            bot_label = display.bot_name or type(self).__name__
+            bot_label = display.bot_name or resolve_bot_name(self)
             parts.append(f"bot={bot_label}")
             if display.mode:
                 parts.append(f"mode={display.mode}")
@@ -251,7 +277,7 @@ class Bot(ABC):
             if display.summary:
                 parts.append(display.summary)
             return " ".join(parts)
-        s = self.get_status() if hasattr(self, "get_status") else ""
+        s = resolve_bot_status(self)
         return f"bot:{s}" if s else ""
 
     def get_bot_telemetry(self) -> dict[str, Any]:

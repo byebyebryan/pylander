@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 
+from core.bot import resolve_bot_display_state, resolve_bot_name, resolve_bot_status
 from core.components import (
     CargoHold,
     Engine,
@@ -124,8 +125,8 @@ class HudOverlay:
 
         lines: list[str] = [f"STATE: {ls.state.upper()}    CREDITS: {wallet.credits:.0f}"]
         if bot is not None:
-            bot_name = self._resolve_bot_name(bot)
-            display = self._resolve_bot_display_state(bot)
+            bot_name = resolve_bot_name(bot)
+            display = resolve_bot_display_state(bot)
             if display is not None:
                 mode = display.mode or "--"
                 phase_label = display.phase or "--"
@@ -137,7 +138,7 @@ class HudOverlay:
                     lines.append(f"BOT DETAIL: {display.detail}")
             else:
                 lines.append(f"BOT: {bot_name}")
-                bot_status = self._resolve_bot_status(bot)
+                bot_status = resolve_bot_status(bot)
                 if bot_status:
                     lines.append(f"BOT STATUS: {bot_status}")
         lines.append("")
@@ -175,29 +176,15 @@ class HudOverlay:
 
     @staticmethod
     def _resolve_bot_name(bot) -> str:
-        bot_name = getattr(bot, "_bot_name", None)
-        if isinstance(bot_name, str) and bot_name:
-            return bot_name
-        return bot.__class__.__module__.split(".")[-1]
+        return resolve_bot_name(bot)
 
     @staticmethod
     def _resolve_bot_status(bot) -> str:
-        get_status = getattr(bot, "get_status", None)
-        if callable(get_status):
-            resolved_status = get_status()
-            return resolved_status.strip() if isinstance(resolved_status, str) else ""
-        status = getattr(bot, "status", None)
-        return status.strip() if isinstance(status, str) else ""
+        return resolve_bot_status(bot)
 
     @staticmethod
     def _resolve_bot_display_state(bot):
-        getter = getattr(bot, "get_display_state", None)
-        if not callable(getter):
-            return None
-        try:
-            return getter()
-        except Exception:
-            return None
+        return resolve_bot_display_state(bot)
 
     def _build_control_lines(self, lander) -> list[str]:
         _ = lander
