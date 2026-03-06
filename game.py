@@ -5,14 +5,7 @@ from __future__ import annotations
 import random
 
 from core.bot import Bot, BotEvalDecision
-from core.components import (
-    ControlIntent,
-    Engine,
-    FuelTank,
-    LanderState,
-    PhysicsState,
-    Transform,
-)
+from core.components import Transform
 from core.controllers import PlayerController
 from core.ecs import Entity, World, require_component
 from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal
@@ -32,6 +25,12 @@ from runtime.actor_session import (
 from runtime.bot_loop import BotLoopContext, update_bot_steps
 from runtime.loop_timing import LoopTimers
 from runtime.metrics import BotLoopProfiler, RunMetricsTracker
+from runtime.interactive_session import (
+    process_interactive_input,
+    render_frame,
+    reset_active_actor_session,
+)
+from runtime.plot_events import track_plot_events
 from runtime.result_pipeline import (
     apply_bot_eval_to_result,
     merge_bot_snapshots_into_result,
@@ -62,30 +61,6 @@ from core.config import (
     PHYSICS_FPS,
     TARGET_RENDERING_FPS,
 )
-
-
-def _reset_lander_entity(entity) -> None:
-    trans = require_component(entity, Transform)
-    phys = require_component(entity, PhysicsState)
-    tank = require_component(entity, FuelTank)
-    eng = require_component(entity, Engine)
-    ls = require_component(entity, LanderState)
-    intent = require_component(entity, ControlIntent)
-    start_pos = getattr(entity, "start_pos", Vector2(0.0, 0.0))
-    trans.pos = Vector2(start_pos)
-    trans.rotation = 0.0
-    phys.vel.update(0.0, 0.0)
-    phys.acc.update(0.0, 0.0)
-    tank.fuel = tank.max_fuel
-    eng.thrust_level = 0.0
-    eng.target_thrust = 0.0
-    eng.target_angle = 0.0
-    ls.state = "flying"
-    intent.target_thrust = None
-    intent.target_angle = None
-    intent.refuel_requested = False
-
-
 class LanderGame:
     """Main application for lunar lander game."""
 
@@ -351,63 +326,27 @@ class LanderGame:
         return result
 
     def _process_input(self, frame_dt: float) -> tuple[ControlTuple | None, dict]:
-        if self.headless or self.input_handler is None:
-            return None, {}
-
-        input_events = self.input_handler.get_events()
-        if input_events.get("quit"):
-            self.running = False
-            return None, input_events
-
-        if input_events.get("reset"):
-            self._do_reset()
-            input_events = {**input_events, "reset": False}
-        if input_events.get("switch_actor"):
-            self._switch_active_actor()
-            input_events = {**input_events, "switch_actor": False}
-
-        user_controls = None
-        active_actor = self.get_active_actor()
-        ls = require_component(active_actor, LanderState)
-        eng = require_component(active_actor, Engine)
-        if ls.state in ("flying", "landed") and self.player_controller is not None:
-            user_controls = self.player_controller.update(
-                input_events,
-                frame_dt,
-                eng.target_thrust,
-                eng.max_thrust,
-                eng.target_angle,
-                eng.max_rotation_rate,
-            )
-
-        if self.renderer is not None:
-            cam = self.renderer.main_camera
-            if hasattr(cam, "handle_input"):
-                cam.handle_input(input_events, frame_dt)
-            if input_events.get("toggle_ballistic"):
-                toggle_ballistic = getattr(self.renderer, "toggle_ballistic_overlay", None)
-                if callable(toggle_ballistic):
-                    toggle_ballistic()
-
-        return user_controls, input_events
+        result = process_interactive_input(
+            headless=self.headless,
+            input_handler=self.input_handler,
+            renderer=self.renderer,
+            player_controller=self.player_controller,
+            frame_dt=frame_dt,
+            get_active_actor=self.get_active_actor,
+            on_reset=self._do_reset,
+            on_switch_actor=self._switch_active_actor,
+        )
+        self.running = result.running
+        return result.user_controls, result.input_events
 
     def _do_reset(self) -> None:
         active_actor = self.get_active_actor()
-        _reset_lander_entity(active_actor)
-        trans = require_component(active_actor, Transform)
-        if self.engine_adapter.enabled:
-            self.engine_adapter.teleport_lander(
-                trans.pos,
-                angle=trans.rotation,
-                clear_velocity=True,
-                uid=active_actor.uid,
-            )
-        if self.renderer is not None:
-            cam = self.renderer.main_camera
-            cam.x = trans.pos.x
-            cam.y = trans.pos.y
-            cam.zoom = 2.0
-        self._bot_override_timer = self.bot_override_delay
+        self._bot_override_timer = reset_active_actor_session(
+            active_actor=active_actor,
+            engine_adapter=self.engine_adapter,
+            renderer=self.renderer,
+            bot_override_delay=self.bot_override_delay,
+        )
 
     def _update_physics_steps(self, timers: LoopTimers) -> None:
         physics_dt = timers.physics_dt
@@ -432,12 +371,13 @@ class LanderGame:
         return update_bot_steps(timers, context=self._bot_loop_context)
 
     def _render(self, frame_dt: float) -> float:
-        if not self.headless and self.renderer is not None:
-            self.renderer.bot = self._active_actor_bot()
-            self.renderer.update(frame_dt)
-            self.renderer.draw()
-            return self.renderer.tick(TARGET_RENDERING_FPS)
-        return 1.0 / TARGET_RENDERING_FPS
+        return render_frame(
+            headless=self.headless,
+            renderer=self.renderer,
+            active_bot=self._active_actor_bot(),
+            frame_dt=frame_dt,
+            target_fps=TARGET_RENDERING_FPS,
+        )
 
     def _print_headless_stats(self, timers: LoopTimers) -> None:
         active_actor = self.get_active_actor()
@@ -451,58 +391,12 @@ class LanderGame:
         print(" | ".join(parts))
 
     def _track_plot_events(self) -> None:
-        for uid, bot in self.actor_bots.items():
-            get_snapshot = getattr(bot, "get_evaluation_snapshot", None)
-            if not callable(get_snapshot):
-                continue
-            try:
-                snapshot = get_snapshot()
-            except Exception:
-                continue
-            if not isinstance(snapshot, dict):
-                continue
-            if str(snapshot.get("kind", "")).strip().lower() != "zem_zev":
-                continue
-            actor = self.ecs_world.get_entity_by_id(uid)
-            if actor is None:
-                continue
-            trans = actor.get_component(Transform)
-            if trans is None:
-                continue
-            for event_name, done_key, projected_dx_key in (
-                ("setup_gate", "setup_gate_done", "setup_gate_projected_dx"),
-                ("flare_gate", "terminal_gate_done", "terminal_gate_projected_dx"),
-            ):
-                if not bool(snapshot.get(done_key)):
-                    continue
-                event_key = (uid, event_name)
-                if event_key in self._plot_events_seen:
-                    continue
-                label = event_name.replace("_", " ")
-                projected_dx = snapshot.get(projected_dx_key)
-                try:
-                    projected_dx_val = float(projected_dx) if projected_dx is not None else None
-                except (TypeError, ValueError):
-                    projected_dx_val = None
-                if projected_dx_val is not None:
-                    label = f"{label} pdx={projected_dx_val:.1f}"
-                if event_name == "setup_gate":
-                    apex_over_target = snapshot.get("setup_gate_projected_apex_over_target")
-                    try:
-                        apex_over_target_val = (
-                            float(apex_over_target) if apex_over_target is not None else None
-                        )
-                    except (TypeError, ValueError):
-                        apex_over_target_val = None
-                    if apex_over_target_val is not None:
-                        label = f"{label} pax={apex_over_target_val:.1f}"
-                self.plotter.mark_event(
-                    name=event_name,
-                    x=float(trans.pos.x),
-                    y=float(trans.pos.y),
-                    label=label,
-                )
-                self._plot_events_seen.add(event_key)
+        track_plot_events(
+            actor_bots=self.actor_bots,
+            ecs_world=self.ecs_world,
+            plotter=self.plotter,
+            events_seen=self._plot_events_seen,
+        )
 
     def _merge_bot_snapshots_into_result(self, result: dict) -> None:
         merge_bot_snapshots_into_result(actor_bots=self.actor_bots, result=result)
