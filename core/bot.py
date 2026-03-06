@@ -87,6 +87,25 @@ class BotEvalDecision:
     metrics: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class FlightPhaseSnapshot:
+    """Optional generic flight-phase state for runtime consumers."""
+
+    phase: str | None
+    milestones: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class PlotMarker:
+    """Optional generic plot marker emitted by a bot."""
+
+    id: str
+    name: str
+    label: str | None = None
+    x: float | None = None
+    y: float | None = None
+
+
 class Bot(ABC):
     """Abstract base class for lander bots using sensor/action interface."""
 
@@ -177,3 +196,11 @@ class Bot(ABC):
     def get_evaluation_snapshot(self) -> dict[str, Any] | None:
         """Return optional structured evaluation state for the current frame."""
         return None
+
+    def get_flight_phase_snapshot(self) -> FlightPhaseSnapshot | None:
+        """Return optional generic phase/milestone state for the current frame."""
+        return None
+
+    def get_plot_markers(self) -> tuple[PlotMarker, ...]:
+        """Return optional generic diagnostic plot markers for the current frame."""
+        return ()

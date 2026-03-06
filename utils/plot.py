@@ -253,6 +253,7 @@ def _draw_events(ax, *, events: list[dict[str, float | str | None]] | None) -> N
         "setup_gate": "#1f77b4",
         "flare_gate": "#ff7f0e",
         "terminal_gate": "#ff7f0e",
+        "terminal_entry": "#ff7f0e",
     }
     labeled_kinds: set[str] = set()
     for event in event_list:

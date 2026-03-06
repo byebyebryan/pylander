@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from bots import create_bot
-from core.bot import BotAction, Sensors
+from core.bot import BotAction, FlightPhaseSnapshot, PlotMarker, Sensors
 from game import LanderGame
 from levels import create_level as create_level_by_name
 
@@ -68,6 +68,29 @@ def test_zem_snapshot_contains_expected_contract_keys() -> None:
     }
     assert expected.issubset(snapshot.keys())
     assert snapshot["kind"] == "zem_zev"
+
+
+def test_zem_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> None:
+    bot = create_bot("zem_zev")
+    bot._active_phase = "terminal"
+    bot._setup_gate_done = True
+    bot._terminal_gate_done = True
+    bot._terminal_gate_projected_dx = -4.56
+
+    phase_snapshot = bot.get_flight_phase_snapshot()
+    markers = bot.get_plot_markers()
+
+    assert phase_snapshot == FlightPhaseSnapshot(
+        phase="terminal",
+        milestones=("setup_gate",),
+    )
+    assert markers == (
+        PlotMarker(
+            id="terminal_entry",
+            name="terminal_entry",
+            label="terminal entry pdx=-4.6",
+        ),
+    )
 
 
 def test_zem_gate_ordering_invariant_launch_far() -> None:

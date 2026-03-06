@@ -33,7 +33,7 @@ from bots._zem_phase import (
 from bots._zem_planner import solve_plan as _solve_plan_impl
 from bots._optimizer_pdg import PDGOptimizer, PDGOptimizerConfig, PDGPlan
 from bots._targeting import pick_target, target_half_width
-from core.bot import Bot, BotAction, BotEvalDecision, Sensors
+from core.bot import Bot, BotAction, BotEvalDecision, FlightPhaseSnapshot, PlotMarker, Sensors
 from core.config import GRAVITY
 from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
 
@@ -732,6 +732,27 @@ class ZemZevBot(Bot):
 
     def get_evaluation_snapshot(self) -> dict[str, float | int | bool | str | None]:
         return _resolve_evaluation_snapshot_impl(self)
+
+    def get_flight_phase_snapshot(self) -> FlightPhaseSnapshot | None:
+        milestones: tuple[str, ...] = ("setup_gate",) if self._setup_gate_done else ()
+        return FlightPhaseSnapshot(
+            phase=self._active_phase,
+            milestones=milestones,
+        )
+
+    def get_plot_markers(self) -> tuple[PlotMarker, ...]:
+        if not self._terminal_gate_done:
+            return ()
+        label = "terminal entry"
+        if self._terminal_gate_projected_dx is not None:
+            label = f"{label} pdx={stable(self._terminal_gate_projected_dx, 1):.1f}"
+        return (
+            PlotMarker(
+                id="terminal_entry",
+                name="terminal_entry",
+                label=label,
+            ),
+        )
 
     def get_evaluation_decision(self) -> BotEvalDecision | None:
         return _build_evaluation_decision_impl(self)

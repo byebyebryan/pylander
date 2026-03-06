@@ -1,16 +1,77 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Any
 
+from core.bot import FlightPhaseSnapshot, PlotMarker
 from core.components import Transform
 
+_SHARED_MILESTONE_LABELS: dict[str, tuple[str, str]] = {
+    "setup_gate": ("setup_gate", "setup gate"),
+}
 
-def _zem_snapshot(snapshot: Any) -> dict[str, Any] | None:
-    if not isinstance(snapshot, dict):
+
+def _safe_phase_snapshot(bot: Any) -> FlightPhaseSnapshot | None:
+    getter = getattr(bot, "get_flight_phase_snapshot", None)
+    if not callable(getter):
         return None
-    if str(snapshot.get("kind", "")).strip().lower() != "zem_zev":
+    try:
+        snapshot = getter()
+    except Exception:
+        return None
+    if not isinstance(snapshot, FlightPhaseSnapshot):
         return None
     return snapshot
+
+
+def _safe_plot_markers(bot: Any) -> tuple[PlotMarker, ...]:
+    getter = getattr(bot, "get_plot_markers", None)
+    if not callable(getter):
+        return ()
+    try:
+        markers = getter()
+    except Exception:
+        return ()
+    if not isinstance(markers, Iterable):
+        return ()
+    out: list[PlotMarker] = []
+    for marker in markers:
+        if isinstance(marker, PlotMarker):
+            out.append(marker)
+    return tuple(out)
+
+
+def _emit_plot_event(
+    *,
+    plotter: Any,
+    events_seen: set[tuple[str, str]],
+    actor_uid: str,
+    event_id: str,
+    event_name: str,
+    label: str | None,
+    default_x: float,
+    default_y: float,
+    x: float | None = None,
+    y: float | None = None,
+) -> None:
+    event_key = (actor_uid, event_id)
+    if event_key in events_seen:
+        return
+    try:
+        event_x = default_x if x is None else float(x)
+    except (TypeError, ValueError):
+        event_x = default_x
+    try:
+        event_y = default_y if y is None else float(y)
+    except (TypeError, ValueError):
+        event_y = default_y
+    plotter.mark_event(
+        name=event_name,
+        x=event_x,
+        y=event_y,
+        label=label,
+    )
+    events_seen.add(event_key)
 
 
 def track_plot_events(
@@ -21,52 +82,48 @@ def track_plot_events(
     events_seen: set[tuple[str, str]],
 ) -> None:
     for uid, bot in actor_bots.items():
-        get_snapshot = getattr(bot, "get_evaluation_snapshot", None)
-        if not callable(get_snapshot):
-            continue
-        try:
-            snapshot = _zem_snapshot(get_snapshot())
-        except Exception:
-            continue
-        if snapshot is None:
-            continue
         actor = ecs_world.get_entity_by_id(uid)
         if actor is None:
             continue
         trans = actor.get_component(Transform)
         if trans is None:
             continue
-        for event_name, done_key, projected_dx_key in (
-            ("setup_gate", "setup_gate_done", "setup_gate_projected_dx"),
-            ("flare_gate", "terminal_gate_done", "terminal_gate_projected_dx"),
-        ):
-            if not bool(snapshot.get(done_key)):
+        default_x = float(trans.pos.x)
+        default_y = float(trans.pos.y)
+
+        phase_snapshot = _safe_phase_snapshot(bot)
+        if phase_snapshot is not None:
+            for milestone in phase_snapshot.milestones:
+                marker_spec = _SHARED_MILESTONE_LABELS.get(str(milestone))
+                if marker_spec is None:
+                    continue
+                event_name, label = marker_spec
+                _emit_plot_event(
+                    plotter=plotter,
+                    events_seen=events_seen,
+                    actor_uid=uid,
+                    event_id=str(milestone),
+                    event_name=event_name,
+                    label=label,
+                    default_x=default_x,
+                    default_y=default_y,
+                )
+
+        for marker in _safe_plot_markers(bot):
+            event_id = str(marker.id).strip()
+            event_name = str(marker.name).strip()
+            if not event_id or not event_name:
                 continue
-            event_key = (uid, event_name)
-            if event_key in events_seen:
-                continue
-            label = event_name.replace("_", " ")
-            projected_dx = snapshot.get(projected_dx_key)
-            try:
-                projected_dx_val = float(projected_dx) if projected_dx is not None else None
-            except (TypeError, ValueError):
-                projected_dx_val = None
-            if projected_dx_val is not None:
-                label = f"{label} pdx={projected_dx_val:.1f}"
-            if event_name == "setup_gate":
-                apex_over_target = snapshot.get("setup_gate_projected_apex_over_target")
-                try:
-                    apex_over_target_val = (
-                        float(apex_over_target) if apex_over_target is not None else None
-                    )
-                except (TypeError, ValueError):
-                    apex_over_target_val = None
-                if apex_over_target_val is not None:
-                    label = f"{label} pax={apex_over_target_val:.1f}"
-            plotter.mark_event(
-                name=event_name,
-                x=float(trans.pos.x),
-                y=float(trans.pos.y),
+            label = None if marker.label is None else str(marker.label)
+            _emit_plot_event(
+                plotter=plotter,
+                events_seen=events_seen,
+                actor_uid=uid,
+                event_id=event_id,
+                event_name=event_name,
                 label=label,
+                default_x=default_x,
+                default_y=default_y,
+                x=marker.x,
+                y=marker.y,
             )
-            events_seen.add(event_key)

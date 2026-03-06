@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from core.bot import FlightPhaseSnapshot, PlotMarker
 from core.components import Transform
 from core.ecs import Entity, World
 from core.maths import Vector2
@@ -7,23 +8,31 @@ from runtime.plot_events import track_plot_events
 
 
 class _Bot:
-    def __init__(self, snapshot) -> None:
-        self._snapshot = snapshot
+    def __init__(
+        self,
+        *,
+        phase_snapshot: FlightPhaseSnapshot | None = None,
+        plot_markers: tuple[PlotMarker, ...] = (),
+    ) -> None:
+        self._phase_snapshot = phase_snapshot
+        self._plot_markers = plot_markers
 
-    def get_evaluation_snapshot(self):
-        return self._snapshot
+    def get_flight_phase_snapshot(self) -> FlightPhaseSnapshot | None:
+        return self._phase_snapshot
+
+    def get_plot_markers(self) -> tuple[PlotMarker, ...]:
+        return self._plot_markers
 
 
 class _Plotter:
     def __init__(self) -> None:
-        self.events: list[tuple[str, str]] = []
+        self.events: list[tuple[str, float, float, str]] = []
 
     def mark_event(self, *, name: str, x: float, y: float, label: str) -> None:
-        _ = x, y
-        self.events.append((name, label))
+        self.events.append((name, x, y, label))
 
 
-def test_track_plot_events_marks_setup_and_flare_once() -> None:
+def test_track_plot_events_marks_setup_and_terminal_entry_once() -> None:
     actor = Entity("lander")
     actor.add_component(Transform(pos=Vector2(10.0, 20.0)))
     world = World()
@@ -34,14 +43,14 @@ def test_track_plot_events_marks_setup_and_flare_once() -> None:
     track_plot_events(
         actor_bots={
             "lander": _Bot(
-                {
-                    "kind": "zem_zev",
-                    "setup_gate_done": True,
-                    "setup_gate_projected_dx": 12.34,
-                    "setup_gate_projected_apex_over_target": 56.78,
-                    "terminal_gate_done": True,
-                    "terminal_gate_projected_dx": -4.56,
-                }
+                phase_snapshot=FlightPhaseSnapshot(phase="coast", milestones=("setup_gate",)),
+                plot_markers=(
+                    PlotMarker(
+                        id="terminal_entry",
+                        name="terminal_entry",
+                        label="terminal entry pdx=-4.6",
+                    ),
+                ),
             )
         },
         ecs_world=world,
@@ -51,14 +60,14 @@ def test_track_plot_events_marks_setup_and_flare_once() -> None:
     track_plot_events(
         actor_bots={
             "lander": _Bot(
-                {
-                    "kind": "zem_zev",
-                    "setup_gate_done": True,
-                    "setup_gate_projected_dx": 12.34,
-                    "setup_gate_projected_apex_over_target": 56.78,
-                    "terminal_gate_done": True,
-                    "terminal_gate_projected_dx": -4.56,
-                }
+                phase_snapshot=FlightPhaseSnapshot(phase="coast", milestones=("setup_gate",)),
+                plot_markers=(
+                    PlotMarker(
+                        id="terminal_entry",
+                        name="terminal_entry",
+                        label="terminal entry pdx=-4.6",
+                    ),
+                ),
             )
         },
         ecs_world=world,
@@ -67,16 +76,45 @@ def test_track_plot_events_marks_setup_and_flare_once() -> None:
     )
 
     assert plotter.events == [
-        ("setup_gate", "setup gate pdx=12.3 pax=56.8"),
-        ("flare_gate", "flare gate pdx=-4.6"),
+        ("setup_gate", 10.0, 20.0, "setup gate"),
+        ("terminal_entry", 10.0, 20.0, "terminal entry pdx=-4.6"),
     ]
 
 
-def test_track_plot_events_ignores_non_zem_snapshots_and_missing_actor() -> None:
+def test_track_plot_events_uses_marker_coordinates_when_provided() -> None:
+    actor = Entity("lander")
+    actor.add_component(Transform(pos=Vector2(10.0, 20.0)))
+    world = World()
+    world.add_entity(actor)
     plotter = _Plotter()
 
     track_plot_events(
-        actor_bots={"lander": _Bot({"kind": "other", "setup_gate_done": True})},
+        actor_bots={
+            "lander": _Bot(
+                plot_markers=(
+                    PlotMarker(
+                        id="custom",
+                        name="terminal_entry",
+                        label="custom marker",
+                        x=42.0,
+                        y=84.0,
+                    ),
+                ),
+            )
+        },
+        ecs_world=world,
+        plotter=plotter,
+        events_seen=set(),
+    )
+
+    assert plotter.events == [("terminal_entry", 42.0, 84.0, "custom marker")]
+
+
+def test_track_plot_events_ignores_missing_actor_and_empty_markers() -> None:
+    plotter = _Plotter()
+
+    track_plot_events(
+        actor_bots={"lander": _Bot()},
         ecs_world=World(),
         plotter=plotter,
         events_seen=set(),
