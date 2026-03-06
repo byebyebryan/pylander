@@ -197,6 +197,10 @@ def test_zem_setup_goal_ends_headless_run_early() -> None:
     assert result["eval_early_end"] is True
     assert result["success"] is True
     assert result["failure_mode"] == "none"
+    assert result["setup_gate_done"] is True
+    assert result["setup_goal_done"] is True
+    assert result["setup_goal_has_target_y_solution"] is True
+    assert result["setup_goal_projected_impact_angle_deg"] is not None
     assert result["zem_setup_gate_done"] is True
     assert result["zem_goal_setup_done"] is True
 
@@ -242,6 +246,26 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
             "eval_goal": "setup",
             "eval_early_end": True,
             "eval_end_reason": "goal_reached",
+            "setup_goal_done": True,
+            "setup_goal_time": 6.0,
+            "setup_goal_altitude": 120.0,
+            "setup_goal_projected_apex_y": 180.0,
+            "setup_goal_projected_apex_over_target": 60.0,
+            "setup_goal_has_target_y_solution": True,
+            "setup_goal_projected_dx": 8.0,
+            "setup_goal_projected_impact_angle_deg": 57.0,
+            "setup_goal_burn_avg_thrust_level": 0.84,
+            "setup_gate_done": True,
+            "setup_gate_time": 6.0,
+            "setup_gate_altitude": 120.0,
+            "setup_gate_projected_apex_y": 180.0,
+            "setup_gate_projected_apex_over_target": 60.0,
+            "setup_gate_has_target_y_solution": True,
+            "setup_gate_projected_dx": 8.0,
+            "setup_gate_projected_impact_angle_deg": 57.0,
+            "setup_gate_burn_duration_s": 6.0,
+            "setup_gate_burn_fuel_used": 17.0,
+            "setup_gate_burn_avg_thrust_level": 0.84,
             "zem_goal_setup_done": True,
             "zem_goal_setup_time": 6.0,
             "zem_goal_setup_altitude": 120.0,
@@ -267,6 +291,16 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
     assert record["eval_goal"] == "setup"
     assert record["eval_early_end"] is True
     assert record["eval_end_reason"] == "goal_reached"
+    assert record["setup_goal_done"] is True
+    assert record["setup_goal_time"] == pytest.approx(6.0)
+    assert record["setup_goal_altitude"] == pytest.approx(120.0)
+    assert record["setup_goal_projected_apex_over_target"] == pytest.approx(60.0)
+    assert record["setup_goal_has_target_y_solution"] is True
+    assert record["setup_goal_projected_dx"] == pytest.approx(8.0)
+    assert record["setup_goal_projected_impact_angle_deg"] == pytest.approx(57.0)
+    assert record["setup_gate_done"] is True
+    assert record["setup_gate_burn_duration_s"] == pytest.approx(6.0)
+    assert record["setup_gate_burn_fuel_used"] == pytest.approx(17.0)
     assert record["zem_goal_setup_done"] is True
     assert record["zem_goal_setup_time"] == pytest.approx(6.0)
     assert record["zem_goal_setup_altitude"] == pytest.approx(120.0)

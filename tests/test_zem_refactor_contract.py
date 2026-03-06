@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from bots import create_bot
-from core.bot import BotAction, FlightPhaseSnapshot, PlotMarker, Sensors
+from core.bot import BotAction, FlightPhaseSnapshot, PlotMarker, Sensors, SetupGateMetrics
 from game import LanderGame
 from levels import create_level as create_level_by_name
 
@@ -75,10 +75,19 @@ def test_zem_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> Non
     bot._active_phase = "terminal"
     bot._setup_gate_done = True
     bot._setup_gate_time = 6.0
+    bot._setup_gate_altitude = 240.0
     bot._setup_gate_x = 120.0
     bot._setup_gate_y = 240.0
     bot._setup_gate_vx = 8.0
     bot._setup_gate_vy_up = -12.0
+    bot._setup_gate_projected_apex_y = 260.0
+    bot._setup_gate_projected_apex_over_target = 40.0
+    bot._setup_gate_has_target_y_solution = True
+    bot._setup_gate_projected_impact_dx = 5.0
+    bot._setup_gate_projected_impact_angle_deg = 63.0
+    bot._setup_gate_burn_duration_s = 6.0
+    bot._setup_gate_burn_fuel_used = 18.0
+    bot._setup_gate_burn_avg_thrust_level = 0.86
     bot._terminal_gate_done = True
     bot._terminal_gate_time = 7.0
     bot._terminal_gate_x = 140.0
@@ -91,6 +100,22 @@ def test_zem_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> Non
     assert phase_snapshot == FlightPhaseSnapshot(
         phase="terminal",
         milestones=("setup_gate",),
+        setup_gate=SetupGateMetrics(
+            time_s=6.0,
+            altitude=240.0,
+            x=120.0,
+            y=240.0,
+            vx=8.0,
+            vy_up=-12.0,
+            projected_apex_y=260.0,
+            projected_apex_over_target=40.0,
+            has_target_y_solution=True,
+            projected_impact_dx=5.0,
+            projected_impact_angle_deg=63.0,
+            burn_duration_s=6.0,
+            burn_fuel_used=18.0,
+            burn_avg_thrust_level=0.86,
+        ),
     )
     assert markers == (
         PlotMarker(

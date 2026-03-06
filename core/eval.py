@@ -145,7 +145,24 @@ def normalize_run_result(
         "setup_goal_fuel_consumed": _to_optional_float(
             result.get("setup_goal_fuel_consumed")
         ),
+        "setup_goal_done": _to_optional_bool(result.get("setup_goal_done")),
+        "setup_goal_altitude": _to_optional_float(result.get("setup_goal_altitude")),
+        "setup_goal_projected_apex_y": _to_optional_float(
+            result.get("setup_goal_projected_apex_y")
+        ),
+        "setup_goal_projected_apex_over_target": _to_optional_float(
+            result.get("setup_goal_projected_apex_over_target")
+        ),
+        "setup_goal_has_target_y_solution": _to_optional_bool(
+            result.get("setup_goal_has_target_y_solution")
+        ),
         "setup_goal_projected_dx": _to_optional_float(result.get("setup_goal_projected_dx")),
+        "setup_goal_projected_impact_angle_deg": _to_optional_float(
+            result.get("setup_goal_projected_impact_angle_deg")
+        ),
+        "setup_goal_burn_avg_thrust_level": _to_optional_float(
+            result.get("setup_goal_burn_avg_thrust_level")
+        ),
         "setup_goal_time_to_target": _to_optional_float(
             result.get("setup_goal_time_to_target")
         ),
@@ -153,6 +170,31 @@ def normalize_run_result(
         "launch_landed_site_uid": result.get("launch_landed_site_uid"),
         "climb_arrived": _to_optional_bool(result.get("climb_arrived")),
         "climb_landed_site_uid": result.get("climb_landed_site_uid"),
+        "setup_gate_done": _to_optional_bool(result.get("setup_gate_done")),
+        "setup_gate_time": _to_optional_float(result.get("setup_gate_time")),
+        "setup_gate_altitude": _to_optional_float(result.get("setup_gate_altitude")),
+        "setup_gate_projected_apex_y": _to_optional_float(
+            result.get("setup_gate_projected_apex_y")
+        ),
+        "setup_gate_projected_apex_over_target": _to_optional_float(
+            result.get("setup_gate_projected_apex_over_target")
+        ),
+        "setup_gate_has_target_y_solution": _to_optional_bool(
+            result.get("setup_gate_has_target_y_solution")
+        ),
+        "setup_gate_projected_dx": _to_optional_float(result.get("setup_gate_projected_dx")),
+        "setup_gate_projected_impact_angle_deg": _to_optional_float(
+            result.get("setup_gate_projected_impact_angle_deg")
+        ),
+        "setup_gate_burn_duration_s": _to_optional_float(
+            result.get("setup_gate_burn_duration_s")
+        ),
+        "setup_gate_burn_fuel_used": _to_optional_float(
+            result.get("setup_gate_burn_fuel_used")
+        ),
+        "setup_gate_burn_avg_thrust_level": _to_optional_float(
+            result.get("setup_gate_burn_avg_thrust_level")
+        ),
         "zem_setup_gate_done": _to_optional_bool(result.get("zem_setup_gate_done")),
         "zem_setup_gate_time": _to_optional_float(result.get("zem_setup_gate_time")),
         "zem_setup_gate_altitude": _to_optional_float(

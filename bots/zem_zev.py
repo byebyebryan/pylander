@@ -33,7 +33,15 @@ from bots._zem_phase import (
 from bots._zem_planner import solve_plan as _solve_plan_impl
 from bots._optimizer_pdg import PDGOptimizer, PDGOptimizerConfig, PDGPlan
 from bots._targeting import pick_target, target_half_width
-from core.bot import Bot, BotAction, BotEvalDecision, FlightPhaseSnapshot, PlotMarker, Sensors
+from core.bot import (
+    Bot,
+    BotAction,
+    BotEvalDecision,
+    FlightPhaseSnapshot,
+    PlotMarker,
+    Sensors,
+    SetupGateMetrics,
+)
 from core.config import GRAVITY
 from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
 
@@ -249,6 +257,13 @@ class ZemZevBot(Bot):
     @staticmethod
     def _percentile(values: list[float], p: float) -> float:
         return _percentile_impl(values, p)
+
+    def _track_setup_phase_metrics(self, *, dt: float, passive: Sensors) -> None:
+        if self._setup_gate_done:
+            return
+        if self._setup_phase_fuel_start is None:
+            self._setup_phase_fuel_start = float(passive.fuel)
+        self._setup_phase_thrust_integral += float(passive.thrust_level) * max(0.0, float(dt))
 
     def _braking_speed_limit(self, alt: float, max_thrust_accel: float, max_tilt: float) -> float:
         cfg = self._cfg
@@ -634,6 +649,7 @@ class ZemZevBot(Bot):
             self._clearance_active = False
 
         self._elapsed_time_s += max(0.0, float(dt))
+        self._track_setup_phase_metrics(dt=dt, passive=passive)
         self._maybe_start_shape_window(passive=passive, dx=dx, dy=dy)
         projection = estimate_target_y_projection(
             dx=dx,
@@ -735,9 +751,28 @@ class ZemZevBot(Bot):
 
     def get_flight_phase_snapshot(self) -> FlightPhaseSnapshot | None:
         milestones: tuple[str, ...] = ("setup_gate",) if self._setup_gate_done else ()
+        setup_gate = None
+        if self._setup_gate_done:
+            setup_gate = SetupGateMetrics(
+                time_s=self._setup_gate_time,
+                altitude=self._setup_gate_altitude,
+                x=self._setup_gate_x,
+                y=self._setup_gate_y,
+                vx=self._setup_gate_vx,
+                vy_up=self._setup_gate_vy_up,
+                projected_apex_y=self._setup_gate_projected_apex_y,
+                projected_apex_over_target=self._setup_gate_projected_apex_over_target,
+                has_target_y_solution=self._setup_gate_has_target_y_solution,
+                projected_impact_dx=self._setup_gate_projected_impact_dx,
+                projected_impact_angle_deg=self._setup_gate_projected_impact_angle_deg,
+                burn_duration_s=self._setup_gate_burn_duration_s,
+                burn_fuel_used=self._setup_gate_burn_fuel_used,
+                burn_avg_thrust_level=self._setup_gate_burn_avg_thrust_level,
+            )
         return FlightPhaseSnapshot(
             phase=self._active_phase,
             milestones=milestones,
+            setup_gate=setup_gate,
         )
 
     def get_plot_markers(self) -> tuple[PlotMarker, ...]:

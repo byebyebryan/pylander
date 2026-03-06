@@ -30,6 +30,59 @@ def _capture_terminal_gate_state(bot, *, passive: Sensors) -> None:
     bot._terminal_gate_y = float(passive.y)
 
 
+def _projected_impact_angle_deg(*, vx: float, vy_up: float, t_fall: float) -> float:
+    vy_down = abs(float(vy_up) - (_GRAVITY_MAG * max(0.0, float(t_fall))))
+    vx_abs = abs(float(vx))
+    return math.degrees(math.atan2(vy_down, vx_abs))
+
+
+def _finalize_setup_gate_metrics(
+    bot,
+    *,
+    passive: Sensors,
+    alt: float,
+    projection: BallisticProjection,
+) -> None:
+    target_y = float(bot._last_target_y)
+    apex_y, apex_over_target = _projected_apex(
+        y=float(passive.y),
+        vy_up=float(passive.vy_up),
+        target_y=target_y,
+    )
+    has_target_y_solution = bool(getattr(projection, "has_target_y_solution", True))
+    projected_impact_dx = float(projection.projected_dx) if has_target_y_solution else None
+    projected_impact_angle_deg = None
+    if has_target_y_solution:
+        projected_impact_angle_deg = _projected_impact_angle_deg(
+            vx=float(passive.vx),
+            vy_up=float(passive.vy_up),
+            t_fall=float(projection.t_fall),
+        )
+
+    fuel_start = bot._setup_phase_fuel_start
+    fuel_used = None
+    if fuel_start is not None:
+        fuel_used = max(0.0, float(fuel_start) - float(passive.fuel))
+    burn_duration_s = max(0.0, float(bot._elapsed_time_s))
+    burn_avg_thrust_level = None
+    if burn_duration_s > 1e-6:
+        burn_avg_thrust_level = bot._setup_phase_thrust_integral / burn_duration_s
+
+    bot._setup_gate_done = True
+    bot._setup_gate_time = bot._elapsed_time_s
+    bot._setup_gate_altitude = alt
+    bot._setup_gate_projected_dx = float(projection.projected_dx)
+    bot._setup_gate_projected_apex_y = apex_y
+    bot._setup_gate_projected_apex_over_target = apex_over_target
+    bot._setup_gate_has_target_y_solution = has_target_y_solution
+    bot._setup_gate_projected_impact_dx = projected_impact_dx
+    bot._setup_gate_projected_impact_angle_deg = projected_impact_angle_deg
+    bot._setup_gate_burn_duration_s = burn_duration_s
+    bot._setup_gate_burn_fuel_used = fuel_used
+    bot._setup_gate_burn_avg_thrust_level = burn_avg_thrust_level
+    _capture_setup_gate_state(bot, passive=passive)
+
+
 def update_phase_tracking(
     bot,
     *,
@@ -89,25 +142,18 @@ def update_phase_tracking(
                     bot._setup_burn_idle_since = bot._elapsed_time_s
                 idle_elapsed = bot._elapsed_time_s - bot._setup_burn_idle_since
                 if idle_elapsed >= cfg.setup_gate_burn_end_settle_s:
-                    target_y = float(bot._last_target_y)
-                    apex_y, apex_over_target = _projected_apex(
-                        y=float(passive.y),
-                        vy_up=float(passive.vy_up),
-                        target_y=target_y,
+                    _finalize_setup_gate_metrics(
+                        bot,
+                        passive=passive,
+                        alt=alt,
+                        projection=projection,
                     )
-                    bot._setup_gate_done = True
-                    bot._setup_gate_time = bot._elapsed_time_s
-                    bot._setup_gate_altitude = alt
-                    bot._setup_gate_projected_dx = projected_dx
-                    bot._setup_gate_projected_apex_y = apex_y
-                    bot._setup_gate_projected_apex_over_target = apex_over_target
-                    _capture_setup_gate_state(bot, passive=passive)
                     bot._debug_setup_post_end_time = bot._elapsed_time_s + 4.0
                     bot._debug_setup_print(
                         "gate_latch_burn_end "
                         f"t={bot._elapsed_time_s:6.2f} "
                         f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
-                        f"proj_apex_over_target={apex_over_target:8.2f} "
+                        f"proj_apex_over_target={bot._setup_gate_projected_apex_over_target:8.2f} "
                         f"signed={shortfall_metric:8.2f} "
                         f"thrust={thrust_level:5.2f}"
                     )
@@ -179,24 +225,17 @@ def update_phase_tracking(
         bot._terminal_gate_projected_dx = projected_dx
         _capture_terminal_gate_state(bot, passive=passive)
         if not bot._setup_gate_done:
-            target_y = float(bot._last_target_y)
-            apex_y, apex_over_target = _projected_apex(
-                y=float(passive.y),
-                vy_up=float(passive.vy_up),
-                target_y=target_y,
+            _finalize_setup_gate_metrics(
+                bot,
+                passive=passive,
+                alt=alt,
+                projection=projection,
             )
-            bot._setup_gate_done = True
-            bot._setup_gate_time = bot._elapsed_time_s
-            bot._setup_gate_altitude = alt
-            bot._setup_gate_projected_dx = projected_dx
-            bot._setup_gate_projected_apex_y = apex_y
-            bot._setup_gate_projected_apex_over_target = apex_over_target
-            _capture_setup_gate_state(bot, passive=passive)
             bot._debug_setup_print(
                 "gate_latch_terminal_fallback "
                 f"t={bot._elapsed_time_s:6.2f} "
                 f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
-                f"proj_apex_over_target={apex_over_target:8.2f} "
+                f"proj_apex_over_target={bot._setup_gate_projected_apex_over_target:8.2f} "
                 f"signed={shortfall_metric:8.2f} "
                 f"thrust={thrust_level:5.2f}"
             )

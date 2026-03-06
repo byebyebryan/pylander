@@ -88,11 +88,33 @@ class BotEvalDecision:
 
 
 @dataclass(frozen=True)
+class SetupGateMetrics:
+    """Optional shared setup-gate metrics for tuning and evaluation."""
+
+    time_s: float | None = None
+    altitude: float | None = None
+    x: float | None = None
+    y: float | None = None
+    vx: float | None = None
+    vy_up: float | None = None
+    projected_apex_y: float | None = None
+    projected_apex_over_target: float | None = None
+    has_target_y_solution: bool | None = None
+    projected_impact_dx: float | None = None
+    projected_impact_angle_deg: float | None = None
+    burn_duration_s: float | None = None
+    burn_fuel_used: float | None = None
+    burn_avg_thrust_level: float | None = None
+
+
+@dataclass(frozen=True)
 class FlightPhaseSnapshot:
     """Optional generic flight-phase state for runtime consumers."""
 
     phase: str | None
     milestones: tuple[str, ...] = ()
+    setup_gate: SetupGateMetrics | None = None
+
 
 
 @dataclass(frozen=True)
