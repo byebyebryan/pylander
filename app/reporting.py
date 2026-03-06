@@ -92,6 +92,8 @@ _FINAL_RESULT_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Profiler", _PROFILER_FIELDS),
     ("Plots", _PLOT_FIELDS),
 )
+_FINAL_RESULTS_BAR_WIDTH = 60
+_FINAL_RESULTS_VALUE_GAP = 4
 
 
 def _format_value(value: Any) -> str:
@@ -100,15 +102,47 @@ def _format_value(value: Any) -> str:
     return str(value)
 
 
-def _print_section(title: str, result: dict[str, Any], fields: tuple[str, ...]) -> int:
-    rows = [(field, result[field]) for field in fields if field in result]
+def _label_width(
+    section_rows: list[list[tuple[str, Any]]],
+    bot_sections: list[tuple[str, list[tuple[str, Any]]]],
+    plot_rows: list[tuple[str, Any]],
+) -> int:
+    labels: list[str] = []
+    for rows in section_rows:
+        labels.extend(field for field, _value in rows)
+    for _bot_name, rows in bot_sections:
+        labels.extend(field for field, _value in rows)
+    labels.extend(field for field, _value in plot_rows)
+    if not labels:
+        return 0
+    raw_width = max(len(label) for label in labels)
+    return min(max(raw_width, 20), _FINAL_RESULTS_BAR_WIDTH - 8)
+
+
+def _print_rows(rows: list[tuple[str, Any]], *, label_width: int) -> int:
+    for field, value in rows:
+        print(f"{field:<{label_width}}{' ' * _FINAL_RESULTS_VALUE_GAP}{_format_value(value)}")
+    return len(rows)
+
+
+def _print_section(
+    title: str,
+    rows: list[tuple[str, Any]],
+    *,
+    label_width: int,
+) -> int:
     if not rows:
         return 0
     print(f"\n[{title}]")
-    width = max(len(field) for field, _value in rows)
-    for field, value in rows:
-        print(f"{field:<{width}} : {_format_value(value)}")
-    return len(rows)
+    return _print_rows(rows, label_width=label_width)
+
+
+def _collect_section_rows(
+    result: dict[str, Any],
+    fields: tuple[str, ...],
+) -> list[tuple[str, Any]]:
+    rows = [(field, result[field]) for field in fields if field in result]
+    return rows
 
 
 def _collect_bot_sections(result: dict[str, Any]) -> list[tuple[str, list[tuple[str, Any]]]]:
@@ -136,32 +170,35 @@ def _collect_bot_sections(result: dict[str, Any]) -> list[tuple[str, list[tuple[
 
 
 def print_headless_results(result: dict[str, Any]) -> None:
-    print("\n" + "=" * 60)
+    print("\n" + "=" * _FINAL_RESULTS_BAR_WIDTH)
     print("FINAL RESULTS")
-    print("=" * 60)
+    print("=" * _FINAL_RESULTS_BAR_WIDTH)
+    section_rows = [
+        _collect_section_rows(result, fields) for _title, fields in _FINAL_RESULT_SECTIONS
+    ]
+    bot_sections = _collect_bot_sections(result)
+    plot_rows: list[tuple[str, Any]] = []
+    if result.get("plot_paths"):
+        plot_rows.extend(("path", path) for path in result["plot_paths"])
+    elif result.get("plot_path"):
+        plot_rows.append(("path", result["plot_path"]))
+    if result.get("plot_error"):
+        plot_rows.append(("plot_error", result["plot_error"]))
+    label_width = _label_width(section_rows, bot_sections, plot_rows)
     printed = 0
-    for title, fields in _FINAL_RESULT_SECTIONS:
-        printed += _print_section(title, result, fields)
-    for bot_name, rows in _collect_bot_sections(result):
+    for (title, _fields), rows in zip(_FINAL_RESULT_SECTIONS, section_rows, strict=False):
+        printed += _print_section(title, rows, label_width=label_width)
+    for bot_name, rows in bot_sections:
         if not rows:
             continue
         print(f"\n[Bot Telemetry: {bot_name}]")
-        width = max(len(field) for field, _value in rows)
-        for field, value in rows:
-            print(f"{field:<{width}} : {_format_value(value)}")
-        printed += len(rows)
-    if result.get("plot_paths"):
+        printed += _print_rows(rows, label_width=label_width)
+    if plot_rows:
         print("\n[Plot Files]")
-        for p in result["plot_paths"]:
-            print(f"path : {p}")
-    elif result.get("plot_path"):
-        print("\n[Plot Files]")
-        print(f"path : {result['plot_path']}")
-    if result.get("plot_error"):
-        print(f"plot_error : {result['plot_error']}")
+        _print_rows(plot_rows, label_width=label_width)
     if printed == 0 and not result.get("plot_path") and not result.get("plot_paths"):
         print("(no result fields)")
-    print("=" * 60)
+    print("=" * _FINAL_RESULTS_BAR_WIDTH)
 
 
 def _print_efficiency_block(title: str, block: dict[str, Any] | None) -> None:
