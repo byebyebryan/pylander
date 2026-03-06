@@ -32,6 +32,11 @@ from runtime.actor_session import (
 from runtime.bot_loop import BotLoopContext, update_bot_steps
 from runtime.loop_timing import LoopTimers
 from runtime.metrics import BotLoopProfiler, RunMetricsTracker
+from runtime.result_pipeline import (
+    apply_bot_eval_to_result,
+    merge_bot_snapshots_into_result,
+    resolve_headless_bot_eval_decision,
+)
 from runtime.sensors import (
     build_headless_stats,
     resolve_eval_target_pos,
@@ -547,72 +552,20 @@ class LanderGame:
                 self._plot_events_seen.add(event_key)
 
     def _merge_bot_snapshots_into_result(self, result: dict) -> None:
-        for bot in self.actor_bots.values():
-            get_snapshot = getattr(bot, "get_evaluation_snapshot", None)
-            if not callable(get_snapshot):
-                continue
-            try:
-                snapshot = get_snapshot()
-            except Exception:
-                continue
-            if not isinstance(snapshot, dict):
-                continue
-            if str(snapshot.get("kind", "")).strip().lower() != "zem_zev":
-                continue
-            for key, value in snapshot.items():
-                if key == "kind":
-                    continue
-                out_key = key if str(key).startswith("zem_") else f"zem_{key}"
-                result.setdefault(out_key, value)
+        merge_bot_snapshots_into_result(actor_bots=self.actor_bots, result=result)
 
     def _resolve_headless_bot_eval_decision(self) -> BotEvalDecision | None:
-        if not self.headless:
-            return None
-        bot = self._active_actor_bot()
-        if bot is None:
-            return None
-        getter = getattr(bot, "get_evaluation_decision", None)
-        if not callable(getter):
-            return None
-        try:
-            decision = getter()
-        except Exception:
-            return None
-        if isinstance(decision, BotEvalDecision):
-            return decision
-        return None
+        return resolve_headless_bot_eval_decision(
+            headless=self.headless,
+            bot=self._active_actor_bot(),
+        )
 
     def _apply_bot_eval_to_result(self, result: dict) -> None:
-        goal = self.eval_goal
-        result["eval_goal"] = goal
-
-        decision = self._bot_eval_decision
-        result["eval_early_end"] = bool(decision.should_end) if decision else False
-        if decision is not None:
-            if decision.end_reason:
-                reason = str(decision.end_reason)
-                result["eval_end_reason"] = reason
-            for key, value in (decision.metrics or {}).items():
-                if not isinstance(key, str):
-                    continue
-                result[str(key)] = value
-
-        if goal != EVAL_GOAL_LANDING:
-            if decision is not None and decision.success is True:
-                result["success"] = True
-                result["failure_mode"] = "none"
-            else:
-                result["success"] = False
-                result["failure_mode"] = "goal_not_reached"
-                result.setdefault("eval_end_reason", "goal_not_reached")
-            return
-
-        if decision is None:
-            return
-        if decision.success is not None:
-            result["success"] = bool(decision.success)
-        if decision.failure_mode is not None:
-            result["failure_mode"] = str(decision.failure_mode)
+        apply_bot_eval_to_result(
+            result=result,
+            eval_goal=self.eval_goal,
+            decision=self._bot_eval_decision,
+        )
 
     @property
     def terrain(self):
