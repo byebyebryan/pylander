@@ -6,26 +6,29 @@ import random
 
 from core.bot import Bot, BotEvalDecision
 from core.components import Transform
-from core.controllers import PlayerController
-from core.ecs import Entity, World, require_component
+from core.ecs import Entity, require_component
 from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal
-from core.engine_adapter import EngineAdapter
 from core.level import Level
 from core.maths import Vector2
-from runtime.bootstrap import create_systems
 from runtime.actor_session import (
     active_actor_bot,
-    attach_primary_bot,
     collect_actor_entities,
     find_initial_player_actor_uid,
-    install_world_actor_bots,
     set_active_actor,
     switch_active_actor,
 )
-from runtime.bot_loop import BotLoopContext, update_bot_steps
+from runtime.bot_loop import update_bot_steps
+from runtime.game_bootstrap import (
+    bind_system_aliases,
+    bootstrap_bot_runtime,
+    bootstrap_core_runtime,
+    bootstrap_interactive_runtime,
+    bootstrap_plot_runtime,
+)
+from runtime.headless_stats import print_headless_stats
 from runtime.loop_timing import LoopTimers
 from runtime.metrics import BotLoopProfiler, RunMetricsTracker
-from runtime.physics_steps import PhysicsStepContext, update_physics_steps
+from runtime.physics_steps import update_physics_steps
 from runtime.interactive_session import (
     process_interactive_input,
     render_frame,
@@ -38,22 +41,7 @@ from runtime.result_pipeline import (
     resolve_headless_bot_eval_decision,
 )
 from runtime.session_loop import SessionLoopContext, run_session_loop
-from runtime.sensors import (
-    build_headless_stats,
-    resolve_eval_target_pos,
-)
-from core.level_capabilities import (
-    level_name_tag,
-    level_plot_max_side_px,
-    level_plot_mode,
-    level_plot_output,
-    level_scenario_tag,
-)
-from ui.renderer import Renderer
-from levels.common import get_mass
-from utils.input import InputHandler
-from utils.plot import Plotter
-from utils.protocols import ControlTuple
+from runtime.sensors import resolve_eval_target_pos
 
 from core.config import (
     BOT_FPS,
@@ -106,104 +94,65 @@ class LanderGame:
             (actor for actor in self.actors if actor.uid == self.active_player_actor_uid),
             self.actors[0],
         )
-        self.sites = self.level.world.sites
-        self.engine = getattr(self.level, "engine", None)
-        self.engine_adapter = EngineAdapter(self.engine)
-        self.engine_adapter.set_primary_actor(self.active_player_actor_uid)
-
-        self.ecs_world = World()
-        for actor in self.actors:
-            self.ecs_world.add_entity(actor)
-        for site_entity in getattr(self.level.world, "site_entities", []):
-            self.ecs_world.add_entity(site_entity)
-        for extra_entity in getattr(self.level.world, "extra_entities", []):
-            self.ecs_world.add_entity(extra_entity)
-        self._set_active_actor(self.active_player_actor_uid)
-
-        self.systems = create_systems(
-            self.ecs_world,
-            terrain=self.terrain,
-            sites=self.sites,
-            engine_adapter=self.engine_adapter,
+        core_runtime = bootstrap_core_runtime(
+            level=self.level,
+            actors=self.actors,
+            active_uid=self.active_player_actor_uid,
         )
-        # Compatibility aliases for internal methods.
-        self.control_routing_system = self.systems.control_routing
-        self.state_transition_system = self.systems.state_transition
-        self.scripted_control_system = self.systems.scripted_control
-        self.landing_site_motion_system = self.systems.landing_site_motion
-        self.landing_site_projection_system = self.systems.landing_site_projection
-        self.refuel_system = self.systems.refuel
-        self.propulsion_system = self.systems.propulsion
-        self.force_application_system = self.systems.force_application
-        self.physics_sync_system = self.systems.physics_sync
-        self.contact_system = self.systems.contact
-        self.sensor_update_system = self.systems.sensor_update
+        self.sites = core_runtime.sites
+        self.engine = core_runtime.engine
+        self.engine_adapter = core_runtime.engine_adapter
+        self.ecs_world = core_runtime.ecs_world
+        self.systems = core_runtime.systems
+        self._set_active_actor(self.active_player_actor_uid)
+        bind_system_aliases(self, self.systems)
 
         self.bot_override_delay = 1.0
         self._bot_override_timer = 0.0
 
-        if not headless and InputHandler is not None and Renderer is not None:
-            self.input_handler = InputHandler()
-            self.renderer = Renderer(self.level, width, height, bot=self.bot)
-            self.player_controller = PlayerController()
-        else:
-            self.input_handler = None
-            self.renderer = None
-            self.player_controller = None
+        interactive_runtime = bootstrap_interactive_runtime(
+            headless=headless,
+            level=self.level,
+            width=width,
+            height=height,
+            bot=self.bot,
+        )
+        self.input_handler = interactive_runtime.input_handler
+        self.renderer = interactive_runtime.renderer
+        self.player_controller = interactive_runtime.player_controller
 
-        self.actor_bots: dict[str, Bot] = {}
-        install_world_actor_bots(
-            actor_bots=self.actor_bots,
+        bot_runtime = bootstrap_bot_runtime(
+            actors=self.actors,
             ecs_world=self.ecs_world,
             world_bots=getattr(self.level.world, "actor_bots", None),
-        )
-        if self.bot is not None:
-            attach_primary_bot(
-                actors=self.actors,
-                actor_bots=self.actor_bots,
-                ecs_world=self.ecs_world,
-                active_uid=self.active_player_actor_uid,
-                bot=self.bot,
-            )
-        self._bot_loop_context = BotLoopContext(
-            ecs_world=self.ecs_world,
-            actor_bots=self.actor_bots,
+            primary_bot=self.bot,
+            active_uid=self.active_player_actor_uid,
             sensor_update_system=self.sensor_update_system,
             profiler=self._bot_profiler,
             terrain=self.terrain,
-        )
-        self._physics_step_context = PhysicsStepContext(
-            actors=self.actors,
             engine_adapter=self.engine_adapter,
-            scripted_control_system=self.scripted_control_system,
-            landing_site_motion_system=self.landing_site_motion_system,
-            landing_site_projection_system=self.landing_site_projection_system,
-            propulsion_system=self.propulsion_system,
-            force_application_system=self.force_application_system,
-            physics_sync_system=self.physics_sync_system,
-            contact_system=self.contact_system,
-            mass_resolver=get_mass,
+            systems_owner=self,
         )
+        self.actor_bots = bot_runtime.actor_bots
+        self._bot_loop_context = bot_runtime.bot_loop_context
+        self._physics_step_context = bot_runtime.physics_step_context
         if self.renderer is not None:
-            self.renderer.bot = self._active_actor_bot()
+            self.renderer.bot = active_actor_bot(
+                actor_bots=self.actor_bots,
+                active_uid=self.active_player_actor_uid,
+                primary_bot=self.bot,
+            )
 
         self.level.start(self)
-        self.plotter = Plotter(
-            self.terrain,
-            self.lander,
-            enabled=self.headless,
-            mode=level_plot_mode(self.level),
-            output_profile=level_plot_output(self.level),
-            max_side_px=level_plot_max_side_px(self.level),
+        plot_runtime = bootstrap_plot_runtime(
+            terrain=self.terrain,
+            lander=self.lander,
+            headless=self.headless,
+            level=self.level,
+            seed=self.seed,
         )
-        level_name = level_name_tag(self.level)
-        scenario_name = level_scenario_tag(self.level)
-        tag_parts = [level_name] if level_name else ["level"]
-        if scenario_name and scenario_name != level_name:
-            tag_parts.append(scenario_name)
-        tag_parts.append(str(self.seed))
-        self.plotter.set_selector_tag("_".join(tag_parts))
-        self._plot_events_seen: set[tuple[str, str]] = set()
+        self.plotter = plot_runtime.plotter
+        self._plot_events_seen = plot_runtime.events_seen
         self._bot_eval_decision: BotEvalDecision | None = None
 
     def get_active_actor(self) -> Entity:
@@ -238,13 +187,6 @@ class LanderGame:
             return
         self.active_player_actor_uid, self.lander = switched
 
-    def _active_actor_bot(self) -> Bot | None:
-        return active_actor_bot(
-            actor_bots=self.actor_bots,
-            active_uid=self.active_player_actor_uid,
-            primary_bot=self.bot,
-        )
-
     def run(
         self,
         print_freq: int = 60,
@@ -276,6 +218,29 @@ class LanderGame:
             start_pos=start_pos,
             eval_target_pos=eval_target_pos,
         )
+        def process_input_step(frame_dt: float) -> tuple[tuple[float, float, bool] | None, dict]:
+            result = process_interactive_input(
+                headless=self.headless,
+                input_handler=self.input_handler,
+                renderer=self.renderer,
+                player_controller=self.player_controller,
+                frame_dt=frame_dt,
+                get_active_actor=self.get_active_actor,
+                on_reset=lambda: setattr(
+                    self,
+                    "_bot_override_timer",
+                    reset_active_actor_session(
+                        active_actor=self.get_active_actor(),
+                        engine_adapter=self.engine_adapter,
+                        renderer=self.renderer,
+                        bot_override_delay=self.bot_override_delay,
+                    ),
+                ),
+                on_switch_actor=self._switch_active_actor,
+            )
+            self.running = result.running
+            return result.user_controls, result.input_events
+
         loop_result = run_session_loop(
             context=SessionLoopContext(
                 headless=self.headless,
@@ -293,15 +258,48 @@ class LanderGame:
                 is_running=lambda: self.running,
                 active_uid=lambda: self.active_player_actor_uid,
                 get_active_actor=self.get_active_actor,
-                process_input=self._process_input,
+                process_input=process_input_step,
                 set_elapsed_time=lambda elapsed: setattr(self, "_elapsed_time", elapsed),
-                update_physics_steps=self._update_physics_steps,
-                update_bot_steps=self._update_bot_steps,
+                update_physics_steps=lambda timers: update_physics_steps(
+                    timers,
+                    context=self._physics_step_context,
+                ),
+                update_bot_steps=lambda timers: update_bot_steps(
+                    timers,
+                    context=self._bot_loop_context,
+                ),
                 level_update=lambda dt: self.level.update(self, dt),
-                track_plot_events=self._track_plot_events,
-                render=self._render,
-                print_headless_stats=self._print_headless_stats,
-                resolve_headless_bot_eval_decision=self._resolve_headless_bot_eval_decision,
+                track_plot_events=lambda: track_plot_events(
+                    actor_bots=self.actor_bots,
+                    ecs_world=self.ecs_world,
+                    plotter=self.plotter,
+                    events_seen=self._plot_events_seen,
+                ),
+                render=lambda frame_dt: render_frame(
+                    headless=self.headless,
+                    renderer=self.renderer,
+                    active_bot=active_actor_bot(
+                        actor_bots=self.actor_bots,
+                        active_uid=self.active_player_actor_uid,
+                        primary_bot=self.bot,
+                    ),
+                    frame_dt=frame_dt,
+                    target_fps=TARGET_RENDERING_FPS,
+                ),
+                print_headless_stats=lambda timers: print_headless_stats(
+                    elapsed_time=timers.elapsed_time,
+                    active_actor=self.get_active_actor(),
+                    terrain=self.terrain,
+                    actor_bots=self.actor_bots,
+                ),
+                resolve_headless_bot_eval_decision=lambda: resolve_headless_bot_eval_decision(
+                    headless=self.headless,
+                    bot=active_actor_bot(
+                        actor_bots=self.actor_bots,
+                        active_uid=self.active_player_actor_uid,
+                        primary_bot=self.bot,
+                    ),
+                ),
                 level_should_end=lambda: self.level.should_end(self),
             ),
             timers=timers,
@@ -325,8 +323,12 @@ class LanderGame:
         self._overdrive_time = metrics.overdrive_time
         self._overdrive_excess = metrics.overdrive_excess
         result = self.level.end(self)
-        self._merge_bot_snapshots_into_result(result)
-        self._apply_bot_eval_to_result(result)
+        merge_bot_snapshots_into_result(actor_bots=self.actor_bots, result=result)
+        apply_bot_eval_to_result(
+            result=result,
+            eval_goal=self.eval_goal,
+            decision=self._bot_eval_decision,
+        )
         final_actor = self.get_active_actor()
         metrics.apply_to_result(
             result,
@@ -339,79 +341,6 @@ class LanderGame:
         if plot_extras:
             result.update(plot_extras)
         return result
-
-    def _process_input(self, frame_dt: float) -> tuple[ControlTuple | None, dict]:
-        result = process_interactive_input(
-            headless=self.headless,
-            input_handler=self.input_handler,
-            renderer=self.renderer,
-            player_controller=self.player_controller,
-            frame_dt=frame_dt,
-            get_active_actor=self.get_active_actor,
-            on_reset=self._do_reset,
-            on_switch_actor=self._switch_active_actor,
-        )
-        self.running = result.running
-        return result.user_controls, result.input_events
-
-    def _do_reset(self) -> None:
-        active_actor = self.get_active_actor()
-        self._bot_override_timer = reset_active_actor_session(
-            active_actor=active_actor,
-            engine_adapter=self.engine_adapter,
-            renderer=self.renderer,
-            bot_override_delay=self.bot_override_delay,
-        )
-
-    def _update_physics_steps(self, timers: LoopTimers) -> None:
-        update_physics_steps(timers, context=self._physics_step_context)
-
-    def _update_bot_steps(self, timers: LoopTimers) -> dict[str, ControlTuple | None]:
-        return update_bot_steps(timers, context=self._bot_loop_context)
-
-    def _render(self, frame_dt: float) -> float:
-        return render_frame(
-            headless=self.headless,
-            renderer=self.renderer,
-            active_bot=self._active_actor_bot(),
-            frame_dt=frame_dt,
-            target_fps=TARGET_RENDERING_FPS,
-        )
-
-    def _print_headless_stats(self, timers: LoopTimers) -> None:
-        active_actor = self.get_active_actor()
-        parts = [f"t:{timers.elapsed_time:6.2f}"]
-        parts.append(build_headless_stats(active_actor, self.terrain))
-        for uid, bot in self.actor_bots.items():
-            if hasattr(bot, "get_headless_stats"):
-                bot_str = bot.get_headless_stats()
-                if bot_str:
-                    parts.append(f"{uid}:{bot_str}")
-        print(" | ".join(parts))
-
-    def _track_plot_events(self) -> None:
-        track_plot_events(
-            actor_bots=self.actor_bots,
-            ecs_world=self.ecs_world,
-            plotter=self.plotter,
-            events_seen=self._plot_events_seen,
-        )
-
-    def _merge_bot_snapshots_into_result(self, result: dict) -> None:
-        merge_bot_snapshots_into_result(actor_bots=self.actor_bots, result=result)
-
-    def _resolve_headless_bot_eval_decision(self) -> BotEvalDecision | None:
-        return resolve_headless_bot_eval_decision(
-            headless=self.headless,
-            bot=self._active_actor_bot(),
-        )
-
-    def _apply_bot_eval_to_result(self, result: dict) -> None:
-        apply_bot_eval_to_result(
-            result=result,
-            eval_goal=self.eval_goal,
-            decision=self._bot_eval_decision,
-        )
 
     @property
     def terrain(self):

@@ -1,0 +1,206 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from core.bot import Bot
+from core.controllers import PlayerController
+from core.ecs import World
+from core.engine_adapter import EngineAdapter
+from runtime.actor_session import attach_primary_bot, install_world_actor_bots
+from runtime.bootstrap import create_systems
+from runtime.bot_loop import BotLoopContext
+from runtime.metrics import BotLoopProfiler
+from runtime.physics_steps import PhysicsStepContext
+from ui.renderer import Renderer
+from utils.input import InputHandler
+from utils.plot import Plotter
+from core.level_capabilities import (
+    level_name_tag,
+    level_plot_max_side_px,
+    level_plot_mode,
+    level_plot_output,
+    level_scenario_tag,
+)
+from levels.common import get_mass
+
+
+@dataclass(frozen=True)
+class CoreRuntimeBootstrap:
+    sites: Any
+    engine: Any
+    engine_adapter: EngineAdapter
+    ecs_world: World
+    systems: Any
+
+
+def bootstrap_core_runtime(
+    *,
+    level: Any,
+    actors: list[Any],
+    active_uid: str,
+) -> CoreRuntimeBootstrap:
+    sites = level.world.sites
+    engine = getattr(level, "engine", None)
+    engine_adapter = EngineAdapter(engine)
+    engine_adapter.set_primary_actor(active_uid)
+
+    ecs_world = World()
+    for actor in actors:
+        ecs_world.add_entity(actor)
+    for site_entity in getattr(level.world, "site_entities", []):
+        ecs_world.add_entity(site_entity)
+    for extra_entity in getattr(level.world, "extra_entities", []):
+        ecs_world.add_entity(extra_entity)
+
+    systems = create_systems(
+        ecs_world,
+        terrain=level.world.terrain,
+        sites=sites,
+        engine_adapter=engine_adapter,
+    )
+    return CoreRuntimeBootstrap(
+        sites=sites,
+        engine=engine,
+        engine_adapter=engine_adapter,
+        ecs_world=ecs_world,
+        systems=systems,
+    )
+
+
+def bind_system_aliases(owner: Any, systems: Any) -> None:
+    for attr_name in (
+        "control_routing",
+        "state_transition",
+        "scripted_control",
+        "landing_site_motion",
+        "landing_site_projection",
+        "refuel",
+        "propulsion",
+        "force_application",
+        "physics_sync",
+        "contact",
+        "sensor_update",
+    ):
+        setattr(owner, f"{attr_name}_system", getattr(systems, attr_name))
+
+
+@dataclass(frozen=True)
+class InteractiveRuntimeBootstrap:
+    input_handler: Any
+    renderer: Any
+    player_controller: Any
+
+
+def bootstrap_interactive_runtime(
+    *,
+    headless: bool,
+    level: Any,
+    width: int,
+    height: int,
+    bot: Bot | None,
+) -> InteractiveRuntimeBootstrap:
+    if not headless and InputHandler is not None and Renderer is not None:
+        return InteractiveRuntimeBootstrap(
+            input_handler=InputHandler(),
+            renderer=Renderer(level, width, height, bot=bot),
+            player_controller=PlayerController(),
+        )
+    return InteractiveRuntimeBootstrap(
+        input_handler=None,
+        renderer=None,
+        player_controller=None,
+    )
+
+
+@dataclass(frozen=True)
+class BotRuntimeBootstrap:
+    actor_bots: dict[str, Bot]
+    bot_loop_context: BotLoopContext
+    physics_step_context: PhysicsStepContext
+
+
+def bootstrap_bot_runtime(
+    *,
+    actors: list[Any],
+    ecs_world: World,
+    world_bots: Any,
+    primary_bot: Bot | None,
+    active_uid: str,
+    sensor_update_system: Any,
+    profiler: BotLoopProfiler,
+    terrain: Any,
+    engine_adapter: Any,
+    systems_owner: Any,
+) -> BotRuntimeBootstrap:
+    actor_bots: dict[str, Bot] = {}
+    install_world_actor_bots(
+        actor_bots=actor_bots,
+        ecs_world=ecs_world,
+        world_bots=world_bots,
+    )
+    if primary_bot is not None:
+        attach_primary_bot(
+            actors=actors,
+            actor_bots=actor_bots,
+            ecs_world=ecs_world,
+            active_uid=active_uid,
+            bot=primary_bot,
+        )
+    return BotRuntimeBootstrap(
+        actor_bots=actor_bots,
+        bot_loop_context=BotLoopContext(
+            ecs_world=ecs_world,
+            actor_bots=actor_bots,
+            sensor_update_system=sensor_update_system,
+            profiler=profiler,
+            terrain=terrain,
+        ),
+        physics_step_context=PhysicsStepContext(
+            actors=actors,
+            engine_adapter=engine_adapter,
+            scripted_control_system=systems_owner.scripted_control_system,
+            landing_site_motion_system=systems_owner.landing_site_motion_system,
+            landing_site_projection_system=systems_owner.landing_site_projection_system,
+            propulsion_system=systems_owner.propulsion_system,
+            force_application_system=systems_owner.force_application_system,
+            physics_sync_system=systems_owner.physics_sync_system,
+            contact_system=systems_owner.contact_system,
+            mass_resolver=get_mass,
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class PlotRuntimeBootstrap:
+    plotter: Plotter
+    events_seen: set[tuple[str, str]]
+
+
+def bootstrap_plot_runtime(
+    *,
+    terrain: Any,
+    lander: Any,
+    headless: bool,
+    level: Any,
+    seed: int,
+) -> PlotRuntimeBootstrap:
+    plotter = Plotter(
+        terrain,
+        lander,
+        enabled=headless,
+        mode=level_plot_mode(level),
+        output_profile=level_plot_output(level),
+        max_side_px=level_plot_max_side_px(level),
+    )
+    level_name = level_name_tag(level)
+    scenario_name = level_scenario_tag(level)
+    tag_parts = [level_name] if level_name else ["level"]
+    if scenario_name and scenario_name != level_name:
+        tag_parts.append(scenario_name)
+    tag_parts.append(str(seed))
+    plotter.set_selector_tag("_".join(tag_parts))
+    return PlotRuntimeBootstrap(
+        plotter=plotter,
+        events_seen=set(),
+    )
