@@ -9,7 +9,6 @@ from core.eval import normalize_run_result
 from core.level_capabilities import (
     resolve_default_bot_name,
     set_benchmark_mode_checked,
-    set_eval_mode_checked,
     set_eval_scenario_checked,
 )
 from game import LanderGame
@@ -17,6 +16,7 @@ from levels import create_level
 
 from app.config import RunSettings
 from app.reporting import print_headless_results
+from app.selector import parse_bot_selector
 
 
 def resolve_default_bot(level_name: str) -> str | None:
@@ -29,8 +29,16 @@ def resolve_default_bot(level_name: str) -> str | None:
 
 def resolve_run_bot_name(settings: RunSettings, level) -> str | None:
     if settings.bot_name:
-        return settings.bot_name
+        return str(settings.bot_name).strip()
     return resolve_default_bot_name(level)
+
+
+def resolve_run_bot_spec(settings: RunSettings, level) -> tuple[str | None, str]:
+    selector = resolve_run_bot_name(settings, level)
+    if selector is None:
+        return None, "landing"
+    parsed = parse_bot_selector(selector)
+    return parsed.bot_name, parsed.goal or "landing"
 
 
 def set_eval_scenario(level, name: str | None) -> None:
@@ -66,7 +74,6 @@ def configure_level(level, settings: RunSettings, *, benchmark_mode: str | None 
     level.stop_on_first_land = stop_on_first_land
 
     set_benchmark_mode_checked(level, benchmark_mode)
-    set_eval_mode_checked(level, settings.eval_mode)
 
     level.plot_mode = settings.plot_mode
     level.plot_output = settings.plot_output
@@ -93,15 +100,17 @@ def run_once(
     set_eval_scenario(level, chosen_scenario)
     configure_level(level, settings, benchmark_mode=benchmark_mode)
 
-    run_bot_name = resolve_run_bot_name(settings, level)
+    run_bot_selector = resolve_run_bot_name(settings, level)
+    run_bot_name, run_bot_goal = resolve_run_bot_spec(settings, level)
     bot_config = _load_bot_config(settings.bot_config_path)
     bot = (
         create_bot(run_bot_name, config_override=bot_config)
         if run_bot_name is not None
         else None
     )
-    if bot is not None and run_bot_name is not None:
-        setattr(bot, "_bot_name", run_bot_name)
+    if bot is not None and run_bot_selector is not None:
+        bot.set_eval_goal(run_bot_goal)
+        setattr(bot, "_bot_name", run_bot_selector)
 
     game = LanderGame(
         seed=seed,
@@ -118,8 +127,8 @@ def run_once(
         max_steps=settings.max_steps,
     )
 
-    if run_bot_name is not None:
-        result["_bot_name"] = run_bot_name
+    if run_bot_selector is not None:
+        result["_bot_name"] = run_bot_selector
     result["_level_name"] = run_name
     result["_scenario_name"] = getattr(level, "scenario_name", run_name)
 

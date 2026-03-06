@@ -61,9 +61,9 @@ Focused run:
 
 Per-case reproduction:
 
-- `uv run python main.py plot <level[:scenario[:seed]]> --bot <bot> --eval-mode <eval_mode> --plot all`
-- `uv run python main.py sim <level[:scenario[:seed]]> --bot <bot> --eval-mode <eval_mode> --freq 1`
-- `PYLANDER_BOT_PROFILE=1 uv run python main.py sim <selector> --bot <bot> --eval-mode <eval_mode> --freq 1`
+- `uv run python main.py plot <level[:scenario[:seed]]> --bot <bot> --plot all`
+- `uv run python main.py sim <level[:scenario[:seed]]> --bot <bot> --freq 1`
+- `PYLANDER_BOT_PROFILE=1 uv run python main.py sim <selector> --bot <bot> --freq 1`
 
 ## Mode Workflow
 
@@ -129,10 +129,10 @@ Use these heuristics consistently.
 
 ### Trajectory/Phase Quality
 
-Use available phase and ZEM fields to detect shaping issues:
+Use available gate and ZEM fields to detect shaping issues:
 
-- high `|setup_phase_projected_dx|` suggests poor setup handoff
-- high `|coast_phase_projected_dx|` suggests insufficient passive alignment
+- high `|zem_setup_gate_projected_dx|` suggests poor setup handoff
+- high `|zem_terminal_gate_projected_dx|` suggests insufficient passive alignment
 - large gap between setup and terminal projected-dx suggests heavy late correction burden
 - large `zem_shape_curve_rmse` / `zem_shape_apex_error` suggests trajectory shape mismatch
 - gate ordering anomalies (for runs with both timestamps) indicate phase/control bugs

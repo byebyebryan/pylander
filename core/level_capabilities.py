@@ -10,11 +10,6 @@ class SupportsEvalScenario(Protocol):
 
 
 @runtime_checkable
-class SupportsEvalMode(Protocol):
-    def set_eval_mode(self, name: str) -> None: ...
-
-
-@runtime_checkable
 class SupportsBenchmarkMode(Protocol):
     def set_benchmark_mode(self, mode: str) -> None: ...
 
@@ -65,17 +60,6 @@ def set_eval_scenario_checked(level, name: str | None) -> None:
         level_type_name = type(level).__name__
         raise ValueError(f"Level '{level_type_name}' does not support scenario selection")
     level.set_eval_scenario(name)
-
-
-def set_eval_mode_checked(level, eval_mode: str) -> None:
-    if isinstance(level, SupportsEvalMode):
-        level.set_eval_mode(eval_mode)
-        return
-    if eval_mode != "auto":
-        level_type_name = type(level).__name__
-        raise ValueError(
-            f"Level '{level_type_name}' does not support --eval-mode {eval_mode!r}"
-        )
 
 
 def set_benchmark_mode_checked(level, benchmark_mode: str | None) -> None:

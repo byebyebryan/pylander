@@ -9,7 +9,6 @@ from core.maths import Vector2
 from dataclasses import dataclass
 
 from levels.common import PresetLevel, SiteSpec, get_mass
-from levels.staged_eval import ZemStageEvalTracker
 
 _SOURCE_PAD_X = 0.0
 
@@ -35,10 +34,6 @@ _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
     "slope_mid",
     "slope_high",
 )
-_CLIMB_EVAL_MODES: tuple[str, ...] = ("auto", "focused", "full")
-_CLIMB_DEFAULT_EVAL_MODE = "full"
-
-
 class ClimbLevel(PresetLevel):
     """Pad-to-pad climb transfer with uphill destination profiles and no obstacles."""
 
@@ -54,13 +49,7 @@ class ClimbLevel(PresetLevel):
     def __init__(self) -> None:
         super().__init__()
         self._eval_scenario_name = _DEFAULT_SCENARIO
-        self._eval_mode_name = "auto"
-        self._resolved_eval_mode = _CLIMB_DEFAULT_EVAL_MODE
         self._benchmark_random_mode = "sample"
-        self._stage_eval = ZemStageEvalTracker(
-            stage_prefix="climb",
-            completion_gate_prefix="setup_gate",
-        )
 
     @staticmethod
     def list_batch_scenarios() -> list[str]:
@@ -87,13 +76,6 @@ class ClimbLevel(PresetLevel):
             raise ValueError(f"Unknown climb scenario '{name}'. Expected one of: {known}")
         self._eval_scenario_name = key
 
-    def set_eval_mode(self, name: str) -> None:
-        key = str(name).strip().lower()
-        if key not in _CLIMB_EVAL_MODES:
-            known = ", ".join(_CLIMB_EVAL_MODES)
-            raise ValueError(f"Unknown climb eval mode '{name}'. Expected one of: {known}")
-        self._eval_mode_name = key
-
     def set_benchmark_mode(self, mode: str) -> None:
         key = str(mode or "sample").strip().lower()
         if key not in {"median", "sample"}:
@@ -102,14 +84,6 @@ class ClimbLevel(PresetLevel):
 
     def scenario_has_randomized_fields(self, _name: str | None = None) -> bool:
         return False
-
-    def _mode_for_run(self) -> str:
-        if self._eval_mode_name == "auto":
-            return _CLIMB_DEFAULT_EVAL_MODE
-        return self._eval_mode_name
-
-    def _resolve_zem_snapshot(self, game):
-        return self._stage_eval.resolve_zem_snapshot(game)
 
     def _active_scenario(self) -> ClimbScenario:
         return _SCENARIO_BY_NAME[self._eval_scenario_name]
@@ -126,9 +100,6 @@ class ClimbLevel(PresetLevel):
         return _terrain.LodGridGenerator(lambda x: slope * x)
 
     def setup(self, game, seed: int) -> None:
-        self._resolved_eval_mode = self._mode_for_run()
-        self._stage_eval.reset()
-
         scenario = self._active_scenario()
         dest_x = _SOURCE_PAD_X + float(scenario.target_dx)
         slope = self._scenario_slope(scenario)
@@ -163,8 +134,6 @@ class ClimbLevel(PresetLevel):
         if engine is not None and hasattr(engine, "set_lander_mass"):
             engine.set_lander_mass(get_mass(actor), uid=actor.uid)
 
-        self._stage_eval.seed_motion_state(actor)
-
         setattr(self, "scenario_name", scenario.name)
         setattr(
             self,
@@ -190,33 +159,11 @@ class ClimbLevel(PresetLevel):
         return None
 
     def update(self, game, dt: float) -> None:
-        _ = dt
-        actor = self.world.actors[0]
-        self._stage_eval.update_motion(actor)
-        if self._stage_eval.phase_done:
-            return
-        snapshot = self._resolve_zem_snapshot(game)
-        if isinstance(snapshot, dict):
-            target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
-            self._stage_eval.capture_snapshot(game, actor, target_pos, snapshot)
-
-    def should_end(self, game) -> bool:
-        if self._stage_eval.should_end_focused(self._resolved_eval_mode):
-            return True
-        return super().should_end(game)
+        _ = game, dt
 
     def end(self, game):
         result = super().end(game)
-        result["eval_mode"] = self._resolved_eval_mode
         actor = self.world.actors[0]
-        target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
-        self._stage_eval.apply_result(
-            result,
-            eval_mode=self._resolved_eval_mode,
-            eval_phase_name="zem_setup_gate",
-            actor=actor,
-            target_pos=target_pos,
-        )
 
         state = str(result.get("state", "unknown"))
         landed_uid: str | None = None
@@ -228,14 +175,13 @@ class ClimbLevel(PresetLevel):
         result["climb_arrived"] = climb_arrived
         result["climb_landed_site_uid"] = landed_uid
 
-        if self._resolved_eval_mode != "focused":
-            result["success"] = climb_arrived
-            if climb_arrived:
-                result["failure_mode"] = "none"
-            elif state == "landed":
-                result["failure_mode"] = "wrong_pad"
-            else:
-                result["failure_mode"] = state
+        result["success"] = climb_arrived
+        if climb_arrived:
+            result["failure_mode"] = "none"
+        elif state == "landed":
+            result["failure_mode"] = "wrong_pad"
+        else:
+            result["failure_mode"] = state
         return result
 
 

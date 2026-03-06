@@ -305,7 +305,6 @@ def build_bench_command(
     *,
     selectors: list[str],
     bot: str = "zem_zev",
-    eval_mode: str = "auto",
     json_path: str = "auto",
     csv_path: str = "auto",
     bot_config_path: str | None = None,
@@ -321,8 +320,6 @@ def build_bench_command(
         + [
             "--bot",
             bot,
-            "--eval-mode",
-            eval_mode,
             "--json",
             json_path,
             "--csv",
@@ -359,7 +356,6 @@ def main() -> None:
     )
     ap.add_argument("--bot", default="zem_zev")
     ap.add_argument("--bot-config", default=None)
-    ap.add_argument("--eval-mode", default="auto", choices=("auto", "focused", "full"))
     ap.add_argument(
         "--bot-profile",
         action=argparse.BooleanOptionalAction,
@@ -391,7 +387,6 @@ def main() -> None:
         cmd = build_bench_command(
             selectors=pack.selectors,
             bot=args.bot,
-            eval_mode=args.eval_mode,
             json_path="auto",
             csv_path="auto",
             bot_config_path=args.bot_config,

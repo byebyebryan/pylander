@@ -96,7 +96,6 @@ def test_analyze_compare_produces_crash_and_perf_findings() -> None:
         sim_logs=[],
         source_paths={"benchmark_json": "", "compare_json": "/tmp/compare.json", "sim_logs": []},
         bot="zem_zev",
-        eval_mode="auto",
         max_findings=8,
     )
 
@@ -116,8 +115,8 @@ def test_analyze_benchmark_without_compare_requests_probe() -> None:
                 "scenario": "far",
                 "seed": 0,
                 "state": "landed",
-                "setup_phase_projected_dx": 140.0,
-                "coast_phase_projected_dx": 82.0,
+                "zem_setup_gate_projected_dx": 140.0,
+                "zem_terminal_gate_projected_dx": 82.0,
                 "bot_profile_total_ms_per_tick": 1.4,
                 "bot_profile_total_ms_per_tick_p99": 62.0,
                 "bot_profile_update_ms_per_tick_p99": 55.0,
@@ -131,7 +130,6 @@ def test_analyze_benchmark_without_compare_requests_probe() -> None:
         sim_logs=[],
         source_paths={"benchmark_json": "/tmp/bench.json", "compare_json": "", "sim_logs": []},
         bot="zem_zev",
-        eval_mode="auto",
         max_findings=8,
     )
 

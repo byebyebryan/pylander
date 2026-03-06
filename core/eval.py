@@ -134,8 +134,9 @@ def normalize_run_result(
         ),
         "success": success,
         "failure_mode": failure_mode,
-        "eval_mode": result.get("eval_mode"),
-        "eval_phase": result.get("eval_phase"),
+        "bot_eval_goal": result.get("bot_eval_goal"),
+        "bot_eval_early_end": _to_optional_bool(result.get("bot_eval_early_end")),
+        "bot_eval_end_reason": result.get("bot_eval_end_reason"),
         "launch_arrived": _to_optional_bool(result.get("launch_arrived")),
         "launch_landed_site_uid": result.get("launch_landed_site_uid"),
         "climb_arrived": _to_optional_bool(result.get("climb_arrived")),
@@ -153,6 +154,12 @@ def normalize_run_result(
         ),
         "zem_setup_gate_projected_apex_over_target": _to_optional_float(
             result.get("zem_setup_gate_projected_apex_over_target")
+        ),
+        "zem_goal_setup_done": _to_optional_bool(result.get("zem_goal_setup_done")),
+        "zem_goal_setup_time": _to_optional_float(result.get("zem_goal_setup_time")),
+        "zem_goal_setup_altitude": _to_optional_float(result.get("zem_goal_setup_altitude")),
+        "zem_goal_setup_projected_dx": _to_optional_float(
+            result.get("zem_goal_setup_projected_dx")
         ),
         "zem_terminal_gate_done": _to_optional_bool(result.get("zem_terminal_gate_done")),
         "zem_terminal_gate_time": _to_optional_float(result.get("zem_terminal_gate_time")),
@@ -218,54 +225,6 @@ def normalize_run_result(
             result.get("zem_shape_projected_dx_abs_max")
         ),
         "zem_shape_shortfall_ratio": _to_optional_float(result.get("zem_shape_shortfall_ratio")),
-        "setup_phase_done": _to_optional_bool(result.get("setup_phase_done")),
-        "setup_phase_time": _to_optional_float(result.get("setup_phase_time")),
-        "setup_phase_altitude": _to_optional_float(result.get("setup_phase_altitude")),
-        "setup_phase_projected_dx": _to_optional_float(
-            result.get("setup_phase_projected_dx")
-        ),
-        "setup_phase_distance": _to_optional_float(result.get("setup_phase_distance")),
-        "setup_phase_fuel_consumed": _to_optional_float(
-            result.get("setup_phase_fuel_consumed")
-        ),
-        "setup_phase_fuel_per_distance": _to_optional_float(
-            result.get("setup_phase_fuel_per_distance")
-        ),
-        "setup_phase_path_efficiency": _to_optional_float(
-            result.get("setup_phase_path_efficiency")
-        ),
-        "coast_phase_done": _to_optional_bool(result.get("coast_phase_done")),
-        "coast_phase_time": _to_optional_float(result.get("coast_phase_time")),
-        "coast_phase_altitude": _to_optional_float(result.get("coast_phase_altitude")),
-        "coast_phase_projected_dx": _to_optional_float(
-            result.get("coast_phase_projected_dx")
-        ),
-        "coast_phase_distance": _to_optional_float(result.get("coast_phase_distance")),
-        "coast_phase_fuel_consumed": _to_optional_float(
-            result.get("coast_phase_fuel_consumed")
-        ),
-        "coast_phase_fuel_per_distance": _to_optional_float(
-            result.get("coast_phase_fuel_per_distance")
-        ),
-        "coast_phase_path_efficiency": _to_optional_float(
-            result.get("coast_phase_path_efficiency")
-        ),
-        "climb_phase_done": _to_optional_bool(result.get("climb_phase_done")),
-        "climb_phase_time": _to_optional_float(result.get("climb_phase_time")),
-        "climb_phase_altitude": _to_optional_float(result.get("climb_phase_altitude")),
-        "climb_phase_projected_dx": _to_optional_float(
-            result.get("climb_phase_projected_dx")
-        ),
-        "climb_phase_distance": _to_optional_float(result.get("climb_phase_distance")),
-        "climb_phase_fuel_consumed": _to_optional_float(
-            result.get("climb_phase_fuel_consumed")
-        ),
-        "climb_phase_fuel_per_distance": _to_optional_float(
-            result.get("climb_phase_fuel_per_distance")
-        ),
-        "climb_phase_path_efficiency": _to_optional_float(
-            result.get("climb_phase_path_efficiency")
-        ),
     }
     for key, value in result.items():
         if not isinstance(key, str) or not key.startswith("scenario_"):

@@ -8,7 +8,7 @@ from landers import list_available_landers
 from levels import list_available_levels
 
 from app.config import BenchCommand, BenchSettings, BenchTarget, Command, RunCommand, RunSettings
-from app.selector import parse_seed_spec, parse_selector
+from app.selector import parse_bot_selector, parse_seed_spec, parse_selector
 
 
 def _format_list(title: str, items: list[str]) -> str:
@@ -109,13 +109,8 @@ def _add_common_run_args(
         help="Terminate after first landing",
     )
     parser.add_argument(
-        "-e",
-        "--eval-mode",
-        choices=("auto", "focused", "full"),
-        default="auto",
-        help="Evaluation mode for levels that support staged scoring",
+        "-l", "--lander", help="Choose lander variant"
     )
-    parser.add_argument("-l", "--lander", help="Choose lander variant")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -168,13 +163,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to JSON bot override config (supported bots only)",
     )
     bench.add_argument("-l", "--lander")
-    bench.add_argument(
-        "-e",
-        "--eval-mode",
-        choices=("auto", "focused", "full"),
-        default="auto",
-        help="Evaluation mode for levels that support staged scoring",
-    )
     bench.add_argument("-n", "--steps", type=int, default=None, help="Limit simulation to N steps")
     bench.add_argument("-t", "--time", type=float, default=None, help="Limit simulation to S seconds")
     bench.add_argument(
@@ -229,9 +217,14 @@ def _validate_bot_lander_choices(
     lander_name: str | None,
     landers: set[str],
 ) -> None:
-    if bot_name is not None and bot_name not in bots:
-        known = ", ".join(sorted(bots))
-        parser.error(f"Unknown bot '{bot_name}'. Expected one of: {known}")
+    if bot_name is not None:
+        try:
+            parsed = parse_bot_selector(bot_name)
+        except ValueError as exc:
+            parser.error(str(exc))
+        if parsed.bot_name not in bots:
+            known = ", ".join(sorted(bots))
+            parser.error(f"Unknown bot '{parsed.bot_name}'. Expected one of: {known}")
     if lander_name is not None and lander_name not in landers:
         known = ", ".join(sorted(landers))
         parser.error(f"Unknown lander '{lander_name}'. Expected one of: {known}")
@@ -280,7 +273,6 @@ def _build_run_settings(
         seed=seed_value,
         scenario_name=selector.scenario_name,
         lander_name=args.lander,
-        eval_mode=str(getattr(args, "eval_mode", "auto") or "auto"),
         print_freq=print_freq,
         max_time=300.0 if args.time is None else float(args.time),
         max_steps=args.steps,
@@ -387,7 +379,6 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
             bot_config_path=args.bot_config,
             selectors=tuple(selectors),
             lander_name=args.lander,
-            eval_mode=str(args.eval_mode or "auto"),
             workers=workers,
             max_time=300.0 if args.time is None else float(args.time),
             max_steps=args.steps,
@@ -419,7 +410,6 @@ def announce_command(command: Command) -> None:
         cfg = command.bench
         print(f"Selectors: {', '.join(_render_bench_target(sel) for sel in cfg.selectors)}")
         print(f"Workers requested: {cfg.workers}")
-        print(f"Eval mode: {cfg.eval_mode}")
         if cfg.bot_config_path:
             print(f"Bot config: {cfg.bot_config_path}")
         print(f"Plot: {cfg.plot_mode}")
@@ -458,8 +448,6 @@ def _print_run_summary(cfg: RunSettings) -> None:
         print(f"Bot: {cfg.bot_name}")
     if cfg.bot_config_path:
         print(f"Bot config: {cfg.bot_config_path}")
-    if cfg.eval_mode != "auto":
-        print(f"Eval mode: {cfg.eval_mode}")
     if cfg.lander_name:
         print(f"Lander: {cfg.lander_name}")
     if cfg.headless:

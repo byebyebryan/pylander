@@ -29,10 +29,10 @@ Defaults:
 - default scenario: `mid`
 - recommended benchmark subset: `shallow`, `mid`, `steep`
 
-## Eval modes
+## Eval behavior
 
-- `full` (default): full entry-to-touchdown run.
-- `focused`: trims passive ballistic coast and starts closer to terminal-burn-relevant conditions.
+- Single end-to-end evaluation path (entry-to-touchdown).
+- Optional bot-goal metadata is emitted when using goal selectors (for example `--bot zem_zev:setup`).
 
 ## Commands
 

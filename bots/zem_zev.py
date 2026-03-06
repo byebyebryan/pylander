@@ -31,7 +31,7 @@ from bots._zem_telemetry import (
 )
 from bots._optimizer_pdg import PDGOptimizer, PDGOptimizerConfig, PDGPlan
 from bots._targeting import pick_target, target_half_width
-from core.bot import Bot, BotAction, Sensors
+from core.bot import Bot, BotAction, BotEvalDecision, Sensors
 from core.config import GRAVITY
 
 _GRAVITY_MAG = abs(float(GRAVITY))
@@ -124,6 +124,14 @@ class ZemZevBot(Bot):
         self._auto_target_uid = None
         self._launch_takeoff_active = False
         self._last_flight_snapshot = None
+
+    def set_eval_goal(self, goal: str) -> None:
+        key = str(goal or "landing").strip().lower()
+        if key not in {"landing", "setup"}:
+            raise ValueError(
+                f"Unknown zem_zev goal '{goal}'. Expected one of: landing, setup"
+            )
+        self._eval_goal = key
 
     def apply_config_override(self, overrides: dict[str, Any]) -> None:
         if not isinstance(overrides, dict):
@@ -779,6 +787,22 @@ class ZemZevBot(Bot):
 
     def get_evaluation_snapshot(self) -> dict[str, float | int | bool | str | None]:
         return _resolve_evaluation_snapshot_impl(self)
+
+    def get_evaluation_decision(self) -> BotEvalDecision | None:
+        if self.get_eval_goal() == "setup" and self._setup_gate_done:
+            return BotEvalDecision(
+                should_end=True,
+                success=True,
+                failure_mode="none",
+                end_reason="goal_reached",
+                metrics={
+                    "zem_goal_setup_done": True,
+                    "zem_goal_setup_time": self._setup_gate_time,
+                    "zem_goal_setup_altitude": self._setup_gate_altitude,
+                    "zem_goal_setup_projected_dx": self._setup_gate_projected_dx,
+                },
+            )
+        return None
 
 def create_bot() -> Bot:
     return ZemZevBot()

@@ -8,8 +8,6 @@
 - Inject bounded projected-impact error.
 - Measure whether unified guidance can recover track quality before terminal entry.
 
-Focused evaluation for this level ends at `zem_terminal_gate_done`.
-
 ## Scenario design
 
 Defined in [`levels/coast.py`](../levels/coast.py):
@@ -35,16 +33,11 @@ Defaults:
 - default scenario: `mid_tight`
 - recommended benchmark subset: `shallow_tight`, `mid_wide`, `steep_wide`
 
-## Focused metrics
+## Metrics
 
-- `coast_phase_done`
-- `coast_phase_time`
-- `coast_phase_altitude`
-- `coast_phase_projected_dx`
-- `coast_phase_distance`
-- `coast_phase_fuel_consumed`
-- `coast_phase_fuel_per_distance`
-- `coast_phase_path_efficiency`
+- End-to-end objective metrics: `state`, `success`, `fuel_consumed`, `path_efficiency`
+- Unified gate telemetry: `zem_setup_gate_*`, `zem_terminal_gate_*`
+- Goal metadata when using bot goals: `bot_eval_goal`, `bot_eval_early_end`, `bot_eval_end_reason`
 
 ## Commands
 

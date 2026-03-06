@@ -114,7 +114,6 @@ def _selector_pack_stem(
     selectors: list[str],
     bot: str,
     bot_config_path: str | None,
-    eval_mode: str,
     bot_profile_enabled: bool,
     bot_profile_interval_s: float | None,
     bot_profile_log_lines: bool,
@@ -129,7 +128,6 @@ def _selector_pack_stem(
             "selectors": selectors,
             "bot": bot,
             "bot_config_path": (None if not bot_config_path else str(bot_config_path)),
-            "eval_mode": eval_mode,
             "bot_profile_enabled": bool(bot_profile_enabled),
             "bot_profile_interval_s": (
                 None if bot_profile_interval_s is None else round(float(bot_profile_interval_s), 6)
@@ -261,8 +259,6 @@ def _run_diag(record: dict[str, Any]) -> dict[str, Any]:
         "score",
         "zem_setup_gate_projected_dx",
         "zem_terminal_gate_projected_dx",
-        "setup_phase_projected_dx",
-        "coast_phase_projected_dx",
     )
     out: dict[str, Any] = {}
     for key in keys:
@@ -313,18 +309,17 @@ def _make_repro_commands(
     record: dict[str, Any],
     *,
     bot: str,
-    eval_mode: str,
 ) -> dict[str, str]:
     selector = _selector_from_record(record)
     return {
         "plot": (
-            f"uv run python main.py plot {selector} --bot {bot} --eval-mode {eval_mode} "
+            f"uv run python main.py plot {selector} --bot {bot} "
             "--plot all --plot-output both --plot-max-side-px 1800"
         ),
-        "sim_trace": f"uv run python main.py sim {selector} --bot {bot} --eval-mode {eval_mode} --freq 1",
+        "sim_trace": f"uv run python main.py sim {selector} --bot {bot} --freq 1",
         "sim_profile": (
             f"PYLANDER_BOT_PROFILE=1 uv run python main.py sim {selector} "
-            f"--bot {bot} --eval-mode {eval_mode} --freq 1"
+            f"--bot {bot} --freq 1"
         ),
     }
 
@@ -334,7 +329,6 @@ def _crash_deltas(
     baseline_payload: dict[str, Any],
     candidate_payload: dict[str, Any],
     bot: str,
-    eval_mode: str,
 ) -> dict[str, list[dict[str, Any]]]:
     b = _records_by_key(baseline_payload)
     c = _records_by_key(candidate_payload)
@@ -362,7 +356,7 @@ def _crash_deltas(
                 "candidate_time": c_rec.get("time"),
                 "candidate_metrics": _run_diag(c_rec),
                 "baseline_metrics": _run_diag(b_rec),
-                "repro": _make_repro_commands(c_rec, bot=bot, eval_mode=eval_mode),
+                "repro": _make_repro_commands(c_rec, bot=bot),
             }
             candidate_crashes.append(entry)
             if b_state != "crashed":
@@ -700,7 +694,6 @@ def _load_or_run(
     selectors: list[str],
     bot: str,
     bot_config_path: str | None,
-    eval_mode: str,
     bot_profile_enabled: bool,
     bot_profile_interval_s: float | None,
     bot_profile_log_lines: bool,
@@ -720,7 +713,6 @@ def _load_or_run(
         "bot": bot,
         "bot_config_path": (None if not bot_config_path else str(bot_config_path)),
         "worker_mode": "default",
-        "eval_mode": eval_mode,
         "bot_profile_enabled": bool(bot_profile_enabled),
         "bot_profile_interval_s": (
             None if bot_profile_interval_s is None else float(bot_profile_interval_s)
@@ -746,7 +738,6 @@ def _load_or_run(
         selectors=selectors,
         bot=bot,
         bot_config_path=bot_config_path,
-        eval_mode=eval_mode,
         json_path=str(json_path),
         csv_path=str(csv_path),
         bot_profile_enabled=bool(bot_profile_enabled),
@@ -790,7 +781,6 @@ def _print_compare(
     candidate_payload: dict[str, Any],
     level_policy: dict[str, str],
     bot: str,
-    eval_mode: str,
     crash_detail_limit: int = 8,
 ) -> dict[str, Any]:
     def _summary_block(
@@ -934,13 +924,11 @@ def _print_compare(
         baseline_payload=baseline_parts["global"],
         candidate_payload=candidate_parts["global"],
         bot=bot,
-        eval_mode=eval_mode,
     )
     crash_observation = _crash_deltas(
         baseline_payload=baseline_parts["observation"],
         candidate_payload=candidate_parts["observation"],
         bot=bot,
-        eval_mode=eval_mode,
     )
 
     print("\n# compare")
@@ -1085,7 +1073,6 @@ def main() -> None:
     )
     ap.add_argument("--bot", default="zem_zev")
     ap.add_argument("--bot-config", default=None)
-    ap.add_argument("--eval-mode", default="auto", choices=("auto", "focused", "full"))
     ap.add_argument(
         "--bot-profile",
         action=argparse.BooleanOptionalAction,
@@ -1128,7 +1115,6 @@ def main() -> None:
         selectors=pack.selectors,
         bot=args.bot,
         bot_config_path=args.bot_config,
-        eval_mode=args.eval_mode,
         bot_profile_enabled=bool(args.bot_profile),
         bot_profile_interval_s=(
             None if args.bot_profile_interval_s is None else max(0.25, float(args.bot_profile_interval_s))
@@ -1144,7 +1130,6 @@ def main() -> None:
         selectors=pack.selectors,
         bot=args.bot,
         bot_config_path=args.bot_config,
-        eval_mode=args.eval_mode,
         bot_profile_enabled=bool(args.bot_profile),
         bot_profile_interval_s=(
             None if args.bot_profile_interval_s is None else max(0.25, float(args.bot_profile_interval_s))
@@ -1172,7 +1157,6 @@ def main() -> None:
         selectors=pack.selectors,
         bot=args.bot,
         bot_config_path=args.bot_config,
-        eval_mode=args.eval_mode,
         bot_profile_enabled=bool(args.bot_profile),
         bot_profile_interval_s=(
             None if args.bot_profile_interval_s is None else max(0.25, float(args.bot_profile_interval_s))
@@ -1193,7 +1177,6 @@ def main() -> None:
         candidate_payload=candidate_payload,
         level_policy=pack.effective_level_policy,
         bot=args.bot,
-        eval_mode=args.eval_mode,
         crash_detail_limit=max(0, int(args.crash_detail_limit)),
     )
     policy_digest_payload = json.dumps(

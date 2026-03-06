@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 
-from core.bot import Bot
+from core.bot import Bot, BotEvalDecision
 from core.components import (
     ActorControlRole,
     ControlIntent,
@@ -206,6 +206,7 @@ class LanderGame:
         tag_parts.append(str(self.seed))
         self.plotter.set_selector_tag("_".join(tag_parts))
         self._plot_events_seen: set[tuple[str, str]] = set()
+        self._bot_eval_decision: BotEvalDecision | None = None
 
     def _collect_actor_entities(self) -> list[Entity]:
         world = self.level.world
@@ -323,6 +324,7 @@ class LanderGame:
         self.plotter.set_sampling_from_print_freq(print_freq, TARGET_RENDERING_FPS)
         self.plotter.seed_initial_sample()
         self._plot_events_seen.clear()
+        self._bot_eval_decision = None
         self._elapsed_time = 0.0
         initial_actor = self.get_active_actor()
         initial_trans = require_component(initial_actor, Transform)
@@ -416,6 +418,11 @@ class LanderGame:
             metrics.update_for_actor(active_actor, dt_used=max(0.0, float(frame_dt)))
             metrics.update_state_counters(active_actor, elapsed_time=timers.elapsed_time)
 
+            decision = self._resolve_headless_bot_eval_decision()
+            if decision is not None and decision.should_end:
+                self._bot_eval_decision = decision
+                break
+
             if self.level.should_end(self):
                 break
 
@@ -431,6 +438,7 @@ class LanderGame:
         self._overdrive_excess = metrics.overdrive_excess
         result = self.level.end(self)
         self._merge_bot_snapshots_into_result(result)
+        self._apply_bot_eval_to_result(result)
         final_actor = self.get_active_actor()
         metrics.apply_to_result(
             result,
@@ -615,6 +623,69 @@ class LanderGame:
                     continue
                 out_key = key if str(key).startswith("zem_") else f"zem_{key}"
                 result.setdefault(out_key, value)
+
+    def _resolve_headless_bot_eval_decision(self) -> BotEvalDecision | None:
+        if not self.headless:
+            return None
+        bot = self._active_actor_bot()
+        if bot is None:
+            return None
+        getter = getattr(bot, "get_evaluation_decision", None)
+        if not callable(getter):
+            return None
+        try:
+            decision = getter()
+        except Exception:
+            return None
+        if isinstance(decision, BotEvalDecision):
+            return decision
+        return None
+
+    def _bot_eval_goal(self) -> str | None:
+        bot = self._active_actor_bot()
+        if bot is None:
+            return None
+        getter = getattr(bot, "get_eval_goal", None)
+        if not callable(getter):
+            return "landing"
+        try:
+            goal = str(getter() or "landing").strip().lower()
+        except Exception:
+            return "landing"
+        return goal or "landing"
+
+    def _apply_bot_eval_to_result(self, result: dict) -> None:
+        goal = self._bot_eval_goal()
+        if goal is None:
+            return
+        result["bot_eval_goal"] = goal
+
+        decision = self._bot_eval_decision
+        result["bot_eval_early_end"] = bool(decision.should_end) if decision else False
+        if decision is not None:
+            if decision.end_reason:
+                result["bot_eval_end_reason"] = str(decision.end_reason)
+            for key, value in (decision.metrics or {}).items():
+                if not isinstance(key, str):
+                    continue
+                result[str(key)] = value
+
+        if goal != "landing":
+            if decision is not None and decision.success is True:
+                result["success"] = True
+                result["failure_mode"] = "none"
+            else:
+                result["success"] = False
+                result["failure_mode"] = "goal_not_reached"
+                result.setdefault("bot_eval_end_reason", "goal_not_reached")
+            return
+
+        if decision is None:
+            return
+        if decision.success is not None:
+            result["success"] = bool(decision.success)
+        if decision.failure_mode is not None:
+            result["failure_mode"] = str(decision.failure_mode)
 
     @property
     def terrain(self):

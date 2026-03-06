@@ -16,7 +16,6 @@ from levels.scenario_common import (
     has_randomized_values,
     validate_scenario_recoverability,
 )
-from levels.staged_eval import ZemStageEvalTracker
 
 
 @dataclass(frozen=True)
@@ -85,10 +84,6 @@ _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
     "mid_wide",
     "steep_wide",
 )
-_COAST_EVAL_MODES: tuple[str, ...] = ("auto", "focused", "full")
-_COAST_DEFAULT_EVAL_MODE = "full"
-
-
 def _make_spec(*, name: str, start_dx: float, start_dy: float, cargo_mass: float) -> ScenarioLevelSpec:
     return ScenarioLevelSpec(
         name=name,
@@ -109,12 +104,6 @@ class CoastLevel(ScenarioLevel):
     def __init__(self) -> None:
         super().__init__()
         self._eval_scenario_name = _DEFAULT_SCENARIO
-        self._eval_mode_name = "auto"
-        self._resolved_eval_mode = _COAST_DEFAULT_EVAL_MODE
-        self._stage_eval = ZemStageEvalTracker(
-            stage_prefix="coast",
-            completion_gate_prefix="terminal_gate",
-        )
         self.scenario = _make_spec(
             name=self._eval_scenario_name,
             start_dx=0.0,
@@ -147,13 +136,6 @@ class CoastLevel(ScenarioLevel):
             raise ValueError(f"Unknown coast scenario '{name}'. Expected one of: {known}")
         self._eval_scenario_name = key
 
-    def set_eval_mode(self, name: str) -> None:
-        key = str(name).strip().lower()
-        if key not in _COAST_EVAL_MODES:
-            known = ", ".join(_COAST_EVAL_MODES)
-            raise ValueError(f"Unknown coast eval mode '{name}'. Expected one of: {known}")
-        self._eval_mode_name = key
-
     def scenario_has_randomized_fields(self, _name: str | None = None) -> bool:
         scenario = _SCENARIO_BY_NAME[self._eval_scenario_name]
         return has_randomized_values(
@@ -165,18 +147,7 @@ class CoastLevel(ScenarioLevel):
             )
         )
 
-    def _mode_for_run(self) -> str:
-        if self._eval_mode_name == "auto":
-            return _COAST_DEFAULT_EVAL_MODE
-        return self._eval_mode_name
-
-    def _resolve_zem_snapshot(self, game):
-        return self._stage_eval.resolve_zem_snapshot(game)
-
     def setup(self, game, seed: int) -> None:
-        self._resolved_eval_mode = self._mode_for_run()
-        self._stage_eval.reset()
-
         scenario_base = _SCENARIO_BY_NAME[self._eval_scenario_name]
         scenario_name_hash = sum(ord(ch) for ch in scenario_base.name)
         rng = random.Random(seed ^ (scenario_name_hash << 1))
@@ -248,7 +219,6 @@ class CoastLevel(ScenarioLevel):
             if hasattr(engine, "set_lander_velocity"):
                 engine.set_lander_velocity(Vector2(initial_vx, initial_vy_up), uid=actor.uid)
 
-        self._stage_eval.seed_motion_state(actor)
         self._set_scenario_params(
             {
                 "radius": radius,
@@ -264,34 +234,10 @@ class CoastLevel(ScenarioLevel):
         setattr(self, "scenario_name", scenario_base.name)
 
     def update(self, game, dt: float) -> None:
-        _ = dt
-        actor = self.world.actors[0]
-        self._stage_eval.update_motion(actor)
-        if self._stage_eval.phase_done:
-            return
-        snapshot = self._resolve_zem_snapshot(game)
-        if isinstance(snapshot, dict):
-            target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
-            self._stage_eval.capture_snapshot(game, actor, target_pos, snapshot)
-
-    def should_end(self, game) -> bool:
-        if self._stage_eval.should_end_focused(self._resolved_eval_mode):
-            return True
-        return super().should_end(game)
+        _ = game, dt
 
     def end(self, game):
-        result = super().end(game)
-        result["eval_mode"] = self._resolved_eval_mode
-        actor = self.world.actors[0]
-        target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
-        self._stage_eval.apply_result(
-            result,
-            eval_mode=self._resolved_eval_mode,
-            eval_phase_name="zem_terminal_gate",
-            actor=actor,
-            target_pos=target_pos,
-        )
-        return result
+        return super().end(game)
 
 
 def create_level() -> Level:

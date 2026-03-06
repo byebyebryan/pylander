@@ -15,7 +15,6 @@ from core.level_capabilities import (
     resolve_level_benchmark_profile,
     scenario_has_randomized_fields_safe,
     set_benchmark_mode_checked,
-    set_eval_mode_checked,
     set_eval_scenario_checked,
 )
 from levels import create_level, list_available_levels
@@ -34,15 +33,6 @@ def test_set_eval_scenario_checked_requires_capability() -> None:
 
     with pytest.raises(ValueError, match="does not support scenario selection"):
         set_eval_scenario_checked(_NoScenario(), "mid")
-
-
-def test_set_eval_mode_checked_respects_auto_fallback() -> None:
-    class _NoEvalMode:
-        pass
-
-    set_eval_mode_checked(_NoEvalMode(), "auto")
-    with pytest.raises(ValueError, match="does not support --eval-mode"):
-        set_eval_mode_checked(_NoEvalMode(), "focused")
 
 
 def test_set_benchmark_mode_checked_calls_supported_level() -> None:

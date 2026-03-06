@@ -79,7 +79,6 @@ def _repro_commands(
     selector: str,
     *,
     bot: str,
-    eval_mode: str,
     include_debug: bool,
 ) -> list[str]:
     selector_token = str(selector or "").strip()
@@ -89,19 +88,19 @@ def _repro_commands(
     commands = [
         (
             "uv run python main.py plot "
-            f"{selector_token} --bot {bot} --eval-mode {eval_mode} "
+            f"{selector_token} --bot {bot} "
             "--plot all --plot-output both --plot-max-side-px 1800"
         ),
-        f"uv run python main.py sim {selector_token} --bot {bot} --eval-mode {eval_mode} --freq 1",
+        f"uv run python main.py sim {selector_token} --bot {bot} --freq 1",
         (
             "PYLANDER_BOT_PROFILE=1 uv run python main.py sim "
-            f"{selector_token} --bot {bot} --eval-mode {eval_mode} --freq 1"
+            f"{selector_token} --bot {bot} --freq 1"
         ),
     ]
     if include_debug:
         commands.append(
             "PYLANDER_ZEM_DEBUG_SETUP=1 uv run python main.py sim "
-            f"{selector_token} --bot {bot} --eval-mode {eval_mode} --freq 1"
+            f"{selector_token} --bot {bot} --freq 1"
         )
     return commands
 
@@ -300,7 +299,6 @@ def _findings_from_compare(
     compare: dict[str, Any],
     *,
     bot: str,
-    eval_mode: str,
 ) -> tuple[list[dict[str, Any]], list[str], dict[str, Any]]:
     findings: list[dict[str, Any]] = []
     repro_bundle: list[str] = []
@@ -353,7 +351,7 @@ def _findings_from_compare(
         else:
             _append_unique_commands(
                 repro_bundle,
-                _repro_commands(selector, bot=bot, eval_mode=eval_mode, include_debug=False),
+                _repro_commands(selector, bot=bot, include_debug=False),
             )
 
     notable_compute = bool(compute_block.get("notable_regression", False))
@@ -412,7 +410,6 @@ def _findings_from_benchmark(
     benchmark: dict[str, Any],
     *,
     bot: str,
-    eval_mode: str,
 ) -> tuple[list[dict[str, Any]], list[str]]:
     findings: list[dict[str, Any]] = []
     repro_bundle: list[str] = []
@@ -441,14 +438,14 @@ def _findings_from_benchmark(
         )
         _append_unique_commands(
             repro_bundle,
-            _repro_commands(selector, bot=bot, eval_mode=eval_mode, include_debug=False),
+            _repro_commands(selector, bot=bot, include_debug=False),
         )
 
     scored_phase: list[tuple[float, dict[str, Any]]] = []
     for record in records:
-        setup_dx = abs(to_float(record.get("setup_phase_projected_dx"), 0.0))
-        coast_dx = abs(to_float(record.get("coast_phase_projected_dx"), 0.0))
-        score = max(setup_dx, coast_dx)
+        setup_dx = abs(to_float(record.get("zem_setup_gate_projected_dx"), 0.0))
+        terminal_dx = abs(to_float(record.get("zem_terminal_gate_projected_dx"), 0.0))
+        score = max(setup_dx, terminal_dx)
         if score <= 50.0:
             continue
         scored_phase.append((score, record))
@@ -464,8 +461,7 @@ def _findings_from_benchmark(
                 title="High projected-dx phase error",
                 selector=selector,
                 measured_evidence={
-                    "setup_phase_projected_dx": record.get("setup_phase_projected_dx"),
-                    "coast_phase_projected_dx": record.get("coast_phase_projected_dx"),
+                    "zem_setup_gate_projected_dx": record.get("zem_setup_gate_projected_dx"),
                     "zem_terminal_gate_projected_dx": record.get("zem_terminal_gate_projected_dx"),
                 },
                 likely_cause=(
@@ -477,7 +473,7 @@ def _findings_from_benchmark(
         )
         _append_unique_commands(
             repro_bundle,
-            _repro_commands(selector, bot=bot, eval_mode=eval_mode, include_debug=True),
+            _repro_commands(selector, bot=bot, include_debug=True),
         )
 
     scored_perf: list[tuple[float, dict[str, Any]]] = []
@@ -515,7 +511,7 @@ def _findings_from_benchmark(
         )
         _append_unique_commands(
             repro_bundle,
-            _repro_commands(selector, bot=bot, eval_mode=eval_mode, include_debug=False),
+            _repro_commands(selector, bot=bot, include_debug=False),
         )
 
     return findings, repro_bundle
@@ -525,7 +521,6 @@ def _findings_from_sim_logs(
     sim_logs: list[dict[str, Any]],
     *,
     bot: str,
-    eval_mode: str,
 ) -> tuple[list[dict[str, Any]], list[str], int]:
     findings: list[dict[str, Any]] = []
     repro_bundle: list[str] = []
@@ -557,7 +552,7 @@ def _findings_from_sim_logs(
             )
             _append_unique_commands(
                 repro_bundle,
-                _repro_commands(selector, bot=bot, eval_mode=eval_mode, include_debug=True),
+                _repro_commands(selector, bot=bot, include_debug=True),
             )
 
         p99_total = to_float(sim.get("bot_profile_p99_total_ms"), 0.0)
@@ -588,7 +583,7 @@ def _findings_from_sim_logs(
             )
             _append_unique_commands(
                 repro_bundle,
-                _repro_commands(selector, bot=bot, eval_mode=eval_mode, include_debug=False),
+                _repro_commands(selector, bot=bot, include_debug=False),
             )
 
         phases_seen = [str(phase).strip() for phase in list(sim.get("phases_seen") or []) if str(phase).strip()]
@@ -699,7 +694,6 @@ def analyze_telemetry(
     sim_logs: list[dict[str, Any]],
     source_paths: dict[str, Any],
     bot: str,
-    eval_mode: str,
     max_findings: int,
 ) -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
@@ -713,7 +707,6 @@ def analyze_telemetry(
         compare_findings, compare_repro, compare_summary = _findings_from_compare(
             compare_payload,
             bot=bot,
-            eval_mode=eval_mode,
         )
         findings.extend(compare_findings)
         _append_unique_commands(repro_bundle, compare_repro)
@@ -725,7 +718,6 @@ def analyze_telemetry(
         bench_findings, bench_repro = _findings_from_benchmark(
             benchmark_payload,
             bot=bot,
-            eval_mode=eval_mode,
         )
         findings.extend(bench_findings)
         _append_unique_commands(repro_bundle, bench_repro)
@@ -733,7 +725,6 @@ def analyze_telemetry(
     sim_findings, sim_repro, sim_log_crashes = _findings_from_sim_logs(
         sim_logs,
         bot=bot,
-        eval_mode=eval_mode,
     )
     findings.extend(sim_findings)
     _append_unique_commands(repro_bundle, sim_repro)
@@ -806,7 +797,6 @@ def main() -> None:
     parser.add_argument("--compare-json", default=None)
     parser.add_argument("--sim-log", action="append", default=[])
     parser.add_argument("--bot", default="zem_zev")
-    parser.add_argument("--eval-mode", default="auto", choices=("auto", "focused", "full"))
     parser.add_argument("--max-findings", type=int, default=8)
     parser.add_argument("--output-report", default=None)
     args = parser.parse_args()
@@ -835,7 +825,6 @@ def main() -> None:
             "sim_logs": [str(Path(path).resolve()) for path in sim_paths],
         },
         bot=str(args.bot),
-        eval_mode=str(args.eval_mode),
         max_findings=max(1, int(args.max_findings)),
     )
 

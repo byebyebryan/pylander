@@ -10,6 +10,12 @@ class ParsedSelector:
     seed_token: str | None
 
 
+@dataclass(frozen=True)
+class ParsedBotSelector:
+    bot_name: str
+    goal: str | None
+
+
 def parse_seed_spec(spec: str) -> list[int]:
     values: list[int] = []
     for token in (p.strip() for p in spec.split(",")):
@@ -77,3 +83,31 @@ def parse_selector(
         seed_token=seed_token,
     )
 
+
+def parse_bot_selector(raw_bot: str) -> ParsedBotSelector:
+    token = str(raw_bot or "").strip()
+    if not token:
+        raise ValueError("Bot selector cannot be empty")
+
+    parts = token.split(":")
+    if len(parts) > 2:
+        raise ValueError(
+            f"Invalid bot selector '{token}'. Expected format 'bot[:goal]'"
+        )
+
+    bot_name = parts[0].strip()
+    if not bot_name:
+        raise ValueError(
+            f"Invalid bot selector '{token}'. Bot name is required in 'bot[:goal]'"
+        )
+
+    goal = None
+    if len(parts) == 2:
+        parsed_goal = parts[1].strip().lower()
+        if not parsed_goal:
+            raise ValueError(
+                f"Invalid bot selector '{token}'. Goal cannot be empty in 'bot[:goal]'"
+            )
+        goal = parsed_goal
+
+    return ParsedBotSelector(bot_name=bot_name, goal=goal)

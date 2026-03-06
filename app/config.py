@@ -18,7 +18,6 @@ class RunSettings:
     seed: int | None
     scenario_name: str | None
     lander_name: str | None
-    eval_mode: str
     print_freq: int
     max_time: float
     max_steps: int | None
@@ -40,7 +39,6 @@ class BenchSettings:
     bot_config_path: str | None
     selectors: tuple[BenchTarget, ...]
     lander_name: str | None
-    eval_mode: str
     workers: int
     max_time: float
     max_steps: int | None

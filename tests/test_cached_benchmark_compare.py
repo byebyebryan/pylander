@@ -75,7 +75,6 @@ def test_observation_only_crash_does_not_mark_notable_regression() -> None:
         candidate_payload=candidate,
         level_policy={"launch": "normal", "climb": "observe_only"},
         bot="zem_zev",
-        eval_mode="auto",
         crash_detail_limit=2,
     )
 
@@ -102,7 +101,6 @@ def test_normal_crash_marks_notable_regression() -> None:
         candidate_payload=candidate,
         level_policy={"launch": "normal"},
         bot="zem_zev",
-        eval_mode="auto",
         crash_detail_limit=2,
     )
 
@@ -155,7 +153,6 @@ def test_global_compute_regression_marks_notable_regression() -> None:
         candidate_payload=candidate,
         level_policy={"launch": "normal"},
         bot="zem_zev",
-        eval_mode="auto",
         crash_detail_limit=2,
     )
 
@@ -190,7 +187,6 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
         candidate_payload=candidate,
         level_policy={"climb": "observe_only"},
         bot="zem_zev",
-        eval_mode="auto",
         crash_detail_limit=2,
     )
 
@@ -204,7 +200,6 @@ def test_selector_pack_stem_changes_with_bot_config_path() -> None:
         mode="quick",
         selectors=["launch:mid:0-2"],
         bot="zem_zev",
-        eval_mode="auto",
         bot_profile_enabled=True,
         bot_profile_interval_s=None,
         bot_profile_log_lines=False,

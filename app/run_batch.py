@@ -118,7 +118,6 @@ def _to_run_settings(cfg: BenchSettings) -> RunSettings:
         seed=None,
         scenario_name=None,
         lander_name=cfg.lander_name,
-        eval_mode=cfg.eval_mode,
         print_freq=0,
         max_time=cfg.max_time,
         max_steps=cfg.max_steps,

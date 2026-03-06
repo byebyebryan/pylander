@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import random
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from core.config import GRAVITY
 from core.components import CargoHold, Engine, FuelTank, PhysicsState, Transform
@@ -67,18 +67,11 @@ _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
     "mid",
     "steep",
 )
-_FLARE_EVAL_MODES: tuple[str, ...] = ("auto", "focused", "full")
-_FLARE_DEFAULT_EVAL_MODE = "full"
 
 _GRAVITY_MAG = abs(float(GRAVITY))
 _MAX_SETUP_ATTEMPTS = 64
-_FOCUSED_MIN_DOWNSPEED = 8.0
-_FOCUSED_TGO_TARGET_S = 4.5
-_FOCUSED_MARGIN_TARGET_M = 120.0
 _FULL_MARGIN_T_MIN = 1.0
 _FULL_MARGIN_H_MIN = 30.0
-_FOCUSED_MARGIN_T_MIN = 0.35
-_FOCUSED_MARGIN_H_MIN = 10.0
 
 
 @dataclass(frozen=True)
@@ -118,8 +111,6 @@ class FlareLevel(ScenarioLevel):
     def __init__(self) -> None:
         super().__init__()
         self._eval_scenario_name = _DEFAULT_SCENARIO
-        self._eval_mode_name = "auto"
-        self._resolved_eval_mode = _FLARE_DEFAULT_EVAL_MODE
         self.scenario = _make_spec(
             name=self._eval_scenario_name,
             start_dx=0.0,
@@ -152,13 +143,6 @@ class FlareLevel(ScenarioLevel):
             raise ValueError(f"Unknown flare scenario '{name}'. Expected one of: {known}")
         self._eval_scenario_name = key
 
-    def set_eval_mode(self, name: str) -> None:
-        key = str(name).strip().lower()
-        if key not in _FLARE_EVAL_MODES:
-            known = ", ".join(_FLARE_EVAL_MODES)
-            raise ValueError(f"Unknown flare eval mode '{name}'. Expected one of: {known}")
-        self._eval_mode_name = key
-
     def scenario_has_randomized_fields(self, _name: str | None = None) -> bool:
         scenario = _SCENARIO_BY_NAME[self._eval_scenario_name]
         return has_randomized_values(
@@ -168,11 +152,6 @@ class FlareLevel(ScenarioLevel):
                 scenario.target_flight_time_s,
             )
         )
-
-    def _mode_for_run(self) -> str:
-        if self._eval_mode_name == "auto":
-            return _FLARE_DEFAULT_EVAL_MODE
-        return self._eval_mode_name
 
     @staticmethod
     def _van_der_corput(index: int, base: int) -> float:
@@ -305,115 +284,6 @@ class FlareLevel(ScenarioLevel):
         vy_up = float(initial_vy_up) - (_GRAVITY_MAG * t)
         return pos, vx, vy_up
 
-    def _focused_trim_candidate(
-        self,
-        *,
-        candidate: _FlareCandidate,
-        target_pos: Vector2,
-        a_up_max: float,
-        a_lat_eff: float,
-    ) -> _FlareCandidate:
-        total_time = max(1e-3, float(candidate.target_flight_time_s))
-        max_trim = max(0.0, total_time - 0.2)
-        if max_trim <= 0.0:
-            return candidate
-
-        best_tau = -1.0
-        best_score = float("inf")
-        best_margin = 0.0
-
-        for idx in range(1, 97):
-            tau = (idx / 96.0) * max_trim
-            pos, vx, vy_up = self._ballistic_state_at_time(
-                start_pos=candidate.start_pos,
-                initial_vx=candidate.initial_vx,
-                initial_vy_up=candidate.initial_vy_up,
-                elapsed_s=tau,
-            )
-            altitude = float(pos.y) - float(target_pos.y)
-            if altitude <= 5.0:
-                continue
-            downspeed = max(0.0, -vy_up)
-            if downspeed < _FOCUSED_MIN_DOWNSPEED:
-                continue
-            stop_distance = (downspeed * downspeed) / (2.0 * max(0.1, a_up_max))
-            focus_margin = altitude - stop_distance
-            t_go = total_time - tau
-            t_brake_v = downspeed / max(0.1, a_up_max)
-            t_brake_h = abs(vx) / max(0.5, a_lat_eff)
-            margin_t = t_go - max(t_brake_v, t_brake_h)
-            margin_h = focus_margin
-            if margin_t < _FOCUSED_MARGIN_T_MIN or margin_h < _FOCUSED_MARGIN_H_MIN:
-                continue
-            score = abs(focus_margin - _FOCUSED_MARGIN_TARGET_M) + (0.2 * abs(t_go - 6.0))
-            if score < best_score:
-                best_score = score
-                best_tau = tau
-                best_margin = focus_margin
-
-        if best_tau < 0.0:
-            fallback_tau = min(max_trim, max(0.0, total_time - _FOCUSED_TGO_TARGET_S))
-            best_tau = fallback_tau
-            best_margin = 0.0
-            best_margin_t = -1e9
-            for idx in range(1, 97):
-                tau = (idx / 96.0) * max_trim
-                pos, vx, vy_up = self._ballistic_state_at_time(
-                    start_pos=candidate.start_pos,
-                    initial_vx=candidate.initial_vx,
-                    initial_vy_up=candidate.initial_vy_up,
-                    elapsed_s=tau,
-                )
-                altitude = float(pos.y) - float(target_pos.y)
-                if altitude <= 5.0:
-                    continue
-                downspeed = max(0.0, -vy_up)
-                if downspeed < _FOCUSED_MIN_DOWNSPEED:
-                    continue
-                stop_distance = (downspeed * downspeed) / (2.0 * max(0.1, a_up_max))
-                focus_margin = altitude - stop_distance
-                t_go = total_time - tau
-                t_brake_v = downspeed / max(0.1, a_up_max)
-                t_brake_h = abs(vx) / max(0.5, a_lat_eff)
-                margin_t = t_go - max(t_brake_v, t_brake_h)
-                margin_h = focus_margin
-                if margin_h < _FOCUSED_MARGIN_H_MIN:
-                    continue
-                if margin_t > best_margin_t:
-                    best_margin_t = margin_t
-                    best_tau = tau
-                    best_margin = focus_margin
-
-            if best_margin_t <= -1e8:
-                pos, _, vy_up = self._ballistic_state_at_time(
-                    start_pos=candidate.start_pos,
-                    initial_vx=candidate.initial_vx,
-                    initial_vy_up=candidate.initial_vy_up,
-                    elapsed_s=best_tau,
-                )
-                altitude = float(pos.y) - float(target_pos.y)
-                downspeed = max(0.0, -vy_up)
-                stop_distance = (downspeed * downspeed) / (2.0 * max(0.1, a_up_max))
-                best_margin = altitude - stop_distance
-
-        trim_start_pos, trim_vx, trim_vy = self._ballistic_state_at_time(
-            start_pos=candidate.start_pos,
-            initial_vx=candidate.initial_vx,
-            initial_vy_up=candidate.initial_vy_up,
-            elapsed_s=best_tau,
-        )
-        return replace(
-            candidate,
-            start_pos=Vector2(trim_start_pos),
-            start_dx=float(trim_start_pos.x) - float(target_pos.x),
-            start_dy=max(0.0, float(trim_start_pos.y) - float(target_pos.y)),
-            initial_vx=float(trim_vx),
-            initial_vy_up=float(trim_vy),
-            trim_time_s=float(best_tau),
-            t_go_start_s=max(1e-3, total_time - float(best_tau)),
-            focus_margin_m=float(best_margin),
-        )
-
     @staticmethod
     def _validate_flare_start_state(
         *,
@@ -421,7 +291,6 @@ class FlareLevel(ScenarioLevel):
         target_pos: Vector2,
         a_up_max: float,
         a_lat_eff: float,
-        mode: str,
     ) -> tuple[bool, float, float, float]:
         altitude = float(candidate.start_pos.y) - float(target_pos.y)
         if altitude <= 0.0:
@@ -433,19 +302,10 @@ class FlareLevel(ScenarioLevel):
         stop_distance = (downspeed * downspeed) / (2.0 * max(0.1, a_up_max))
         margin_h = altitude - stop_distance
 
-        if mode == "focused":
-            ok = (
-                margin_t >= _FOCUSED_MARGIN_T_MIN
-                and margin_h >= _FOCUSED_MARGIN_H_MIN
-                and downspeed >= _FOCUSED_MIN_DOWNSPEED
-            )
-            return ok, margin_t, margin_h, downspeed
-
         ok = margin_t >= _FULL_MARGIN_T_MIN and margin_h >= _FULL_MARGIN_H_MIN
         return ok, margin_t, margin_h, downspeed
 
     def setup(self, game, seed: int) -> None:
-        self._resolved_eval_mode = self._mode_for_run()
         scenario_base = _SCENARIO_BY_NAME[self._eval_scenario_name]
         scenario_name_hash = sum(ord(ch) for ch in scenario_base.name)
         pre_target = Vector2(0.0, 0.0)
@@ -482,13 +342,6 @@ class FlareLevel(ScenarioLevel):
                 attempt=attempt,
                 target_pos=target_pos,
             )
-            if self._resolved_eval_mode == "focused":
-                candidate = self._focused_trim_candidate(
-                    candidate=candidate,
-                    target_pos=target_pos,
-                    a_up_max=a_up_max,
-                    a_lat_eff=a_lat_eff,
-                )
 
             try:
                 validate_scenario_recoverability(
@@ -505,7 +358,6 @@ class FlareLevel(ScenarioLevel):
                 target_pos=target_pos,
                 a_up_max=a_up_max,
                 a_lat_eff=a_lat_eff,
-                mode=self._resolved_eval_mode,
             )
             if ok:
                 selected = candidate
@@ -514,7 +366,7 @@ class FlareLevel(ScenarioLevel):
         if selected is None:
             raise ValueError(
                 f"Scenario '{scenario_base.name}' failed flare validity generation "
-                f"(mode={self._resolved_eval_mode}, seed={seed}, attempts={_MAX_SETUP_ATTEMPTS})"
+                f"(seed={seed}, attempts={_MAX_SETUP_ATTEMPTS})"
             )
 
         trans.pos = Vector2(selected.start_pos)
@@ -544,7 +396,6 @@ class FlareLevel(ScenarioLevel):
                 "angle_deviation_deg": selected.angle_deviation_deg,
                 "target_flight_time_s": selected.target_flight_time_s,
                 "direction": selected.direction,
-                "eval_mode": self._resolved_eval_mode,
                 "trim_time_s": selected.trim_time_s,
                 "tgo_start_s": selected.t_go_start_s,
                 "focus_margin_m": selected.focus_margin_m,

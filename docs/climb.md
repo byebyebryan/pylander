@@ -8,8 +8,6 @@
 - Require takeoff, transfer, and landing on an uphill destination pad.
 - Stress guidance behavior on sustained sloped terrain with large positive altitude deltas.
 
-Focused evaluation for this level ends at `zem_setup_gate_done`.
-
 Guidance note:
 
 - `zem_zev` handles climb with the same optimizer loop used on other levels.
@@ -36,16 +34,11 @@ Defaults:
 - default scenario: `slope_mid`
 - recommended benchmark subset: `slope_low`, `slope_mid`, `slope_high`
 
-## Focused metrics
+## Metrics
 
-- `climb_phase_done`
-- `climb_phase_time`
-- `climb_phase_altitude`
-- `climb_phase_projected_dx`
-- `climb_phase_distance`
-- `climb_phase_fuel_consumed`
-- `climb_phase_fuel_per_distance`
-- `climb_phase_path_efficiency`
+- End-to-end objective metrics: `state`, `success`, `climb_arrived`, `climb_landed_site_uid`
+- Unified gate telemetry: `zem_setup_gate_*`, `zem_terminal_gate_*`
+- Goal metadata when using bot goals: `bot_eval_goal`, `bot_eval_early_end`, `bot_eval_end_reason`
 
 Additional `zem_zev` diagnostics exported for climb tuning:
 

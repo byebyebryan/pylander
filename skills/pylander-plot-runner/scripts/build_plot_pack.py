@@ -87,30 +87,30 @@ def _build_cases_from_records(records: list[dict[str, Any]], *, top_n: int) -> l
     ranked = sorted(
         records,
         key=lambda r: (
-            _abs_float(r.get("setup_phase_projected_dx")),
-            _abs_float(r.get("coast_phase_projected_dx")),
+            _abs_float(r.get("zem_setup_gate_projected_dx")),
+            _abs_float(r.get("zem_terminal_gate_projected_dx")),
             _abs_float(r.get("fuel_consumed")),
         ),
         reverse=True,
     )
     for rec in ranked:
-        setup_dx = _abs_float(rec.get("setup_phase_projected_dx"))
-        coast_dx = _abs_float(rec.get("coast_phase_projected_dx"))
+        setup_dx = _abs_float(rec.get("zem_setup_gate_projected_dx"))
+        terminal_dx = _abs_float(rec.get("zem_terminal_gate_projected_dx"))
         fuel = _abs_float(rec.get("fuel_consumed"))
-        if setup_dx <= 0.0 and coast_dx <= 0.0 and fuel <= 0.0:
+        if setup_dx <= 0.0 and terminal_dx <= 0.0 and fuel <= 0.0:
             continue
-        reason = "high_setup_dx" if setup_dx >= coast_dx else "high_coast_dx"
-        if setup_dx < 1.0 and coast_dx < 1.0:
+        reason = "high_setup_dx" if setup_dx >= terminal_dx else "high_terminal_dx"
+        if setup_dx < 1.0 and terminal_dx < 1.0:
             reason = "high_fuel"
-        severity = "high" if setup_dx >= 100.0 or coast_dx >= 50.0 else "medium"
+        severity = "high" if setup_dx >= 100.0 or terminal_dx >= 50.0 else "medium"
         cases.append(
             {
                 "selector": _selector_from_record(rec),
                 "severity": severity,
                 "reason": reason,
                 "evidence": {
-                    "setup_phase_projected_dx": rec.get("setup_phase_projected_dx"),
-                    "coast_phase_projected_dx": rec.get("coast_phase_projected_dx"),
+                    "zem_setup_gate_projected_dx": rec.get("zem_setup_gate_projected_dx"),
+                    "zem_terminal_gate_projected_dx": rec.get("zem_terminal_gate_projected_dx"),
                     "fuel_consumed": rec.get("fuel_consumed"),
                 },
             }
@@ -210,7 +210,6 @@ def _run_plot_command(
     selector: str,
     *,
     bot: str,
-    eval_mode: str,
     plot_mode: str,
     plot_output: str,
     plot_max_side_px: int,
@@ -224,8 +223,6 @@ def _run_plot_command(
         selector,
         "--bot",
         bot,
-        "--eval-mode",
-        eval_mode,
         "--plot",
         plot_mode,
         "--plot-output",
@@ -262,7 +259,6 @@ def main() -> None:
     ap.add_argument("--compare-json", type=str, default=None)
     ap.add_argument("--selectors", nargs="*", default=[])
     ap.add_argument("--bot", default="zem_zev")
-    ap.add_argument("--eval-mode", default="auto", choices=("auto", "focused", "full"))
     ap.add_argument("--top-n", type=int, default=8)
     ap.add_argument("--plot-mode", default="all", choices=("speed", "thrust", "all"))
     ap.add_argument("--plot-output", default="both", choices=("combined", "split", "both"))
@@ -329,8 +325,6 @@ def main() -> None:
                         selector,
                         "--bot",
                         args.bot,
-                        "--eval-mode",
-                        args.eval_mode,
                         "--plot",
                         args.plot_mode,
                         "--plot-output",
@@ -348,7 +342,6 @@ def main() -> None:
         run = _run_plot_command(
             selector,
             bot=args.bot,
-            eval_mode=args.eval_mode,
             plot_mode=args.plot_mode,
             plot_output=args.plot_output,
             plot_max_side_px=max(256, int(args.plot_max_side_px)),
@@ -369,7 +362,6 @@ def main() -> None:
     payload = {
         "mode": args.mode,
         "bot": args.bot,
-        "eval_mode": args.eval_mode,
         "plot_mode": args.plot_mode,
         "plot_output": args.plot_output,
         "plot_max_side_px": max(256, int(args.plot_max_side_px)),

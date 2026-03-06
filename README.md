@@ -52,6 +52,7 @@ uv run python main.py run --interactive flat --bot zem_zev
 
 ```bash
 uv run python main.py sim flare:mid:0 --bot zem_zev
+uv run python main.py sim setup:mid_near:0 --bot zem_zev:setup
 uv run python main.py sim coast:mid_wide:3 --bot zem_zev
 uv run python main.py sim climb:slope_mid:0 --bot zem_zev
 uv run python main.py sim plunge:mid_normal:0 --bot plunge
@@ -61,6 +62,7 @@ Selector format:
 
 - run/sim/plot selector: `level[:scenario[:seed]]`
 - Use `level::seed` when setting a seed without a scenario.
+- Bot selector: `bot[:goal]` (current non-landing goal support: `zem_zev:setup`).
 
 ### Plot run (`plot`)
 
@@ -101,8 +103,6 @@ Bench selector format:
 - If seed spec is omitted, deterministic scenarios run with seed `0`.
 - If seed spec is omitted and the scenario has randomized fields, seeds auto-expand to `0-9`.
 
-Focused eval (`--eval-mode focused`) is available for `flare`, `coast`, `climb`, and `setup`.
-
 Benchmark pack tooling (`skills/pylander-benchmark-runner/scripts/*.py`) now reads
 level metadata from `benchmark_profile()`:
 
@@ -120,10 +120,9 @@ Default policy profile:
 ### `run` / `sim` / `plot`
 
 - selector: `level[:scenario[:seed]]`
-- `-b, --bot NAME`
+- `-b, --bot NAME[:goal]` (for example: `zem_zev:setup`)
 - `--bot-config PATH` (JSON override config for supported bots)
 - `-l, --lander NAME`
-- `-e, --eval-mode auto|focused|full`
 - `-n, --steps N`
 - `-t, --time S`
 - `-f, --freq N` (headless print cadence)
@@ -138,10 +137,9 @@ Default policy profile:
 ### `bench`
 
 - selectors: `level[:scenario[:seed_spec]]` (one or more)
-- `-b, --bot NAME`
+- `-b, --bot NAME[:goal]`
 - `--bot-config PATH` (JSON override config for supported bots)
 - `-l, --lander NAME`
-- `-e, --eval-mode auto|focused|full`
 - `-n, --steps N`
 - `-t, --time S`
 - `-p, --plot none|speed|thrust|all`

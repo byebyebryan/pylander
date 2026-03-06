@@ -1,7 +1,7 @@
 """Bot interface for autonomous lander control."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from core.sensor import RadarContact, ProximityContact
 
@@ -74,6 +74,17 @@ class BotAction:
     message: str = ""  # optional message (not persisted)
 
 
+@dataclass(frozen=True)
+class BotEvalDecision:
+    """Optional bot-provided evaluation decision for the current run."""
+
+    should_end: bool = False
+    success: bool | None = None
+    failure_mode: str | None = None
+    end_reason: str | None = None
+    metrics: dict[str, Any] = field(default_factory=dict)
+
+
 class Bot(ABC):
     """Abstract base class for lander bots using sensor/action interface."""
 
@@ -81,6 +92,7 @@ class Bot(ABC):
         self.status = ""
         self.vehicle_info: VehicleInfo | None = None
         self._pinned_target_uid: str | None = None
+        self._eval_goal = "landing"
 
     @abstractmethod
     def update(self, dt: float, sensors: Sensors) -> BotAction:
@@ -115,6 +127,26 @@ class Bot(ABC):
             return
         normalized = str(target_uid).strip()
         self._pinned_target_uid = normalized if normalized else None
+
+    def set_eval_goal(self, goal: str) -> None:
+        """Set evaluation goal for this bot.
+
+        Default behavior supports only the end-to-end landing goal.
+        """
+        key = str(goal or "landing").strip().lower()
+        if key != "landing":
+            raise ValueError(
+                f"Bot '{type(self).__name__}' does not support goal '{goal}'. "
+                "Supported goals: landing"
+            )
+        self._eval_goal = "landing"
+
+    def get_eval_goal(self) -> str:
+        return self._eval_goal
+
+    def get_evaluation_decision(self) -> BotEvalDecision | None:
+        """Return optional evaluation decision for run termination/result shaping."""
+        return None
 
     def get_stats_text(self) -> list[str]:
         """Return a list of UI text lines for this bot.

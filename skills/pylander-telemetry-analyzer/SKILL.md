@@ -15,14 +15,13 @@ This skill is read-only by default.
 - `compare_json` (optional)
 - `sim_log` (optional, repeatable)
 - `bot` (default `zem_zev`)
-- `eval_mode` (default `auto`)
 - `max_findings` (default `8`)
 
 At least one source input is required.
 
 ## Command
 
-`uv run python skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py [--benchmark-json <path>] [--compare-json <path>] [--sim-log <path> ...] [--bot <bot>] [--eval-mode <mode>] [--max-findings <n>] [--output-report <path>]`
+`uv run python skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py [--benchmark-json <path>] [--compare-json <path>] [--sim-log <path> ...] [--bot <bot>] [--max-findings <n>] [--output-report <path>]`
 
 ## Sources and signals
 

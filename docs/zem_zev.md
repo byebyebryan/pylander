@@ -130,11 +130,9 @@ Setup-gate debug traces can be enabled with:
 PYLANDER_ZEM_DEBUG_SETUP=1 uv run python main.py sim launch:near:0 --bot zem_zev
 ```
 
-Focused eval boundaries:
+Goal-based eval boundary:
 
-- `climb --eval-mode focused` -> `zem_setup_gate_done`
-- `setup --eval-mode focused` -> `zem_setup_gate_done`
-- `coast --eval-mode focused` -> `zem_terminal_gate_done`
+- `--bot zem_zev:setup` -> early stop on `zem_setup_gate_done`
 
 ## Tuning knobs
 

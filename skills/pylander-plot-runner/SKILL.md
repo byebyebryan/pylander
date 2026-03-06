@@ -14,7 +14,6 @@ Use this skill to generate plot artifacts for human and AI analysis.
 - `compare_json` (for `compare`/`triage`)
 - `selectors` (for `focus`)
 - `bot` (default: `zem_zev`)
-- `eval_mode` (default: `auto`)
 - `top_n` (default: `8`)
 - `plot_mode` (default: `all`)
 - `plot_output` (default: `both`)
