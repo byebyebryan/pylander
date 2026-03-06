@@ -107,22 +107,12 @@ Throttle allocation includes simple on/off hysteresis to reduce min-throttle cha
 
 ## Telemetry fields
 
-`zem_zev` publishes:
+`zem_zev` publishes generic and bot-owned telemetry:
 
-- `zem_setup_gate_done`, `zem_setup_gate_time`, `zem_setup_gate_altitude`, `zem_setup_gate_projected_dx`
-- `zem_terminal_gate_done`, `zem_terminal_gate_time`, `zem_terminal_gate_altitude`, `zem_terminal_gate_projected_dx`
-- `zem_solve_count`, `zem_solve_ms_mean`, `zem_solve_ms_p90`, `zem_fallback_frames`
-- `zem_peak_alt_over_target`, `zem_lateral_overshoot`, `zem_hover_time`
-- `zem_clearance_margin`, `zem_clearance_scale`, `zem_clearance_active`
-- `zem_shape_window_started`, `zem_shape_window_done`
-- `zem_shape_window_start_time`, `zem_shape_window_end_time`
-- `zem_shape_apex_target_over_target`, `zem_shape_apex_actual_over_target`, `zem_shape_apex_error`
-- `zem_shape_curve_rmse`
-- `zem_shape_projected_dx_abs_mean`, `zem_shape_projected_dx_abs_max`
-- `zem_shape_shortfall_ratio`
-
-`zem_clearance_*` is retained for schema compatibility and is expected to remain
-inactive (`0`/`False`) in the current generic-baseline controller.
+- generic setup contract: `setup_gate_*`, `setup_goal_*`
+- bot-owned terminal handoff: `bot_zem_zev_terminal_gate_done`, `bot_zem_zev_terminal_gate_time`, `bot_zem_zev_terminal_gate_altitude`, `bot_zem_zev_terminal_gate_projected_dx`
+- bot-owned compute/fallback: `bot_zem_zev_solve_count`, `bot_zem_zev_solve_ms_mean`, `bot_zem_zev_solve_ms_p90`, `bot_zem_zev_fallback_frames`
+- bot-owned shape quality: `bot_zem_zev_shape_apex_error`, `bot_zem_zev_shape_curve_rmse`, `bot_zem_zev_shape_projected_dx_abs_mean`, `bot_zem_zev_shape_projected_dx_abs_max`, `bot_zem_zev_shape_shortfall_ratio`
 
 Setup-gate debug traces can be enabled with:
 
@@ -132,7 +122,7 @@ PYLANDER_ZEM_DEBUG_SETUP=1 uv run python main.py sim launch:near:0 --bot zem_zev
 
 Goal-based eval boundary:
 
-- selector goal `setup` (for example `setup:mid_near:setup:0 --bot zem_zev`) -> early stop on `zem_setup_gate_done`
+- selector goal `setup` (for example `setup:mid_near:setup:0 --bot zem_zev`) -> early stop on the generic `setup_gate_done` milestone
 
 ## Tuning knobs
 

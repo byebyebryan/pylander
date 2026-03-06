@@ -13,13 +13,14 @@ class _Bot(Bot):
         self,
         *,
         decision: BotEvalDecision | object | None = None,
-        snapshot: dict[str, object] | None = None,
+        telemetry: dict[str, object] | None = None,
         phase_snapshot: FlightPhaseSnapshot | None = None,
         raise_decision: bool = False,
     ) -> None:
         super().__init__()
+        self._bot_name = "zem_zev"
         self._decision = decision
-        self._snapshot = snapshot
+        self._telemetry = telemetry
         self._phase_snapshot = phase_snapshot
         self._raise_decision = raise_decision
 
@@ -32,8 +33,8 @@ class _Bot(Bot):
             raise RuntimeError("boom")
         return self._decision
 
-    def get_evaluation_snapshot(self) -> dict[str, object] | None:
-        return self._snapshot
+    def get_bot_telemetry(self) -> dict[str, object]:
+        return dict(self._telemetry or {})
 
     def get_flight_phase_snapshot(self) -> FlightPhaseSnapshot | None:
         return self._phase_snapshot
@@ -50,10 +51,10 @@ def test_resolve_headless_bot_eval_decision_ignores_errors_and_invalid_types() -
 
 
 def test_merge_bot_snapshots_into_result_prefixes_fields_and_preserves_existing() -> None:
-    result = {"zem_phase": "existing", "setup_gate_done": "existing"}
+    result = {"bot_zem_zev_value": "existing", "setup_gate_done": "existing"}
     actor_bots = {
         "a": _Bot(
-            snapshot={"kind": "zem_zev", "phase": "setup", "zem_value": 7},
+            telemetry={"value": 7, "solve_count": 9, "bot_other_done": True},
             phase_snapshot=FlightPhaseSnapshot(
                 phase="coast",
                 milestones=("setup_gate",),
@@ -70,19 +71,21 @@ def test_merge_bot_snapshots_into_result_prefixes_fields_and_preserves_existing(
                 ),
             ),
         ),
-        "b": _Bot(snapshot={"kind": "other", "ignored": 1}),
+        "b": _Bot(telemetry={"ignored": 1}),
     }
 
     merge_bot_snapshots_into_result(actor_bots=actor_bots, result=result)
 
-    assert result["zem_phase"] == "existing"
-    assert result["zem_value"] == 7
+    assert result["bot_zem_zev_value"] == "existing"
+    assert result["bot_zem_zev_solve_count"] == 9
+    assert result["bot_zem_zev_ignored"] == 1
     assert result["setup_gate_done"] == "existing"
     assert result["setup_gate_time"] == 4.0
     assert result["setup_gate_projected_dx"] == 7.5
     assert result["setup_gate_projected_impact_angle_deg"] == 61.0
     assert result["setup_gate_burn_avg_thrust_level"] == 0.82
-    assert "ignored" not in result
+    assert result["bot_zem_zev_value"] == "existing"
+    assert result["bot_other_done"] is True
 
 
 def test_apply_bot_eval_to_result_keeps_landing_passthrough_semantics() -> None:

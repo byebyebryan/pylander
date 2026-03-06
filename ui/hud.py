@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import math
-import re
 
 from core.components import (
     CargoHold,
@@ -126,15 +125,21 @@ class HudOverlay:
         lines: list[str] = [f"STATE: {ls.state.upper()}    CREDITS: {wallet.credits:.0f}"]
         if bot is not None:
             bot_name = self._resolve_bot_name(bot)
-            lines.append(f"BOT: {bot_name}")
-            bot_status = self._resolve_bot_status(bot)
-            active_bot, stage = self._resolve_bot_display_state(bot, bot_status)
-            if bot_status or active_bot or stage:
-                active_label = active_bot if active_bot else bot_name
-                stage_label = stage if stage else "--"
-                lines.append(f"BOT ACTIVE: {active_label}    STAGE: {stage_label}")
-            if bot_status:
-                lines.append(f"BOT STATUS: {bot_status}")
+            display = self._resolve_bot_display_state(bot)
+            if display is not None:
+                mode = display.mode or "--"
+                phase_label = display.phase or "--"
+                label = display.bot_name or bot_name
+                lines.append(f"BOT: {label}    MODE: {mode}    PHASE: {phase_label}")
+                if display.summary:
+                    lines.append(f"BOT SUMMARY: {display.summary}")
+                if display.detail:
+                    lines.append(f"BOT DETAIL: {display.detail}")
+            else:
+                lines.append(f"BOT: {bot_name}")
+                bot_status = self._resolve_bot_status(bot)
+                if bot_status:
+                    lines.append(f"BOT STATUS: {bot_status}")
         lines.append("")
         lines.append(f"FUEL: {fuel_pct:.1f}% ({tank.fuel:.1f}/{tank.max_fuel:.1f})")
         if abs(target_thrust_pct - thrust_pct) < 1e-3:
@@ -185,33 +190,14 @@ class HudOverlay:
         return status.strip() if isinstance(status, str) else ""
 
     @staticmethod
-    def _parse_bot_status(status: str) -> tuple[str | None, str | None]:
-        text = status.strip()
-        if not text:
-            return None, None
-        if ":" not in text:
-            token = text.split(maxsplit=1)[0]
-            return None, token if token else None
-        prefix, rest = text.split(":", 1)
-        active_bot = prefix.strip() or None
-        rest = rest.strip()
-        stage: str | None = None
-        phase_match = re.search(r"\bph:([a-zA-Z0-9_]+)\b", rest)
-        if phase_match is not None:
-            stage = phase_match.group(1)
-        elif rest:
-            stage = rest.split(maxsplit=1)[0]
-        return active_bot, stage
-
-    @staticmethod
-    def _resolve_bot_display_state(
-        bot,
-        status: str,
-    ) -> tuple[str | None, str | None]:
-        _ = bot
-        if status:
-            return HudOverlay._parse_bot_status(status)
-        return None, None
+    def _resolve_bot_display_state(bot):
+        getter = getattr(bot, "get_display_state", None)
+        if not callable(getter):
+            return None
+        try:
+            return getter()
+        except Exception:
+            return None
 
     def _build_control_lines(self, lander) -> list[str]:
         _ = lander

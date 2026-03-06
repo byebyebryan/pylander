@@ -51,12 +51,7 @@ def test_build_evaluation_decision_returns_setup_goal_completion() -> None:
     assert decision.success is True
     assert decision.failure_mode == "none"
     assert decision.end_reason == "goal_reached"
-    assert decision.metrics == {
-        "zem_goal_setup_done": True,
-        "zem_goal_setup_time": 6.0,
-        "zem_goal_setup_altitude": 120.0,
-        "zem_goal_setup_projected_dx": 9.0,
-    }
+    assert decision.metrics == {}
 
 
 def test_build_evaluation_decision_ignores_other_goals_or_missing_setup_gate() -> None:

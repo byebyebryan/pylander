@@ -61,14 +61,11 @@ def test_zem_solver_progress_and_fallback_cap_mid_flare() -> None:
         max_steps=180,
         max_time=20.0,
     )
-    snapshot = bot.get_evaluation_snapshot()
-    assert snapshot.get("kind") == "zem_zev"
+    snapshot = bot.get_bot_telemetry()
     assert int(snapshot.get("solve_count") or 0) >= 5
     assert int(snapshot.get("fallback_frames") or 0) <= 2
-    assert snapshot.get("phase") in {"setup", "coast", "terminal", "touchdown"}
-    assert isinstance(snapshot.get("clearance_margin"), (int, float))
-    assert isinstance(snapshot.get("clearance_scale"), (int, float))
-    assert isinstance(snapshot.get("clearance_active"), bool)
+    assert isinstance(snapshot.get("shape_curve_rmse"), (int, float))
+    assert isinstance(snapshot.get("shape_projected_dx_abs_max"), (int, float))
 
 
 def test_pdg_optimizer_solution_changes_with_runtime_gravity() -> None:

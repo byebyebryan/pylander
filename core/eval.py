@@ -195,38 +195,6 @@ def normalize_run_result(
         "setup_gate_burn_avg_thrust_level": _to_optional_float(
             result.get("setup_gate_burn_avg_thrust_level")
         ),
-        "zem_setup_gate_done": _to_optional_bool(result.get("zem_setup_gate_done")),
-        "zem_setup_gate_time": _to_optional_float(result.get("zem_setup_gate_time")),
-        "zem_setup_gate_altitude": _to_optional_float(
-            result.get("zem_setup_gate_altitude")
-        ),
-        "zem_setup_gate_projected_dx": _to_optional_float(
-            result.get("zem_setup_gate_projected_dx")
-        ),
-        "zem_setup_gate_projected_apex_y": _to_optional_float(
-            result.get("zem_setup_gate_projected_apex_y")
-        ),
-        "zem_setup_gate_projected_apex_over_target": _to_optional_float(
-            result.get("zem_setup_gate_projected_apex_over_target")
-        ),
-        "zem_goal_setup_done": _to_optional_bool(result.get("zem_goal_setup_done")),
-        "zem_goal_setup_time": _to_optional_float(result.get("zem_goal_setup_time")),
-        "zem_goal_setup_altitude": _to_optional_float(result.get("zem_goal_setup_altitude")),
-        "zem_goal_setup_projected_dx": _to_optional_float(
-            result.get("zem_goal_setup_projected_dx")
-        ),
-        "zem_terminal_gate_done": _to_optional_bool(result.get("zem_terminal_gate_done")),
-        "zem_terminal_gate_time": _to_optional_float(result.get("zem_terminal_gate_time")),
-        "zem_terminal_gate_altitude": _to_optional_float(
-            result.get("zem_terminal_gate_altitude")
-        ),
-        "zem_terminal_gate_projected_dx": _to_optional_float(
-            result.get("zem_terminal_gate_projected_dx")
-        ),
-        "zem_solve_count": _to_optional_float(result.get("zem_solve_count")),
-        "zem_solve_ms_mean": _to_optional_float(result.get("zem_solve_ms_mean")),
-        "zem_solve_ms_p90": _to_optional_float(result.get("zem_solve_ms_p90")),
-        "zem_fallback_frames": _to_optional_float(result.get("zem_fallback_frames")),
         "bot_profile_enabled": _to_optional_bool(result.get("bot_profile_enabled")),
         "bot_profile_ticks": _to_optional_float(result.get("bot_profile_ticks")),
         "bot_profile_passive_ms_per_tick": _to_optional_float(
@@ -250,39 +218,24 @@ def normalize_run_result(
         "bot_profile_total_ms_per_tick_p99": _to_optional_float(
             result.get("bot_profile_total_ms_per_tick_p99")
         ),
-        "zem_peak_alt_over_target": _to_optional_float(
-            result.get("zem_peak_alt_over_target")
-        ),
-        "zem_lateral_overshoot": _to_optional_float(result.get("zem_lateral_overshoot")),
-        "zem_hover_time": _to_optional_float(result.get("zem_hover_time")),
-        "zem_clearance_margin": _to_optional_float(result.get("zem_clearance_margin")),
-        "zem_clearance_scale": _to_optional_float(result.get("zem_clearance_scale")),
-        "zem_clearance_active": _to_optional_bool(result.get("zem_clearance_active")),
-        "zem_shape_window_started": _to_optional_bool(result.get("zem_shape_window_started")),
-        "zem_shape_window_done": _to_optional_bool(result.get("zem_shape_window_done")),
-        "zem_shape_window_start_time": _to_optional_float(
-            result.get("zem_shape_window_start_time")
-        ),
-        "zem_shape_window_end_time": _to_optional_float(result.get("zem_shape_window_end_time")),
-        "zem_shape_apex_target_over_target": _to_optional_float(
-            result.get("zem_shape_apex_target_over_target")
-        ),
-        "zem_shape_apex_actual_over_target": _to_optional_float(
-            result.get("zem_shape_apex_actual_over_target")
-        ),
-        "zem_shape_apex_error": _to_optional_float(result.get("zem_shape_apex_error")),
-        "zem_shape_curve_rmse": _to_optional_float(result.get("zem_shape_curve_rmse")),
-        "zem_shape_projected_dx_abs_mean": _to_optional_float(
-            result.get("zem_shape_projected_dx_abs_mean")
-        ),
-        "zem_shape_projected_dx_abs_max": _to_optional_float(
-            result.get("zem_shape_projected_dx_abs_max")
-        ),
-        "zem_shape_shortfall_ratio": _to_optional_float(result.get("zem_shape_shortfall_ratio")),
     }
     for key, value in result.items():
-        if not isinstance(key, str) or not key.startswith("scenario_"):
+        if not isinstance(key, str):
             continue
+        if not (key.startswith("scenario_") or key.startswith("bot_")):
+            continue
+        if key in record:
+            continue
+        if key.startswith("bot_") and not key.endswith("_done"):
+            numeric_value = _to_optional_float(value)
+            if numeric_value is not None:
+                record[key] = numeric_value
+                continue
+        if key.startswith("bot_") and key.endswith("_done"):
+            bool_value = _to_optional_bool(value)
+            if bool_value is not None:
+                record[key] = bool_value
+                continue
         if isinstance(value, (int, float, str, bool)) or value is None:
             record[key] = value
     if "plot_path" in result:

@@ -84,17 +84,6 @@ def build_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | None]
         bot._shape_apex_actual_over_target - bot._shape_apex_target_over_target
     )
     return {
-        "kind": "zem_zev",
-        "phase": bot._active_phase,
-        "projected_dx": bot._last_projection_dx,
-        "t_fall": bot._last_projection_t_fall,
-        "projection_has_target_y_solution": bot._last_projection_has_target_y,
-        "setup_gate_done": bot._setup_gate_done,
-        "setup_gate_time": bot._setup_gate_time,
-        "setup_gate_altitude": bot._setup_gate_altitude,
-        "setup_gate_projected_dx": bot._setup_gate_projected_dx,
-        "setup_gate_projected_apex_y": bot._setup_gate_projected_apex_y,
-        "setup_gate_projected_apex_over_target": bot._setup_gate_projected_apex_over_target,
         "terminal_gate_done": bot._terminal_gate_done,
         "terminal_gate_time": bot._terminal_gate_time,
         "terminal_gate_altitude": bot._terminal_gate_altitude,
@@ -103,18 +92,6 @@ def build_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | None]
         "solve_ms_mean": solve_ms_mean,
         "solve_ms_p90": percentile(bot._solve_ms_samples, 0.9),
         "fallback_frames": bot._fallback_frames,
-        "peak_alt_over_target": bot._peak_alt_over_target,
-        "lateral_overshoot": bot._lateral_overshoot,
-        "hover_time": bot._hover_time,
-        "clearance_margin": bot._clearance_margin,
-        "clearance_scale": bot._clearance_scale,
-        "clearance_active": bot._clearance_active,
-        "shape_window_started": bot._shape_window_started,
-        "shape_window_done": bot._shape_window_done,
-        "shape_window_start_time": bot._shape_window_start_time,
-        "shape_window_end_time": bot._shape_window_end_time,
-        "shape_apex_target_over_target": bot._shape_apex_target_over_target,
-        "shape_apex_actual_over_target": bot._shape_apex_actual_over_target,
         "shape_apex_error": shape_apex_error,
         "shape_curve_rmse": shape_curve_rmse,
         "shape_projected_dx_abs_mean": shape_projected_dx_abs_mean,
@@ -127,9 +104,9 @@ def resolve_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | Non
     snapshot = build_evaluation_snapshot(bot)
     has_live_progress = (
         int(snapshot.get("solve_count") or 0) > 0
-        or bool(snapshot.get("setup_gate_done"))
         or bool(snapshot.get("terminal_gate_done"))
-        or bool(snapshot.get("shape_window_started"))
+        or snapshot.get("shape_curve_rmse") is not None
+        or snapshot.get("shape_projected_dx_abs_max") is not None
     )
     if has_live_progress or bot._last_flight_snapshot is None:
         return snapshot
@@ -146,10 +123,5 @@ def build_evaluation_decision(bot) -> BotEvalDecision | None:
         success=True,
         failure_mode="none",
         end_reason="goal_reached",
-        metrics={
-            "zem_goal_setup_done": True,
-            "zem_goal_setup_time": bot._setup_gate_time,
-            "zem_goal_setup_altitude": bot._setup_gate_altitude,
-            "zem_goal_setup_projected_dx": bot._setup_gate_projected_dx,
-        },
+        metrics={},
     )

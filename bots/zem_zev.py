@@ -36,6 +36,7 @@ from bots._targeting import pick_target, target_half_width
 from core.bot import (
     Bot,
     BotAction,
+    BotDisplayState,
     BotEvalDecision,
     FlightPhaseSnapshot,
     PlotMarker,
@@ -94,6 +95,9 @@ class ZemZevBot(Bot):
         self._debug_setup = (
             os.getenv("PYLANDER_ZEM_DEBUG_SETUP", "").strip().lower() in ("1", "true", "yes", "on")
         )
+        self._display_mode: str | None = None
+        self._display_phase: str | None = None
+        self._display_summary = ""
         _reset_evaluation_state_impl(self, clear_last_flight_snapshot=True)
 
         self.set_behavior(behavior)
@@ -169,12 +173,26 @@ class ZemZevBot(Bot):
         self._solve_ms_sum = 0.0
         self._solve_ms_samples = []
         self._fallback_frames = 0
+        self._display_mode = None
+        self._display_phase = None
+        self._display_summary = ""
         _reset_evaluation_state_impl(self)
 
     def _debug_setup_print(self, line: str) -> None:
         if not self._debug_setup:
             return
         print(f"ZEMDBG {line}")
+
+    def _set_display_state(
+        self,
+        *,
+        mode: str | None,
+        phase: str | None,
+        summary: str,
+    ) -> None:
+        self._display_mode = mode
+        self._display_phase = phase
+        self._display_summary = summary.strip()
 
     def _reset_shape_window_state(self) -> None:
         self._shape_window_started = False
@@ -240,6 +258,9 @@ class ZemZevBot(Bot):
         *,
         angle: float,
         status: str,
+        mode: str | None = None,
+        phase: str | None = None,
+        summary: str | None = None,
         clear_targeting: bool = True,
     ) -> BotAction:
         self._reset_state()
@@ -247,6 +268,11 @@ class ZemZevBot(Bot):
             self._auto_target_uid = None
             self._launch_takeoff_active = False
         action = BotAction(0.0, angle, False, status=status)
+        self._set_display_state(
+            mode=mode,
+            phase=phase,
+            summary=summary if summary is not None else status,
+        )
         self.status = action.status
         return action
 
@@ -564,9 +590,21 @@ class ZemZevBot(Bot):
 
     def update(self, dt: float, passive: Sensors) -> BotAction:
         if passive.state == "crashed":
-            return self._reset_with_status(angle=passive.angle, status="zem_zev:crashed")
+            return self._reset_with_status(
+                angle=passive.angle,
+                status="zem_zev crashed",
+                mode="idle",
+                phase="crashed",
+                summary="crashed",
+            )
         if passive.state == "out_of_fuel":
-            return self._reset_with_status(angle=passive.angle, status="zem_zev:out_of_fuel")
+            return self._reset_with_status(
+                angle=passive.angle,
+                status="zem_zev out_of_fuel",
+                mode="idle",
+                phase="out_of_fuel",
+                summary="out of fuel",
+            )
 
         if passive.state == "landed":
             self._reset_state()
@@ -579,7 +617,8 @@ class ZemZevBot(Bot):
             landed_uid = self._landed_contact_uid(passive)
             if target_uid is None or landed_uid == target_uid:
                 self._launch_takeoff_active = False
-                action = BotAction(0.0, 0.0, False, status="zem_zev:landed")
+                action = BotAction(0.0, 0.0, False, status="zem_zev landed")
+                self._set_display_state(mode="idle", phase="landed", summary="landed")
                 self.status = action.status
                 return action
 
@@ -588,13 +627,20 @@ class ZemZevBot(Bot):
                 self._takeoff_thrust(max_throttle),
                 0.0,
                 False,
-                status="zem_zev:takeoff",
+                status="zem_zev takeoff",
             )
+            self._set_display_state(mode="takeoff", phase="takeoff", summary="departing pad")
             self.status = action.status
             return action
 
         if passive.state != "flying":
-            return self._reset_with_status(angle=passive.angle, status=f"zem_zev:{passive.state}")
+            return self._reset_with_status(
+                angle=passive.angle,
+                status=f"zem_zev {passive.state}",
+                mode="idle",
+                phase=str(passive.state),
+                summary=str(passive.state),
+            )
         if (
             self._last_flight_snapshot is not None
             and self._elapsed_time_s <= 1e-9
@@ -609,8 +655,9 @@ class ZemZevBot(Bot):
                 self._takeoff_thrust(max_throttle),
                 0.0,
                 False,
-                status="zem_zev:clear_pad",
+                status="zem_zev clear_pad",
             )
+            self._set_display_state(mode="takeoff", phase="takeoff", summary="clearing pad")
             self.status = action.status
             return action
         if self._launch_takeoff_active and alt >= self._cfg.launch_takeoff_clear_altitude:
@@ -691,9 +738,7 @@ class ZemZevBot(Bot):
             )
         )
 
-        solved_now = False
         if need_replan:
-            solved_now = True
             plan = self._solve_plan(
                 passive=passive,
                 dx=dx,
@@ -732,12 +777,16 @@ class ZemZevBot(Bot):
             mode = "fallback"
             self._fallback_frames += 1
         action.status = (
-            f"zem_zev:{mode} ph:{phase} dx:{stable(dx, 1):6.1f} "
-            f"pdx:{stable(float(projection.projected_dx), 1):6.1f} "
-            f"vx:{stable(passive.vx, 1):5.1f} vy:{stable(passive.vy_up, 1):5.1f} "
-            f"sg:{int(self._setup_gate_done)} tg:{int(self._terminal_gate_done)} "
-            f"rp:{int(solved_now)} slv:{stable(self._last_solve_ms, 1):4.1f}ms "
-            f"st:{self._last_solver_status}"
+            f"zem_zev {mode}/{phase} "
+            f"dx={stable(dx, 1):.1f} pdx={stable(float(projection.projected_dx), 1):.1f}"
+        )
+        self._set_display_state(
+            mode=mode,
+            phase=phase,
+            summary=(
+                f"dx={stable(dx, 1):.1f} "
+                f"pdx={stable(float(projection.projected_dx), 1):.1f}"
+            ),
         )
         self.status = action.status
         self._last_flight_snapshot = self._build_evaluation_snapshot()
@@ -746,8 +795,16 @@ class ZemZevBot(Bot):
     def _build_evaluation_snapshot(self) -> dict[str, float | int | bool | str | None]:
         return _build_evaluation_snapshot_impl(self)
 
-    def get_evaluation_snapshot(self) -> dict[str, float | int | bool | str | None]:
+    def get_bot_telemetry(self) -> dict[str, float | int | bool | str | None]:
         return _resolve_evaluation_snapshot_impl(self)
+
+    def get_display_state(self) -> BotDisplayState | None:
+        return BotDisplayState(
+            bot_name="zem_zev",
+            mode=self._display_mode,
+            phase=self._display_phase or self._active_phase,
+            summary=self._display_summary,
+        )
 
     def get_flight_phase_snapshot(self) -> FlightPhaseSnapshot | None:
         milestones: tuple[str, ...] = ("setup_gate",) if self._setup_gate_done else ()

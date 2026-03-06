@@ -282,8 +282,8 @@ def _run_diag(record: dict[str, Any]) -> dict[str, Any]:
         "distance_flown",
         "avg_speed",
         "score",
-        "zem_setup_gate_projected_dx",
-        "zem_terminal_gate_projected_dx",
+        "setup_gate_projected_dx",
+        "bot_zem_zev_terminal_gate_projected_dx",
     )
     out: dict[str, Any] = {}
     for key in keys:
@@ -872,8 +872,8 @@ def _print_compare(
                 "  candidate_metrics: "
                 f"time={_to_float(candidate_metrics.get('time'), 0.0):.2f} "
                 f"fuel={_to_float(candidate_metrics.get('fuel_consumed'), 0.0):.3f} "
-                f"setup_dx={_to_float(candidate_metrics.get('zem_setup_gate_projected_dx'), 0.0):.3f} "
-                f"terminal_dx={_to_float(candidate_metrics.get('zem_terminal_gate_projected_dx'), 0.0):.3f}"
+                f"setup_dx={_to_float(candidate_metrics.get('setup_gate_projected_dx'), 0.0):.3f} "
+                f"terminal_dx={_to_float(candidate_metrics.get('bot_zem_zev_terminal_gate_projected_dx'), 0.0):.3f}"
             )
             if baseline_metrics:
                 print(

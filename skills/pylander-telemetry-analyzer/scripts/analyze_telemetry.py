@@ -10,7 +10,6 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from core.eval_schema import HEADLESS_RESULT_FIELDS  # noqa: E402
 from core.selector_codec import render_record_selector, render_selector  # noqa: E402
 from skills.lib.contracts import validate_contract_data  # noqa: E402
 from skills.lib.orchestration import (  # noqa: E402
@@ -22,7 +21,6 @@ from skills.lib.orchestration import (  # noqa: E402
 )
 
 
-_COMPACT_RESULT_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*?)(None|True|False|-?[0-9].*)$")
 _BOT_PROF_RE = re.compile(
     r"ticks=(?P<ticks>\d+)"
     r".*?passive=(?P<passive>[0-9.]+)ms/t"
@@ -33,9 +31,6 @@ _BOT_PROF_RE = re.compile(
 )
 _PHASE_RE = re.compile(r"\bph:(?P<phase>[a-z_]+)\b")
 _SOLVE_MS_RE = re.compile(r"\bslv:(?P<ms>[0-9.]+)ms\b")
-_RESULT_LABELS: tuple[str, ...] = tuple(
-    sorted((field.capitalize() for field in HEADLESS_RESULT_FIELDS), key=len, reverse=True)
-)
 
 
 def _selector_from_record(record: dict[str, Any]) -> str:
@@ -128,29 +123,14 @@ def _parse_final_results(lines: list[str]) -> dict[str, Any]:
             continue
         if set(stripped) == {"="}:
             continue
-
-        match = re.match(r"^([A-Za-z0-9_]+)\s+(.+)$", stripped)
-        if match:
-            key = str(match.group(1)).strip()
-            raw_value = str(match.group(2)).strip()
-            parsed[key] = _parse_scalar(raw_value)
+        if stripped.startswith("[") and stripped.endswith("]"):
             continue
-
-        for key in _RESULT_LABELS:
-            if not stripped.startswith(key):
-                continue
-            if len(stripped) <= len(key):
-                continue
-            raw_value = stripped[len(key) :].strip()
-            if raw_value:
-                parsed[key] = _parse_scalar(raw_value)
-            break
-        else:
-            compact = _COMPACT_RESULT_RE.match(stripped)
-            if compact:
-                key = str(compact.group(1)).strip()
-                raw_value = str(compact.group(2)).strip()
-                parsed[key] = _parse_scalar(raw_value)
+        match = re.match(r"^([A-Za-z0-9_]+)\s*:\s+(.+)$", stripped)
+        if not match:
+            continue
+        key = str(match.group(1)).strip()
+        raw_value = str(match.group(2)).strip()
+        parsed[key] = _parse_scalar(raw_value)
 
     return parsed
 
@@ -430,8 +410,8 @@ def _findings_from_benchmark(
 
     scored_phase: list[tuple[float, dict[str, Any]]] = []
     for record in records:
-        setup_dx = abs(to_float(record.get("zem_setup_gate_projected_dx"), 0.0))
-        terminal_dx = abs(to_float(record.get("zem_terminal_gate_projected_dx"), 0.0))
+        setup_dx = abs(to_float(record.get("setup_gate_projected_dx"), 0.0))
+        terminal_dx = abs(to_float(record.get("bot_zem_zev_terminal_gate_projected_dx"), 0.0))
         score = max(setup_dx, terminal_dx)
         if score <= 50.0:
             continue
@@ -448,8 +428,10 @@ def _findings_from_benchmark(
                 title="High projected-dx phase error",
                 selector=selector,
                 measured_evidence={
-                    "zem_setup_gate_projected_dx": record.get("zem_setup_gate_projected_dx"),
-                    "zem_terminal_gate_projected_dx": record.get("zem_terminal_gate_projected_dx"),
+                    "setup_gate_projected_dx": record.get("setup_gate_projected_dx"),
+                    "bot_zem_zev_terminal_gate_projected_dx": record.get(
+                        "bot_zem_zev_terminal_gate_projected_dx"
+                    ),
                 },
                 likely_cause=(
                     "Setup/coast handoff is leaving excessive lateral correction burden later in flight."

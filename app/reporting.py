@@ -2,32 +2,166 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.eval_schema import EFFICIENCY_METRIC_FIELDS, HEADLESS_RESULT_FIELDS
+from core.eval_schema import BOT_ZEM_RESULT_FIELDS, EFFICIENCY_METRIC_FIELDS
+
+_RUN_FIELDS: tuple[str, ...] = (
+    "state",
+    "eval_goal",
+    "eval_early_end",
+    "eval_end_reason",
+    "time",
+)
+
+_OUTCOME_FIELDS: tuple[str, ...] = (
+    "landing_count",
+    "crash_count",
+    "credits",
+    "fuel",
+    "score",
+)
+
+_FLIGHT_FIELDS: tuple[str, ...] = (
+    "distance_flown",
+    "landing_offset",
+    "avg_speed",
+    "fuel_consumed",
+    "fuel_per_distance",
+    "spawn_to_target_distance",
+    "path_efficiency",
+)
+
+_SETUP_GOAL_FIELDS: tuple[str, ...] = (
+    "setup_goal_done",
+    "setup_goal_time",
+    "setup_goal_fuel_consumed",
+    "setup_goal_altitude",
+    "setup_goal_projected_apex_y",
+    "setup_goal_projected_apex_over_target",
+    "setup_goal_has_target_y_solution",
+    "setup_goal_projected_dx",
+    "setup_goal_projected_impact_angle_deg",
+    "setup_goal_burn_avg_thrust_level",
+    "setup_goal_time_to_target",
+)
+
+_SETUP_GATE_FIELDS: tuple[str, ...] = (
+    "setup_gate_done",
+    "setup_gate_time",
+    "setup_gate_altitude",
+    "setup_gate_projected_apex_y",
+    "setup_gate_projected_apex_over_target",
+    "setup_gate_has_target_y_solution",
+    "setup_gate_projected_dx",
+    "setup_gate_projected_impact_angle_deg",
+    "setup_gate_burn_duration_s",
+    "setup_gate_burn_fuel_used",
+    "setup_gate_burn_avg_thrust_level",
+)
+
+_ARRIVAL_FIELDS: tuple[str, ...] = (
+    "launch_arrived",
+    "launch_landed_site_uid",
+    "climb_arrived",
+    "climb_landed_site_uid",
+)
+
+_PROFILER_FIELDS: tuple[str, ...] = (
+    "bot_profile_enabled",
+    "bot_profile_ticks",
+    "bot_profile_passive_ms_per_tick",
+    "bot_profile_update_ms_per_tick",
+    "bot_profile_total_ms_per_tick",
+    "bot_profile_update_ms_per_tick_p90",
+    "bot_profile_update_ms_per_tick_p99",
+    "bot_profile_total_ms_per_tick_p90",
+    "bot_profile_total_ms_per_tick_p99",
+)
+
+_PLOT_FIELDS: tuple[str, ...] = (
+    "plot_bundle_dir",
+    "plot_manifest_path",
+)
+
+_FINAL_RESULT_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Run", _RUN_FIELDS),
+    ("Outcome", _OUTCOME_FIELDS),
+    ("Flight", _FLIGHT_FIELDS),
+    ("Setup Goal", _SETUP_GOAL_FIELDS),
+    ("Setup Gate", _SETUP_GATE_FIELDS),
+    ("Arrivals", _ARRIVAL_FIELDS),
+    ("Profiler", _PROFILER_FIELDS),
+    ("Plots", _PLOT_FIELDS),
+)
+
+
+def _format_value(value: Any) -> str:
+    if isinstance(value, float):
+        return f"{value:.2f}"
+    return str(value)
+
+
+def _print_section(title: str, result: dict[str, Any], fields: tuple[str, ...]) -> int:
+    rows = [(field, result[field]) for field in fields if field in result]
+    if not rows:
+        return 0
+    print(f"\n[{title}]")
+    width = max(len(field) for field, _value in rows)
+    for field, value in rows:
+        print(f"{field:<{width}} : {_format_value(value)}")
+    return len(rows)
+
+
+def _collect_bot_sections(result: dict[str, Any]) -> list[tuple[str, list[tuple[str, Any]]]]:
+    grouped: dict[str, list[tuple[str, Any]]] = {}
+    for key, value in result.items():
+        if not isinstance(key, str) or not key.startswith("bot_"):
+            continue
+        if key.startswith("bot_profile_"):
+            continue
+        if key in BOT_ZEM_RESULT_FIELDS:
+            bot_name = "zem_zev"
+            label = key.removeprefix("bot_zem_zev_")
+        else:
+            parts = key.split("_", 2)
+            if len(parts) < 3:
+                continue
+            bot_name = parts[1]
+            label = parts[2]
+        grouped.setdefault(bot_name, []).append((label, value))
+    sections: list[tuple[str, list[tuple[str, Any]]]] = []
+    for bot_name in sorted(grouped):
+        rows = sorted(grouped[bot_name], key=lambda item: item[0])
+        sections.append((bot_name, rows))
+    return sections
 
 
 def print_headless_results(result: dict[str, Any]) -> None:
     print("\n" + "=" * 60)
     print("FINAL RESULTS")
     print("=" * 60)
-    for key in HEADLESS_RESULT_FIELDS:
-        if key not in result:
+    printed = 0
+    for title, fields in _FINAL_RESULT_SECTIONS:
+        printed += _print_section(title, result, fields)
+    for bot_name, rows in _collect_bot_sections(result):
+        if not rows:
             continue
-        val = result[key]
-        if isinstance(val, float):
-            print(f"{key.capitalize():<24}{val:.2f}")
-        else:
-            print(f"{key.capitalize():<24}{val}")
-    print("=" * 60)
+        print(f"\n[Bot Telemetry: {bot_name}]")
+        width = max(len(field) for field, _value in rows)
+        for field, value in rows:
+            print(f"{field:<{width}} : {_format_value(value)}")
+        printed += len(rows)
     if result.get("plot_paths"):
-        print("Plots:")
+        print("\n[Plot Files]")
         for p in result["plot_paths"]:
-            print(f"  {p}")
+            print(f"path : {p}")
     elif result.get("plot_path"):
-        print(f"Plot:              {result['plot_path']}")
+        print("\n[Plot Files]")
+        print(f"path : {result['plot_path']}")
     if result.get("plot_error"):
-        print(f"Plot error:        {result['plot_error']}")
-    if result.get("plot_manifest_path"):
-        print(f"Plot manifest:     {result['plot_manifest_path']}")
+        print(f"plot_error : {result['plot_error']}")
+    if printed == 0 and not result.get("plot_path") and not result.get("plot_paths"):
+        print("(no result fields)")
+    print("=" * 60)
 
 
 def _print_efficiency_block(title: str, block: dict[str, Any] | None) -> None:

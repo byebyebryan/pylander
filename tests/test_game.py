@@ -201,8 +201,6 @@ def test_zem_setup_goal_ends_headless_run_early() -> None:
     assert result["setup_goal_done"] is True
     assert result["setup_goal_has_target_y_solution"] is True
     assert result["setup_goal_projected_impact_angle_deg"] is not None
-    assert result["zem_setup_gate_done"] is True
-    assert result["zem_goal_setup_done"] is True
 
 
 def test_non_landing_goal_without_decision_fails_goal_not_reached() -> None:
@@ -266,25 +264,20 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
             "setup_gate_burn_duration_s": 6.0,
             "setup_gate_burn_fuel_used": 17.0,
             "setup_gate_burn_avg_thrust_level": 0.84,
-            "zem_goal_setup_done": True,
-            "zem_goal_setup_time": 6.0,
-            "zem_goal_setup_altitude": 120.0,
-            "zem_goal_setup_projected_dx": 9.0,
             "climb_arrived": False,
-            "zem_clearance_margin": 72.0,
-            "zem_clearance_scale": 0.85,
-            "zem_clearance_active": True,
-            "zem_shape_window_started": True,
-            "zem_shape_window_done": True,
-            "zem_shape_window_start_time": 0.4,
-            "zem_shape_window_end_time": 8.6,
-            "zem_shape_apex_target_over_target": 120.0,
-            "zem_shape_apex_actual_over_target": 116.0,
-            "zem_shape_apex_error": 4.0,
-            "zem_shape_curve_rmse": 14.5,
-            "zem_shape_projected_dx_abs_mean": 18.0,
-            "zem_shape_projected_dx_abs_max": 41.0,
-            "zem_shape_shortfall_ratio": 0.12,
+            "bot_zem_zev_terminal_gate_done": True,
+            "bot_zem_zev_terminal_gate_time": 8.6,
+            "bot_zem_zev_terminal_gate_altitude": 72.0,
+            "bot_zem_zev_terminal_gate_projected_dx": 4.5,
+            "bot_zem_zev_solve_count": 32,
+            "bot_zem_zev_solve_ms_mean": 3.2,
+            "bot_zem_zev_solve_ms_p90": 7.4,
+            "bot_zem_zev_fallback_frames": 1,
+            "bot_zem_zev_shape_apex_error": 4.0,
+            "bot_zem_zev_shape_curve_rmse": 14.5,
+            "bot_zem_zev_shape_projected_dx_abs_mean": 18.0,
+            "bot_zem_zev_shape_projected_dx_abs_max": 41.0,
+            "bot_zem_zev_shape_shortfall_ratio": 0.12,
         },
     )
     assert record["success"] is True
@@ -301,34 +294,29 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
     assert record["setup_gate_done"] is True
     assert record["setup_gate_burn_duration_s"] == pytest.approx(6.0)
     assert record["setup_gate_burn_fuel_used"] == pytest.approx(17.0)
-    assert record["zem_goal_setup_done"] is True
-    assert record["zem_goal_setup_time"] == pytest.approx(6.0)
-    assert record["zem_goal_setup_altitude"] == pytest.approx(120.0)
-    assert record["zem_goal_setup_projected_dx"] == pytest.approx(9.0)
     assert record["climb_arrived"] is False
-    assert record["zem_clearance_margin"] == pytest.approx(72.0)
-    assert record["zem_clearance_scale"] == pytest.approx(0.85)
-    assert record["zem_clearance_active"] is True
-    assert record["zem_shape_window_started"] is True
-    assert record["zem_shape_window_done"] is True
-    assert record["zem_shape_window_start_time"] == pytest.approx(0.4)
-    assert record["zem_shape_window_end_time"] == pytest.approx(8.6)
-    assert record["zem_shape_apex_target_over_target"] == pytest.approx(120.0)
-    assert record["zem_shape_apex_actual_over_target"] == pytest.approx(116.0)
-    assert record["zem_shape_apex_error"] == pytest.approx(4.0)
-    assert record["zem_shape_curve_rmse"] == pytest.approx(14.5)
-    assert record["zem_shape_projected_dx_abs_mean"] == pytest.approx(18.0)
-    assert record["zem_shape_projected_dx_abs_max"] == pytest.approx(41.0)
-    assert record["zem_shape_shortfall_ratio"] == pytest.approx(0.12)
+    assert record["bot_zem_zev_terminal_gate_done"] is True
+    assert record["bot_zem_zev_terminal_gate_time"] == pytest.approx(8.6)
+    assert record["bot_zem_zev_terminal_gate_altitude"] == pytest.approx(72.0)
+    assert record["bot_zem_zev_terminal_gate_projected_dx"] == pytest.approx(4.5)
+    assert record["bot_zem_zev_solve_count"] == pytest.approx(32.0)
+    assert record["bot_zem_zev_solve_ms_mean"] == pytest.approx(3.2)
+    assert record["bot_zem_zev_solve_ms_p90"] == pytest.approx(7.4)
+    assert record["bot_zem_zev_fallback_frames"] == pytest.approx(1.0)
+    assert record["bot_zem_zev_shape_apex_error"] == pytest.approx(4.0)
+    assert record["bot_zem_zev_shape_curve_rmse"] == pytest.approx(14.5)
+    assert record["bot_zem_zev_shape_projected_dx_abs_mean"] == pytest.approx(18.0)
+    assert record["bot_zem_zev_shape_projected_dx_abs_max"] == pytest.approx(41.0)
+    assert record["bot_zem_zev_shape_shortfall_ratio"] == pytest.approx(0.12)
 
 
-def test_launch_run_merges_zem_snapshot_fields_into_result() -> None:
+def test_launch_run_merges_bot_telemetry_fields_into_result() -> None:
     level = create_level_by_name("launch")
     level.set_eval_scenario("near")
     game = LanderGame(level=level, seed=0, bot=create_bot("zem_zev"), headless=True)
     result = game.run(print_freq=0, max_steps=2, max_time=2.0)
-    assert "zem_phase" in result
-    assert "zem_shape_window_started" in result
+    assert "bot_zem_zev_solve_count" in result
+    assert "bot_zem_zev_shape_curve_rmse" in result
 
 
 def test_launch_setup_gate_latches_no_later_than_terminal_gate() -> None:
@@ -336,10 +324,9 @@ def test_launch_setup_gate_latches_no_later_than_terminal_gate() -> None:
     level.set_eval_scenario("far")
     game = LanderGame(level=level, seed=1, bot=create_bot("zem_zev"), headless=True)
     result = game.run(print_freq=0, max_time=120.0)
-    setup_gate_time = result.get("zem_setup_gate_time")
-    terminal_gate_time = result.get("zem_terminal_gate_time")
-    assert setup_gate_time is not None
-    if terminal_gate_time is not None:
+    setup_gate_time = result.get("setup_gate_time")
+    terminal_gate_time = result.get("bot_zem_zev_terminal_gate_time")
+    if setup_gate_time is not None and terminal_gate_time is not None:
         assert float(setup_gate_time) <= float(terminal_gate_time) + 1e-6
 
 
@@ -355,8 +342,8 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
                 "success": True,
                 "eval_goal": "setup",
                 "eval_early_end": True,
-                "zem_goal_setup_done": True,
-                "zem_goal_setup_time": 6.0,
+                "setup_goal_done": True,
+                "setup_goal_time": 6.0,
             },
         )
     ]
@@ -437,24 +424,29 @@ def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
     ]
 
 
-def test_hud_display_state_falls_back_to_status_parse() -> None:
+def test_hud_display_state_returns_none_when_display_state_is_missing() -> None:
     class _Bot:
-        def get_status(self) -> str:
-            return "zem_zev:terminal dx: 12.3"
+        pass
 
-    active, stage = HudOverlay._resolve_bot_display_state(_Bot(), _Bot().get_status())
-    assert active == "zem_zev"
-    assert stage == "terminal"
+    assert HudOverlay._resolve_bot_display_state(_Bot()) is None
 
 
-def test_hud_display_state_prefers_phase_token() -> None:
+def test_hud_display_state_prefers_structured_display_state() -> None:
+    class _Display:
+        bot_name = "zem_zev"
+        mode = "opt"
+        phase = "setup"
+        summary = "dx=12.3 pdx=-4.0"
+        detail = ""
+
     class _Bot:
-        def get_status(self) -> str:
-            return "zem_zev:opt ph:setup dx: 12.3 pdx: -4.0"
+        def get_display_state(self):
+            return _Display()
 
-    active, stage = HudOverlay._resolve_bot_display_state(_Bot(), _Bot().get_status())
-    assert active == "zem_zev"
-    assert stage == "setup"
+    display = HudOverlay._resolve_bot_display_state(_Bot())
+    assert display is not None
+    assert display.bot_name == "zem_zev"
+    assert display.phase == "setup"
 
 
 def test_parse_args_accepts_level_goal_selector() -> None:

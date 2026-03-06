@@ -37,20 +37,16 @@ Defaults:
 ## Metrics
 
 - End-to-end objective metrics: `state`, `success`, `climb_arrived`, `climb_landed_site_uid`
-- Unified gate telemetry: `zem_setup_gate_*`, `zem_terminal_gate_*`
+- Unified gate telemetry: `setup_gate_*`, `bot_zem_zev_terminal_gate_*`
 - Goal metadata when using goal selectors: `eval_goal`, `eval_early_end`, `eval_end_reason`
 
-Additional `zem_zev` diagnostics exported for climb tuning:
+Additional retained `zem_zev` diagnostics exported for climb tuning:
 
-- `zem_peak_alt_over_target`
-- `zem_lateral_overshoot`
-- `zem_hover_time`
-- `zem_clearance_margin`
-- `zem_clearance_scale`
-- `zem_clearance_active`
-
-`zem_clearance_*` fields are retained for compatibility and are expected to be
-inactive (`0`/`False`) in the current generic-baseline configuration.
+- `bot_zem_zev_shape_apex_error`
+- `bot_zem_zev_shape_curve_rmse`
+- `bot_zem_zev_shape_projected_dx_abs_mean`
+- `bot_zem_zev_shape_projected_dx_abs_max`
+- `bot_zem_zev_shape_shortfall_ratio`
 
 ## Commands
 

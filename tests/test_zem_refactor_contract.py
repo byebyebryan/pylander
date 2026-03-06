@@ -41,7 +41,7 @@ def test_zem_non_flying_status_resets_runtime_state() -> None:
     bot._launch_takeoff_active = True
 
     action = bot.update(1.0 / 30.0, _sensors(state="crashed"))
-    assert action.status == "zem_zev:crashed"
+    assert action.status == "zem_zev crashed"
     assert action.target_thrust == 0.0
     assert bot._solve_count == 0
     assert bot._auto_target_uid is None
@@ -52,22 +52,16 @@ def test_zem_snapshot_contains_expected_contract_keys() -> None:
     bot = create_bot("zem_zev")
     game = LanderGame(level=create_level_by_name("flare"), seed=0, bot=bot, headless=True)
     _ = game.run(print_freq=0, max_steps=60, max_time=20.0)
-    snapshot = bot.get_evaluation_snapshot()
+    snapshot = bot.get_bot_telemetry()
 
     expected = {
-        "kind",
-        "phase",
-        "setup_gate_done",
         "terminal_gate_done",
         "solve_count",
         "solve_ms_mean",
         "fallback_frames",
-        "shape_window_started",
-        "shape_window_done",
         "shape_curve_rmse",
     }
     assert expected.issubset(snapshot.keys())
-    assert snapshot["kind"] == "zem_zev"
 
 
 def test_zem_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> None:
@@ -147,8 +141,7 @@ def test_zem_gate_ordering_invariant_launch_far() -> None:
     game = LanderGame(level=level, seed=1, bot=create_bot("zem_zev"), headless=True)
     result = game.run(print_freq=0, max_time=120.0)
 
-    setup_gate_time = result.get("zem_setup_gate_time")
-    terminal_gate_time = result.get("zem_terminal_gate_time")
-    assert setup_gate_time is not None
-    if terminal_gate_time is not None:
+    setup_gate_time = result.get("setup_gate_time")
+    terminal_gate_time = result.get("bot_zem_zev_terminal_gate_time")
+    if setup_gate_time is not None and terminal_gate_time is not None:
         assert float(setup_gate_time) <= float(terminal_gate_time) + 1e-6

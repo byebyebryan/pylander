@@ -6,12 +6,23 @@ from core.bot import Bot, BotEvalDecision, FlightPhaseSnapshot, SetupGateMetrics
 from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
 
 
-def _zem_snapshot(snapshot: Any) -> dict[str, Any] | None:
-    if not isinstance(snapshot, dict):
-        return None
-    if str(snapshot.get("kind", "")).strip().lower() != "zem_zev":
-        return None
-    return snapshot
+def _safe_bot_telemetry(bot: Any) -> dict[str, Any]:
+    getter = getattr(bot, "get_bot_telemetry", None)
+    if not callable(getter):
+        return {}
+    try:
+        snapshot = getter()
+    except Exception:
+        return {}
+    return dict(snapshot) if isinstance(snapshot, dict) else {}
+
+
+def _bot_metric_prefix(bot: Bot) -> str:
+    raw_name = getattr(bot, "_bot_name", None)
+    if not isinstance(raw_name, str) or not raw_name.strip():
+        raw_name = type(bot).__name__
+    token = str(raw_name).strip().lower().replace("-", "_").replace(" ", "_")
+    return f"bot_{token}_"
 
 
 def _safe_phase_snapshot(bot: Any) -> FlightPhaseSnapshot | None:
@@ -98,19 +109,11 @@ def merge_bot_snapshots_into_result(
                 result=result,
                 phase_snapshot=phase_snapshot,
             )
-        get_snapshot = getattr(bot, "get_evaluation_snapshot", None)
-        if not callable(get_snapshot):
-            continue
-        try:
-            snapshot = _zem_snapshot(get_snapshot())
-        except Exception:
-            continue
-        if snapshot is None:
-            continue
-        for key, value in snapshot.items():
-            if key == "kind":
+        bot_prefix = _bot_metric_prefix(bot)
+        for key, value in _safe_bot_telemetry(bot).items():
+            if not isinstance(key, str):
                 continue
-            out_key = key if str(key).startswith("zem_") else f"zem_{key}"
+            out_key = key if key.startswith("bot_") else f"{bot_prefix}{key}"
             result.setdefault(out_key, value)
 
 

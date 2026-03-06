@@ -127,19 +127,17 @@ def build_headless_stats(entity, terrain) -> str:
     phys = require_component(entity, PhysicsState)
     eng = require_component(entity, Engine)
     tank = require_component(entity, FuelTank)
-    geo = require_component(entity, LanderGeometry)
-    terrain_y = sample_terrain_height(terrain, trans.pos.x, lod=0)
-    altitude = clearance_above_terrain(
-        trans.pos.y,
-        terrain_y,
-        body_height=geo.height,
-    )
+    _ = terrain
     angle_deg = math.degrees(trans.rotation)
     thrust_pct = eng.thrust_level * 100.0
     fuel_pct = 100.0 * tank.fuel / max(1e-6, tank.max_fuel)
     return (
-        f"x:{trans.pos.x:6.1f} alt:{altitude:6.1f} | "
-        f"vx:{phys.vel.x:6.2f} vy:{phys.vel.y:6.2f} | "
-        f"ang:{angle_deg:5.1f} thr:{thrust_pct:3.0f}% | "
-        f"fuel:{fuel_pct:5.1f}%"
+        "ship "
+        f"x={trans.pos.x:6.1f} "
+        f"y={trans.pos.y:6.1f} "
+        f"vx={phys.vel.x:6.2f} "
+        f"vy={phys.vel.y:6.2f} "
+        f"ang={angle_deg:5.1f} "
+        f"thr={thrust_pct:3.0f}% "
+        f"fuel={fuel_pct:5.1f}%"
     )

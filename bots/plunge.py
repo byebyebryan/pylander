@@ -20,7 +20,7 @@ from bots._bot_math import (
     vehicle_limits,
 )
 from bots._targeting import pick_target
-from core.bot import Bot, BotAction, Sensors
+from core.bot import Bot, BotAction, BotDisplayState, Sensors
 from core.sensor import RadarContact
 
 
@@ -62,7 +62,8 @@ class PlungeBot(Bot):
         self._policy = BALANCED_PLUNGE_POLICY
         self._behavior = "balanced"
         self._prev_angle_cmd = 0.0
-        self._ballistic_debug_summary = ""
+        self._display_phase = "coast"
+        self._display_summary = ""
         self.set_behavior(behavior)
 
     def set_behavior(self, behavior: str) -> None:
@@ -77,6 +78,10 @@ class PlungeBot(Bot):
     @property
     def behavior(self) -> str:
         return self._behavior
+
+    def _set_display_state(self, *, phase: str, summary: str) -> None:
+        self._display_phase = phase
+        self._display_summary = summary.strip()
 
     def _engine_profile(self) -> tuple[float, float, float, float]:
         return engine_profile(self.vehicle_info)
@@ -257,12 +262,6 @@ class PlungeBot(Bot):
             vy_sp = -clamp(0.3 + (0.06 * alt), 0.2, 0.7)
             vx_sp = clamp(vx_sp, -0.5, 0.5)
 
-        self._ballistic_debug_summary = (
-            f"ball tti:{stable(time_to_impact, 1):4.1f} "
-            "src:a "
-            f"pdx:{stable(track_dx, 1):5.1f} "
-            f"burn:{int(burn_now)}"
-        )
         return GuidanceTargets(
             phase=phase,
             vertical_mode=vertical_mode,
@@ -275,13 +274,13 @@ class PlungeBot(Bot):
 
     def update(self, dt: float, passive: Sensors) -> BotAction:
         if passive.state in ("landed", "crashed", "out_of_fuel"):
-            self._ballistic_debug_summary = ""
             action = BotAction(
                 0.0,
                 passive.angle,
                 False,
-                status=f"{self._policy.status_prefix}:{passive.state}",
+                status=f"{self._policy.status_prefix} {passive.state}",
             )
+            self._set_display_state(phase=str(passive.state), summary=str(passive.state))
             self.status = action.status
             return action
 
@@ -296,11 +295,6 @@ class PlungeBot(Bot):
 
         target = pick_target(passive, pinned_uid=self.pinned_target_uid)
         if target is None:
-            self._ballistic_debug_summary = (
-                f"ball tti:{stable(time_to_impact, 1):4.1f} "
-                "src:a "
-                "burn:0"
-            )
             alt = finite_altitude(passive)
             a_x_sp = self._horizontal_controller(passive, vx_sp=0.0)
             a_up_sp = self._vertical_controller(
@@ -322,7 +316,8 @@ class PlungeBot(Bot):
                 min_throttle=min_throttle,
                 max_throttle=max_throttle,
             )
-            action.status = f"{self._policy.status_prefix}:search"
+            action.status = f"{self._policy.status_prefix} search"
+            self._set_display_state(phase="search", summary="searching target")
             self.status = action.status
             return action
 
@@ -373,21 +368,26 @@ class PlungeBot(Bot):
         )
 
         action.status = (
-            f"{self._policy.status_prefix}:{guidance.phase} dx:{stable(guidance.dx, 1):6.1f} "
-            f"vx:{stable(passive.vx, 1):5.1f} vy:{stable(passive.vy_up, 1):5.1f} "
-            f"vys:{stable(guidance.vy_sp, 1):5.1f} "
-            f"balt:{stable(guidance.burn_altitude, 1):5.1f}"
+            f"{self._policy.status_prefix} {guidance.phase} "
+            f"dx={stable(guidance.dx, 1):.1f} vy={stable(passive.vy_up, 1):.1f}"
+        )
+        self._set_display_state(
+            phase=guidance.phase,
+            summary=(
+                f"dx={stable(guidance.dx, 1):.1f} "
+                f"vy={stable(passive.vy_up, 1):.1f}->{stable(guidance.vy_sp, 1):.1f}"
+            ),
         )
         self.status = action.status
         return action
 
-    def get_headless_stats(self) -> str:
-        base = super().get_headless_stats()
-        if not self._ballistic_debug_summary:
-            return base
-        if not base:
-            return self._ballistic_debug_summary
-        return f"{base} {self._ballistic_debug_summary}"
+    def get_display_state(self) -> BotDisplayState | None:
+        return BotDisplayState(
+            bot_name="plunge",
+            mode="flight",
+            phase=self._display_phase,
+            summary=self._display_summary,
+        )
 
 
 def create_bot() -> Bot:

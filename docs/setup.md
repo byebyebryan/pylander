@@ -8,11 +8,10 @@
 - Force trajectory establishment from a cold state.
 - Measure whether the controller reaches a strong setup gate before coast/terminal progression.
 
-Goal-based eval option: run with selector goal `setup` (for example `setup:mid_near:setup:0`) to stop when `zem_setup_gate_done` latches.
+Goal-based eval option: run with selector goal `setup` (for example `setup:mid_near:setup:0`) to stop when `setup_gate_done` latches.
 
-Trajectory-shape diagnostics are also exported through `zem_shape_*` fields to
-quantify setup ballistic quality (apex target/actual, curve RMSE, projected-dx
-mean/max, shortfall ratio).
+Trajectory-shape diagnostics are also exported through the retained
+`bot_zem_zev_shape_*` fields to quantify setup ballistic quality.
 
 ## Scenario design
 
@@ -42,8 +41,8 @@ Defaults:
 
 - `eval_goal`, `eval_early_end`, `eval_end_reason`
 - `setup_goal_time`, `setup_goal_fuel_consumed`, `setup_goal_projected_dx`, `setup_goal_time_to_target`
-- `zem_setup_gate_done`, `zem_setup_gate_time`, `zem_setup_gate_altitude`, `zem_setup_gate_projected_dx`
-- `zem_shape_*` diagnostics for setup-trajectory quality
+- `setup_gate_done`, `setup_gate_time`, `setup_gate_altitude`, `setup_gate_projected_dx`
+- `bot_zem_zev_shape_*` diagnostics for setup-trajectory quality
 
 Common `zem_zev` setup-shape tuning knobs for this level:
 

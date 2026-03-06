@@ -118,6 +118,17 @@ class FlightPhaseSnapshot:
 
 
 @dataclass(frozen=True)
+class BotDisplayState:
+    """Structured bot status for UI and headless presentation."""
+
+    bot_name: str | None = None
+    mode: str | None = None
+    phase: str | None = None
+    summary: str = ""
+    detail: str = ""
+
+
+@dataclass(frozen=True)
 class PlotMarker:
     """Optional generic plot marker emitted by a bot."""
 
@@ -203,6 +214,21 @@ class Bot(ABC):
 
         Default shows only the current status, if any. Bots can override.
         """
+        display = self.get_display_state()
+        if display is not None:
+            lines = [""]
+            bot_label = display.bot_name or type(self).__name__
+            if display.mode and display.phase:
+                lines.append(f"BOT: {bot_label} [{display.mode}/{display.phase}]")
+            elif display.phase:
+                lines.append(f"BOT: {bot_label} [{display.phase}]")
+            else:
+                lines.append(f"BOT: {bot_label}")
+            if display.summary:
+                lines.append(f"BOT SUMMARY: {display.summary}")
+            if display.detail:
+                lines.append(f"BOT DETAIL: {display.detail}")
+            return lines
         s = self.get_status() if hasattr(self, "get_status") else ""
         if s:
             return ["", f"BOT: {s}"]
@@ -213,11 +239,27 @@ class Bot(ABC):
 
         Default uses status if available; bots can override to add more.
         """
+        display = self.get_display_state()
+        if display is not None:
+            parts: list[str] = []
+            bot_label = display.bot_name or type(self).__name__
+            parts.append(f"bot={bot_label}")
+            if display.mode:
+                parts.append(f"mode={display.mode}")
+            if display.phase:
+                parts.append(f"phase={display.phase}")
+            if display.summary:
+                parts.append(display.summary)
+            return " ".join(parts)
         s = self.get_status() if hasattr(self, "get_status") else ""
         return f"bot:{s}" if s else ""
 
-    def get_evaluation_snapshot(self) -> dict[str, Any] | None:
-        """Return optional structured evaluation state for the current frame."""
+    def get_bot_telemetry(self) -> dict[str, Any]:
+        """Return optional bot-owned telemetry for normalized results."""
+        return {}
+
+    def get_display_state(self) -> BotDisplayState | None:
+        """Return optional structured display state for UI and headless logs."""
         return None
 
     def get_flight_phase_snapshot(self) -> FlightPhaseSnapshot | None:

@@ -131,10 +131,10 @@ Use these heuristics consistently.
 
 Use available gate and ZEM fields to detect shaping issues:
 
-- high `|zem_setup_gate_projected_dx|` suggests poor setup handoff
-- high `|zem_terminal_gate_projected_dx|` suggests insufficient passive alignment
+- high `|setup_gate_projected_dx|` suggests poor setup handoff
+- high `|bot_zem_zev_terminal_gate_projected_dx|` suggests insufficient passive alignment
 - large gap between setup and terminal projected-dx suggests heavy late correction burden
-- large `zem_shape_curve_rmse` / `zem_shape_apex_error` suggests trajectory shape mismatch
+- large `bot_zem_zev_shape_curve_rmse` / `bot_zem_zev_shape_apex_error` suggests trajectory shape mismatch
 - gate ordering anomalies (for runs with both timestamps) indicate phase/control bugs
 
 ### Compute

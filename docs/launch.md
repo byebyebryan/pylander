@@ -34,8 +34,8 @@ Run-end success fields:
 - `failure_mode="wrong_pad"` when landed on non-destination pad
 
 Additional guidance diagnostics from `zem_zev` are merged into launch results
-with `zem_*` keys (including setup/terminal gate telemetry and `zem_shape_*`
-trajectory-shape fields).
+through the generic `setup_gate_*` fields plus retained bot-owned
+`bot_zem_zev_*` telemetry.
 
 ## Commands
 

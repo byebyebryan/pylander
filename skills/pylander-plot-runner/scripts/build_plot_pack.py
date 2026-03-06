@@ -76,15 +76,15 @@ def _build_cases_from_records(records: list[dict[str, Any]], *, top_n: int) -> l
     ranked = sorted(
         records,
         key=lambda r: (
-            _abs_float(r.get("zem_setup_gate_projected_dx")),
-            _abs_float(r.get("zem_terminal_gate_projected_dx")),
+            _abs_float(r.get("setup_gate_projected_dx")),
+            _abs_float(r.get("bot_zem_zev_terminal_gate_projected_dx")),
             _abs_float(r.get("fuel_consumed")),
         ),
         reverse=True,
     )
     for rec in ranked:
-        setup_dx = _abs_float(rec.get("zem_setup_gate_projected_dx"))
-        terminal_dx = _abs_float(rec.get("zem_terminal_gate_projected_dx"))
+        setup_dx = _abs_float(rec.get("setup_gate_projected_dx"))
+        terminal_dx = _abs_float(rec.get("bot_zem_zev_terminal_gate_projected_dx"))
         fuel = _abs_float(rec.get("fuel_consumed"))
         if setup_dx <= 0.0 and terminal_dx <= 0.0 and fuel <= 0.0:
             continue
@@ -98,8 +98,10 @@ def _build_cases_from_records(records: list[dict[str, Any]], *, top_n: int) -> l
                 "severity": severity,
                 "reason": reason,
                 "evidence": {
-                    "zem_setup_gate_projected_dx": rec.get("zem_setup_gate_projected_dx"),
-                    "zem_terminal_gate_projected_dx": rec.get("zem_terminal_gate_projected_dx"),
+                    "setup_gate_projected_dx": rec.get("setup_gate_projected_dx"),
+                    "bot_zem_zev_terminal_gate_projected_dx": rec.get(
+                        "bot_zem_zev_terminal_gate_projected_dx"
+                    ),
                     "fuel_consumed": rec.get("fuel_consumed"),
                 },
             }

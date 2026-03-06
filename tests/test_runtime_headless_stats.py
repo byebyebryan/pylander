@@ -28,4 +28,4 @@ def test_print_headless_stats_formats_actor_and_bot_lines(
     )
 
     out = capsys.readouterr().out.strip()
-    assert out == "t: 12.34 | ship:ok | a:bot:a"
+    assert out == "t= 12.34 | ship:ok | bot:a"
