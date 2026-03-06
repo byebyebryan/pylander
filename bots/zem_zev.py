@@ -13,8 +13,7 @@ from typing import Any
 
 from bots._ballistics import (
     BallisticProjection,
-    build_projection_query,
-    estimate_ballistic_projection_from_result,
+    estimate_target_y_projection,
 )
 from bots._bot_math import clamp, engine_profile, finite_altitude, stable
 from bots._zem_actuation import command_from_plan as _command_from_plan_impl
@@ -37,7 +36,6 @@ from core.bot_queries import BotQuery, BotQueryResults
 from core.config import GRAVITY
 
 _GRAVITY_MAG = abs(float(GRAVITY))
-_QUERY_PROJECTION = "zem_projection"
 
 
 class ZemZevBot(QueryBot):
@@ -601,24 +599,7 @@ class ZemZevBot(QueryBot):
         _ = dt
         if passive.state != "flying":
             return []
-        target = self._resolve_target_contact(passive)
-        if target is not None:
-            dx = float(target.x) - float(passive.x)
-        else:
-            dx = 0.0
-        query = build_projection_query(
-            query_id=_QUERY_PROJECTION,
-            dx=dx,
-            alt=max(0.0, finite_altitude(passive)),
-            vx=float(passive.vx),
-            vy_up=float(passive.vy_up),
-            x=float(passive.x),
-            y=float(passive.y),
-            clearance=0.0,
-        )
-        if query is None:
-            return []
-        return [query]
+        return []
 
     def act(
         self,
@@ -626,6 +607,7 @@ class ZemZevBot(QueryBot):
         passive: PassiveSensors,
         results: BotQueryResults,
     ) -> BotAction:
+        _ = results
         if passive.state == "crashed":
             return self._reset_with_status(angle=passive.angle, status="zem_zev:crashed")
         if passive.state == "out_of_fuel":
@@ -713,13 +695,13 @@ class ZemZevBot(QueryBot):
 
         self._elapsed_time_s += max(0.0, float(dt))
         self._maybe_start_shape_window(passive=passive, dx=dx, dy=dy)
-        projection = estimate_ballistic_projection_from_result(
+        projection = estimate_target_y_projection(
             dx=dx,
-            alt=alt,
+            dy=dy,
             vx=float(passive.vx),
             vy_up=float(passive.vy_up),
             x=float(passive.x),
-            result=results.get(_QUERY_PROJECTION),
+            y=float(passive.y),
         )
         self._update_phase_tracking(
             passive=passive,

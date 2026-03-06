@@ -296,7 +296,7 @@ def test_projection_decoder_falls_back_without_result_like_legacy() -> None:
     assert projection.used_sensor is False
 
 
-def test_plunge_and_zem_bots_use_query_path(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_plunge_uses_query_path_but_zem_is_queryless(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PYLANDER_BOT_PROFILE", "1")
 
     plunge = create_bot("plunge")
@@ -319,4 +319,4 @@ def test_plunge_and_zem_bots_use_query_path(monkeypatch: pytest.MonkeyPatch) -> 
         headless=True,
     )
     zem_result = zem_game.run(print_freq=0, max_steps=40, max_time=20.0)
-    assert zem_result["bot_profile_query_total"] > 0
+    assert zem_result["bot_profile_query_total"] == 0
