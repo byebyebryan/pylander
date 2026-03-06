@@ -206,9 +206,6 @@ def normalize_run_result(
         "bot_profile_query_terrain_profile": _to_optional_float(
             result.get("bot_profile_query_terrain_profile")
         ),
-        "bot_profile_query_ballistic": _to_optional_float(
-            result.get("bot_profile_query_ballistic")
-        ),
         "zem_peak_alt_over_target": _to_optional_float(
             result.get("zem_peak_alt_over_target")
         ),

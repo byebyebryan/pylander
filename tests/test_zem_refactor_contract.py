@@ -28,11 +28,10 @@ def _passive(*, state: str = "flying") -> PassiveSensors:
     )
 
 
-def test_zem_plan_emits_projection_query_id() -> None:
+def test_zem_plan_is_queryless() -> None:
     bot = create_bot("zem_zev")
     queries = bot.plan(1.0 / 30.0, _passive(state="flying"))
-    assert len(queries) == 1
-    assert queries[0].id == "zem_projection"
+    assert queries == []
 
 
 def test_zem_non_flying_status_resets_runtime_state() -> None:

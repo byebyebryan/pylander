@@ -78,7 +78,6 @@ def update_bot_steps(
                             query_total=batch_stats.total,
                             query_raycast=batch_stats.raycast,
                             query_terrain_profile=batch_stats.terrain_profile,
-                            query_ballistic=batch_stats.ballistic,
                         )
 
                     t_act = perf_counter() if profiler.enabled else 0.0

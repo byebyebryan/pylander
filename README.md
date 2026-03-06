@@ -17,7 +17,6 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 - Headless deterministic evaluation + benchmark reports
 - Unified optimizer bot (`zem_zev`) for full-envelope flight
 - Terminal benchmark bot (`plunge`)
-- Query-API demo bot (`query_demo`) for batched sensor requests
 
 ## Setup
 
@@ -56,7 +55,6 @@ uv run python main.py sim flare:mid:0 --bot zem_zev
 uv run python main.py sim coast:mid_wide:3 --bot zem_zev
 uv run python main.py sim climb:slope_mid:0 --bot zem_zev
 uv run python main.py sim plunge:mid_normal:0 --bot plunge
-uv run python main.py sim flare:mid:0 --bot query_demo
 ```
 
 Selector format:
@@ -229,7 +227,7 @@ Optional interval override (seconds):
 
 ```bash
 PYLANDER_BOT_PROFILE=1 PYLANDER_BOT_PROFILE_INTERVAL_S=2 \
-  uv run python main.py sim flare:mid:0 --bot query_demo
+  uv run python main.py sim plunge:mid_normal:0 --bot plunge
 ```
 
 Profiled timing covers passive sensor build, active sensor build (legacy bots), query evaluation (query bots), and bot update time.

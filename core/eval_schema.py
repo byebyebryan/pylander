@@ -51,7 +51,6 @@ HEADLESS_RESULT_FIELDS: tuple[str, ...] = (
     "bot_profile_query_total",
     "bot_profile_query_raycast",
     "bot_profile_query_terrain_profile",
-    "bot_profile_query_ballistic",
     "zem_peak_alt_over_target",
     "zem_lateral_overshoot",
     "zem_hover_time",

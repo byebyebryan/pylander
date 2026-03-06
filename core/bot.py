@@ -9,7 +9,6 @@ from core.bot_queries import (
     BotQueryResults,
 )
 from core.sensor import RadarContact, ProximityContact
-from core.terrain import sample_ballistic_trajectory
 
 
 @dataclass(frozen=True)
@@ -93,29 +92,6 @@ class ActiveSensors(Protocol):
     ) -> list[tuple[float, float]]:
         """Sample terrain between two x-coordinates."""
         ...
-
-    def ballistic_trajectory(
-        self,
-        x: float,
-        y: float,
-        vx: float,
-        vy_up: float,
-        *,
-        max_distance: float = 3000.0,
-        segment_length: float = 24.0,
-        max_points: int = 256,
-        lod: int = 0,
-        clearance: float = 0.0,
-    ) -> dict[str, Any]:
-        """Predict engine-off trajectory against terrain.
-
-        Returns keys:
-        - points, hit, hit_x, hit_y, hit_time
-        - hit_vx, hit_vy_up, hit_speed
-        - distance, duration, termination
-        """
-        ...
-
 
 @dataclass
 class BotAction:
@@ -240,17 +216,6 @@ class _ActiveSensorImpl:
         self._engine = engine_adapter
         self._actor_uid = actor_uid
         self._terrain = terrain_fn
-        # _ActiveSensorImpl instances are built once per bot step, so this is
-        # effectively a per-step cache for repeated ballistic queries.
-        self._ballistic_cache: dict[tuple[Any, ...], dict[str, Any]] = {}
-
-    @staticmethod
-    def _copy_ballistic_payload(payload: dict[str, Any]) -> dict[str, Any]:
-        out = dict(payload)
-        points = payload.get("points")
-        if isinstance(points, list):
-            out["points"] = list(points)
-        return out
 
     def raycast(self, dir_angle: float, max_range: float | None = None) -> dict:
         rng = self._range() if max_range is None else max_range
@@ -277,74 +242,3 @@ class _ActiveSensorImpl:
             xx = x_start + span * t
             out.append((xx, self.terrain_height(xx, lod=lod)))
         return out
-
-    def ballistic_trajectory(
-        self,
-        x: float,
-        y: float,
-        vx: float,
-        vy_up: float,
-        *,
-        max_distance: float = 3000.0,
-        segment_length: float = 24.0,
-        max_points: int = 256,
-        lod: int = 0,
-        clearance: float = 0.0,
-    ) -> dict[str, Any]:
-        key = (
-            float(x),
-            float(y),
-            float(vx),
-            float(vy_up),
-            float(max_distance),
-            float(segment_length),
-            int(max_points),
-            int(lod),
-            float(clearance),
-        )
-        cached = self._ballistic_cache.get(key)
-        if cached is not None:
-            return self._copy_ballistic_payload(cached)
-        if self._terrain is None:
-            payload = {
-                "points": [(float(x), float(y))],
-                "hit": False,
-                "hit_x": None,
-                "hit_y": None,
-                "hit_time": None,
-                "hit_vx": None,
-                "hit_vy_up": None,
-                "hit_speed": None,
-                "distance": 0.0,
-                "duration": 0.0,
-                "termination": "no_terrain",
-            }
-            self._ballistic_cache[key] = payload
-            return self._copy_ballistic_payload(payload)
-        result = sample_ballistic_trajectory(
-            self._terrain,
-            x=x,
-            y=y,
-            vx=vx,
-            vy_up=vy_up,
-            max_distance=max_distance,
-            segment_length=segment_length,
-            max_points=max_points,
-            lod=lod,
-            clearance=clearance,
-        )
-        payload = {
-            "points": result.points,
-            "hit": result.hit,
-            "hit_x": result.hit_x,
-            "hit_y": result.hit_y,
-            "hit_time": result.hit_time,
-            "hit_vx": result.hit_vx,
-            "hit_vy_up": result.hit_vy_up,
-            "hit_speed": result.hit_speed,
-            "distance": result.distance,
-            "duration": result.duration,
-            "termination": result.termination,
-        }
-        self._ballistic_cache[key] = payload
-        return self._copy_ballistic_payload(payload)

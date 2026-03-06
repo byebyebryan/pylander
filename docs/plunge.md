@@ -5,8 +5,8 @@
 Implementation note:
 
 - `plunge` uses the `QueryBot` `plan/act` API.
-- Each tick it requests batched ballistic queries for time-to-impact and target projection.
-- Guidance/control law remains the same; only sensor plumbing moved from per-call `ActiveSensors` to batched query results.
+- Planning math uses analytic ballistic projection to target geometry (target x/y/size), without terrain-impact sensor queries.
+- Terrain-impact ballistic prediction is reserved for rendering overlays, not bot decision-making.
 
 ## Scenario setup
 

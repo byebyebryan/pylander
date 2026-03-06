@@ -61,12 +61,11 @@ Implement `Bot.update(dt, passive, active) -> BotAction`.
 - `raycast(...)`
 - `terrain_height(...)`
 - `terrain_profile(...)`
-- `ballistic_trajectory(...)`
 
 Notes:
 
 - Bots should use the sensor/action API, not engine internals.
-- `ActiveSensors` is rebuilt per bot step and caches repeated ballistic queries within the step.
+- `ActiveSensors` is rebuilt per bot step.
 
 ## QueryBot API (batched active sensors)
 
@@ -84,7 +83,6 @@ For new bots, you can use the optional two-stage API:
 
 Current built-in bots on this interface:
 
-- `query_demo`
 - `plunge`
 - `zem_zev`
 
@@ -92,28 +90,20 @@ Supported queries (`core/bot_queries.py`):
 
 - `BotQueryRaycast`
 - `BotQueryTerrainProfile`
-- `BotQueryBallistic`
 
 Results are keyed by query `id` and returned as typed payloads:
 
 - `RaycastResult`
 - `TerrainProfileResult`
-- `BallisticResult`
 
 Batch evaluator behavior:
 
 - duplicate query IDs are rejected
-- ballistic requests are deduped per tick by input tuple
-- cached ballistic results are cloned per query ID so bots can safely mutate local copies
 
 Backward compatibility:
 
 - Existing external/custom bots can keep using `Bot.update(..., active)` unchanged.
 - Only bots that subclass `QueryBot` use the batched query path.
-
-Demo implementation:
-
-- [`bots/query_demo.py`](../bots/query_demo.py)
 
 ## Bot-loop profiling
 

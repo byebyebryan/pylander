@@ -4,20 +4,17 @@ from dataclasses import dataclass
 from typing import Any
 
 from core.bot_queries import (
-    BallisticResult,
     BotQuery,
-    BotQueryBallistic,
     BotQueryRaycast,
     BotQueryResults,
     BotQueryTerrainProfile,
     RaycastResult,
     TerrainProfileResult,
-    clone_ballistic_result,
 )
 from core.components import Radar, Transform
 from core.ecs import require_component
 from core.maths import Vector2
-from core.terrain import sample_ballistic_trajectory, sample_terrain_height
+from core.terrain import sample_terrain_height
 
 
 @dataclass
@@ -25,7 +22,6 @@ class QueryBatchStats:
     total: int = 0
     raycast: int = 0
     terrain_profile: int = 0
-    ballistic: int = 0
 
 
 def _normalize_query_id(raw_id: str) -> str:
@@ -79,63 +75,6 @@ def _evaluate_terrain_profile(terrain, query: BotQueryTerrainProfile) -> Terrain
     return TerrainProfileResult(points=points)
 
 
-def _ballistic_cache_key(query: BotQueryBallistic) -> tuple[Any, ...]:
-    return (
-        float(query.x),
-        float(query.y),
-        float(query.vx),
-        float(query.vy_up),
-        float(query.max_distance),
-        float(query.segment_length),
-        int(query.max_points),
-        int(query.lod),
-        float(query.clearance),
-    )
-
-
-def _evaluate_ballistic(terrain, query: BotQueryBallistic) -> BallisticResult:
-    if terrain is None:
-        return BallisticResult(
-            points=[(float(query.x), float(query.y))],
-            hit=False,
-            hit_x=None,
-            hit_y=None,
-            hit_time=None,
-            hit_vx=None,
-            hit_vy_up=None,
-            hit_speed=None,
-            distance=0.0,
-            duration=0.0,
-            termination="no_terrain",
-        )
-
-    result = sample_ballistic_trajectory(
-        terrain,
-        x=float(query.x),
-        y=float(query.y),
-        vx=float(query.vx),
-        vy_up=float(query.vy_up),
-        max_distance=float(query.max_distance),
-        segment_length=float(query.segment_length),
-        max_points=int(query.max_points),
-        lod=int(query.lod),
-        clearance=float(query.clearance),
-    )
-    return BallisticResult(
-        points=list(result.points),
-        hit=bool(result.hit),
-        hit_x=result.hit_x,
-        hit_y=result.hit_y,
-        hit_time=result.hit_time,
-        hit_vx=result.hit_vx,
-        hit_vy_up=result.hit_vy_up,
-        hit_speed=result.hit_speed,
-        distance=float(result.distance),
-        duration=float(result.duration),
-        termination=str(result.termination),
-    )
-
-
 def evaluate_bot_queries(
     actor,
     engine_adapter,
@@ -145,7 +84,6 @@ def evaluate_bot_queries(
     seen_ids: set[str] = set()
     out: BotQueryResults = {}
     stats = QueryBatchStats()
-    ballistic_cache: dict[tuple[Any, ...], BallisticResult] = {}
 
     for query in queries:
         query_id = _normalize_query_id(getattr(query, "id", ""))
@@ -162,16 +100,6 @@ def evaluate_bot_queries(
         if isinstance(query, BotQueryTerrainProfile):
             stats.terrain_profile += 1
             out[query_id] = _evaluate_terrain_profile(terrain, query)
-            continue
-
-        if isinstance(query, BotQueryBallistic):
-            stats.ballistic += 1
-            key = _ballistic_cache_key(query)
-            cached = ballistic_cache.get(key)
-            if cached is None:
-                cached = _evaluate_ballistic(terrain, query)
-                ballistic_cache[key] = cached
-            out[query_id] = clone_ballistic_result(cached)
             continue
 
         raise ValueError(f"Unsupported bot query type: {type(query).__name__}")

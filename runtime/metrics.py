@@ -123,7 +123,6 @@ class BotProfileCounter:
     query_total: int = 0
     query_raycast: int = 0
     query_terrain_profile: int = 0
-    query_ballistic: int = 0
 
 
 @dataclass
@@ -215,7 +214,6 @@ class BotLoopProfiler:
         query_total: int,
         query_raycast: int,
         query_terrain_profile: int,
-        query_ballistic: int,
     ) -> None:
         if not self.enabled:
             return
@@ -226,12 +224,10 @@ class BotLoopProfiler:
         self.total.query_total += int(query_total)
         self.total.query_raycast += int(query_raycast)
         self.total.query_terrain_profile += int(query_terrain_profile)
-        self.total.query_ballistic += int(query_ballistic)
 
         counter.query_total += int(query_total)
         counter.query_raycast += int(query_raycast)
         counter.query_terrain_profile += int(query_terrain_profile)
-        counter.query_ballistic += int(query_ballistic)
 
     def record_bot_update(self, uid: str, seconds: float) -> None:
         if not self.enabled:
@@ -297,7 +293,7 @@ class BotLoopProfiler:
                 f"query={self._ms_per_tick(total.query_eval_s, total.ticks):.3f}ms/t "
                 f"update={self._ms_per_tick(total.bot_update_s, total.ticks):.3f}ms/t "
                 f"total={self._ms_per_tick(total.total_tick_s, total.ticks):.3f}ms/t "
-                f"q={total.query_total}/{total.query_raycast}/{total.query_terrain_profile}/{total.query_ballistic}"
+                f"q={total.query_total}/{total.query_raycast}/{total.query_terrain_profile}"
             )
         ]
 
@@ -337,4 +333,3 @@ class BotLoopProfiler:
         result["bot_profile_query_total"] = total.query_total
         result["bot_profile_query_raycast"] = total.query_raycast
         result["bot_profile_query_terrain_profile"] = total.query_terrain_profile
-        result["bot_profile_query_ballistic"] = total.query_ballistic

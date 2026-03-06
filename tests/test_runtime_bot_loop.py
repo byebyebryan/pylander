@@ -53,7 +53,6 @@ def test_update_bot_steps_query_bot_path_records_query_stats() -> None:
     assert profiler.total.query_total == 1
     assert profiler.total.query_terrain_profile == 1
     assert profiler.total.query_raycast == 0
-    assert profiler.total.query_ballistic == 0
 
 
 def test_update_bot_steps_legacy_bot_path_uses_active_sensor_bucket() -> None:
@@ -101,7 +100,6 @@ def test_bot_profiler_emits_total_and_percentiles() -> None:
             query_total=1,
             query_raycast=0,
             query_terrain_profile=1,
-            query_ballistic=0,
         )
         profiler.record_bot_update("bot-1", update_s)
         profiler.record_tick_costs(
