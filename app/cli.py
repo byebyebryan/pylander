@@ -134,6 +134,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub = parser.add_subparsers(dest="command", required=True)
 
+    play = sub.add_parser("play", help="Rendered interactive play session")
+    _add_common_run_args(play, include_freq=True)
+
     run = sub.add_parser("run", help="Single run (headless by default)")
     _add_common_run_args(run, include_freq=True)
     run.add_argument(
@@ -304,6 +307,18 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
         lander_name=lander_name,
         landers=landers,
     )
+
+    if args.command == "play":
+        return parser, RunCommand(
+            run=_build_run_settings(
+                parser,
+                args,
+                levels=levels,
+                default_level=default_level,
+                headless=False,
+                default_plot_mode="none",
+            )
+        )
 
     if args.command == "run":
         headless = not bool(args.interactive)

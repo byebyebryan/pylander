@@ -439,6 +439,26 @@ def test_cli_requires_subcommand() -> None:
         parser.parse_args([])
 
 
+def test_parse_play_command_uses_interactive_defaults() -> None:
+    _parser, command = parse_command(["play"])
+    assert isinstance(command, RunCommand)
+    assert command.run.level_name == "flat"
+    assert command.run.headless is False
+    assert command.run.plot_mode == "none"
+    assert command.run.plot_output == "combined"
+    assert command.run.plot_max_side_px == 1800
+
+
+def test_parse_play_command_accepts_selector_and_bot() -> None:
+    _parser, command = parse_command(["play", "setup_flat:far:3", "--bot", "zem_zev"])
+    assert isinstance(command, RunCommand)
+    assert command.run.level_name == "setup_flat"
+    assert command.run.scenario_name == "far"
+    assert command.run.seed == 3
+    assert command.run.bot_name == "zem_zev"
+    assert command.run.headless is False
+
+
 def test_parse_bench_command_uses_expected_defaults() -> None:
     _parser, command = parse_command(["bench", "flare_plunge"])
     assert isinstance(command, BenchCommand)

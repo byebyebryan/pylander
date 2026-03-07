@@ -32,7 +32,8 @@ uv run python main.py <command> [options]
 
 Commands:
 
-- `run`: single run (`--interactive` for rendered mode, headless otherwise)
+- `play`: single rendered interactive run
+- `run`: single run (`--interactive` kept as a compatibility path, headless otherwise)
 - `sim`: single headless simulation run
 - `plot`: headless simulation with plotting enabled by default
 - `bench`: multi-run benchmark batch
@@ -41,7 +42,14 @@ Run `uv run python main.py --help` for full help.
 
 ## Running
 
-### Interactive (`run --interactive`)
+### Interactive (`play`)
+
+```bash
+uv run python main.py play
+uv run python main.py play flat --bot zem_zev
+```
+
+Legacy compatibility path:
 
 ```bash
 uv run python main.py run --interactive
@@ -60,7 +68,7 @@ uv run python main.py sim flare_plunge:mid_normal:0 --bot plunge
 
 Selector format:
 
-- run/sim/plot selector: `level[:scenario[:goal[:seed]]]`
+- play/run/sim/plot selector: `level[:scenario[:goal[:seed]]]`
 - Use `level::seed` when setting a seed without a scenario.
 - Omit goal to default to `landing`.
 - Setup-goal support is currently exposed by levels: `setup_downhill`, `setup_flat`, `setup_climb`.
@@ -120,7 +128,7 @@ Default policy profile:
 
 ## Key options
 
-### `run` / `sim` / `plot`
+### `play` / `run` / `sim` / `plot`
 
 - selector: `level[:scenario[:goal[:seed]]]`
 - `-b, --bot NAME`
@@ -135,7 +143,7 @@ Default policy profile:
 - `--stop-on-crash`
 - `--stop-on-out-of-fuel`
 - `--stop-on-first-land`
-- `-i, --interactive` (`run` only)
+- `-i, --interactive` (`run` only; compatibility alias for `play`)
 
 ### `bench`
 
