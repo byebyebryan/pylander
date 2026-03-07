@@ -36,7 +36,7 @@ Run-end transfer fields:
 - `failure_mode="wrong_pad"` when landed on the source pad
 - `failure_mode="off_target"` when landed away from both pads
 
-Additional guidance diagnostics from `zem_zev` are merged into launch results
+Additional guidance diagnostics from `zem_zev` are merged into setup-flat results
 through the generic `setup_gate_*` fields plus retained bot-owned
 `bot_zem_zev_*` telemetry.
 

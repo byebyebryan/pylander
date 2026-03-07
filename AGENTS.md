@@ -54,7 +54,7 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - Require reproducible evals (seed + scenario + bot + config).
 - Use benchmarks/evals to guide decisions and catch regressions.
 - Use metric gates for bot changes: require measurable improvement or document explicit tradeoffs.
-- Validate downstream impact after focused tuning with a cross-level check (`plunge`/`flare`/`coast`/`setup`/`launch`) before merge.
+- Validate downstream impact after focused tuning with a cross-level check (`flare_plunge`/`flare_normal`/`flare_error`/`setup_downhill`/`setup_flat`/`setup_climb`) before merge.
 
 ## Skill-driven workflow
 - Preferred loop:
@@ -100,7 +100,7 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - `uv run pytest`
 - `uv run ruff check .`
 - If behavior changed: run a relevant headless eval and compare metrics to a baseline
- - Example focused eval: `uv run python main.py sim launch:far:0 --bot zem_zev`
+ - Example focused eval: `uv run python main.py sim setup_flat:far:0 --bot zem_zev`
  - Example quick regression compare: `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot zem_zev`
 - If CLI/defaults/workflows changed: update `README.md`
 - Don’t check in artifacts (`outputs/` stays local/ignored), including benchmark caches and generated plots.
