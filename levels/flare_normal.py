@@ -105,7 +105,7 @@ def _make_spec(*, name: str, start_dx: float, start_dy: float, cargo_mass: float
     )
 
 
-class FlareLevel(ScenarioCatalogMixin, ScenarioLevel):
+class FlareNormalLevel(ScenarioCatalogMixin, ScenarioLevel):
     default_bot_name = "zem_zev"
     _scenario_by_name = _SCENARIO_BY_NAME
     _default_scenario_name = _DEFAULT_SCENARIO
@@ -238,7 +238,7 @@ class FlareLevel(ScenarioCatalogMixin, ScenarioLevel):
     @staticmethod
     def _compute_accel_limits(actor) -> tuple[float, float]:
         engine = require_component(actor, Engine)
-        total_mass = FlareLevel._compute_total_mass(actor)
+        total_mass = FlareNormalLevel._compute_total_mass(actor)
         max_force = float(engine.max_power) * float(engine.max_thrust)
         a_total = max(0.1, max_force / total_mass)
         a_up_max = max(0.1, a_total - _GRAVITY_MAG)
@@ -387,4 +387,4 @@ class FlareLevel(ScenarioCatalogMixin, ScenarioLevel):
 
 
 def create_level() -> Level:
-    return FlareLevel()
+    return FlareNormalLevel()

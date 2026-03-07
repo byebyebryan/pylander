@@ -1,42 +1,53 @@
 from __future__ import annotations
 
 import core.terrain as _terrain
+from dataclasses import dataclass
+
 from core.components import CargoHold, Transform
 from core.ecs import require_component
 from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
 from core.level import Level
 from core.maths import Vector2
-from dataclasses import dataclass
 
-from levels.common import PresetLevel, SiteSpec, get_mass
+from levels.common import (
+    PresetLevel,
+    SiteSpec,
+    apply_setup_transfer_result,
+    get_mass,
+    resolve_landed_site_uid,
+)
 from levels.scenario_common import ScenarioCatalogMixin
 
 _SOURCE_PAD_X = 0.0
+_SOURCE_SITE_UID = "setup_transfer_source"
+_TARGET_SITE_UID = "setup_transfer_target"
 
 
 @dataclass(frozen=True)
-class ClimbScenario:
+class SetupDownhillScenario:
     name: str
     terrain_kind: str
     target_dx: float
     target_dy: float
 
 
-_SCENARIOS: tuple[ClimbScenario, ...] = (
-    ClimbScenario(name="slope_low", terrain_kind="slope", target_dx=400.0, target_dy=200.0),
-    ClimbScenario(name="slope_mid", terrain_kind="slope", target_dx=400.0, target_dy=400.0),
-    ClimbScenario(name="slope_high", terrain_kind="slope", target_dx=400.0, target_dy=800.0),
+_SCENARIOS: tuple[SetupDownhillScenario, ...] = (
+    SetupDownhillScenario(name="low", terrain_kind="slope", target_dx=400.0, target_dy=-200.0),
+    SetupDownhillScenario(name="mid", terrain_kind="slope", target_dx=400.0, target_dy=-400.0),
+    SetupDownhillScenario(name="high", terrain_kind="slope", target_dx=400.0, target_dy=-800.0),
 )
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "slope_mid"
-_SMOKE_BENCHMARK_SCENARIOS: tuple[str, ...] = ("slope_mid",)
+_DEFAULT_SCENARIO = "mid"
+_SMOKE_BENCHMARK_SCENARIOS: tuple[str, ...] = ("mid",)
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    "slope_low",
-    "slope_mid",
-    "slope_high",
+    "low",
+    "mid",
+    "high",
 )
-class ClimbLevel(ScenarioCatalogMixin, PresetLevel):
-    """Pad-to-pad climb transfer with uphill destination profiles and no obstacles."""
+
+
+class SetupDownhillLevel(ScenarioCatalogMixin, PresetLevel):
+    """Pad-to-pad downhill transfer with descending destination profiles."""
 
     default_bot_name = "zem_zev"
     dynamic_site_enabled = False
@@ -44,7 +55,6 @@ class ClimbLevel(ScenarioCatalogMixin, PresetLevel):
     _default_scenario_name = _DEFAULT_SCENARIO
     _smoke_benchmark_scenarios = _SMOKE_BENCHMARK_SCENARIOS
     _quick_benchmark_scenarios = _QUICK_BENCHMARK_SCENARIOS
-    _benchmark_policy = "observe_only"
     _supported_eval_goals = (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
 
     site_specs = ()
@@ -68,7 +78,7 @@ class ClimbLevel(ScenarioCatalogMixin, PresetLevel):
         return False
 
     @staticmethod
-    def _scenario_slope(scenario: ClimbScenario) -> float:
+    def _scenario_slope(scenario: SetupDownhillScenario) -> float:
         if scenario.terrain_kind != "slope":
             return 0.0
         return float(scenario.target_dy) / max(1e-6, float(scenario.target_dx))
@@ -82,25 +92,20 @@ class ClimbLevel(ScenarioCatalogMixin, PresetLevel):
         scenario = self._active_scenario()
         dest_x = _SOURCE_PAD_X + float(scenario.target_dx)
         slope = self._scenario_slope(scenario)
-        target_mode = "flush_flatten"
         self.site_specs = (
             SiteSpec(
-                uid="climb_site_source",
+                uid=_SOURCE_SITE_UID,
                 x=_SOURCE_PAD_X,
                 size=110.0,
                 award=100.0,
                 fuel_price=8.0,
             ),
             SiteSpec(
-                uid="climb_site_target",
+                uid=_TARGET_SITE_UID,
                 x=dest_x,
                 size=110.0,
                 award=100.0,
                 fuel_price=8.0,
-                terrain_mode=target_mode,
-                terrain_bound=True,
-                y_offset=0.0,
-                support_height=40.0,
             ),
         )
         super().setup(game, seed)
@@ -122,20 +127,14 @@ class ClimbLevel(ScenarioCatalogMixin, PresetLevel):
                 "slope": slope,
                 "dx": scenario.target_dx,
                 "dy": scenario.target_dy,
-                "target_mode": target_mode,
             },
         )
-        target_site = self.sites.get_site("climb_site_target")
+        target_site = self.sites.get_site(_TARGET_SITE_UID)
         if target_site is not None:
             setattr(self, "eval_target_pos", Vector2(target_site.x, target_site.y))
 
     def _resolve_landed_site_uid(self, landed_x: float) -> str | None:
-        for spec in self.site_specs:
-            half = 0.5 * float(spec.size)
-            distance = abs(float(landed_x) - float(spec.x))
-            if distance <= half + 1e-6:
-                return spec.uid
-        return None
+        return resolve_landed_site_uid(self.site_specs, landed_x)
 
     def update(self, game, dt: float) -> None:
         _ = game, dt
@@ -150,19 +149,14 @@ class ClimbLevel(ScenarioCatalogMixin, PresetLevel):
             trans = require_component(actor, Transform)
             landed_uid = self._resolve_landed_site_uid(float(trans.pos.x))
 
-        climb_arrived = state == "landed" and landed_uid == "climb_site_target"
-        result["climb_arrived"] = climb_arrived
-        result["climb_landed_site_uid"] = landed_uid
-
-        result["success"] = climb_arrived
-        if climb_arrived:
-            result["failure_mode"] = "none"
-        elif state == "landed":
-            result["failure_mode"] = "wrong_pad"
-        else:
-            result["failure_mode"] = state
-        return result
+        return apply_setup_transfer_result(
+            result,
+            state=state,
+            landed_uid=landed_uid,
+            source_uid=_SOURCE_SITE_UID,
+            target_uid=_TARGET_SITE_UID,
+        )
 
 
 def create_level() -> Level:
-    return ClimbLevel()
+    return SetupDownhillLevel()

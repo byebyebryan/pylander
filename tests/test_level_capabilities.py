@@ -45,12 +45,12 @@ def test_resolve_level_eval_goals_defaults_to_landing() -> None:
 
 
 def test_level_eval_goal_support_matches_declared_catalogs() -> None:
-    assert resolve_level_eval_goals(create_level("launch")) == ("landing", "setup")
-    assert resolve_level_eval_goals(create_level("setup")) == ("landing", "setup")
-    assert resolve_level_eval_goals(create_level("climb")) == ("landing", "setup")
-    assert resolve_level_eval_goals(create_level("coast")) == ("landing",)
-    assert resolve_level_eval_goals(create_level("flare")) == ("landing",)
-    assert resolve_level_eval_goals(create_level("plunge")) == ("landing",)
+    assert resolve_level_eval_goals(create_level("setup_flat")) == ("landing", "setup")
+    assert resolve_level_eval_goals(create_level("setup_downhill")) == ("landing", "setup")
+    assert resolve_level_eval_goals(create_level("setup_climb")) == ("landing", "setup")
+    assert resolve_level_eval_goals(create_level("flare_error")) == ("landing",)
+    assert resolve_level_eval_goals(create_level("flare_normal")) == ("landing",)
+    assert resolve_level_eval_goals(create_level("flare_plunge")) == ("landing",)
 
 
 def test_set_eval_goal_checked_rejects_unsupported_goal() -> None:

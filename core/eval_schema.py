@@ -55,10 +55,10 @@ SETUP_GATE_RESULT_FIELDS: tuple[str, ...] = (
 )
 
 ARRIVAL_RESULT_FIELDS: tuple[str, ...] = (
-    "launch_arrived",
-    "launch_landed_site_uid",
-    "climb_arrived",
-    "climb_landed_site_uid",
+    "setup_transfer_source_site_uid",
+    "setup_transfer_target_site_uid",
+    "setup_transfer_landed_site_uid",
+    "setup_transfer_arrived",
 )
 
 BOT_PROFILE_RESULT_FIELDS: tuple[str, ...] = (

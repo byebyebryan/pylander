@@ -119,6 +119,40 @@ def build_end_result_default(game, *, landing_count: int, crash_count: int, scor
     }
 
 
+def resolve_landed_site_uid(site_specs: tuple[SiteSpec, ...], landed_x: float) -> str | None:
+    for spec in site_specs:
+        half = 0.5 * float(spec.size)
+        distance = abs(float(landed_x) - float(spec.x))
+        if distance <= half + 1e-6:
+            return spec.uid
+    return None
+
+
+def apply_setup_transfer_result(
+    result: dict[str, Any],
+    *,
+    state: str,
+    landed_uid: str | None,
+    source_uid: str,
+    target_uid: str,
+) -> dict[str, Any]:
+    arrived = state == "landed" and landed_uid == target_uid
+    result["setup_transfer_source_site_uid"] = source_uid
+    result["setup_transfer_target_site_uid"] = target_uid
+    result["setup_transfer_landed_site_uid"] = landed_uid
+    result["setup_transfer_arrived"] = arrived
+    result["success"] = arrived
+    if arrived:
+        result["failure_mode"] = "none"
+    elif state == "landed" and landed_uid == source_uid:
+        result["failure_mode"] = "wrong_pad"
+    elif state == "landed":
+        result["failure_mode"] = "off_target"
+    else:
+        result["failure_mode"] = state
+    return result
+
+
 class PresetLevel(Level):
     site_specs: tuple[SiteSpec, ...] = ()
     spawn_x: float = 0.0

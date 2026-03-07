@@ -50,7 +50,7 @@ def test_zem_non_flying_status_resets_runtime_state() -> None:
 
 def test_zem_snapshot_contains_expected_contract_keys() -> None:
     bot = create_bot("zem_zev")
-    game = LanderGame(level=create_level_by_name("flare"), seed=0, bot=bot, headless=True)
+    game = LanderGame(level=create_level_by_name("flare_normal"), seed=0, bot=bot, headless=True)
     _ = game.run(print_freq=0, max_steps=60, max_time=20.0)
     snapshot = bot.get_bot_telemetry()
 
@@ -136,7 +136,7 @@ def test_zem_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> Non
 
 
 def test_zem_gate_ordering_invariant_launch_far() -> None:
-    level = create_level_by_name("launch")
+    level = create_level_by_name("setup_flat")
     level.set_eval_scenario("far")
     game = LanderGame(level=level, seed=1, bot=create_bot("zem_zev"), headless=True)
     result = game.run(print_freq=0, max_time=120.0)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import random
 from dataclasses import dataclass
 
 import core.terrain as _terrain
@@ -9,36 +8,46 @@ from core.ecs import require_component
 from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
 from core.level import Level
 from core.maths import Vector2
-from levels.common import PresetLevel, SiteSpec, get_mass
-from levels.scenario_common import (
-    SampleRange,
-    ScenarioCatalogMixin,
-    has_randomized_values,
-    resolve_sample_value,
+
+from levels.common import (
+    PresetLevel,
+    SiteSpec,
+    apply_setup_transfer_result,
+    get_mass,
+    resolve_landed_site_uid,
 )
+from levels.scenario_common import ScenarioCatalogMixin
 
 _SOURCE_PAD_X = 0.0
+_SOURCE_SITE_UID = "setup_transfer_source"
+_TARGET_SITE_UID = "setup_transfer_target"
 
 
 @dataclass(frozen=True)
-class LaunchScenario:
+class SetupClimbScenario:
     name: str
-    dx: float | SampleRange
+    terrain_kind: str
+    target_dx: float
+    target_dy: float
 
 
-_SCENARIOS: tuple[LaunchScenario, ...] = (
-    LaunchScenario(name="near", dx=SampleRange(150.0, 250.0)),
-    LaunchScenario(name="mid", dx=SampleRange(300.0, 500.0)),
-    LaunchScenario(name="far", dx=SampleRange(600.0, 1000.0)),
+_SCENARIOS: tuple[SetupClimbScenario, ...] = (
+    SetupClimbScenario(name="low", terrain_kind="slope", target_dx=400.0, target_dy=200.0),
+    SetupClimbScenario(name="mid", terrain_kind="slope", target_dx=400.0, target_dy=400.0),
+    SetupClimbScenario(name="high", terrain_kind="slope", target_dx=400.0, target_dy=800.0),
 )
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
 _DEFAULT_SCENARIO = "mid"
 _SMOKE_BENCHMARK_SCENARIOS: tuple[str, ...] = ("mid",)
-_QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = ("mid",)
+_QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
+    "low",
+    "mid",
+    "high",
+)
 
 
-class LaunchLevel(ScenarioCatalogMixin, PresetLevel):
-    """Two-pad flat transfer setup for repeated point-to-point launch runs."""
+class SetupClimbLevel(ScenarioCatalogMixin, PresetLevel):
+    """Pad-to-pad climb transfer with uphill destination profiles and no obstacles."""
 
     default_bot_name = "zem_zev"
     dynamic_site_enabled = False
@@ -46,6 +55,7 @@ class LaunchLevel(ScenarioCatalogMixin, PresetLevel):
     _default_scenario_name = _DEFAULT_SCENARIO
     _smoke_benchmark_scenarios = _SMOKE_BENCHMARK_SCENARIOS
     _quick_benchmark_scenarios = _QUICK_BENCHMARK_SCENARIOS
+    _benchmark_policy = "observe_only"
     _supported_eval_goals = (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
 
     site_specs = ()
@@ -66,32 +76,33 @@ class LaunchLevel(ScenarioCatalogMixin, PresetLevel):
         self._benchmark_random_mode = key
 
     def scenario_has_randomized_fields(self, _name: str | None = None) -> bool:
-        scenario = _SCENARIO_BY_NAME[self._eval_scenario_name]
-        return has_randomized_values((scenario.dx,))
+        return False
+
+    @staticmethod
+    def _scenario_slope(scenario: SetupClimbScenario) -> float:
+        if scenario.terrain_kind != "slope":
+            return 0.0
+        return float(scenario.target_dy) / max(1e-6, float(scenario.target_dx))
 
     def _build_base_terrain(self, _seed: int):
-        return _terrain.LodGridGenerator(lambda _x: 0.0)
+        scenario = self._active_scenario()
+        slope = self._scenario_slope(scenario)
+        return _terrain.LodGridGenerator(lambda x: slope * x)
 
     def setup(self, game, seed: int) -> None:
         scenario = self._active_scenario()
-        scenario_name_hash = sum(ord(ch) for ch in scenario.name)
-        rng = random.Random(seed ^ (scenario_name_hash << 1))
-        dest_dx = resolve_sample_value(
-            scenario.dx,
-            mode="median" if self._benchmark_random_mode == "median" else "sample",
-            rng=rng,
-        )
-        dest_x = _SOURCE_PAD_X + dest_dx
+        dest_x = _SOURCE_PAD_X + float(scenario.target_dx)
+        slope = self._scenario_slope(scenario)
         self.site_specs = (
             SiteSpec(
-                uid="launch_site_source",
+                uid=_SOURCE_SITE_UID,
                 x=_SOURCE_PAD_X,
                 size=110.0,
                 award=100.0,
                 fuel_price=8.0,
             ),
             SiteSpec(
-                uid="launch_site_dest",
+                uid=_TARGET_SITE_UID,
                 x=dest_x,
                 size=110.0,
                 award=100.0,
@@ -99,6 +110,7 @@ class LaunchLevel(ScenarioCatalogMixin, PresetLevel):
             ),
         )
         super().setup(game, seed)
+
         actor = self.world.actors[0]
         cargo = actor.get_component(CargoHold)
         if cargo is not None:
@@ -106,46 +118,46 @@ class LaunchLevel(ScenarioCatalogMixin, PresetLevel):
         engine = getattr(self, "engine", None)
         if engine is not None and hasattr(engine, "set_lander_mass"):
             engine.set_lander_mass(get_mass(actor), uid=actor.uid)
+
         setattr(self, "scenario_name", scenario.name)
         setattr(
             self,
             "_scenario_params",
             {
-                "dx": dest_dx,
+                "terrain_kind": scenario.terrain_kind,
+                "slope": slope,
+                "dx": scenario.target_dx,
+                "dy": scenario.target_dy,
             },
         )
-        dest_site = self.sites.get_site("launch_site_dest")
-        if dest_site is not None:
-            setattr(self, "eval_target_pos", Vector2(dest_site.x, dest_site.y))
+        target_site = self.sites.get_site(_TARGET_SITE_UID)
+        if target_site is not None:
+            setattr(self, "eval_target_pos", Vector2(target_site.x, target_site.y))
 
     def _resolve_landed_site_uid(self, landed_x: float) -> str | None:
-        for spec in self.site_specs:
-            half = 0.5 * float(spec.size)
-            distance = abs(float(landed_x) - float(spec.x))
-            if distance <= half + 1e-6:
-                return spec.uid
-        return None
+        return resolve_landed_site_uid(self.site_specs, landed_x)
+
+    def update(self, game, dt: float) -> None:
+        _ = game, dt
 
     def end(self, game):
         result = super().end(game)
+        actor = self.world.actors[0]
+
         state = str(result.get("state", "unknown"))
         landed_uid: str | None = None
         if state == "landed":
-            actor = self.world.actors[0]
             trans = require_component(actor, Transform)
             landed_uid = self._resolve_landed_site_uid(float(trans.pos.x))
-        launch_arrived = state == "landed" and landed_uid == "launch_site_dest"
-        result["launch_arrived"] = launch_arrived
-        result["launch_landed_site_uid"] = landed_uid
-        result["success"] = launch_arrived
-        if launch_arrived:
-            result["failure_mode"] = "none"
-        elif state == "landed":
-            result["failure_mode"] = "wrong_pad"
-        else:
-            result["failure_mode"] = state
-        return result
+
+        return apply_setup_transfer_result(
+            result,
+            state=state,
+            landed_uid=landed_uid,
+            source_uid=_SOURCE_SITE_UID,
+            target_uid=_TARGET_SITE_UID,
+        )
 
 
 def create_level() -> Level:
-    return LaunchLevel()
+    return SetupClimbLevel()

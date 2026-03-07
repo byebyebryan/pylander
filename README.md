@@ -6,8 +6,8 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 
 - Start here: [`docs/README.md`](docs/README.md)
 - Bot framework + API: [`docs/overview.md`](docs/overview.md)
-- Bot docs: [`docs/plunge.md`](docs/plunge.md), [`docs/zem_zev.md`](docs/zem_zev.md)
-- Scenario docs: [`docs/flare.md`](docs/flare.md), [`docs/coast.md`](docs/coast.md), [`docs/climb.md`](docs/climb.md), [`docs/setup.md`](docs/setup.md), [`docs/launch.md`](docs/launch.md)
+- Bot docs: [`docs/flare_plunge.md`](docs/flare_plunge.md), [`docs/zem_zev.md`](docs/zem_zev.md)
+- Scenario docs: [`docs/flare_normal.md`](docs/flare_normal.md), [`docs/flare_error.md`](docs/flare_error.md), [`docs/setup_downhill.md`](docs/setup_downhill.md), [`docs/setup_flat.md`](docs/setup_flat.md), [`docs/setup_climb.md`](docs/setup_climb.md)
 
 ## Features
 
@@ -51,11 +51,11 @@ uv run python main.py run --interactive flat --bot zem_zev
 ### Single headless run (`sim`)
 
 ```bash
-uv run python main.py sim flare:mid:0 --bot zem_zev
-uv run python main.py sim setup:mid_near:setup:0 --bot zem_zev
-uv run python main.py sim coast:mid_wide:3 --bot zem_zev
-uv run python main.py sim climb:slope_mid:0 --bot zem_zev
-uv run python main.py sim plunge:mid_normal:0 --bot plunge
+uv run python main.py sim flare_normal:mid:0 --bot zem_zev
+uv run python main.py sim setup_downhill:mid:setup:0 --bot zem_zev
+uv run python main.py sim flare_error:mid_wide:3 --bot zem_zev
+uv run python main.py sim setup_climb:mid:0 --bot zem_zev
+uv run python main.py sim flare_plunge:mid_normal:0 --bot plunge
 ```
 
 Selector format:
@@ -63,14 +63,14 @@ Selector format:
 - run/sim/plot selector: `level[:scenario[:goal[:seed]]]`
 - Use `level::seed` when setting a seed without a scenario.
 - Omit goal to default to `landing`.
-- Setup-goal support is currently exposed by levels: `setup`, `launch`, `climb`.
+- Setup-goal support is currently exposed by levels: `setup_downhill`, `setup_flat`, `setup_climb`.
 - Bot selector remains bot-only: `--bot <name>`.
 
 ### Plot run (`plot`)
 
 ```bash
-uv run python main.py plot launch:far:0 --bot zem_zev
-uv run python main.py plot launch:far:0 --bot zem_zev --plot all --plot-output both
+uv run python main.py plot setup_flat:far:0 --bot zem_zev
+uv run python main.py plot setup_flat:far:0 --bot zem_zev --plot all --plot-output both
 ```
 
 Plot outputs are written under `outputs/plots/<selector>_<timestamp>/` when plotting is enabled.
@@ -78,21 +78,21 @@ Plot outputs are written under `outputs/plots/<selector>_<timestamp>/` when plot
 ### Benchmark batch (`bench`)
 
 ```bash
-# Coast subset over seed range
+# Flare-error subset over seed range
 uv run python main.py bench \
-  coast:shallow_tight:0-19 \
-  coast:mid_wide:0-19 \
-  coast:steep_wide:0-19 \
+  flare_error:shallow_tight:0-19 \
+  flare_error:mid_wide:0-19 \
+  flare_error:steep_wide:0-19 \
   --bot zem_zev
 
 # Multi-level benchmark + reports (one selector per level/scenario spec)
-uv run python main.py bench \
-  plunge \
-  flare \
-  coast \
-  climb \
-  setup \
-  launch \
+  uv run python main.py bench \
+  flare_plunge \
+  flare_normal \
+  flare_error \
+  setup_downhill \
+  setup_flat \
+  setup_climb \
   --bot zem_zev \
   --json auto \
   --csv auto
@@ -115,8 +115,8 @@ level metadata from `benchmark_profile()`:
 Default policy profile:
 
 - `flat`, `mountains`: `excluded`
-- `climb`: `observe_only`
-- `plunge`, `flare`, `coast`, `setup`, `launch`: `normal`
+- `setup_climb`: `observe_only`
+- `flare_plunge`, `flare_normal`, `flare_error`, `setup_downhill`, `setup_flat`: `normal`
 
 ## Key options
 
@@ -226,14 +226,14 @@ Telemetry diagnostics executors:
 The game loop now supports lightweight bot-loop profiling in headless mode:
 
 ```bash
-PYLANDER_BOT_PROFILE=1 uv run python main.py sim flare:mid:0 --bot zem_zev
+PYLANDER_BOT_PROFILE=1 uv run python main.py sim flare_normal:mid:0 --bot zem_zev
 ```
 
 Optional interval override (seconds):
 
 ```bash
-PYLANDER_BOT_PROFILE=1 PYLANDER_BOT_PROFILE_INTERVAL_S=2 \
-  uv run python main.py sim plunge:mid_normal:0 --bot plunge
+  PYLANDER_BOT_PROFILE=1 PYLANDER_BOT_PROFILE_INTERVAL_S=2 \
+  uv run python main.py sim flare_plunge:mid_normal:0 --bot plunge
 ```
 
 Profiled timing covers passive pre-update work, bot update time, and total

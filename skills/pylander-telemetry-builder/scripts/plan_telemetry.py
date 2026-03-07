@@ -192,14 +192,14 @@ def _validation_commands(
     if not commands:
         commands.extend(
             [
-                "uv run python main.py sim launch:near:0 --bot zem_zev --freq 1",
-                "PYLANDER_BOT_PROFILE=1 uv run python main.py sim launch:near:0 --bot zem_zev --freq 1",
+                "uv run python main.py sim setup_flat:near:0 --bot zem_zev --freq 1",
+                "PYLANDER_BOT_PROFILE=1 uv run python main.py sim setup_flat:near:0 --bot zem_zev --freq 1",
             ]
         )
 
     if primary_env_flag:
         commands.append(
-            f"{primary_env_flag}=1 uv run python main.py sim launch:near:0 --bot zem_zev --freq 1"
+            f"{primary_env_flag}=1 uv run python main.py sim setup_flat:near:0 --bot zem_zev --freq 1"
         )
 
     return commands

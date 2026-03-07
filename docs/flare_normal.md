@@ -1,6 +1,6 @@
-# Flare level (`flare`)
+# Flare Normal level (`flare_normal`)
 
-`flare` is the terminal-approach sandbox for high-energy inbound entries.
+`flare_normal` is the terminal-approach sandbox for high-energy inbound entries.
 
 ## Purpose
 
@@ -9,7 +9,7 @@
 
 ## Level setup
 
-Defined in [`levels/flare.py`](../levels/flare.py):
+Defined in [`levels/flare_normal.py`](../levels/flare_normal.py):
 
 - Cargo: `2250`
 - Terrain: flat with flush target pad
@@ -32,19 +32,19 @@ Defaults:
 ## Eval behavior
 
 - Single end-to-end evaluation path (entry-to-touchdown).
-- Optional goal metadata is emitted when using goal selectors (for example `flare:mid:setup:0 --bot zem_zev`).
+- Optional goal metadata is emitted when using goal selectors (for example `flare_normal:mid:setup:0 --bot zem_zev`).
 
 ## Commands
 
 ```bash
-uv run python main.py run --interactive flare
-uv run python main.py sim flare:mid:0 --bot zem_zev
+uv run python main.py run --interactive flare_normal
+uv run python main.py sim flare_normal:mid:0 --bot zem_zev
 uv run python main.py bench \
-  flare:shallower:0-9 \
-  flare:shallow:0-9 \
-  flare:mid:0-9 \
-  flare:steep:0-9 \
-  flare:steeper:0-9 \
+  flare_normal:shallower:0-9 \
+  flare_normal:shallow:0-9 \
+  flare_normal:mid:0-9 \
+  flare_normal:steep:0-9 \
+  flare_normal:steeper:0-9 \
   --bot zem_zev
 ```
 

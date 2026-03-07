@@ -31,10 +31,10 @@ def _run_level(
 def test_zem_smoke_flare_plunge_climb_launch_seed0() -> None:
     # Fast envelope smoke: verify stable in-flight behavior without crashes.
     cases = [
-        ("flare", "mid", 20.0, 15.0),
-        ("plunge", "mid_normal", 20.0, 10.0),
-        ("climb", "slope_mid", 25.0, 40.0),
-        ("launch", "mid", 20.0, 25.0),
+        ("flare_normal", "mid", 20.0, 15.0),
+        ("flare_plunge", "mid_normal", 20.0, 10.0),
+        ("setup_climb", "mid", 25.0, 40.0),
+        ("setup_flat", "mid", 20.0, 25.0),
     ]
     for level_name, scenario, max_time, max_offset in cases:
         result, _bot = _run_level(level_name=level_name, scenario=scenario, max_time=max_time)
@@ -45,7 +45,7 @@ def test_zem_smoke_flare_plunge_climb_launch_seed0() -> None:
 
 
 def test_zem_launch_landing_offset_bound_seed0() -> None:
-    result, _bot = _run_level(level_name="launch", scenario="near", max_time=35.0)
+    result, _bot = _run_level(level_name="setup_flat", scenario="near", max_time=35.0)
     assert result.get("state") == "landed"
     landing_offset = result.get("landing_offset")
     assert isinstance(landing_offset, (int, float))
@@ -56,7 +56,7 @@ def test_zem_launch_landing_offset_bound_seed0() -> None:
 def test_zem_solver_progress_and_fallback_cap_mid_flare() -> None:
     # Partial run keeps the bot in-flight so solve/fallback telemetry remains populated.
     _result, bot = _run_level(
-        level_name="flare",
+        level_name="flare_normal",
         scenario="mid",
         max_steps=180,
         max_time=20.0,

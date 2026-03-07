@@ -135,11 +135,11 @@ Examples:
 
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode smoke`
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode full --seed-spec 0-19`
-- `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode focused --selectors launch:far setup`
+- `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode focused --selectors setup_flat:far setup_downhill`
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode quick --exclude-levels flat,mountains --observe-only-levels climb`
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode quick --bot-profile --no-bot-profile-logs`
 - `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main`
 - `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot-profile --no-bot-profile-logs`
-- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors setup launch:far --seed-spec 0-9 --baseline-ref main`
+- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors setup_downhill setup_flat:far --seed-spec 0-9 --baseline-ref main`
 - `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode full --baseline-ref main --exclude-levels flat,mountains --observe-only-levels climb`
-- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors launch:far --seed-spec 0-4 --bot-config configs/zem_tuning.json`
+- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors setup_flat:far --seed-spec 0-4 --bot-config configs/zem_tuning.json`

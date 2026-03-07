@@ -98,7 +98,7 @@ def _make_spec(*, name: str, start_dx: float, start_dy: float, cargo_mass: float
     )
 
 
-class CoastLevel(ScenarioCatalogMixin, ScenarioLevel):
+class FlareErrorLevel(ScenarioCatalogMixin, ScenarioLevel):
     default_bot_name = "zem_zev"
     _scenario_by_name = _SCENARIO_BY_NAME
     _default_scenario_name = _DEFAULT_SCENARIO
@@ -220,4 +220,4 @@ class CoastLevel(ScenarioCatalogMixin, ScenarioLevel):
 
 
 def create_level() -> Level:
-    return CoastLevel()
+    return FlareErrorLevel()

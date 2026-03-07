@@ -1,6 +1,6 @@
-# Climb level (`climb`)
+# Setup Climb level (`setup_climb`)
 
-`climb` is a launch-like synthetic scenario for uphill pad transfers on sloped terrain without obstacles.
+`setup_climb` is the uphill member of the setup-transfer trio: a pad-to-pad climb on sloped terrain without obstacles.
 
 ## Purpose
 
@@ -16,27 +16,26 @@ Guidance note:
 
 ## Scenario design
 
-Defined in [`levels/climb.py`](../levels/climb.py):
+Defined in [`levels/setup_climb.py`](../levels/setup_climb.py):
 
-- Source pad: `x=0`, flush terrain
+- Source pad: `x=0`, terrain-bound flush pad
 - Destination horizontal offset: `dx=400`
 - Destination elevation tiers (`dy`): `200`, `400`, `800`
 - Terrain profile:
-  - `slope_*`: destination is terrain-bound (`flush_flatten`) on a true uphill ramp
-    where `slope = dy / dx`
+  - destination pad is terrain-bound (`flush_flatten`) on a true uphill ramp where `slope = dy / dx`
 
 Scenarios:
 
-- `slope_low`, `slope_mid`, `slope_high`
+- `low`, `mid`, `high`
 
 Defaults:
 
-- default scenario: `slope_mid`
-- recommended benchmark subset: `slope_low`, `slope_mid`, `slope_high`
+- default scenario: `mid`
+- recommended benchmark subset: `low`, `mid`, `high`
 
 ## Metrics
 
-- End-to-end objective metrics: `state`, `success`, `climb_arrived`, `climb_landed_site_uid`
+- End-to-end objective metrics: `state`, `success`, `setup_transfer_arrived`, `setup_transfer_landed_site_uid`
 - Unified gate telemetry: `setup_gate_*`, `bot_zem_zev_terminal_gate_*`
 - Goal metadata when using goal selectors: `eval_goal`, `eval_early_end`, `eval_end_reason`
 
@@ -51,11 +50,11 @@ Additional retained `zem_zev` diagnostics exported for climb tuning:
 ## Commands
 
 ```bash
-uv run python main.py run --interactive climb
-uv run python main.py sim climb:slope_mid:0 --bot zem_zev
+uv run python main.py run --interactive setup_climb
+uv run python main.py sim setup_climb:mid:0 --bot zem_zev
 uv run python main.py bench \
-  climb:slope_low:0-9 \
-  climb:slope_mid:0-9 \
-  climb:slope_high:0-9 \
+  setup_climb:low:0-9 \
+  setup_climb:mid:0-9 \
+  setup_climb:high:0-9 \
   --bot zem_zev
 ```

@@ -87,7 +87,7 @@ def _split_focused_selectors(values: Iterable[str]) -> list[str]:
         if not raw:
             continue
         # Preserve CSV seed specs for level:scenario:seed_csv selectors.
-        # Example: launch:mid:0,1 must stay a single selector.
+        # Example: setup_flat:mid:0,1 must stay a single selector.
         if raw.count(":") >= 2:
             out.append(raw)
             continue

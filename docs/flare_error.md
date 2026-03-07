@@ -1,6 +1,6 @@
-# Coast level (`coast`)
+# Flare Error level (`flare_error`)
 
-`coast` is the horizontal-error correction benchmark scenario for the unified `zem_zev` controller.
+`flare_error` is the horizontal-error correction benchmark scenario for the unified `zem_zev` controller.
 
 ## Purpose
 
@@ -10,7 +10,7 @@
 
 ## Scenario design
 
-Defined in [`levels/coast.py`](../levels/coast.py):
+Defined in [`levels/flare_error.py`](../levels/flare_error.py):
 
 - Base entry angles: `shallower` (15deg), `shallow` (30deg), `mid` (45deg), `steep` (60deg), `steeper` (75deg)
 - Radius: `[700, 900]`
@@ -42,11 +42,11 @@ Defaults:
 ## Commands
 
 ```bash
-uv run python main.py run --interactive coast
-uv run python main.py sim coast:mid_tight:0 --bot zem_zev
+uv run python main.py run --interactive flare_error
+uv run python main.py sim flare_error:mid_tight:0 --bot zem_zev
 uv run python main.py bench \
-  coast:shallow_tight:0-19 \
-  coast:mid_wide:0-19 \
-  coast:steep_wide:0-19 \
+  flare_error:shallow_tight:0-19 \
+  flare_error:mid_wide:0-19 \
+  flare_error:steep_wide:0-19 \
   --bot zem_zev
 ```

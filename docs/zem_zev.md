@@ -2,7 +2,7 @@
 
 Implementation: [`bots/zem_zev.py`](../bots/zem_zev.py), [`bots/_optimizer_pdg.py`](../bots/_optimizer_pdg.py), [`bots/_zem_config.py`](../bots/_zem_config.py), [`bots/_zem_phase.py`](../bots/_zem_phase.py), [`bots/_zem_planner.py`](../bots/_zem_planner.py), [`bots/_zem_actuation.py`](../bots/_zem_actuation.py), [`bots/_zem_telemetry.py`](../bots/_zem_telemetry.py)
 
-`zem_zev` is the unified optimizer-first full-envelope guidance bot used by default in `launch`, `setup`, `coast`, `climb`, and `flare`.
+`zem_zev` is the unified optimizer-first full-envelope guidance bot used by default in `setup_flat`, `setup_downhill`, `flare_error`, `setup_climb`, and `flare_normal`.
 
 Implementation note:
 
@@ -117,12 +117,12 @@ Throttle allocation includes simple on/off hysteresis to reduce min-throttle cha
 Setup-gate debug traces can be enabled with:
 
 ```bash
-PYLANDER_ZEM_DEBUG_SETUP=1 uv run python main.py sim launch:near:0 --bot zem_zev
+PYLANDER_ZEM_DEBUG_SETUP=1 uv run python main.py sim setup_flat:near:0 --bot zem_zev
 ```
 
 Goal-based eval boundary:
 
-- selector goal `setup` (for example `setup:mid_near:setup:0 --bot zem_zev`) -> early stop on the generic `setup_gate_done` milestone
+- selector goal `setup` (for example `setup_downhill:mid:setup:0 --bot zem_zev`) -> early stop on the generic `setup_gate_done` milestone
 
 ## Tuning knobs
 

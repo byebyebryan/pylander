@@ -76,7 +76,7 @@ def _make_spec(scenario: PlungeScenario) -> ScenarioLevelSpec:
     )
 
 
-class PlungeLevel(ScenarioCatalogMixin, ScenarioLevel):
+class FlarePlungeLevel(ScenarioCatalogMixin, ScenarioLevel):
     default_bot_name = "zem_zev"
     _scenario_by_name = _SCENARIO_BY_NAME
     _default_scenario_name = _DEFAULT_SCENARIO
@@ -126,4 +126,4 @@ class PlungeLevel(ScenarioCatalogMixin, ScenarioLevel):
 
 
 def create_level() -> Level:
-    return PlungeLevel()
+    return FlarePlungeLevel()
