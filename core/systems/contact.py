@@ -77,11 +77,7 @@ class ContactSystem(System):
 
     @staticmethod
     def _impact_speed(report: ContactReport) -> float:
-        raw_speed = report.rel_speed
-        try:
-            speed = float(raw_speed)
-        except (TypeError, ValueError):
-            speed = 0.0
+        speed = report.rel_speed
         if not math.isfinite(speed):
             return 0.0
         return speed

@@ -38,7 +38,7 @@ def resolve_eval_target_pos(level: Level, sites: Any, start_pos: Vector2) -> Vec
         return None
     try:
         all_sites = list(get_sites(Range1D.from_center(start_pos.x, 1_000_000.0)))
-    except Exception:
+    except (TypeError, ValueError, AttributeError):
         return None
     if not all_sites:
         return None
