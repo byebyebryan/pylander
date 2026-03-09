@@ -1,7 +1,18 @@
 import math
 
 from core.ecs import System, Entity
-from core.components import LanderState, PhysicsState, Transform, FuelTank, Wallet
+from core.components import (
+    ContactReport,
+    Engine,
+    FlightState,
+    FuelTank,
+    LanderGeometry,
+    LanderState,
+    LandingSiteEconomy,
+    PhysicsState,
+    Transform,
+    Wallet,
+)
 from core.maths import Range1D, Vector2
 
 
@@ -23,22 +34,18 @@ class ContactSystem(System):
             return
 
         for entity in self.world.get_entities_with(LanderState, PhysicsState, Transform, FuelTank):
-            try:
-                report = self.engine_adapter.get_contact_report(uid=entity.uid)
-            except TypeError:
-                report = self.engine_adapter.get_contact_report()
+            report = self.engine_adapter.get_contact_report(uid=entity.uid)
             self._resolve(entity, report, dt)
 
-    def _resolve(self, entity: Entity, report: dict, dt: float) -> None:
+    def _resolve(self, entity: Entity, report: ContactReport, dt: float) -> None:
         ls = entity.get_component(LanderState)
         phys = entity.get_component(PhysicsState)
         trans = entity.get_component(Transform)
         if ls is None or phys is None or trans is None:
             return
-        if ls.state != "flying":
+        if ls.state != FlightState.FLYING:
             return
 
-        from core.components import LanderGeometry
         geo = entity.get_component(LanderGeometry)
         half_w = (geo.width / 2.0) if geo is not None else 4.0
         half_h = (geo.height / 2.0) if geo is not None else 4.0
@@ -54,7 +61,7 @@ class ContactSystem(System):
             self._apply_landing(entity, site, half_h)
             return
 
-        if report.get("colliding") and not self._is_landing_surface_contact(report):
+        if report.colliding and not self._is_landing_surface_contact(report):
             self._apply_crash(entity)
             return
 
@@ -69,8 +76,8 @@ class ContactSystem(System):
         self._resolve_terrain_contact(entity, report, phys, trans, site, half_w, half_h, dt)
 
     @staticmethod
-    def _impact_speed(report: dict) -> float:
-        raw_speed = report.get("rel_speed", 0.0)
+    def _impact_speed(report: ContactReport) -> float:
+        raw_speed = report.rel_speed
         try:
             speed = float(raw_speed)
         except (TypeError, ValueError):
@@ -79,17 +86,17 @@ class ContactSystem(System):
             return 0.0
         return speed
 
-    def _is_unsafe_colliding_impact(self, report: dict, safe_speed: float) -> bool:
+    def _is_unsafe_colliding_impact(self, report: ContactReport, safe_speed: float) -> bool:
         # Use solver-reported impact speed so hard impacts cannot "escape" crash
         # classification due to an immediate upward rebound in the same frame.
-        if not report.get("colliding"):
+        if not report.colliding:
             return False
         return self._impact_speed(report) >= safe_speed
 
     def _resolve_terrain_contact(
         self,
         entity: Entity,
-        report: dict,
+        report: ContactReport,
         phys: PhysicsState,
         trans: Transform,
         site,
@@ -98,7 +105,7 @@ class ContactSystem(System):
         dt: float,
     ) -> None:
         # Terrain contact path: colliding while descending resolves as terrain landing/crash.
-        if not report.get("colliding") or phys.vel.y > 0.0:
+        if not report.colliding or phys.vel.y > 0.0:
             return
         speed = phys.vel.length()
         ls = entity.get_component(LanderState)
@@ -125,7 +132,7 @@ class ContactSystem(System):
         half_h: float,
         dt: float,
         *,
-        report: dict | None = None,
+        report: ContactReport | None = None,
     ) -> bool:
         ls = entity.get_component(LanderState)
         phys = entity.get_component(PhysicsState)
@@ -133,7 +140,7 @@ class ContactSystem(System):
         if ls is None or phys is None or trans is None:
             return False
 
-        if report is not None and report.get("colliding") and not self._is_landing_surface_contact(report):
+        if report is not None and report.colliding and not self._is_landing_surface_contact(report):
             return False
 
         if abs(trans.pos.x - site.x) > (site.size * 0.5 + half_w):
@@ -151,8 +158,8 @@ class ContactSystem(System):
         landing_band = max(2.0, abs(rel_vel.y) * max(dt, 1e-3) * 1.5 + 1.0)
         return abs(lander_bottom_y - site.y) <= landing_band
 
-    def _is_landing_surface_contact(self, report: dict) -> bool:
-        normal = report.get("normal")
+    def _is_landing_surface_contact(self, report: ContactReport) -> bool:
+        normal = report.normal
         if not isinstance(normal, (tuple, list)) or len(normal) < 2:
             return False
         try:
@@ -198,7 +205,7 @@ class ContactSystem(System):
         if ls is None or phys is None or trans is None:
             return
 
-        ls.state = "landed"
+        ls.state = FlightState.LANDED
         phys.vel.update(0.0, 0.0)
         trans.rotation = 0.0
 
@@ -206,18 +213,15 @@ class ContactSystem(System):
         trans.pos.y = site.y + half_h
 
         # Zero out engine intent
-        from core.components import Engine
         eng = entity.get_component(Engine)
         if eng is not None:
             eng.thrust_level = 0.0
             eng.target_thrust = 0.0
-            eng.target_angle = trans.rotation
             eng.target_angle = 0.0
 
         # Award credits and mark site visited.
         award = 0.0
         if self.world is not None:
-            from core.components import LandingSiteEconomy
             site_entity = self.world.get_entity_by_id(site.uid)
             if site_entity is not None:
                 econ = site_entity.get_component(LandingSiteEconomy)
@@ -228,19 +232,12 @@ class ContactSystem(System):
             wallet.credits += award
 
         if self.engine_adapter.enabled:
-            try:
-                self.engine_adapter.teleport_lander(
-                    Vector2(trans.pos.x, trans.pos.y),
-                    angle=trans.rotation,
-                    clear_velocity=True,
-                    uid=entity.uid,
-                )
-            except TypeError:
-                self.engine_adapter.teleport_lander(
-                    Vector2(trans.pos.x, trans.pos.y),
-                    angle=trans.rotation,
-                    clear_velocity=True,
-                )
+            self.engine_adapter.teleport_lander(
+                Vector2(trans.pos.x, trans.pos.y),
+                angle=trans.rotation,
+                clear_velocity=True,
+                uid=entity.uid,
+            )
 
     def _apply_crash(self, entity: Entity) -> None:
         ls = entity.get_component(LanderState)
@@ -248,10 +245,9 @@ class ContactSystem(System):
         if ls is None or phys is None:
             return
 
-        ls.state = "crashed"
+        ls.state = FlightState.CRASHED
         phys.vel.update(0.0, 0.0)
 
-        from core.components import Engine
         eng = entity.get_component(Engine)
         if eng is not None:
             eng.thrust_level = 0.0
@@ -260,16 +256,9 @@ class ContactSystem(System):
         if self.engine_adapter.enabled:
             trans = entity.get_component(Transform)
             if trans is not None:
-                try:
-                    self.engine_adapter.teleport_lander(
-                        Vector2(trans.pos.x, trans.pos.y),
-                        angle=trans.rotation,
-                        clear_velocity=True,
-                        uid=entity.uid,
-                    )
-                except TypeError:
-                    self.engine_adapter.teleport_lander(
-                        Vector2(trans.pos.x, trans.pos.y),
-                        angle=trans.rotation,
-                        clear_velocity=True,
-                    )
+                self.engine_adapter.teleport_lander(
+                    Vector2(trans.pos.x, trans.pos.y),
+                    angle=trans.rotation,
+                    clear_velocity=True,
+                    uid=entity.uid,
+                )
