@@ -13,8 +13,8 @@ from levels.scenario_common import (
     SampleRange,
     ScenarioCatalogMixin,
     ScenarioLevel,
-    ScenarioLevelSpec,
     angle_from_velocity,
+    prime_setup_gate_for_primary_bot,
     has_randomized_values,
     make_flat_scenario_spec,
     scenario_seed,
@@ -102,6 +102,9 @@ class FlareErrorLevel(ScenarioCatalogMixin, ScenarioLevel):
                 scenario.projected_dx_error,
             )
         )
+
+    def start(self, game) -> None:
+        prime_setup_gate_for_primary_bot(self, game)
 
     def setup(self, game, seed: int) -> None:
         scenario_base = self._active_scenario()

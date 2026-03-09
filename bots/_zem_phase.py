@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 
 from bots._ballistics import BallisticProjection
-from core.bot import Sensors
+from core.bot import Sensors, SetupGateMetrics
 from core.config import GRAVITY
 
 _GRAVITY_MAG = abs(float(GRAVITY))
@@ -80,7 +80,31 @@ def _finalize_setup_gate_metrics(
     bot._setup_gate_burn_duration_s = burn_duration_s
     bot._setup_gate_burn_fuel_used = fuel_used
     bot._setup_gate_burn_avg_thrust_level = burn_avg_thrust_level
+    bot._setup_gate_spawn_primed = False
     _capture_setup_gate_state(bot, passive=passive)
+
+
+def apply_setup_gate_metrics(
+    bot,
+    *,
+    setup_gate: SetupGateMetrics,
+) -> None:
+    bot._setup_gate_done = True
+    bot._setup_gate_time = setup_gate.time_s
+    bot._setup_gate_altitude = setup_gate.altitude
+    bot._setup_gate_x = setup_gate.x
+    bot._setup_gate_y = setup_gate.y
+    bot._setup_gate_vx = setup_gate.vx
+    bot._setup_gate_vy_up = setup_gate.vy_up
+    bot._setup_gate_projected_apex_y = setup_gate.projected_apex_y
+    bot._setup_gate_projected_apex_over_target = setup_gate.projected_apex_over_target
+    bot._setup_gate_has_target_y_solution = setup_gate.has_target_y_solution
+    bot._setup_gate_projected_impact_dx = setup_gate.projected_impact_dx
+    bot._setup_gate_projected_dx = setup_gate.projected_impact_dx
+    bot._setup_gate_projected_impact_angle_deg = setup_gate.projected_impact_angle_deg
+    bot._setup_gate_burn_duration_s = setup_gate.burn_duration_s
+    bot._setup_gate_burn_fuel_used = setup_gate.burn_fuel_used
+    bot._setup_gate_burn_avg_thrust_level = setup_gate.burn_avg_thrust_level
 
 
 def update_phase_tracking(
@@ -178,26 +202,6 @@ def update_phase_tracking(
                     f"idle_elapsed={idle_elapsed:5.2f}"
                 )
 
-    coast_dx_limit = max(
-        cfg.coast_hold_projected_dx_abs,
-        cfg.coast_hold_projected_dx_target_ratio * bot._last_target_half,
-    )
-    coast_vx_limit = max(
-        cfg.coast_hold_vx_track_abs,
-        cfg.coast_hold_vx_track_ratio * abs(track_vx),
-    )
-    coast_overshoot_guard = max(
-        cfg.coast_hold_overshoot_abs,
-        cfg.coast_hold_overshoot_ratio * bot._last_target_half,
-    )
-    not_overshooting_far = shortfall_metric >= -coast_overshoot_guard
-    coast_hold = (
-        abs(projected_dx) <= coast_dx_limit
-        and abs(float(passive.vx) - track_vx) <= coast_vx_limit
-        and float(passive.vy_up) <= cfg.setup_gate_vy_up_max
-        and not_overshooting_far
-    )
-
     terminal_dx_limit = max(
         cfg.terminal_gate_projected_dx_abs,
         cfg.terminal_gate_projected_dx_target_ratio * bot._last_target_half,
@@ -252,7 +256,9 @@ def update_phase_tracking(
     elif bot._terminal_gate_done or terminal_phase_ready:
         bot._active_phase = "terminal"
     elif bot._setup_gate_done:
-        if bot._uphill_transfer:
+        if bot._setup_gate_spawn_primed:
+            bot._active_phase = "coast"
+        elif bot._uphill_transfer or (not setup_ready_diag):
             bot._active_phase = "setup"
         else:
             bot._active_phase = "coast"
@@ -273,8 +279,7 @@ def update_phase_tracking(
             f"ph={bot._active_phase:8s} "
             f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
             f"signed={shortfall_metric:8.2f} "
-            f"thrust={float(passive.thrust_level):5.2f} "
-            f"coast_hold={int(coast_hold)}"
+            f"thrust={float(passive.thrust_level):5.2f}"
         )
 
 
@@ -286,6 +291,8 @@ def maybe_start_shape_window(
     dy: float,
 ) -> None:
     if bot._shape_window_started or bot._shape_window_done:
+        return
+    if bot._setup_gate_done:
         return
     if bot._launch_takeoff_active:
         return

@@ -139,14 +139,14 @@ class PlotMarker:
     metadata: dict[str, float | str | None] = field(default_factory=dict)
 
 
-def resolve_bot_name(bot: Bot) -> str:
+def resolve_bot_name(bot: "Bot") -> str:
     bot_name = getattr(bot, "_bot_name", None)
     if isinstance(bot_name, str) and bot_name:
         return bot_name
     return bot.__class__.__module__.split(".")[-1]
 
 
-def resolve_bot_status(bot: Bot) -> str:
+def resolve_bot_status(bot: "Bot") -> str:
     get_status = getattr(bot, "get_status", None)
     if callable(get_status):
         resolved_status = get_status()
@@ -155,7 +155,7 @@ def resolve_bot_status(bot: Bot) -> str:
     return status.strip() if isinstance(status, str) else ""
 
 
-def resolve_bot_display_state(bot: Bot) -> BotDisplayState | None:
+def resolve_bot_display_state(bot: "Bot") -> BotDisplayState | None:
     getter = getattr(bot, "get_display_state", None)
     if not callable(getter):
         return None
@@ -230,6 +230,10 @@ class Bot(ABC):
 
     def get_eval_goal(self) -> str:
         return self._eval_goal
+
+    def prime_setup_gate(self, setup_gate: SetupGateMetrics) -> None:
+        """Optionally seed a setup-gate milestone before the first update."""
+        _ = setup_gate
 
     def get_evaluation_decision(self) -> BotEvalDecision | None:
         """Return optional evaluation decision for run termination/result shaping."""

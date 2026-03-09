@@ -1,6 +1,6 @@
 # Flare Normal level (`flare_normal`)
 
-`flare_normal` is the terminal-approach sandbox for high-energy inbound entries.
+`flare_normal` is the coast-to-flare sandbox for high-energy inbound entries.
 
 ## Purpose
 
@@ -31,8 +31,11 @@ Defaults:
 
 ## Eval behavior
 
-- Single end-to-end evaluation path (entry-to-touchdown).
-- Optional goal metadata is emitted when using goal selectors (for example `flare_normal:mid:setup:0 --bot zem_zev`).
+- Single landing-goal evaluation path (coast entry to touchdown).
+- The run primes `setup_gate_*` at `t=0.0` from the spawn state so `zem_zev`
+  starts directly in `coast` with no setup burn.
+- During coast, the vehicle stays passive and points retrograde until flare
+  entry.
 
 ## Commands
 

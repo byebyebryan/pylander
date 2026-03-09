@@ -16,7 +16,10 @@ from bots._ballistics import (
     estimate_target_y_projection,
 )
 from bots._bot_math import clamp, engine_profile, finite_altitude, stable
-from bots._zem_actuation import command_from_plan as _command_from_plan_impl
+from bots._zem_actuation import (
+    command_from_plan as _command_from_plan_impl,
+    command_passive_coast as _command_passive_coast_impl,
+)
 from bots._zem_config import ZemZevConfig
 from bots._zem_eval import (
     build_evaluation_decision as _build_evaluation_decision_impl,
@@ -26,6 +29,7 @@ from bots._zem_eval import (
     resolve_evaluation_snapshot as _resolve_evaluation_snapshot_impl,
 )
 from bots._zem_phase import (
+    apply_setup_gate_metrics as _apply_setup_gate_metrics_impl,
     maybe_start_shape_window as _maybe_start_shape_window_impl,
     update_phase_tracking as _update_phase_tracking_impl,
     update_shape_window_metrics as _update_shape_window_metrics_impl,
@@ -59,14 +63,6 @@ class ZemZevBot(Bot):
                 w_terminal_x=48.0,
                 w_path_x=0.09,
                 w_path_y=0.025,
-            )
-        )
-        self._optimizer_coast = PDGOptimizer(
-            PDGOptimizerConfig(
-                horizon_steps=36,
-                w_terminal_x=36.0,
-                w_path_x=0.06,
-                w_path_y=0.020,
             )
         )
         self._optimizer_terminal = PDGOptimizer(PDGOptimizerConfig(horizon_steps=28))
@@ -116,6 +112,16 @@ class ZemZevBot(Bot):
 
     def supported_eval_goals(self) -> tuple[str, ...]:
         return (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
+
+    def prime_setup_gate(self, setup_gate: SetupGateMetrics) -> None:
+        _apply_setup_gate_metrics_impl(self, setup_gate=setup_gate)
+        self._setup_gate_spawn_primed = True
+        self._active_phase = "coast"
+        self._thrust_enabled = False
+        self._plan = None
+        self._plan_elapsed = 0.0
+        self._replan_timer = 0.0
+        self._fallback_steps_remaining = 0
 
     def apply_config_override(self, overrides: dict[str, Any]) -> None:
         if not isinstance(overrides, dict):
@@ -350,8 +356,6 @@ class ZemZevBot(Bot):
         ratio = cfg.terminal_center_tol_ratio
         if phase == "setup":
             ratio = cfg.setup_center_tol_ratio
-        elif phase == "coast":
-            ratio = cfg.coast_center_tol_ratio
         return max(4.0, float(self._last_target_half) * max(0.05, float(ratio)))
 
     def _shape_apex_target(self, dx_abs: float) -> float:
@@ -390,8 +394,6 @@ class ZemZevBot(Bot):
         cfg = self._cfg
         if phase == "setup":
             return clamp(float(cfg.setup_apex_ref_blend), 0.0, 1.0)
-        if phase == "coast":
-            return clamp(float(cfg.coast_apex_ref_blend), 0.0, 1.0)
         return 0.0
 
     def _plan_index(self) -> int:
@@ -410,15 +412,13 @@ class ZemZevBot(Bot):
     ) -> PDGOptimizer:
         if phase == "setup":
             return self._optimizer_setup
-        if phase == "coast":
-            return self._optimizer_coast
         if phase == "terminal":
             return self._optimizer_terminal
         cfg = self._cfg
         down_speed = max(0.0, -float(vy_up))
         t_go = float("inf") if down_speed <= 1e-3 else (max(0.0, alt) / down_speed)
         if alt >= cfg.long_horizon_altitude or t_go >= cfg.long_horizon_time_to_go:
-            return self._optimizer_coast
+            return self._optimizer_setup
         return self._optimizer_terminal
 
     def _replan_policy_for_phase(self, phase: str) -> tuple[float, float, float, float, float]:
@@ -440,11 +440,11 @@ class ZemZevBot(Bot):
                 cfg.replan_vy_error_terminal,
             )
         return (
-            cfg.replan_hz_coast,
-            cfg.replan_dx_error_coast,
-            cfg.replan_dy_error_coast,
-            cfg.replan_vx_error_coast,
-            cfg.replan_vy_error_coast,
+            cfg.replan_hz_terminal,
+            cfg.replan_dx_error_terminal,
+            cfg.replan_dy_error_terminal,
+            cfg.replan_vx_error_terminal,
+            cfg.replan_vy_error_terminal,
         )
 
     def _state_deviation_requires_replan(
@@ -718,6 +718,31 @@ class ZemZevBot(Bot):
             dx=dx,
             projection=projection,
         )
+        if self._active_phase == "coast":
+            self._plan = None
+            self._plan_elapsed = 0.0
+            self._replan_timer = 0.0
+            self._fallback_steps_remaining = 0
+            action = _command_passive_coast_impl(
+                self,
+                dt=dt,
+                passive=passive,
+            )
+            action.status = (
+                f"zem_zev passive/coast "
+                f"dx={stable(dx, 1):.1f} pdx={stable(float(projection.projected_dx), 1):.1f}"
+            )
+            self._set_display_state(
+                mode="passive",
+                phase="coast",
+                summary=(
+                    f"dx={stable(dx, 1):.1f} "
+                    f"pdx={stable(float(projection.projected_dx), 1):.1f}"
+                ),
+            )
+            self.status = action.status
+            self._last_flight_snapshot = self._build_evaluation_snapshot()
+            return action
         replan_hz, dx_err_lim, dy_err_lim, vx_err_lim, vy_err_lim = self._replan_policy_for_phase(
             self._active_phase
         )

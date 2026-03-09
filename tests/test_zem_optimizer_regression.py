@@ -53,8 +53,8 @@ def test_zem_launch_landing_offset_bound_seed0() -> None:
     assert abs(float(landing_offset)) <= 40.0
 
 
-def test_zem_solver_progress_and_fallback_cap_mid_flare() -> None:
-    # Partial run keeps the bot in-flight so solve/fallback telemetry remains populated.
+def test_zem_passive_coast_suppresses_solver_work_mid_flare() -> None:
+    # Partial flare run should remain in passive coast with no solver activity.
     _result, bot = _run_level(
         level_name="flare_normal",
         scenario="mid",
@@ -62,10 +62,10 @@ def test_zem_solver_progress_and_fallback_cap_mid_flare() -> None:
         max_time=20.0,
     )
     snapshot = bot.get_bot_telemetry()
-    assert int(snapshot.get("solve_count") or 0) >= 5
-    assert int(snapshot.get("fallback_frames") or 0) <= 2
-    assert isinstance(snapshot.get("shape_curve_rmse"), (int, float))
-    assert isinstance(snapshot.get("shape_projected_dx_abs_max"), (int, float))
+    assert int(snapshot.get("solve_count") or 0) == 0
+    assert int(snapshot.get("fallback_frames") or 0) == 0
+    assert snapshot.get("shape_curve_rmse") is None
+    assert snapshot.get("shape_projected_dx_abs_max") == pytest.approx(0.0)
 
 
 def test_pdg_optimizer_solution_changes_with_runtime_gravity() -> None:

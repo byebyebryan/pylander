@@ -45,6 +45,7 @@ def reset_evaluation_state(
     bot._setup_gate_y = None
     bot._setup_gate_vx = None
     bot._setup_gate_vy_up = None
+    bot._setup_gate_spawn_primed = False
     bot._setup_phase_thrust_integral = 0.0
     bot._setup_phase_fuel_start = None
     bot._setup_burn_started = False
