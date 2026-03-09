@@ -8,14 +8,13 @@ import app.run_batch as run_batch_module
 from app.cli import build_parser, parse_command
 from app.config import BenchCommand, BenchSettings, BenchTarget, RunCommand
 from bots import create_bot, list_available_bots
-from core.bot import Bot, BotAction, Sensors, resolve_bot_display_state
+from core.bot import Bot, BotAction, BotDisplayState, Sensors, resolve_bot_display_state
 from core.components import LandingSite, PhysicsState, Transform
 from core.ecs import require_component
 from core.eval import aggregate_eval_records, normalize_run_result
 from game import LanderGame
 from levels import create_level as create_level_by_name, list_available_levels
 from app.run_batch import ResolvedBenchRun, parse_seed_spec, resolve_benchmark_plan
-from core.bot import BotDisplayState
 
 
 def test_bot_registry_exposes_only_supported_bots() -> None:

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import matplotlib.image as mpimg
 
+from conftest import FlatTerrain
 from utils.plot import (
     _ballistic_projection_series,
     _build_plot_context,
@@ -13,16 +14,6 @@ from utils.plot import (
     _projected_intercept_from_state,
     save_trajectory_plots,
 )
-
-
-class _FlatTerrain:
-    def get_resolution(self, lod: int) -> float:
-        _ = lod
-        return 10.0
-
-    def __call__(self, x: float, lod: int = 0) -> float:
-        _ = x, lod
-        return 0.0
 
 
 def _samples() -> list[tuple[float, float, float, float, float, float, float, float]]:
@@ -55,7 +46,7 @@ def _shallow_samples() -> list[tuple[float, float, float, float, float, float, f
 def test_save_trajectory_plots_combined_writes_manifest(tmp_path: Path) -> None:
     out_dir = tmp_path / "combined"
     result = save_trajectory_plots(
-        _FlatTerrain(),
+        FlatTerrain(),
         _samples(),
         mode="all",
         output_profile="combined",
@@ -79,7 +70,7 @@ def test_save_trajectory_plots_combined_writes_manifest(tmp_path: Path) -> None:
 def test_save_trajectory_plots_split_all_writes_expected_files(tmp_path: Path) -> None:
     out_dir = tmp_path / "split"
     result = save_trajectory_plots(
-        _FlatTerrain(),
+        FlatTerrain(),
         _samples(),
         mode="all",
         output_profile="split",
@@ -105,7 +96,7 @@ def test_save_trajectory_plots_split_all_writes_expected_files(tmp_path: Path) -
 def test_save_trajectory_plots_respects_max_side_px(tmp_path: Path) -> None:
     out_dir = tmp_path / "capped"
     result = save_trajectory_plots(
-        _FlatTerrain(),
+        FlatTerrain(),
         _samples(),
         mode="all",
         output_profile="both",
@@ -124,7 +115,7 @@ def test_save_trajectory_plots_writes_combined_to_overview_dir(tmp_path: Path) -
     out_dir = tmp_path / "bundle"
     overview_dir = tmp_path / "overview"
     result = save_trajectory_plots(
-        _FlatTerrain(),
+        FlatTerrain(),
         _samples(),
         mode="all",
         output_profile="both",
@@ -144,12 +135,12 @@ def test_combined_spatial_arrangement_uses_columns_for_tall_paths() -> None:
 
 
 def test_build_plot_context_limits_wide_shallow_spatial_ratio() -> None:
-    ctx = _build_plot_context(_FlatTerrain(), _shallow_samples())
+    ctx = _build_plot_context(FlatTerrain(), _shallow_samples())
     assert ctx.span_x / ctx.span_y <= 3.2
 
 
 def test_build_plot_context_widens_tall_spatial_ratio_for_column_layouts() -> None:
-    ctx = _build_plot_context(_FlatTerrain(), _tall_samples())
+    ctx = _build_plot_context(FlatTerrain(), _tall_samples())
     assert ctx.span_x / ctx.span_y >= 1.24
 
 
@@ -182,12 +173,12 @@ def test_projected_intercept_falls_back_to_apex_when_target_y_is_unreachable() -
 
 
 def test_ballistic_projection_series_uses_apex_while_climbing_and_current_height_while_descending() -> None:
-    climb_ctx = _build_plot_context(_FlatTerrain(), _tall_samples())
+    climb_ctx = _build_plot_context(FlatTerrain(), _tall_samples())
     climb_apex_over_target, climb_projected_dx = _ballistic_projection_series(
         ctx=climb_ctx,
         target={"x": 120.0, "y": 0.0},
     )
-    descend_ctx = _build_plot_context(_FlatTerrain(), _samples())
+    descend_ctx = _build_plot_context(FlatTerrain(), _samples())
     descend_apex_over_target, descend_projected_dx = _ballistic_projection_series(
         ctx=descend_ctx,
         target={"x": 120.0, "y": 0.0},
@@ -212,7 +203,7 @@ def test_compute_figure_size_keeps_spatial_minimums_for_colorbar_space() -> None
 def test_save_trajectory_plots_tall_combined_stays_close_to_square(tmp_path: Path) -> None:
     out_dir = tmp_path / "tall_combined"
     result = save_trajectory_plots(
-        _FlatTerrain(),
+        FlatTerrain(),
         _tall_samples(),
         mode="all",
         output_profile="combined",
@@ -228,7 +219,7 @@ def test_save_trajectory_plots_tall_combined_stays_close_to_square(tmp_path: Pat
 def test_save_trajectory_plots_tall_split_does_not_become_overly_wide(tmp_path: Path) -> None:
     out_dir = tmp_path / "tall_split"
     result = save_trajectory_plots(
-        _FlatTerrain(),
+        FlatTerrain(),
         _tall_samples(),
         mode="speed",
         output_profile="split",
@@ -244,7 +235,7 @@ def test_save_trajectory_plots_tall_split_does_not_become_overly_wide(tmp_path: 
 def test_save_trajectory_plots_shallow_split_is_not_extremely_flat(tmp_path: Path) -> None:
     out_dir = tmp_path / "shallow_split"
     result = save_trajectory_plots(
-        _FlatTerrain(),
+        FlatTerrain(),
         _shallow_samples(),
         mode="speed",
         output_profile="split",
