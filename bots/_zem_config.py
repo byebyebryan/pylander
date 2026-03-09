@@ -76,17 +76,29 @@ class ZemZevConfig:
     setup_burn_taper_overshoot_ratio: float = 2.20
     setup_burn_cut_overshoot_abs: float = 4.0
     setup_burn_cut_overshoot_ratio: float = 0.08
-    terminal_gate_t_fall_s: float = 4.5
-    terminal_gate_projected_dx_abs: float = 18.0
-    terminal_gate_projected_dx_target_ratio: float = 0.4
-    terminal_gate_vy_up_max: float = -4.0
-    terminal_entry_altitude_max: float = 260.0
-    terminal_entry_vy_up_max: float = -12.0
-    terminal_entry_projected_dx_abs: float = 70.0
-    terminal_entry_projected_dx_target_ratio: float = 1.30
     touchdown_phase_altitude: float = 4.0
     touchdown_phase_speed: float = 2.5
     touchdown_phase_dx_ratio: float = 0.65
+
+    # Hybrid flare gate: ZEM/ZEV-style prefilter plus long-horizon probe solves.
+    flare_gate_probe_hz: float = 2.0
+    flare_gate_force_probe_margin_s: float = 2.0
+    flare_gate_prefilter_max_ratio: float = 1.10
+    flare_gate_prefilter_min_up_accel: float = 0.5
+    flare_gate_horizon_steps: tuple[int, ...] = (48, 60, 72, 84)
+    flare_gate_probe_target_vy: float = -2.0
+    flare_gate_probe_descent_floor_vy: float = -18.0
+    flare_gate_probe_terminal_x_tol: float = 18.0
+    flare_gate_terminal_alt_err_m: float = 8.0
+    flare_gate_exact_terminal_speed_mps: float = 5.5
+    flare_gate_safe_terminal_speed_mps: float = 8.0
+    flare_gate_exact_dx_abs: float = 20.0
+    flare_gate_exact_peak_ratio: float = 1.40
+    flare_gate_safe_peak_ratio: float = 1.70
+    flare_gate_exact_od_excess_s: float = 1.5
+    flare_gate_safe_od_excess_s: float = 3.0
+    flare_gate_amber_margin_s: float = 1.0
+    flare_gate_latest_safe_buffer_s: float = 0.6
 
     # Phase centering + setup/coast shape objective
     setup_center_tol_ratio: float = 0.20

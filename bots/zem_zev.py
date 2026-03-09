@@ -16,6 +16,7 @@ from bots._ballistics import (
     estimate_target_y_projection,
 )
 from bots._bot_math import clamp, engine_profile, finite_altitude, stable
+from bots._zem_gate import evaluate_flare_gate as _evaluate_flare_gate_impl
 from bots._zem_actuation import (
     command_from_plan as _command_from_plan_impl,
     command_passive_coast as _command_passive_coast_impl,
@@ -30,6 +31,7 @@ from bots._zem_eval import (
 )
 from bots._zem_phase import (
     apply_setup_gate_metrics as _apply_setup_gate_metrics_impl,
+    finalize_terminal_gate_metrics as _finalize_terminal_gate_metrics_impl,
     maybe_start_shape_window as _maybe_start_shape_window_impl,
     update_phase_tracking as _update_phase_tracking_impl,
     update_shape_window_metrics as _update_shape_window_metrics_impl,
@@ -66,6 +68,8 @@ class ZemZevBot(Bot):
             )
         )
         self._optimizer_terminal = PDGOptimizer(PDGOptimizerConfig(horizon_steps=28))
+        self._optimizer_flare_probe: dict[int, PDGOptimizer] = {}
+        self._rebuild_flare_probe_optimizers()
 
         self._behavior = "zem_zev"
         self._prev_angle_cmd = 0.0
@@ -158,11 +162,25 @@ class ZemZevBot(Bot):
                 if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
                     raise ValueError(f"zem_zev config key '{key}' must be a number")
                 patch[key] = float(raw_value)
+            elif isinstance(current, tuple):
+                if not isinstance(raw_value, (list, tuple)) or not raw_value:
+                    raise ValueError(
+                        f"zem_zev config key '{key}' must be a non-empty list/tuple"
+                    )
+                parsed: list[int] = []
+                for item in raw_value:
+                    if isinstance(item, bool) or not isinstance(item, (int, float)):
+                        raise ValueError(
+                            f"zem_zev config key '{key}' entries must be integers"
+                        )
+                    parsed.append(int(item))
+                patch[key] = tuple(parsed)
             else:
                 raise ValueError(
                     f"zem_zev config key '{key}' has unsupported type for override"
                 )
         self._cfg = replace(self._cfg, **patch)
+        self._rebuild_flare_probe_optimizers()
 
     def _reset_state(self) -> None:
         self._prev_angle_cmd = 0.0
@@ -188,6 +206,32 @@ class ZemZevBot(Bot):
         if not self._debug_setup:
             return
         print(f"ZEMDBG {line}")
+
+    def _rebuild_flare_probe_optimizers(self) -> None:
+        unique_steps = sorted({max(16, int(step)) for step in self._cfg.flare_gate_horizon_steps})
+        self._optimizer_flare_probe = {
+            steps: PDGOptimizer(
+                PDGOptimizerConfig(
+                    horizon_steps=steps,
+                    w_terminal_x=180.0,
+                    w_terminal_y=220.0,
+                    w_terminal_vx=120.0,
+                    w_terminal_vy=60.0,
+                    w_effort=0.005,
+                    w_smooth=0.05,
+                    w_path_x=0.0,
+                    w_path_y=0.0,
+                    w_upward_vy=0.5,
+                    w_descent_floor=0.1,
+                    w_altitude_progress=0.0,
+                    w_downspeed_progress=0.0,
+                    w_thrust_linear=0.05,
+                    w_overdrive_linear=2.0,
+                    w_overdrive_quadratic=8.0,
+                )
+            )
+            for steps in unique_steps
+        }
 
     def _set_display_state(
         self,
@@ -562,6 +606,60 @@ class ZemZevBot(Bot):
             return None
         return self._shape_shortfall_count / max(1, self._shape_shortfall_sample_count)
 
+    def _finalize_terminal_gate(
+        self,
+        *,
+        passive: Sensors,
+        alt: float,
+        projected_dx: float,
+        mode: str,
+        horizon_s: float,
+        terminal_speed: float,
+        peak_accel_ratio: float,
+        od_excess_s: float,
+        latest_safe_margin_s: float,
+        required_accel_ratio: float,
+    ) -> None:
+        _finalize_terminal_gate_metrics_impl(
+            self,
+            passive=passive,
+            alt=alt,
+            projected_dx=projected_dx,
+        )
+        self._flare_gate_mode = mode
+        self._flare_gate_horizon_s = horizon_s
+        self._flare_gate_terminal_speed = terminal_speed
+        self._flare_gate_peak_accel_ratio = peak_accel_ratio
+        self._flare_gate_od_excess_s = od_excess_s
+        self._flare_gate_latest_safe_margin_s = latest_safe_margin_s
+        self._flare_gate_required_accel_ratio = required_accel_ratio
+
+    def _evaluate_flare_gate(
+        self,
+        *,
+        dt: float,
+        passive: Sensors,
+        dx: float,
+        dy: float,
+        alt: float,
+        max_thrust_accel: float,
+        min_thrust_accel: float,
+        nominal_thrust_accel: float,
+        thrust_ramp_up: float,
+    ):
+        return _evaluate_flare_gate_impl(
+            self,
+            dt=dt,
+            passive=passive,
+            dx=dx,
+            dy=dy,
+            alt=alt,
+            max_thrust_accel=max_thrust_accel,
+            min_thrust_accel=min_thrust_accel,
+            nominal_thrust_accel=nominal_thrust_accel,
+            thrust_ramp_up=thrust_ramp_up,
+        )
+
     def _command_from_plan(
         self,
         *,
@@ -609,7 +707,7 @@ class ZemZevBot(Bot):
         if passive.state == "landed":
             self._reset_state()
 
-        max_power, min_throttle, max_throttle, _ramp_up = engine_profile(self.vehicle_info)
+        max_power, min_throttle, max_throttle, ramp_up = engine_profile(self.vehicle_info)
         target = self._resolve_target_contact(passive)
         target_uid = target.uid if target is not None else None
 
@@ -719,30 +817,61 @@ class ZemZevBot(Bot):
             projection=projection,
         )
         if self._active_phase == "coast":
-            self._plan = None
-            self._plan_elapsed = 0.0
-            self._replan_timer = 0.0
-            self._fallback_steps_remaining = 0
-            action = _command_passive_coast_impl(
-                self,
+            flare_gate = self._evaluate_flare_gate(
                 dt=dt,
                 passive=passive,
+                dx=dx,
+                dy=dy,
+                alt=alt,
+                max_thrust_accel=max_thrust_accel,
+                min_thrust_accel=min_thrust_accel,
+                nominal_thrust_accel=nominal_thrust_accel,
+                thrust_ramp_up=ramp_up,
             )
-            action.status = (
-                f"zem_zev passive/coast "
-                f"dx={stable(dx, 1):.1f} pdx={stable(float(projection.projected_dx), 1):.1f}"
-            )
-            self._set_display_state(
-                mode="passive",
-                phase="coast",
-                summary=(
-                    f"dx={stable(dx, 1):.1f} "
-                    f"pdx={stable(float(projection.projected_dx), 1):.1f}"
-                ),
-            )
-            self.status = action.status
-            self._last_flight_snapshot = self._build_evaluation_snapshot()
-            return action
+            if flare_gate is not None:
+                probe = flare_gate.probe
+                self._finalize_terminal_gate(
+                    passive=passive,
+                    alt=alt,
+                    projected_dx=probe.terminal_dx,
+                    mode=flare_gate.mode,
+                    horizon_s=probe.horizon_s,
+                    terminal_speed=probe.terminal_speed,
+                    peak_accel_ratio=probe.peak_accel_ratio,
+                    od_excess_s=probe.od_excess_s,
+                    latest_safe_margin_s=flare_gate.latest_safe_margin_s,
+                    required_accel_ratio=probe.required_accel_ratio,
+                )
+                self._active_phase = "terminal"
+                self._plan = probe.plan
+                self._plan_elapsed = 0.0
+                self._replan_timer = 1.0 / max(1e-3, self._cfg.replan_hz_terminal)
+                self._fallback_steps_remaining = int(self._cfg.fallback_hold_steps)
+            else:
+                self._plan = None
+                self._plan_elapsed = 0.0
+                self._replan_timer = 0.0
+                self._fallback_steps_remaining = 0
+                action = _command_passive_coast_impl(
+                    self,
+                    dt=dt,
+                    passive=passive,
+                )
+                action.status = (
+                    f"zem_zev passive/coast "
+                    f"dx={stable(dx, 1):.1f} pdx={stable(float(projection.projected_dx), 1):.1f}"
+                )
+                self._set_display_state(
+                    mode="passive",
+                    phase="coast",
+                    summary=(
+                        f"dx={stable(dx, 1):.1f} "
+                        f"pdx={stable(float(projection.projected_dx), 1):.1f}"
+                    ),
+                )
+                self.status = action.status
+                self._last_flight_snapshot = self._build_evaluation_snapshot()
+                return action
         replan_hz, dx_err_lim, dy_err_lim, vx_err_lim, vy_err_lim = self._replan_policy_for_phase(
             self._active_phase
         )
@@ -876,8 +1005,15 @@ class ZemZevBot(Bot):
             )
         if self._terminal_gate_done:
             label = "terminal entry"
+            if self._flare_gate_mode:
+                label = f"{label} {self._flare_gate_mode}"
             if self._terminal_gate_projected_dx is not None:
                 label = f"{label} pdx={stable(self._terminal_gate_projected_dx, 1):.1f}"
+            metadata: dict[str, float | str | None] = {"time_s": self._terminal_gate_time}
+            if self._flare_gate_mode is not None:
+                metadata["mode"] = self._flare_gate_mode
+            if self._flare_gate_horizon_s is not None:
+                metadata["horizon_s"] = self._flare_gate_horizon_s
             out.append(
                 PlotMarker(
                     id="terminal_entry",
@@ -885,7 +1021,7 @@ class ZemZevBot(Bot):
                     label=label,
                     x=self._terminal_gate_x,
                     y=self._terminal_gate_y,
-                    metadata={"time_s": self._terminal_gate_time},
+                    metadata=metadata,
                 )
             )
         return tuple(out)

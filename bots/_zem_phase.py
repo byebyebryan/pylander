@@ -30,6 +30,20 @@ def _capture_terminal_gate_state(bot, *, passive: Sensors) -> None:
     bot._terminal_gate_y = float(passive.y)
 
 
+def finalize_terminal_gate_metrics(
+    bot,
+    *,
+    passive: Sensors,
+    alt: float,
+    projected_dx: float,
+) -> None:
+    bot._terminal_gate_done = True
+    bot._terminal_gate_time = bot._elapsed_time_s
+    bot._terminal_gate_altitude = float(alt)
+    bot._terminal_gate_projected_dx = float(projected_dx)
+    _capture_terminal_gate_state(bot, passive=passive)
+
+
 def _projected_impact_angle_deg(*, vx: float, vy_up: float, t_fall: float) -> float:
     vy_down = abs(float(vy_up) - (_GRAVITY_MAG * max(0.0, float(t_fall))))
     vx_abs = abs(float(vx))
@@ -202,48 +216,6 @@ def update_phase_tracking(
                     f"idle_elapsed={idle_elapsed:5.2f}"
                 )
 
-    terminal_dx_limit = max(
-        cfg.terminal_gate_projected_dx_abs,
-        cfg.terminal_gate_projected_dx_target_ratio * bot._last_target_half,
-    )
-    terminal_entry_dx_limit = max(
-        cfg.terminal_entry_projected_dx_abs,
-        cfg.terminal_entry_projected_dx_target_ratio * bot._last_target_half,
-    )
-    terminal_ready = (
-        t_fall <= cfg.terminal_gate_t_fall_s
-        and abs(projected_dx) <= terminal_dx_limit
-        and float(passive.vy_up) <= cfg.terminal_gate_vy_up_max
-    )
-    terminal_entry_ready = (
-        t_fall <= cfg.terminal_gate_t_fall_s
-        and alt <= cfg.terminal_entry_altitude_max
-        and abs(projected_dx) <= terminal_entry_dx_limit
-        and float(passive.vy_up) <= cfg.terminal_entry_vy_up_max
-    )
-    terminal_phase_ready = terminal_ready or terminal_entry_ready
-    if terminal_ready and (not bot._terminal_gate_done):
-        bot._terminal_gate_done = True
-        bot._terminal_gate_time = bot._elapsed_time_s
-        bot._terminal_gate_altitude = alt
-        bot._terminal_gate_projected_dx = projected_dx
-        _capture_terminal_gate_state(bot, passive=passive)
-        if not bot._setup_gate_done:
-            _finalize_setup_gate_metrics(
-                bot,
-                passive=passive,
-                alt=alt,
-                projection=projection,
-            )
-            bot._debug_setup_print(
-                "gate_latch_terminal_fallback "
-                f"t={bot._elapsed_time_s:6.2f} "
-                f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
-                f"proj_apex_over_target={bot._setup_gate_projected_apex_over_target:8.2f} "
-                f"signed={shortfall_metric:8.2f} "
-                f"thrust={thrust_level:5.2f}"
-            )
-
     speed = math.hypot(float(passive.vx), float(passive.vy_up))
     touchdown_dx_limit = max(12.0, cfg.touchdown_phase_dx_ratio * bot._last_target_half)
     in_touchdown_corridor = abs(float(dx)) <= touchdown_dx_limit
@@ -253,7 +225,7 @@ def update_phase_tracking(
         and in_touchdown_corridor
     ):
         bot._active_phase = "touchdown"
-    elif bot._terminal_gate_done or terminal_phase_ready:
+    elif bot._terminal_gate_done:
         bot._active_phase = "terminal"
     elif bot._setup_gate_done:
         if bot._setup_gate_spawn_primed:

@@ -54,7 +54,7 @@ def test_zem_launch_landing_offset_bound_seed0() -> None:
 
 
 def test_zem_passive_coast_suppresses_solver_work_mid_flare() -> None:
-    # Partial flare run should remain in passive coast with no solver activity.
+    # Early flare run should remain ungated before control solves begin.
     _result, bot = _run_level(
         level_name="flare_normal",
         scenario="mid",
@@ -63,6 +63,9 @@ def test_zem_passive_coast_suppresses_solver_work_mid_flare() -> None:
     )
     snapshot = bot.get_bot_telemetry()
     assert int(snapshot.get("solve_count") or 0) == 0
+    assert int(snapshot.get("flare_probe_count") or 0) <= 1
+    assert snapshot.get("terminal_gate_done") is False
+    assert snapshot.get("flare_gate_mode") is None
     assert int(snapshot.get("fallback_frames") or 0) == 0
     assert snapshot.get("shape_curve_rmse") is None
     assert snapshot.get("shape_projected_dx_abs_max") == pytest.approx(0.0)

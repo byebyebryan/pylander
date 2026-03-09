@@ -171,8 +171,8 @@ Setup-phase evaluation metrics are reported through generic fields such as
 `setup_gate_*` and `setup_goal_*`. For `flare_normal` and `flare_error`,
 `setup_gate_*` is a spawn-time coast-entry snapshot rather than a post-burn
 setup latch. Bot-owned diagnostics stay namespaced under
-`bot_<botname>_*`, for example `bot_zem_zev_terminal_gate_projected_dx` and
-`bot_zem_zev_shape_curve_rmse`.
+`bot_<botname>_*`, for example `bot_zem_zev_terminal_gate_projected_dx`,
+`bot_zem_zev_flare_gate_mode`, and `bot_zem_zev_shape_curve_rmse`.
 
 When plotting is enabled, runs now emit `plot_paths` and a plot manifest path for bundle-style outputs.
 
