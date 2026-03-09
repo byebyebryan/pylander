@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from core.components import FuelTank
 from runtime.loop_timing import LoopTimers
 
 
@@ -13,7 +14,12 @@ def sync_actor_masses_to_engine(
     mass_resolver: Callable[[Any], float],
 ) -> None:
     for actor in actors:
+        tank: FuelTank | None = getattr(actor, "get_component", lambda _: None)(FuelTank)
+        if tank is not None and not tank._mass_dirty:
+            continue
         engine_adapter.set_actor_mass(actor.uid, mass_resolver(actor))
+        if tank is not None:
+            tank._mass_dirty = False
 
 
 @dataclass

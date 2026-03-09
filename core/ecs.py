@@ -47,16 +47,28 @@ class World:
         self.entities: list[Entity] = []
         self.systems: list[System] = []
         self._entity_map: dict[str, Entity] = {}
+        self._query_cache: dict[tuple[Type, ...], list[Entity]] = {}
+        self._cache_gen: int = 0
 
     def add_entity(self, entity: Entity) -> None:
         if entity.uid not in self._entity_map:
             self.entities.append(entity)
             self._entity_map[entity.uid] = entity
+            self._invalidate_cache()
 
     def remove_entity(self, entity: Entity) -> None:
         if entity.uid in self._entity_map:
             self.entities.remove(entity)
             del self._entity_map[entity.uid]
+            self._invalidate_cache()
+
+    def _invalidate_cache(self) -> None:
+        self._cache_gen += 1
+        self._query_cache.clear()
+
+    def invalidate_cache(self) -> None:
+        """Public cache invalidation for use after component add/remove."""
+        self._invalidate_cache()
 
     def add_system(self, system: System) -> None:
         system.world = self
@@ -66,11 +78,17 @@ class World:
         """Return all entities that have ALL of the specified component types."""
         if not component_types:
             return list(self.entities)
-        return [
+        key = component_types
+        cached = self._query_cache.get(key)
+        if cached is not None:
+            return cached
+        result = [
             entity
             for entity in self.entities
             if all(component_type in entity.components for component_type in component_types)
         ]
+        self._query_cache[key] = result
+        return result
 
     def update(self, dt: float) -> None:
         for system in self.systems:

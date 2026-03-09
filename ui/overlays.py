@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import pygame
 from core.maths import Range1D, Vector2
 
 
@@ -151,6 +152,4 @@ class SensorOverlay:
                 )
 
     def _line(self, color, p1, p2) -> None:
-        import pygame
-
         pygame.draw.line(self.screen, color, p1, p2, 2)

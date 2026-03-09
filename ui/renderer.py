@@ -1,8 +1,11 @@
 """Rendering system for terrain visualization (Level-centric)."""
 
+import logging
 import os
 import random
 import pygame
+
+logger = logging.getLogger(__name__)
 from .camera import OffsetCamera, Camera
 from .minimap import Minimap
 from typing import TYPE_CHECKING
@@ -192,7 +195,7 @@ class Renderer:
         try:
             pygame.quit()
         except Exception:
-            pass
+            logger.debug("Exception during pygame.quit()", exc_info=True)
 
     def toggle_ballistic_overlay(self) -> bool:
         self.show_ballistic_trajectory = not self.show_ballistic_trajectory
