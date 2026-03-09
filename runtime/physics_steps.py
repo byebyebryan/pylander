@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Callable
 
 from core.components import FuelTank
 from runtime.loop_timing import LoopTimers
 
+if TYPE_CHECKING:
+    from core.ecs import Entity, System
+    from core.engine_adapter import EngineAdapter
+
 
 def sync_actor_masses_to_engine(
     *,
-    actors: list[Any],
-    engine_adapter: Any,
-    mass_resolver: Callable[[Any], float],
+    actors: list[Entity],
+    engine_adapter: EngineAdapter,
+    mass_resolver: Callable[[Entity], float],
 ) -> None:
     for actor in actors:
         tank: FuelTank | None = getattr(actor, "get_component", lambda _: None)(FuelTank)
@@ -24,16 +28,16 @@ def sync_actor_masses_to_engine(
 
 @dataclass
 class PhysicsStepContext:
-    actors: list[Any]
-    engine_adapter: Any
-    scripted_control_system: Any
-    landing_site_motion_system: Any
-    landing_site_projection_system: Any
-    propulsion_system: Any
-    force_application_system: Any
-    physics_sync_system: Any
-    contact_system: Any
-    mass_resolver: Callable[[Any], float]
+    actors: list[Entity]
+    engine_adapter: EngineAdapter
+    scripted_control_system: System
+    landing_site_motion_system: System
+    landing_site_projection_system: System
+    propulsion_system: System
+    force_application_system: System
+    physics_sync_system: System
+    contact_system: System
+    mass_resolver: Callable[[Entity], float]
 
 
 def update_physics_steps(
