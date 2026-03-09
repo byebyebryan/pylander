@@ -122,17 +122,13 @@ def test_add_height_modifier_profile_matches_callable_samples() -> None:
         assert y == pytest.approx(wrapped(x, lod=0))
 
 
-def test_sample_terrain_height_supports_lod_and_non_lod_callables() -> None:
+def test_sample_terrain_height_supports_lod_callables() -> None:
     class _WithLod:
         def __call__(self, x: float, lod: int = 0) -> float:
             return x + (2.0 * lod)
 
-    class _NoLod:
-        def __call__(self, x: float) -> float:
-            return x - 3.0
-
     assert terrain.sample_terrain_height(_WithLod(), 5.0, lod=2) == pytest.approx(9.0)
-    assert terrain.sample_terrain_height(_NoLod(), 5.0, lod=2) == pytest.approx(2.0)
+    assert terrain.sample_terrain_height(_WithLod(), 5.0, lod=0) == pytest.approx(5.0)
 
 
 def test_terrain_resolution_and_slope_helpers_match_expected_values() -> None:
@@ -174,7 +170,7 @@ def test_ballistic_velocity_and_state_helpers_follow_constant_gravity() -> None:
 
 def test_sample_ballistic_trajectory_stops_on_terrain_hit() -> None:
     traj = terrain.sample_ballistic_trajectory(
-        lambda _x: 0.0,
+        lambda _x, lod=0: 0.0,
         x=0.0,
         y=120.0,
         vx=15.0,
@@ -196,7 +192,7 @@ def test_sample_ballistic_trajectory_stops_on_terrain_hit() -> None:
 
 def test_sample_ballistic_trajectory_stops_at_max_distance() -> None:
     traj = terrain.sample_ballistic_trajectory(
-        lambda _x: -1e9,
+        lambda _x, lod=0: -1e9,
         x=0.0,
         y=120.0,
         vx=10.0,
@@ -215,7 +211,7 @@ def test_sample_ballistic_trajectory_stops_at_max_distance() -> None:
 
 def test_sample_ballistic_trajectory_handles_low_horizontal_speed() -> None:
     traj = terrain.sample_ballistic_trajectory(
-        lambda _x: -1e9,
+        lambda _x, lod=0: -1e9,
         x=0.0,
         y=10.0,
         vx=0.01,
@@ -229,7 +225,8 @@ def test_sample_ballistic_trajectory_handles_low_horizontal_speed() -> None:
 
 
 def test_sample_ballistic_trajectory_refines_impact_point() -> None:
-    def terrain_line(xx: float) -> float:
+    def terrain_line(xx: float, lod: int = 0) -> float:
+        _ = lod
         return 0.2 * xx
 
     traj = terrain.sample_ballistic_trajectory(

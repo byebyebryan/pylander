@@ -15,10 +15,7 @@ from core.maths import Vector2
 
 def sample_terrain_height(height_func: Any, x: float, lod: int = 0) -> float:
     """Sample a terrain-like callable with optional lod support."""
-    try:
-        return float(height_func(x, lod))
-    except TypeError:
-        return float(height_func(x))
+    return float(height_func(x, lod))
 
 
 def terrain_resolution(height_func: Any, lod: int = 0, minimum: float = 0.5) -> float:
@@ -346,8 +343,9 @@ class SimplexNoiseGenerator:
         self.frequency = frequency
         self.amplitude = amplitude
 
-    def __call__(self, x: float) -> float:
+    def __call__(self, x: float, lod: int = 0) -> float:
         """Sample terrain height at x."""
+        _ = lod
         value = 0.0
         amplitude = self.amplitude
         frequency = self.frequency
@@ -490,7 +488,8 @@ class LayeredTerrainGenerator:
             + self._feature_from_cell(x, center_cell + 1)
         )
 
-    def __call__(self, x: float) -> float:
+    def __call__(self, x: float, lod: int = 0) -> float:
+        _ = lod
         return self.base_height + self._macro(x) + self._structure(x) + self._features(x)
 
 
