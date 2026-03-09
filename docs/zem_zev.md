@@ -73,10 +73,11 @@ This is why optimization is solved against nominal limits first and only uses OD
 Each frame:
 
 1. update phase tracking (`setup`, `coast`, `terminal`, `touchdown`),
-2. replan on schedule or state-deviation trigger,
-3. track plan between replans,
-4. allocate acceleration to thrust+angle with tilt/rate limits,
-5. fallback only when optimizer result is infeasible.
+2. if in `coast`, hold passive retrograde attitude and monitor flare entry,
+3. otherwise replan on schedule or state-deviation trigger,
+4. track plan between replans,
+5. allocate acceleration to thrust+angle with tilt/rate limits,
+6. fallback only when optimizer result is infeasible.
 
 For uphill transfers, setup planning remains generic:
 
@@ -84,24 +85,24 @@ For uphill transfers, setup planning remains generic:
 - climb behavior reflects the same generic setup/coast/terminal loop used on
   other levels.
 
-Reference path shaping now has two layers:
+Reference path shaping now has two layers during setup:
 
 - base profile from optimizer defaults (`_reference_profiles`),
-- setup/coast override that blends a ballistic-like parabolic y-reference when `vy_up > 0`.
+- setup override that blends a ballistic-like parabolic y-reference when `vy_up > 0`.
 
-The setup/coast y-reference is parameterized by an apex-over-target target:
+The setup y-reference is parameterized by an apex-over-target target:
 
 - `apex_target = clamp(setup_apex_height_per_dx * |dx_anchor|, setup_apex_height_min, setup_apex_height_max)`
-- blend by phase (`setup_apex_ref_blend`, `coast_apex_ref_blend`).
+- blend by `setup_apex_ref_blend`.
 
 Terminal-x tolerance is also phase-specific:
 
 - setup: `setup_center_tol_ratio * target_half_width`
-- coast: `coast_center_tol_ratio * target_half_width`
 - terminal: `terminal_center_tol_ratio * target_half_width`
 
 This replaces the prior "full pad-width deadband at all phases" behavior and
-pushes setup/coast to hold impact projection closer to pad center.
+pushes setup to hold impact projection closer to pad center before passive
+coast begins.
 
 Throttle allocation includes simple on/off hysteresis to reduce min-throttle chatter near cutoff.
 
@@ -110,6 +111,8 @@ Throttle allocation includes simple on/off hysteresis to reduce min-throttle cha
 `zem_zev` publishes generic and bot-owned telemetry:
 
 - generic setup contract: `setup_gate_*`, `setup_goal_*`
+  - on `flare_normal` / `flare_error`, `setup_gate_*` is primed from the spawn
+    state to indicate coast entry rather than post-burn setup completion
 - bot-owned terminal handoff: `bot_zem_zev_terminal_gate_done`, `bot_zem_zev_terminal_gate_time`, `bot_zem_zev_terminal_gate_altitude`, `bot_zem_zev_terminal_gate_projected_dx`
 - bot-owned compute/fallback: `bot_zem_zev_solve_count`, `bot_zem_zev_solve_ms_mean`, `bot_zem_zev_solve_ms_p90`, `bot_zem_zev_fallback_frames`
 - bot-owned shape quality: `bot_zem_zev_shape_apex_error`, `bot_zem_zev_shape_curve_rmse`, `bot_zem_zev_shape_projected_dx_abs_mean`, `bot_zem_zev_shape_projected_dx_abs_max`, `bot_zem_zev_shape_shortfall_ratio`
@@ -132,27 +135,25 @@ Goal-based eval boundary:
   `setup_gate_burn_start_thrust`, `setup_gate_idle_thrust_max`,
   `setup_gate_burn_end_settle_s`
 - setup burn shaping before gate: `setup_burn_taper_*`, `setup_burn_cut_overshoot_*`
-- post-gate coast retention guard: `coast_hold_projected_dx_*`, `coast_hold_vx_track_*`, `coast_hold_overshoot_*`
 - terminal handoff strictness: `terminal_gate_*` (telemetry latch) and
   `terminal_entry_*` (control handoff)
 
 Centering pressure by phase:
 
 - `setup_center_tol_ratio`
-- `coast_center_tol_ratio`
 - `terminal_center_tol_ratio`
 
 Trajectory shape controls:
 
 - `setup_apex_height_per_dx`, `setup_apex_height_min`, `setup_apex_height_max`
-- `setup_apex_ref_blend`, `coast_apex_ref_blend`
+- `setup_apex_ref_blend`
 
 ## Compute cost
 
-Solver load is controlled with phase-adaptive replanning:
+Solver load is controlled with setup/terminal replanning:
 
 - setup: lower replan rate, looser deviation thresholds
-- coast: medium replan rate
+- coast: no solver work; passive retrograde attitude only
 - terminal: higher replan rate, tighter deviation thresholds
 
 Use `bench --workers N` for throughput when running large benchmark suites.

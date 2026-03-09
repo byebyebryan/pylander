@@ -37,7 +37,11 @@ Defaults:
 
 - End-to-end objective metrics: `state`, `success`, `fuel_consumed`, `path_efficiency`
 - Unified gate telemetry: `setup_gate_*`, `bot_zem_zev_terminal_gate_*`
-- Goal metadata when using goal selectors: `eval_goal`, `eval_early_end`, `eval_end_reason`
+- `setup_gate_*` is emitted at spawn as the coast-entry snapshot; there is no
+  setup burn on this level.
+- Coast stays passive and points retrograde until flare entry; all correction is
+  deferred to the flare/terminal phase.
+- Goal metadata: `eval_goal`, `eval_early_end`, `eval_end_reason`
 
 ## Commands
 

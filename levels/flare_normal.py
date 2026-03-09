@@ -15,8 +15,8 @@ from levels.scenario_common import (
     SampleRange,
     ScenarioCatalogMixin,
     ScenarioLevel,
-    ScenarioLevelSpec,
     angle_from_velocity,
+    prime_setup_gate_for_primary_bot,
     has_randomized_values,
     make_flat_scenario_spec,
     scenario_seed,
@@ -109,6 +109,9 @@ class FlareNormalLevel(ScenarioCatalogMixin, ScenarioLevel):
                 scenario.target_flight_time_s,
             )
         )
+
+    def start(self, game) -> None:
+        prime_setup_gate_for_primary_bot(self, game)
 
     @staticmethod
     def _van_der_corput(index: int, base: int) -> float:

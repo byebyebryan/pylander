@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from bots._bot_math import clamp, finite_altitude
+from bots._bot_math import finite_altitude
 from bots._optimizer_pdg import PDGPlan
 from core.bot import Sensors
 from core.config import GRAVITY
@@ -35,18 +35,6 @@ def solve_plan(
     )
     target_vy = bot._desired_terminal_vy(alt_guidance, nominal_thrust_accel, max_tilt)
     descent_floor_vy = bot._descent_floor_vy(alt_guidance, nominal_thrust_accel, max_tilt)
-    if phase in ("setup", "coast"):
-        if alt > bot._cfg.high_alt_coast_vy_boost_alt:
-            vy_alpha = clamp(
-                (alt - bot._cfg.high_alt_coast_vy_boost_alt)
-                / max(1e-3, 3.0 * bot._cfg.high_alt_coast_vy_boost_alt),
-                0.0,
-                1.0,
-            )
-            vy_boost = 1.0 + (
-                vy_alpha * max(0.0, bot._cfg.high_alt_coast_vy_boost_max - 1.0)
-            )
-            target_vy = min(target_vy * vy_boost, -bot._cfg.braking_min_speed)
     optimizer = bot._select_optimizer(
         phase=phase,
         alt=alt_guidance,

@@ -11,6 +11,7 @@ from core.components import (
     ActorProfile,
     CargoHold,
     Engine,
+    PhysicsState,
     LandingSite as LandingSiteComponent,
     LandingSiteEconomy,
     LanderGeometry,
@@ -28,6 +29,8 @@ from core.level import Level, LevelWorld
 from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 from core.maths import Vector2
 from core.physics import PhysicsEngine
+from core.bot import SetupGateMetrics
+from core.config import GRAVITY
 from core.eval_goals import EVAL_GOAL_LANDING
 from landers import create_lander
 from core.ecs import require_component
@@ -39,6 +42,7 @@ from levels.common import (
 
 
 BenchmarkRandomMode = Literal["median", "sample"]
+_GRAVITY_MAG = abs(float(GRAVITY))
 
 
 @dataclass(frozen=True)
@@ -225,6 +229,110 @@ def angle_from_velocity(vx: float, vy_up: float, *, opposite: bool = False) -> f
     if abs(vel_x) <= 1e-6 and abs(vel_y) <= 1e-6:
         return 0.0
     return math.atan2(vel_x, vel_y)
+
+
+def build_setup_gate_metrics_from_state(
+    *,
+    x: float,
+    y: float,
+    vx: float,
+    vy_up: float,
+    altitude: float,
+    target_x: float,
+    target_y: float,
+) -> SetupGateMetrics:
+    dx = float(target_x) - float(x)
+    dy = float(target_y) - float(y)
+    vy_pos = max(0.0, float(vy_up))
+    apex_y = float(y)
+    if _GRAVITY_MAG > 1e-6:
+        apex_y += (vy_pos * vy_pos) / (2.0 * _GRAVITY_MAG)
+    projected_apex_over_target = apex_y - float(target_y)
+
+    has_target_y_solution = True
+    projected_impact_dx: float | None = None
+    projected_impact_angle_deg: float | None = None
+    t_cross: float | None = None
+
+    if _GRAVITY_MAG <= 1e-6:
+        if abs(float(vy_up)) > 1e-6:
+            t_cross = dy / float(vy_up)
+        elif abs(dy) <= 1e-6:
+            t_cross = 0.0
+        else:
+            has_target_y_solution = False
+    else:
+        disc = (float(vy_up) * float(vy_up)) - (2.0 * _GRAVITY_MAG * dy)
+        if disc < 0.0:
+            has_target_y_solution = False
+        else:
+            sqrt_disc = math.sqrt(max(0.0, disc))
+            roots = sorted(
+                (
+                    (float(vy_up) - sqrt_disc) / _GRAVITY_MAG,
+                    (float(vy_up) + sqrt_disc) / _GRAVITY_MAG,
+                )
+            )
+            positive = [value for value in roots if value >= 0.0]
+            if positive:
+                if dy >= 0.0 and len(positive) >= 2:
+                    t_cross = positive[-1]
+                else:
+                    future = [value for value in positive if value > 1e-4]
+                    t_cross = future[0] if future else positive[0]
+            else:
+                has_target_y_solution = False
+
+    if has_target_y_solution and t_cross is not None:
+        projected_impact_dx = dx - (float(vx) * float(t_cross))
+        vy_down = abs(float(vy_up) - (_GRAVITY_MAG * max(0.0, float(t_cross))))
+        projected_impact_angle_deg = math.degrees(math.atan2(vy_down, abs(float(vx))))
+
+    return SetupGateMetrics(
+        time_s=0.0,
+        altitude=max(0.0, float(altitude)),
+        x=float(x),
+        y=float(y),
+        vx=float(vx),
+        vy_up=float(vy_up),
+        projected_apex_y=apex_y,
+        projected_apex_over_target=projected_apex_over_target,
+        has_target_y_solution=has_target_y_solution,
+        projected_impact_dx=projected_impact_dx,
+        projected_impact_angle_deg=projected_impact_angle_deg,
+        burn_duration_s=0.0,
+        burn_fuel_used=0.0,
+        burn_avg_thrust_level=0.0,
+    )
+
+
+def prime_setup_gate_for_primary_bot(level, game) -> None:
+    world = getattr(level, "world", None)
+    if world is None or not getattr(world, "actors", None):
+        return
+    actor = world.actors[0]
+    bot = getattr(game, "actor_bots", {}).get(actor.uid)
+    if bot is None:
+        return
+
+    target_pos = getattr(level, "eval_target_pos", None)
+    if not isinstance(target_pos, Vector2):
+        return
+
+    trans = require_component(actor, Transform)
+    phys = require_component(actor, PhysicsState)
+    altitude = float(trans.pos.y) - float(level.terrain(float(trans.pos.x), lod=0))
+    bot.prime_setup_gate(
+        build_setup_gate_metrics_from_state(
+            x=float(trans.pos.x),
+            y=float(trans.pos.y),
+            vx=float(phys.vel.x),
+            vy_up=float(phys.vel.y),
+            altitude=altitude,
+            target_x=float(target_pos.x),
+            target_y=float(target_pos.y),
+        )
+    )
 
 
 FLARE_ANGLE_PROFILES: tuple[tuple[str, float], ...] = (
@@ -421,4 +529,3 @@ class ScenarioLevel(EndResultMixin, Level):
         setattr(self, "engine", engine)
         setattr(self, "scenario_name", spec.name)
         setattr(self, "eval_target_pos", Vector2(target_x, target_y))
-

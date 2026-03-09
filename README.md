@@ -168,7 +168,9 @@ Benchmark records include bot compute timing metrics (avg plus p90/p99 for
 passive, update, and total ms/tick) when profiling is enabled.
 
 Setup-phase evaluation metrics are reported through generic fields such as
-`setup_gate_*` and `setup_goal_*`. Bot-owned diagnostics stay namespaced under
+`setup_gate_*` and `setup_goal_*`. For `flare_normal` and `flare_error`,
+`setup_gate_*` is a spawn-time coast-entry snapshot rather than a post-burn
+setup latch. Bot-owned diagnostics stay namespaced under
 `bot_<botname>_*`, for example `bot_zem_zev_terminal_gate_projected_dx` and
 `bot_zem_zev_shape_curve_rmse`.
 

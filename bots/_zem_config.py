@@ -7,16 +7,11 @@ from dataclasses import dataclass
 class ZemZevConfig:
     # Receding horizon scheduling
     replan_hz_setup: float = 2.5
-    replan_hz_coast: float = 4.0
     replan_hz_terminal: float = 7.0
     replan_dx_error_setup: float = 48.0
     replan_dy_error_setup: float = 30.0
     replan_vx_error_setup: float = 7.0
     replan_vy_error_setup: float = 7.0
-    replan_dx_error_coast: float = 32.0
-    replan_dy_error_coast: float = 22.0
-    replan_vx_error_coast: float = 5.0
-    replan_vy_error_coast: float = 5.0
     replan_dx_error_terminal: float = 24.0
     replan_dy_error_terminal: float = 18.0
     replan_vx_error_terminal: float = 4.0
@@ -24,8 +19,6 @@ class ZemZevConfig:
     fallback_hold_steps: int = 12
     long_horizon_altitude: float = 120.0
     long_horizon_time_to_go: float = 6.0
-    high_alt_coast_vy_boost_alt: float = 220.0
-    high_alt_coast_vy_boost_max: float = 1.03
 
     # Attitude/allocator limits
     max_tilt: float = 0.78
@@ -83,12 +76,6 @@ class ZemZevConfig:
     setup_burn_taper_overshoot_ratio: float = 2.20
     setup_burn_cut_overshoot_abs: float = 4.0
     setup_burn_cut_overshoot_ratio: float = 0.08
-    coast_hold_projected_dx_abs: float = 24.0
-    coast_hold_projected_dx_target_ratio: float = 0.45
-    coast_hold_vx_track_abs: float = 2.6
-    coast_hold_vx_track_ratio: float = 0.14
-    coast_hold_overshoot_abs: float = 16.0
-    coast_hold_overshoot_ratio: float = 0.25
     terminal_gate_t_fall_s: float = 4.5
     terminal_gate_projected_dx_abs: float = 18.0
     terminal_gate_projected_dx_target_ratio: float = 0.4
@@ -103,13 +90,11 @@ class ZemZevConfig:
 
     # Phase centering + setup/coast shape objective
     setup_center_tol_ratio: float = 0.20
-    coast_center_tol_ratio: float = 0.35
     terminal_center_tol_ratio: float = 1.0
     setup_apex_height_per_dx: float = 0.18
     setup_apex_height_min: float = 30.0
     setup_apex_height_max: float = 240.0
     setup_apex_ref_blend: float = 0.45
-    coast_apex_ref_blend: float = 0.15
 
     # Launch-from-pad bootstrap when starting landed with a different target.
     launch_takeoff_clear_altitude: float = 10.0
