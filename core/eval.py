@@ -315,16 +315,20 @@ def default_artifact_path(
     return Path(directory) / f"{stem}.{kind}"
 
 
+_COLLISION_SAFE_PATH_LIMIT = 10_000
+
+
 def collision_safe_path(path: str | Path) -> Path:
     base = Path(path)
     if not base.exists():
         return base
-    idx = 1
-    while True:
+    for idx in range(1, _COLLISION_SAFE_PATH_LIMIT + 1):
         candidate = base.with_name(f"{base.stem}-{idx}{base.suffix}")
         if not candidate.exists():
             return candidate
-        idx += 1
+    raise RuntimeError(
+        f"collision_safe_path: exceeded {_COLLISION_SAFE_PATH_LIMIT} candidates for {base}"
+    )
 
 
 def write_json_report(path: str | Path, payload: dict[str, Any]) -> Path:
