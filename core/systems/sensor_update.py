@@ -34,5 +34,5 @@ class SensorUpdateSystem(System):
             readings.proximity = get_proximity_contact(
                 trans.pos,
                 self.terrain,
-                range=cfg.proximity_sensor_range,
+                max_range=cfg.proximity_sensor_range,
             )

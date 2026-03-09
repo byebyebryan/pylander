@@ -42,6 +42,7 @@ from runtime.result_pipeline import (
 )
 from runtime.session_loop import SessionLoopContext, run_session_loop
 from runtime.sensors import resolve_eval_target_pos
+from core.sensor import reset_proximity_cache
 
 from core.config import (
     BOT_FPS,
@@ -198,6 +199,7 @@ class LanderGame:
         frame_dt = 1.0 / TARGET_RENDERING_FPS
         timers = LoopTimers(physics_dt=physics_dt, bot_dt=bot_dt, frame_dt=frame_dt)
 
+        reset_proximity_cache()
         self.plotter.set_sampling_from_print_freq(print_freq, TARGET_RENDERING_FPS)
         self.plotter.seed_initial_sample()
         self._plot_events_seen.clear()

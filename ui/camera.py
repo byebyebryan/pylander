@@ -18,9 +18,9 @@ class Camera:
 
         # Camera transform (position + rotation, though rotation unused for now)
         self.trans = Transform()
-        
+
         # Zoom level (pixels per world unit)
-        self.zoom = 2.0
+        self._zoom = 2.0
         self.min_zoom = 0.02
         self.max_zoom = 2.0
 
@@ -28,21 +28,39 @@ class Camera:
         self.pan_speed = 5.0
         self.zoom_speed = 1.1
 
+        # Cached visible world rect
+        self._visible_rect_dirty = True
+        self._cached_visible_rect: Rect | None = None
+
     @property
     def x(self) -> float:
         return self.trans.x
-    
+
     @x.setter
     def x(self, value: float):
-        self.trans.x = value
+        if self.trans.x != value:
+            self.trans.x = value
+            self._visible_rect_dirty = True
 
     @property
     def y(self) -> float:
         return self.trans.y
-    
+
     @y.setter
     def y(self, value: float):
-        self.trans.y = value
+        if self.trans.y != value:
+            self.trans.y = value
+            self._visible_rect_dirty = True
+
+    @property
+    def zoom(self) -> float:
+        return self._zoom
+
+    @zoom.setter
+    def zoom(self, value: float):
+        if self._zoom != value:
+            self._zoom = value
+            self._visible_rect_dirty = True
 
     def world_to_screen(self, pos: Vector2) -> Vector2:
         """Convert world coordinates to screen pixel coordinates."""
@@ -59,12 +77,17 @@ class Camera:
         return Vector2(world_x, world_y)
 
     def get_visible_world_rect(self) -> Rect:
-        """Get world-space axis-aligned view bounds."""
-        top_left = self.screen_to_world(Vector2(0.0, 0.0))
-        bottom_right = self.screen_to_world(
-            Vector2(float(self.screen_width), float(self.screen_height))
-        )
-        return Rect.from_bounds(top_left.x, bottom_right.x, bottom_right.y, top_left.y)
+        """Get world-space axis-aligned view bounds (cached until camera moves)."""
+        if self._visible_rect_dirty or self._cached_visible_rect is None:
+            top_left = self.screen_to_world(Vector2(0.0, 0.0))
+            bottom_right = self.screen_to_world(
+                Vector2(float(self.screen_width), float(self.screen_height))
+            )
+            self._cached_visible_rect = Rect.from_bounds(
+                top_left.x, bottom_right.x, bottom_right.y, top_left.y
+            )
+            self._visible_rect_dirty = False
+        return self._cached_visible_rect
 
     def pan(self, delta: Vector2):
         """Move camera by given amount in world coordinates."""

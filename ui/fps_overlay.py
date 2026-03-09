@@ -10,6 +10,9 @@ class FpsOverlay:
         self.font = font
         self.screen = screen
         self.clock = clock
+        self._cached_label: str | None = None
+        self._cached_shadow = None
+        self._cached_text = None
 
     def draw(self) -> None:
         if self.clock is None:
@@ -18,9 +21,12 @@ class FpsOverlay:
         fps = self.clock.get_fps()
         frame_time = self.clock.get_rawtime()
         label = f"FPS: {fps:.1f}, FT: {frame_time:.2f}ms"
-        text_surface = self.font.render(label, True, (0, 0, 0))
-        x = screen_rect.right - text_surface.get_width() - 10
+        # Only re-render surfaces when the label text changes
+        if label != self._cached_label:
+            self._cached_shadow = self.font.render(label, True, (0, 0, 0))
+            self._cached_text = self.font.render(label, True, (255, 255, 255))
+            self._cached_label = label
+        x = screen_rect.right - self._cached_text.get_width() - 10
         y = 10
-        self.screen.blit(text_surface, (x + 1, y + 1))
-        text_surface = self.font.render(label, True, (255, 255, 255))
-        self.screen.blit(text_surface, (x, y))
+        self.screen.blit(self._cached_shadow, (x + 1, y + 1))
+        self.screen.blit(self._cached_text, (x, y))

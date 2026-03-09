@@ -19,6 +19,12 @@ from core.components import (
 from core.maths import clearance_above_terrain
 
 
+def _stable(value: float, digits: int = 1) -> float:
+    """Round near-zero values to exactly zero for display stability."""
+    epsilon = 0.5 * (10.0 ** (-digits))
+    return 0.0 if abs(value) < epsilon else value
+
+
 class HudOverlay:
     """Draw heads-up display text for lander status and controls."""
 
@@ -26,6 +32,17 @@ class HudOverlay:
         self.font = font
         self.screen = screen
         self.bot = bot
+        # Pre-render control line surfaces (shadow, foreground) since they never change
+        color = (200, 200, 200)
+        shadow_color = (0, 0, 0)
+        self._control_surfaces: list[tuple | None] = []
+        for line in self._CONTROL_LINES:
+            if line:
+                shadow = font.render(line, True, shadow_color)
+                text = font.render(line, True, color)
+                self._control_surfaces.append((shadow, text))
+            else:
+                self._control_surfaces.append(None)
 
     def draw(self, level, bot=None, actor=None) -> None:
         focus_actor = actor if actor is not None else level.lander
@@ -39,9 +56,8 @@ class HudOverlay:
         info_lines = self._build_info_line_specs(level, focus_actor, effective_bot)
         self._draw_text_lines(info_lines, 10, (220, 220, 220))
 
-        control_lines = self._build_control_lines(focus_actor)
-        y_offset = screen_rect.bottom - 20 - (len(control_lines) * 18)
-        self._draw_text_lines(control_lines, y_offset, (200, 200, 200))
+        y_offset = screen_rect.bottom - 20 - (len(self._control_surfaces) * 18)
+        self._blit_control_lines(y_offset)
 
     def _build_info_line_specs(self, level, actor, bot=None):
         lines = self._build_info_lines(level, actor, bot)
@@ -68,10 +84,6 @@ class HudOverlay:
         if None in (trans, phys, tank, eng, geo, ls, readings):
             raise RuntimeError("Lander missing expected HUD components")
 
-        def _stable(value: float, digits: int = 1) -> float:
-            epsilon = 0.5 * (10.0 ** (-digits))
-            return 0.0 if abs(value) < epsilon else value
-
         speed = math.hypot(phys.vel.x, phys.vel.y)
         terrain_y = level.terrain(trans.pos.x)
         altitude = clearance_above_terrain(
@@ -95,7 +107,7 @@ class HudOverlay:
         cargo_limit = 0.0
         if cargo is not None:
             cargo_limit = max(0.0, float(cargo.max_cargo_mass))
-            cargo_mass = max(0.0, min(float(cargo.cargo_mass), cargo_limit))
+            cargo_mass = cargo.effective_mass
         wet_mass = dry_mass + fuel_mass + cargo_mass
         wet_mass_t = wet_mass / 1000.0
         dry_mass_t = dry_mass / 1000.0
@@ -174,33 +186,31 @@ class HudOverlay:
             lines.append("PROX: --")
         return lines
 
-    @staticmethod
-    def _resolve_bot_name(bot) -> str:
-        return resolve_bot_name(bot)
+    _CONTROL_LINES = (
+        "Controls:",
+        "W/UP: Increase thrust",
+        "S/DOWN: Decrease thrust",
+        "THRUST [OD] in red: overdrive burn",
+        "A/LEFT: Rotate left",
+        "D/RIGHT: Rotate right",
+        "F: Refuel (when landed)",
+        "TAB: Switch actor",
+        "T: Toggle ballistic path",
+        "R: Reset",
+        "Q/ESC: Quit",
+    )
 
-    @staticmethod
-    def _resolve_bot_status(bot) -> str:
-        return resolve_bot_status(bot)
+    def _build_control_lines(self) -> tuple[str, ...]:
+        return self._CONTROL_LINES
 
-    @staticmethod
-    def _resolve_bot_display_state(bot):
-        return resolve_bot_display_state(bot)
-
-    def _build_control_lines(self, lander) -> list[str]:
-        _ = lander
-        return [
-            "Controls:",
-            "W/UP: Increase thrust",
-            "S/DOWN: Decrease thrust",
-            "THRUST [OD] in red: overdrive burn",
-            "A/LEFT: Rotate left",
-            "D/RIGHT: Rotate right",
-            "F: Refuel (when landed)",
-            "TAB: Switch actor",
-            "T: Toggle ballistic path",
-            "R: Reset",
-            "Q/ESC: Quit",
-        ]
+    def _blit_control_lines(self, y_offset: int) -> None:
+        """Blit pre-rendered control line surfaces."""
+        for entry in self._control_surfaces:
+            if entry is not None:
+                shadow, text = entry
+                self.screen.blit(shadow, (11, y_offset + 1))
+                self.screen.blit(text, (10, y_offset))
+            y_offset += 18
 
     def _draw_text_lines(self, lines, y_offset: int, color) -> None:
         for entry in lines:

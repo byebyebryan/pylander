@@ -133,6 +133,11 @@ class ProximityCache:
 _PROX_CACHE = ProximityCache()
 
 
+def reset_proximity_cache() -> None:
+    """Clear the module-level proximity cache between game runs."""
+    _PROX_CACHE.store.clear()
+
+
 @dataclass
 class ProximityContact:
     x: float
@@ -147,7 +152,7 @@ class ProximityContact:
 def get_proximity_contact(
     pos: Vector2,
     terrain,
-    range: float = 500.0,
+    max_range: float = 500.0,
 ) -> ProximityContact | None:
     def _surface_metrics(obj, xx: float) -> tuple[float, float, float]:
         slope = estimate_terrain_slope(obj, xx, lod=0)
@@ -158,26 +163,26 @@ def get_proximity_contact(
         return nx / nlen, ny / nlen, slope
 
     x, y = pos.x, pos.y
-        
-    # Cache check (LRU keyed by quantized x,y,range)
+
+    # Cache check (LRU keyed by quantized x,y,max_range)
     cache = _PROX_CACHE
     q = max(1e-6, float(cache.quantize))
-    key = (round(x / q) * q, round(y / q) * q, round(range / q) * q)
+    key = (round(x / q) * q, round(y / q) * q, round(max_range / q) * q)
     if key in cache.store:
         result = cache.store.pop(key)
         cache.store[key] = result  # mark as most-recent
         cx, cy, dist = result
-        # Respect range on cache hits
-        if not math.isfinite(dist) or dist > range:
+        # Respect max_range on cache hits
+        if not math.isfinite(dist) or dist > max_range:
             return None
         angle = math.atan2(cy - y, cx - x)
         nx, ny, slope = _surface_metrics(terrain, cx)
         return ProximityContact(cx, cy, angle, dist, nx, ny, slope)
 
-    cx, cy, dist = closest_point_on_terrain(terrain, pos, search_radius=range)
+    cx, cy, dist = closest_point_on_terrain(terrain, pos, search_radius=max_range)
 
     # If no point is within range, return None and do not cache
-    if not math.isfinite(dist) or dist > range:
+    if not math.isfinite(dist) or dist > max_range:
         return None
 
     # Update cache
