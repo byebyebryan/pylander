@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import random
 from dataclasses import dataclass
 from typing import Literal, Mapping
@@ -10,11 +11,9 @@ from core.components import (
     ActorProfile,
     CargoHold,
     Engine,
-    FuelTank,
     LandingSite as LandingSiteComponent,
     LandingSiteEconomy,
     LanderGeometry,
-    PhysicsState,
     PlayerControlled,
     PlayerSelectable,
     Transform,
@@ -33,11 +32,9 @@ from core.eval_goals import EVAL_GOAL_LANDING
 from landers import create_lander
 from core.ecs import require_component
 from levels.common import (
-    build_end_result_default,
-    compute_score_default,
+    EndResultMixin,
     compute_spawn_pos,
     get_mass,
-    should_end_default,
 )
 
 
@@ -176,18 +173,9 @@ def validate_scenario_recoverability(
     initial_vy_up: float,
 ) -> None:
     """Fail fast for scenarios that cannot physically arrest descent in time."""
-    phys = require_component(actor, PhysicsState)
-    tank = require_component(actor, FuelTank)
     engine = require_component(actor, Engine)
-    cargo = actor.get_component(CargoHold)
 
-    cargo_mass = 0.0
-    if cargo is not None:
-        cargo_mass = max(0.0, min(float(cargo.cargo_mass), float(cargo.max_cargo_mass)))
-    total_mass = max(
-        0.5,
-        float(phys.mass) + float(tank.fuel) * float(tank.density) + cargo_mass,
-    )
+    total_mass = max(0.5, get_mass(actor))
     max_up_acc = (float(engine.max_power) * float(engine.max_thrust) / total_mass) - 9.8
     if max_up_acc <= 1e-6:
         raise ValueError(
@@ -204,6 +192,74 @@ def validate_scenario_recoverability(
             f"Scenario '{scenario_name}' is unrecoverable: "
             f"stop_distance={stop_distance:.2f} usable_altitude={usable_altitude:.2f}"
         )
+
+
+def sync_engine_pose_velocity(
+    engine: object | None,
+    pos: Vector2,
+    rotation: float,
+    vx: float,
+    vy: float,
+    uid: str,
+    *,
+    clear_velocity: bool = False,
+) -> None:
+    """Teleport + velocity sync on an engine, guarded by hasattr checks."""
+    if engine is None:
+        return
+    if hasattr(engine, "teleport_lander"):
+        engine.teleport_lander(
+            Vector2(pos),
+            angle=rotation,
+            clear_velocity=clear_velocity,
+            uid=uid,
+        )
+    if hasattr(engine, "set_lander_velocity"):
+        engine.set_lander_velocity(Vector2(vx, vy), uid=uid)
+
+
+def angle_from_velocity(vx: float, vy_up: float, *, opposite: bool = False) -> float:
+    """Return the heading angle (radians) implied by a velocity vector."""
+    vel_x = -float(vx) if opposite else float(vx)
+    vel_y = -float(vy_up) if opposite else float(vy_up)
+    if abs(vel_x) <= 1e-6 and abs(vel_y) <= 1e-6:
+        return 0.0
+    return math.atan2(vel_x, vel_y)
+
+
+FLARE_ANGLE_PROFILES: tuple[tuple[str, float], ...] = (
+    ("shallower", 15.0),
+    ("shallow", 30.0),
+    ("mid", 45.0),
+    ("steep", 60.0),
+    ("steeper", 75.0),
+)
+
+
+def make_flat_scenario_spec(
+    *,
+    name: str,
+    start_dx: float,
+    start_dy: float,
+    cargo_mass: float,
+) -> ScenarioLevelSpec:
+    """Build a ScenarioLevelSpec for flat-terrain flare/error scenarios."""
+    return ScenarioLevelSpec(
+        name=name,
+        start_x=start_dx,
+        target_x=0.0,
+        spawn_clearance=start_dy,
+        terrain_kind="flat",
+        target_mode="flush_flatten",
+        target_offset_y=0.0,
+        target_size=110.0,
+        cargo_mass=cargo_mass,
+    )
+
+
+def scenario_seed(seed: int, name: str) -> int:
+    """Derive a deterministic hash from a seed and scenario name."""
+    return seed ^ (sum(ord(ch) for ch in name) << 1)
 
 
 def _build_base_terrain(seed: int, spec: ScenarioLevelSpec):
@@ -226,7 +282,7 @@ def _build_base_terrain(seed: int, spec: ScenarioLevelSpec):
     raise ValueError(f"Unsupported terrain kind: {spec.terrain_kind}")
 
 
-class ScenarioLevel(Level):
+class ScenarioLevel(EndResultMixin, Level):
     """Single-scenario level with deterministic setup and optional default bot."""
 
     scenario: ScenarioLevelSpec | None = None
@@ -366,38 +422,3 @@ class ScenarioLevel(Level):
         setattr(self, "scenario_name", spec.name)
         setattr(self, "eval_target_pos", Vector2(target_x, target_y))
 
-    def should_end(self, game) -> bool:
-        return should_end_default(
-            game,
-            stop_on_crash=getattr(self, "stop_on_crash", False),
-            stop_on_first_land=getattr(self, "stop_on_first_land", False),
-            stop_on_out_of_fuel=getattr(self, "stop_on_out_of_fuel", False),
-            max_time=getattr(self, "max_time", None),
-        )
-
-    def end(self, game):
-        landing_count = getattr(game, "_landing_count", 0)
-        crash_count = getattr(game, "_crash_count", 0)
-        score = compute_score_default(
-            game,
-            landing_count,
-            crash_count,
-            credits_score=1.0,
-            fuel_score=10.0,
-            landing_score=100.0,
-            crash_penalty=-200.0,
-        )
-        result = build_end_result_default(
-            game,
-            landing_count=landing_count,
-            crash_count=crash_count,
-            score=score,
-        )
-        result["scenario"] = getattr(self, "scenario_name", type(self).__name__)
-        result["scenario_benchmark_mode"] = self._benchmark_random_mode
-        params = getattr(self, "_scenario_params", None)
-        if isinstance(params, dict):
-            for key, value in params.items():
-                if isinstance(value, (int, float, str, bool)):
-                    result[f"scenario_{key}"] = value
-        return result
