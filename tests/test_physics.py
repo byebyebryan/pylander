@@ -4,20 +4,13 @@ import math
 
 import pytest
 
+from conftest import FlatTerrain
 from core.maths import Vector2
 from core.physics import PhysicsEngine
 
 
-class _FlatTerrain:
-    def __call__(self, _x: float, lod: int = 0) -> float:
-        return 0.0
-
-    def get_resolution(self, _lod: int) -> float:
-        return 1.0
-
-
 def test_closest_point_uses_vector_origin_signature() -> None:
-    engine = PhysicsEngine(height_sampler=_FlatTerrain(), gravity=(0.0, -9.8))
+    engine = PhysicsEngine(height_sampler=FlatTerrain(), gravity=(0.0, -9.8))
     engine.attach_lander(
         width=8.0, height=8.0, mass=10.0, start_pos=Vector2(0.0, 20.0)
     )
@@ -30,7 +23,7 @@ def test_closest_point_uses_vector_origin_signature() -> None:
 
 
 def test_teleport_lander_clears_velocity_when_requested() -> None:
-    engine = PhysicsEngine(height_sampler=_FlatTerrain(), gravity=(0.0, -9.8))
+    engine = PhysicsEngine(height_sampler=FlatTerrain(), gravity=(0.0, -9.8))
     engine.attach_lander(
         width=8.0, height=8.0, mass=10.0, start_pos=Vector2(0.0, 50.0)
     )
@@ -51,7 +44,7 @@ def test_teleport_lander_clears_velocity_when_requested() -> None:
 
 
 def test_engine_tracks_multiple_actor_bodies_by_uid() -> None:
-    engine = PhysicsEngine(height_sampler=_FlatTerrain(), gravity=(0.0, -9.8))
+    engine = PhysicsEngine(height_sampler=FlatTerrain(), gravity=(0.0, -9.8))
     engine.attach_lander(
         width=8.0, height=8.0, mass=10.0, uid="a", start_pos=Vector2(0.0, 50.0)
     )
@@ -72,7 +65,7 @@ def test_engine_tracks_multiple_actor_bodies_by_uid() -> None:
 
 
 def test_landing_site_colliders_are_queryable_by_raycast() -> None:
-    engine = PhysicsEngine(height_sampler=_FlatTerrain(), gravity=(0.0, -9.8))
+    engine = PhysicsEngine(height_sampler=FlatTerrain(), gravity=(0.0, -9.8))
     engine.set_landing_site_colliders([(0.0, 40.0, 100.0)])
 
     hit = engine.raycast(Vector2(0.0, 100.0), -math.pi / 2.0, 120.0)

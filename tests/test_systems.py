@@ -20,6 +20,7 @@ from core.components import (
     Transform,
     Wallet,
 )
+from conftest import FlatTerrain
 from core.ecs import Entity, World
 from core.landing_sites import LandingSiteSurfaceModel
 from core.maths import Range1D, Vector2
@@ -408,15 +409,6 @@ class _Targets:
         return [self.target]
 
 
-class _FlatTerrain:
-    def __call__(self, _x: float, lod: int = 0) -> float:
-        _ = lod
-        return 0.0
-
-    def get_resolution(self, _lod: int) -> float:
-        return 1.0
-
-
 class _FakeContactAdapter:
     enabled = False
 
@@ -542,7 +534,7 @@ def test_sensor_update_system_populates_cached_readings() -> None:
 
     world = World()
     world.add_entity(entity)
-    system = SensorUpdateSystem(_FlatTerrain(), sites)
+    system = SensorUpdateSystem(FlatTerrain(), sites)
     system.world = world
 
     system.update(1.0 / 10.0)
