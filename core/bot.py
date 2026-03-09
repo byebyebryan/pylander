@@ -139,14 +139,14 @@ class PlotMarker:
     metadata: dict[str, float | str | None] = field(default_factory=dict)
 
 
-def resolve_bot_name(bot: Any) -> str:
+def resolve_bot_name(bot: Bot) -> str:
     bot_name = getattr(bot, "_bot_name", None)
     if isinstance(bot_name, str) and bot_name:
         return bot_name
     return bot.__class__.__module__.split(".")[-1]
 
 
-def resolve_bot_status(bot: Any) -> str:
+def resolve_bot_status(bot: Bot) -> str:
     get_status = getattr(bot, "get_status", None)
     if callable(get_status):
         resolved_status = get_status()
@@ -155,7 +155,7 @@ def resolve_bot_status(bot: Any) -> str:
     return status.strip() if isinstance(status, str) else ""
 
 
-def resolve_bot_display_state(bot: Any) -> BotDisplayState | None:
+def resolve_bot_display_state(bot: Bot) -> BotDisplayState | None:
     getter = getattr(bot, "get_display_state", None)
     if not callable(getter):
         return None

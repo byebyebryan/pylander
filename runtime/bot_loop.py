@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import perf_counter
-from typing import Any
+from typing import TYPE_CHECKING
 
 from core.bot import Bot, BotAction
 from core.components import LanderState
@@ -11,14 +11,19 @@ from runtime.metrics import BotLoopProfiler
 from runtime.sensors import build_sensors
 from utils.protocols import ControlTuple
 
+if TYPE_CHECKING:
+    from core.ecs import World
+    from core.systems.sensor_update import SensorUpdateSystem
+    from core.terrain import Terrain
+
 
 @dataclass
 class BotLoopContext:
-    ecs_world: Any
+    ecs_world: World
     actor_bots: dict[str, Bot]
-    sensor_update_system: Any
+    sensor_update_system: SensorUpdateSystem
     profiler: BotLoopProfiler
-    terrain: Any
+    terrain: Terrain
 
 
 def update_bot_steps(
