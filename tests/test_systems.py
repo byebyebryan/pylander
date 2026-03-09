@@ -4,6 +4,7 @@ import math
 from dataclasses import dataclass, field
 
 from core.components import (
+    ContactReport,
     ControlIntent,
     Engine,
     FuelTank,
@@ -419,11 +420,14 @@ class _FlatTerrain:
 class _FakeContactAdapter:
     enabled = False
 
-    def get_contact_report(self) -> dict:
-        return {"colliding": False, "normal": None, "rel_speed": 0.0, "point": None}
+    def get_contact_report(self, uid=None) -> ContactReport:
+        return ContactReport()
 
-    def teleport_lander(self, _pos, angle=None, clear_velocity=True) -> None:
+    def teleport_lander(self, _pos, angle=None, clear_velocity=True, uid=None) -> None:
         _ = angle, clear_velocity
+
+    def get_actor_uids(self) -> set[str]:
+        return set()
 
 
 class _FakeCollidingContactAdapter:
@@ -432,31 +436,73 @@ class _FakeCollidingContactAdapter:
     def __init__(self, *, rel_speed: float = 1.0) -> None:
         self._rel_speed = float(rel_speed)
 
-    def get_contact_report(self) -> dict:
-        return {
-            "colliding": True,
-            "normal": (0.0, 1.0),
-            "rel_speed": self._rel_speed,
-            "point": (0.0, 0.0),
-        }
+    def get_contact_report(self, uid=None) -> ContactReport:
+        return ContactReport(
+            colliding=True,
+            normal=(0.0, 1.0),
+            rel_speed=self._rel_speed,
+            point=(0.0, 0.0),
+        )
 
-    def teleport_lander(self, _pos, angle=None, clear_velocity=True) -> None:
+    def teleport_lander(self, _pos, angle=None, clear_velocity=True, uid=None) -> None:
         _ = angle, clear_velocity
 
 
 class _FakeSideScrapeContactAdapter:
     enabled = False
 
-    def get_contact_report(self) -> dict:
-        return {
-            "colliding": True,
-            "normal": (1.0, 0.0),
-            "rel_speed": 1.0,
-            "point": (0.0, 0.0),
-        }
+    def get_contact_report(self, uid=None) -> ContactReport:
+        return ContactReport(
+            colliding=True,
+            normal=(1.0, 0.0),
+            rel_speed=1.0,
+            point=(0.0, 0.0),
+        )
 
-    def teleport_lander(self, _pos, angle=None, clear_velocity=True) -> None:
+    def teleport_lander(self, _pos, angle=None, clear_velocity=True, uid=None) -> None:
         _ = angle, clear_velocity
+
+
+def _make_flying_lander(
+    uid: str = "lander",
+    *,
+    pos: tuple[float, float] = (0.0, 4.0),
+    vel: tuple[float, float] = (0.0, -1.0),
+    rotation: float = 0.0,
+    credits: float = 0.0,
+    width: float = 8.0,
+    height: float = 8.0,
+) -> Entity:
+    """Return a flying lander entity with standard components."""
+    entity = Entity(uid=uid)
+    entity.add_component(LanderState(state="flying"))
+    entity.add_component(PhysicsState(vel=Vector2(vel[0], vel[1])))
+    entity.add_component(Transform(pos=Vector2(pos[0], pos[1]), rotation=rotation))
+    entity.add_component(FuelTank())
+    entity.add_component(LanderGeometry(width=width, height=height))
+    entity.add_component(Wallet(credits=credits))
+    entity.add_component(Engine())
+    return entity
+
+
+def _make_site_entity(
+    uid: str = "site",
+    *,
+    pos: tuple[float, float] = (0.0, 0.0),
+    size: float = 30.0,
+    award: float = 100.0,
+    fuel_price: float = 10.0,
+    terrain_mode: str = "elevated_supports",
+    kinematic_vel: tuple[float, float] | None = None,
+) -> Entity:
+    """Return a landing-site entity with standard components."""
+    entity = Entity(uid=uid)
+    entity.add_component(Transform(pos=Vector2(pos[0], pos[1])))
+    entity.add_component(LandingSite(size=size, terrain_mode=terrain_mode, terrain_bound=False))
+    entity.add_component(LandingSiteEconomy(award=award, fuel_price=fuel_price))
+    if kinematic_vel is not None:
+        entity.add_component(KinematicMotion(velocity=Vector2(kinematic_vel[0], kinematic_vel[1])))
+    return entity
 
 
 def test_refuel_system_transfers_fuel_and_spends_credits() -> None:
@@ -540,21 +586,10 @@ def test_landing_site_motion_and_projection_update_model() -> None:
 def test_contact_system_lands_using_relative_site_velocity() -> None:
     world = World()
 
-    lander = Entity(uid="lander")
-    lander.add_component(LanderState(state="flying"))
-    lander.add_component(PhysicsState(vel=Vector2(8.0, -1.0)))
-    lander.add_component(Transform(pos=Vector2(0.0, 4.0), rotation=0.0))
-    lander.add_component(FuelTank())
-    lander.add_component(LanderGeometry(width=8.0, height=8.0))
-    lander.add_component(Wallet(credits=0.0))
-    lander.add_component(Engine())
+    lander = _make_flying_lander(vel=(8.0, -1.0))
     world.add_entity(lander)
 
-    site = Entity(uid="site_landing")
-    site.add_component(Transform(pos=Vector2(0.0, 0.0)))
-    site.add_component(LandingSite(size=30.0, terrain_mode="elevated_supports", terrain_bound=False))
-    site.add_component(LandingSiteEconomy(award=150.0, fuel_price=10.0))
-    site.add_component(KinematicMotion(velocity=Vector2(7.0, 0.0)))
+    site = _make_site_entity(uid="site_landing", award=150.0, kinematic_vel=(7.0, 0.0))
     world.add_entity(site)
 
     model = LandingSiteSurfaceModel()
@@ -577,22 +612,10 @@ def test_contact_system_lands_using_relative_site_velocity() -> None:
 def test_contact_system_marks_zero_award_site_visited() -> None:
     world = World()
 
-    lander = Entity(uid="lander")
-    lander.add_component(LanderState(state="flying"))
-    lander.add_component(PhysicsState(vel=Vector2(0.0, -1.0)))
-    lander.add_component(Transform(pos=Vector2(0.0, 4.0), rotation=0.0))
-    lander.add_component(FuelTank())
-    lander.add_component(LanderGeometry(width=8.0, height=8.0))
-    lander.add_component(Wallet(credits=42.0))
-    lander.add_component(Engine())
+    lander = _make_flying_lander(credits=42.0)
     world.add_entity(lander)
 
-    site = Entity(uid="site_zero_award")
-    site.add_component(Transform(pos=Vector2(0.0, 0.0)))
-    site.add_component(
-        LandingSite(size=30.0, terrain_mode="elevated_supports", terrain_bound=False)
-    )
-    site.add_component(LandingSiteEconomy(award=0.0, fuel_price=10.0))
+    site = _make_site_entity(uid="site_zero_award", award=0.0)
     world.add_entity(site)
 
     model = LandingSiteSurfaceModel()
@@ -618,21 +641,11 @@ def test_contact_system_marks_zero_award_site_visited() -> None:
 def test_contact_system_allows_wrapped_equivalent_upright_angle() -> None:
     world = World()
 
-    lander = Entity(uid="lander")
-    lander.add_component(LanderState(state="flying"))
-    lander.add_component(PhysicsState(vel=Vector2(0.0, -1.0)))
     # 2*pi - small_epsilon is equivalent to slight negative tilt.
-    lander.add_component(Transform(pos=Vector2(0.0, 4.0), rotation=(2.0 * math.pi) - 0.05))
-    lander.add_component(FuelTank())
-    lander.add_component(LanderGeometry(width=8.0, height=8.0))
-    lander.add_component(Wallet(credits=0.0))
-    lander.add_component(Engine())
+    lander = _make_flying_lander(rotation=(2.0 * math.pi) - 0.05)
     world.add_entity(lander)
 
-    site = Entity(uid="site_upright_wrap")
-    site.add_component(Transform(pos=Vector2(0.0, 0.0)))
-    site.add_component(LandingSite(size=30.0, terrain_mode="elevated_supports", terrain_bound=False))
-    site.add_component(LandingSiteEconomy(award=100.0, fuel_price=10.0))
+    site = _make_site_entity(uid="site_upright_wrap")
     world.add_entity(site)
 
     model = LandingSiteSurfaceModel()
@@ -652,21 +665,11 @@ def test_contact_system_allows_wrapped_equivalent_upright_angle() -> None:
 def test_contact_system_does_not_snap_land_when_far_below_site() -> None:
     world = World()
 
-    lander = Entity(uid="lander")
-    lander.add_component(LanderState(state="flying"))
-    lander.add_component(PhysicsState(vel=Vector2(0.0, -1.0)))
     # Lander is near in x, but far below pad y.
-    lander.add_component(Transform(pos=Vector2(0.0, 20.0), rotation=0.0))
-    lander.add_component(FuelTank())
-    lander.add_component(LanderGeometry(width=8.0, height=8.0))
-    lander.add_component(Wallet(credits=0.0))
-    lander.add_component(Engine())
+    lander = _make_flying_lander(pos=(0.0, 20.0))
     world.add_entity(lander)
 
-    site = Entity(uid="site_high")
-    site.add_component(Transform(pos=Vector2(0.0, 120.0)))
-    site.add_component(LandingSite(size=30.0, terrain_mode="elevated_supports", terrain_bound=False))
-    site.add_component(LandingSiteEconomy(award=100.0, fuel_price=10.0))
+    site = _make_site_entity(uid="site_high", pos=(0.0, 120.0))
     world.add_entity(site)
 
     model = LandingSiteSurfaceModel()
@@ -686,23 +689,11 @@ def test_contact_system_does_not_snap_land_when_far_below_site() -> None:
 def test_contact_system_crashes_on_high_speed_site_plane_cross_without_contact() -> None:
     world = World()
 
-    lander = Entity(uid="lander")
-    lander.add_component(LanderState(state="flying"))
     # Unsafe downward speed; current pose is already below the site plane.
-    lander.add_component(PhysicsState(vel=Vector2(0.0, -80.0)))
-    lander.add_component(Transform(pos=Vector2(0.0, -2.0), rotation=0.0))
-    lander.add_component(FuelTank())
-    lander.add_component(LanderGeometry(width=8.0, height=8.0))
-    lander.add_component(Wallet(credits=0.0))
-    lander.add_component(Engine())
+    lander = _make_flying_lander(pos=(0.0, -2.0), vel=(0.0, -80.0))
     world.add_entity(lander)
 
-    site = Entity(uid="site_plane")
-    site.add_component(Transform(pos=Vector2(0.0, 0.0)))
-    site.add_component(
-        LandingSite(size=40.0, terrain_mode="elevated_supports", terrain_bound=False)
-    )
-    site.add_component(LandingSiteEconomy(award=100.0, fuel_price=10.0))
+    site = _make_site_entity(uid="site_plane", size=40.0)
     world.add_entity(site)
 
     model = LandingSiteSurfaceModel()
@@ -724,23 +715,11 @@ def test_contact_system_crashes_on_high_speed_site_plane_cross_without_contact()
 def test_contact_system_crashes_on_high_speed_bounce_contact() -> None:
     world = World()
 
-    lander = Entity(uid="lander")
-    lander.add_component(LanderState(state="flying"))
     # Simulate a rebound frame after impact: upward velocity but high contact speed.
-    lander.add_component(PhysicsState(vel=Vector2(0.0, 6.0)))
-    lander.add_component(Transform(pos=Vector2(0.0, 4.0), rotation=0.0))
-    lander.add_component(FuelTank())
-    lander.add_component(LanderGeometry(width=8.0, height=8.0))
-    lander.add_component(Wallet(credits=0.0))
-    lander.add_component(Engine())
+    lander = _make_flying_lander(vel=(0.0, 6.0))
     world.add_entity(lander)
 
-    site = Entity(uid="site_plane")
-    site.add_component(Transform(pos=Vector2(0.0, 0.0)))
-    site.add_component(
-        LandingSite(size=40.0, terrain_mode="elevated_supports", terrain_bound=False)
-    )
-    site.add_component(LandingSiteEconomy(award=100.0, fuel_price=10.0))
+    site = _make_site_entity(uid="site_plane", size=40.0)
     world.add_entity(site)
 
     model = LandingSiteSurfaceModel()
@@ -761,23 +740,11 @@ def test_contact_system_crashes_on_high_speed_bounce_contact() -> None:
 def test_contact_system_crashes_on_side_scrape_contact() -> None:
     world = World()
 
-    lander = Entity(uid="lander")
-    lander.add_component(LanderState(state="flying"))
     # Slow descending speed that would otherwise satisfy site landing checks.
-    lander.add_component(PhysicsState(vel=Vector2(0.0, -1.0)))
-    lander.add_component(Transform(pos=Vector2(0.0, 4.0), rotation=0.0))
-    lander.add_component(FuelTank())
-    lander.add_component(LanderGeometry(width=8.0, height=8.0))
-    lander.add_component(Wallet(credits=0.0))
-    lander.add_component(Engine())
+    lander = _make_flying_lander()
     world.add_entity(lander)
 
-    site = Entity(uid="site_plane")
-    site.add_component(Transform(pos=Vector2(0.0, 0.0)))
-    site.add_component(
-        LandingSite(size=40.0, terrain_mode="elevated_supports", terrain_bound=False)
-    )
-    site.add_component(LandingSiteEconomy(award=100.0, fuel_price=10.0))
+    site = _make_site_entity(uid="site_plane", size=40.0)
     world.add_entity(site)
 
     model = LandingSiteSurfaceModel()

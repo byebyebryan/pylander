@@ -31,17 +31,11 @@ class ForceApplicationSystem(System):
         fx = math.sin(trans.rotation) * thrust
         fy = math.cos(trans.rotation) * thrust
         force = Vector2(fx, fy)
-        if hasattr(self.engine_adapter, "apply_force_for"):
-            self.engine_adapter.apply_force_for(entity.uid, force)
-        else:
-            self.engine_adapter.apply_force(force)
+        self.engine_adapter.apply_force_for(entity.uid, force)
 
     def _apply_rotation_override(self, entity: Entity) -> None:
         """Push current rotation to the physics body (kinematic override)."""
         trans = entity.get_component(Transform)
         # Rotation is kinematically driven by PropulsionSystem; we tell the
         # physics engine the current angle so the collision shape stays in sync.
-        if hasattr(self.engine_adapter, "override_for"):
-            self.engine_adapter.override_for(entity.uid, trans.rotation)
-        else:
-            self.engine_adapter.override(trans.rotation)
+        self.engine_adapter.override_for(entity.uid, trans.rotation)

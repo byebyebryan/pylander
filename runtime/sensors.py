@@ -61,7 +61,7 @@ def build_vehicle_info(entity) -> VehicleInfo:
     cargo_mass = 0.0
     cargo_limit = 0.0
     if cargo is not None:
-        cargo_mass = max(0.0, min(float(cargo.cargo_mass), float(cargo.max_cargo_mass)))
+        cargo_mass = cargo.effective_mass
         cargo_limit = max(0.0, float(cargo.max_cargo_mass))
     return VehicleInfo(
         width=geo.width,

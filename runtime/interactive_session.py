@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from core.components import ControlIntent, Engine, FuelTank, LanderState, PhysicsState, Transform
+from core.components import ControlIntent, Engine, FlightState, FuelTank, LanderState, PhysicsState, Transform
 from core.ecs import require_component
 from core.maths import Vector2
 
@@ -24,7 +24,7 @@ def reset_lander_entity(entity: Any) -> None:
     eng.thrust_level = 0.0
     eng.target_thrust = 0.0
     eng.target_angle = 0.0
-    ls.state = "flying"
+    ls.state = FlightState.FLYING
     intent.target_thrust = None
     intent.target_angle = None
     intent.refuel_requested = False

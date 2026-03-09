@@ -9,25 +9,33 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING
 
 from core.eval_goals import EVAL_GOAL_LANDING
+
+if TYPE_CHECKING:
+    from core.bot import Bot
+    from core.ecs import Entity
+    from core.landing_sites import LandingSiteSurfaceModel
+    from core.lander import Lander
+    from core.terrain import Terrain
 
 @dataclass
 class LevelWorld:
     """Container for level-owned world state.
 
-    Types are intentionally loose here to avoid cross-module import cycles.
+    Concrete types are imported under TYPE_CHECKING to avoid runtime import
+    cycles while still providing proper annotations for static analysis.
     """
 
-    terrain: Any
-    sites: Any
-    lander: Any  # Lander
-    actors: list[Any] = field(default_factory=list)
+    terrain: Terrain
+    sites: LandingSiteSurfaceModel
+    lander: Lander
+    actors: list[Lander] = field(default_factory=list)
     primary_actor_uid: str | None = None
-    site_entities: list[Any] = field(default_factory=list)
-    extra_entities: list[Any] = field(default_factory=list)
-    actor_bots: dict[str, Any] = field(default_factory=dict)
+    site_entities: list[Entity] = field(default_factory=list)
+    extra_entities: list[Entity] = field(default_factory=list)
+    actor_bots: dict[str, Bot] = field(default_factory=dict)
 
 
 class Level(ABC):

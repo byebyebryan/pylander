@@ -7,6 +7,7 @@ from .sensor import closest_point_on_terrain as sensor_closest_point_on_terrain
 # New engine dependencies
 import pymunk as pm
 from .maths import Vector2
+from .components import ContactReport
 
 
 # World is y-up. Gravity accelerates downward (negative y).
@@ -64,7 +65,7 @@ class PhysicsEngine:
         self._bodies: dict[str, pm.Body] = {}
         self._shapes: dict[str, list[pm.Shape]] = {}
         self._controls: dict[str, tuple[float, float]] = {}  # thrust_force, angle
-        self._contacts: dict[str, dict] = {}
+        self._contacts: dict[str, ContactReport] = {}
         self._overrides: dict[str, float] = {}
         self._pending_forces: dict[str, tuple[float, float]] = {}
         self._shape_to_uid: dict[int, str] = {}
@@ -279,12 +280,19 @@ class PhysicsEngine:
         v = body.velocity
         return Vector2(v.x, v.y), float(body.angular_velocity)
 
-    def get_contact_report(self, uid: str | None = None) -> dict:
+    def get_contact_report(self, uid: str | None = None) -> ContactReport:
         actor_uid = self._resolve_uid(uid)
         if actor_uid is None:
             return self._empty_contact()
         report = self._contacts.get(actor_uid)
-        return dict(report) if report is not None else self._empty_contact()
+        if report is None:
+            return self._empty_contact()
+        return ContactReport(
+            colliding=report.colliding,
+            normal=report.normal,
+            rel_speed=report.rel_speed,
+            point=report.point,
+        )
 
     def raycast(
         self, origin: Vector2, angle: float, max_distance: float, uid: str | None = None
@@ -420,12 +428,12 @@ class PhysicsEngine:
         if body is not None and n is not None:
             v = body.velocity
             rel_speed = abs(float(v.x * n.x + v.y * n.y))
-        self._contacts[uid] = {
-            "colliding": True,
-            "normal": (float(n.x), float(n.y)) if n is not None else None,
-            "rel_speed": rel_speed,
-            "point": point,
-        }
+        self._contacts[uid] = ContactReport(
+            colliding=True,
+            normal=(float(n.x), float(n.y)) if n is not None else None,
+            rel_speed=rel_speed,
+            point=point,
+        )
 
     # Mass update (for fuel burn effects)
     def set_lander_mass(self, mass: float, uid: str | None = None) -> None:
@@ -518,10 +526,5 @@ class PhysicsEngine:
             self._primary_uid = next(iter(self._bodies.keys()), None)
 
     @staticmethod
-    def _empty_contact(colliding: bool = False) -> dict:
-        return {
-            "colliding": colliding,
-            "normal": None,
-            "rel_speed": 0.0,
-            "point": None,
-        }
+    def _empty_contact(colliding: bool = False) -> ContactReport:
+        return ContactReport(colliding=colliding)

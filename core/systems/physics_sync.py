@@ -19,9 +19,7 @@ class PhysicsSyncSystem(System):
             return
 
         _ = dt
-        actor_uids = set()
-        if hasattr(self.engine_adapter, "get_actor_uids"):
-            actor_uids = self.engine_adapter.get_actor_uids()
+        actor_uids = self.engine_adapter.get_actor_uids()
         if actor_uids:
             for entity in self.world.get_entities_with(PhysicsState, Transform):
                 if entity.uid in actor_uids:
@@ -39,12 +37,8 @@ class PhysicsSyncSystem(System):
 
     def _sync_from_physics(self, entity: Entity) -> None:
         """Read pose/velocity from physics engine and update components."""
-        try:
-            pose, _angle = self.engine_adapter.get_pose(uid=entity.uid)
-            vel, _ang_vel = self.engine_adapter.get_velocity(uid=entity.uid)
-        except TypeError:
-            pose, _angle = self.engine_adapter.get_pose()
-            vel, _ang_vel = self.engine_adapter.get_velocity()
+        pose, _angle = self.engine_adapter.get_pose(uid=entity.uid)
+        vel, _ang_vel = self.engine_adapter.get_velocity(uid=entity.uid)
 
         trans = entity.get_component(Transform)
         phys = entity.get_component(PhysicsState)

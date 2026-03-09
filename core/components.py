@@ -1,7 +1,18 @@
 from dataclasses import dataclass, field
-from typing import Any
+from enum import StrEnum
+from typing import TYPE_CHECKING
 from core.maths import Vector2, RigidTransform2
 import math
+
+if TYPE_CHECKING:
+    from core.sensor import ProximityContact, RadarContact
+
+
+class FlightState(StrEnum):
+    FLYING = "flying"
+    LANDED = "landed"
+    CRASHED = "crashed"
+    OUT_OF_FUEL = "out_of_fuel"
 
 @dataclass
 class Transform:
@@ -43,6 +54,7 @@ class FuelTank:
     fuel: float = 100.0
     max_fuel: float = 100.0
     density: float = 45.0   # Mass per fuel unit (kg/unit)
+    _mass_dirty: bool = True  # Cleared after engine mass sync; set on fuel change
 
 
 @dataclass
@@ -50,6 +62,10 @@ class CargoHold:
     """Component representing carried cargo mass constraints."""
     cargo_mass: float = 1800.0
     max_cargo_mass: float = 6000.0
+
+    @property
+    def effective_mass(self) -> float:
+        return max(0.0, min(float(self.cargo_mass), float(self.max_cargo_mass)))
 
 @dataclass
 class Engine:
@@ -87,7 +103,7 @@ class Radar:
 @dataclass
 class LanderState:
     """Component representing the lander's flight/contact state."""
-    state: str = "flying"               # "flying", "landed", "crashed", "out_of_fuel"
+    state: FlightState = FlightState.FLYING
     safe_landing_velocity: float = 10.0
     safe_landing_angle: float = 0.2618  # math.radians(15)
 
@@ -161,8 +177,8 @@ class RefuelConfig:
 @dataclass
 class SensorReadings:
     """Cached sensor outputs produced by SensorUpdateSystem."""
-    radar_contacts: list[Any] = field(default_factory=list)
-    proximity: Any | None = None
+    radar_contacts: list["RadarContact"] = field(default_factory=list)
+    proximity: "ProximityContact | None" = None
 
 
 @dataclass
@@ -195,3 +211,12 @@ class SiteAttachment:
     """Attach a site to another entity using a local offset."""
     parent_uid: str | None = None
     local_offset: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
+
+
+@dataclass
+class ContactReport:
+    """Typed contact report replacing untyped dict."""
+    colliding: bool = False
+    normal: tuple[float, float] | None = None
+    rel_speed: float = 0.0
+    point: tuple[float, float] | None = None

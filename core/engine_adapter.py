@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from utils.protocols import EngineProtocol
+from core.components import ContactReport
 from core.maths import Vector2
 
 
@@ -12,6 +13,7 @@ class EngineAdapter:
     def __init__(self, engine: EngineProtocol | None):
         self._engine = engine
         self._primary_actor_uid: str | None = None
+        self._uid_supported: bool | None = None  # probed once on first call
 
     @property
     def enabled(self) -> bool:
@@ -34,11 +36,14 @@ class EngineAdapter:
         if not callable(method):
             return default
         resolved_uid = self._resolve_uid(uid)
-        if resolved_uid is not None:
+        if resolved_uid is not None and self._uid_supported is not False:
             try:
-                return method(*args, uid=resolved_uid, **kwargs)
+                result = method(*args, uid=resolved_uid, **kwargs)
+                if self._uid_supported is None:
+                    self._uid_supported = True
+                return result
             except TypeError:
-                pass
+                self._uid_supported = False
         return method(*args, **kwargs)
 
     def set_lander_mass(self, mass: float) -> None:
@@ -59,17 +64,12 @@ class EngineAdapter:
         angular_velocity: float = 0.0,
         uid: str | None = None,
     ) -> None:
-        if self._engine is None or not hasattr(self._engine, "set_lander_velocity"):
-            return
-        try:
-            self._call_engine(
-                "set_lander_velocity",
-                velocity,
-                angular_velocity=angular_velocity,
-                uid=uid,
-            )
-        except TypeError:
-            self._engine.set_lander_velocity(velocity)
+        self._call_engine(
+            "set_lander_velocity",
+            velocity,
+            angular_velocity=angular_velocity,
+            uid=uid,
+        )
 
     def set_actor_velocity(
         self,
@@ -109,16 +109,11 @@ class EngineAdapter:
             default=(Vector2(0.0, 0.0), 0.0),
         )
 
-    def get_contact_report(self, uid: str | None = None) -> dict:
+    def get_contact_report(self, uid: str | None = None) -> ContactReport:
         return self._call_engine(
             "get_contact_report",
             uid=uid,
-            default={
-                "colliding": False,
-                "normal": None,
-                "rel_speed": 0.0,
-                "point": None,
-            },
+            default=ContactReport(),
         )
 
     def teleport_lander(

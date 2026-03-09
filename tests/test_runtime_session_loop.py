@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from core.bot import BotEvalDecision
-from core.components import LanderState, Transform
+from core.components import FlightState, LanderState, Transform
 from core.ecs import Entity
 from runtime.loop_timing import LoopTimers
 from runtime.metrics import BotLoopProfiler
@@ -67,7 +67,7 @@ def test_capture_actor_states_and_sync_landed_to_flying_engine_state() -> None:
             self.teleports.append((uid, clear_velocity))
 
     state_before = capture_actor_states([actor])
-    actor.get_component(LanderState).state = "flying"  # type: ignore[union-attr]
+    actor.get_component(LanderState).state = FlightState.FLYING  # type: ignore[union-attr]
     engine_adapter = _EngineAdapter()
 
     sync_landed_to_flying_engine_state(
