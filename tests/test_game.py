@@ -8,14 +8,13 @@ import app.run_batch as run_batch_module
 from app.cli import build_parser, parse_command
 from app.config import BenchCommand, BenchSettings, BenchTarget, RunCommand
 from bots import create_bot, list_available_bots
-from core.bot import Bot, BotAction, Sensors
+from core.bot import Bot, BotAction, Sensors, resolve_bot_display_state
 from core.components import LandingSite, PhysicsState, Transform
 from core.ecs import require_component
 from core.eval import aggregate_eval_records, normalize_run_result
 from game import LanderGame
 from levels import create_level as create_level_by_name, list_available_levels
 from app.run_batch import ResolvedBenchRun, parse_seed_spec, resolve_benchmark_plan
-from ui.hud import HudOverlay
 from core.bot import BotDisplayState
 
 
@@ -121,34 +120,15 @@ def test_setup_climb_target_is_terrain_bound_flush_pad() -> None:
     assert shape.terrain_bound is True
 
 
-def test_setup_climb_landed_site_uid_requires_pad_overlap() -> None:
-    level = create_level_by_name("setup_climb")
+@pytest.mark.parametrize("level_name", ["setup_climb", "setup_flat", "setup_downhill"])
+def test_landed_site_uid_requires_pad_overlap(level_name: str) -> None:
+    level = create_level_by_name(level_name)
     level.set_eval_scenario("mid")
     _game = LanderGame(level=level, seed=0, bot=create_bot("zem_zev"), headless=True)
     target = next(spec for spec in level.site_specs if spec.uid == "setup_transfer_target")
     half = 0.5 * float(target.size)
     assert level._resolve_landed_site_uid(float(target.x)) == "setup_transfer_target"
     assert level._resolve_landed_site_uid(float(target.x) + half + 2.0) is None
-
-
-def test_setup_flat_landed_site_uid_requires_pad_overlap() -> None:
-    level = create_level_by_name("setup_flat")
-    level.set_eval_scenario("mid")
-    _game = LanderGame(level=level, seed=0, bot=create_bot("zem_zev"), headless=True)
-    dest = next(spec for spec in level.site_specs if spec.uid == "setup_transfer_target")
-    half = 0.5 * float(dest.size)
-    assert level._resolve_landed_site_uid(float(dest.x)) == "setup_transfer_target"
-    assert level._resolve_landed_site_uid(float(dest.x) + half + 2.0) is None
-
-
-def test_setup_downhill_landed_site_uid_requires_pad_overlap() -> None:
-    level = create_level_by_name("setup_downhill")
-    level.set_eval_scenario("mid")
-    _game = LanderGame(level=level, seed=0, bot=create_bot("zem_zev"), headless=True)
-    dest = next(spec for spec in level.site_specs if spec.uid == "setup_transfer_target")
-    half = 0.5 * float(dest.size)
-    assert level._resolve_landed_site_uid(float(dest.x)) == "setup_transfer_target"
-    assert level._resolve_landed_site_uid(float(dest.x) + half + 2.0) is None
 
 
 def _spawn_state(level_name: str, scenario: str, seed: int) -> tuple[float, float, float, float, float]:
@@ -407,7 +387,7 @@ def test_hud_display_state_returns_none_when_display_state_is_missing() -> None:
     class _Bot:
         pass
 
-    assert HudOverlay._resolve_bot_display_state(_Bot()) is None
+    assert resolve_bot_display_state(_Bot()) is None
 
 
 def test_hud_display_state_prefers_structured_display_state() -> None:
@@ -420,7 +400,7 @@ def test_hud_display_state_prefers_structured_display_state() -> None:
                 summary="dx=12.3 pdx=-4.0",
             )
 
-    display = HudOverlay._resolve_bot_display_state(_Bot())
+    display = resolve_bot_display_state(_Bot())
     assert display is not None
     assert display.bot_name == "zem_zev"
     assert display.phase == "setup"
