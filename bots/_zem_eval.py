@@ -56,6 +56,17 @@ def reset_evaluation_state(
     bot._terminal_gate_projected_dx = None
     bot._terminal_gate_x = None
     bot._terminal_gate_y = None
+    bot._flare_probe_timer = 0.0
+    bot._flare_probe_count = 0
+    bot._flare_probe_ms_sum = 0.0
+    bot._flare_probe_ms_samples = []
+    bot._flare_gate_mode = None
+    bot._flare_gate_horizon_s = None
+    bot._flare_gate_terminal_speed = None
+    bot._flare_gate_peak_accel_ratio = None
+    bot._flare_gate_od_excess_s = None
+    bot._flare_gate_latest_safe_margin_s = None
+    bot._flare_gate_required_accel_ratio = None
     bot._last_projection_dx = None
     bot._last_projection_t_fall = None
     bot._last_projection_has_target_y = False
@@ -78,6 +89,9 @@ def build_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | None]
     solve_ms_mean = 0.0
     if bot._solve_count > 0:
         solve_ms_mean = bot._solve_ms_sum / max(1, bot._solve_count)
+    probe_ms_mean = 0.0
+    if bot._flare_probe_count > 0:
+        probe_ms_mean = bot._flare_probe_ms_sum / max(1, bot._flare_probe_count)
     shape_curve_rmse = bot._shape_curve_rmse()
     shape_projected_dx_abs_mean = bot._shape_projected_dx_abs_mean()
     shape_shortfall_ratio = bot._shape_shortfall_ratio()
@@ -92,6 +106,16 @@ def build_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | None]
         "solve_count": bot._solve_count,
         "solve_ms_mean": solve_ms_mean,
         "solve_ms_p90": percentile(bot._solve_ms_samples, 0.9),
+        "flare_probe_count": bot._flare_probe_count,
+        "flare_probe_ms_mean": probe_ms_mean,
+        "flare_probe_ms_p90": percentile(bot._flare_probe_ms_samples, 0.9),
+        "flare_gate_mode": bot._flare_gate_mode,
+        "flare_gate_horizon_s": bot._flare_gate_horizon_s,
+        "flare_gate_terminal_speed": bot._flare_gate_terminal_speed,
+        "flare_gate_peak_accel_ratio": bot._flare_gate_peak_accel_ratio,
+        "flare_gate_od_excess_s": bot._flare_gate_od_excess_s,
+        "flare_gate_latest_safe_margin_s": bot._flare_gate_latest_safe_margin_s,
+        "flare_gate_required_accel_ratio": bot._flare_gate_required_accel_ratio,
         "fallback_frames": bot._fallback_frames,
         "shape_apex_error": shape_apex_error,
         "shape_curve_rmse": shape_curve_rmse,
@@ -105,9 +129,10 @@ def resolve_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | Non
     snapshot = build_evaluation_snapshot(bot)
     has_live_progress = (
         int(snapshot.get("solve_count") or 0) > 0
+        or int(snapshot.get("flare_probe_count") or 0) > 0
         or bool(snapshot.get("terminal_gate_done"))
         or snapshot.get("shape_curve_rmse") is not None
-        or snapshot.get("shape_projected_dx_abs_max") is not None
+        or bot._shape_projected_dx_count > 0
     )
     if has_live_progress or bot._last_flight_snapshot is None:
         return snapshot

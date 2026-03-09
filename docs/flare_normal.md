@@ -36,6 +36,9 @@ Defaults:
   starts directly in `coast` with no setup burn.
 - During coast, the vehicle stays passive and points retrograde until flare
   entry.
+- Flare entry is no longer gated by ballistic `projected_dx` alone; `zem_zev`
+  uses a low-rate reachability probe and starts the burn once a workable landing
+  solution opens up.
 
 ## Commands
 

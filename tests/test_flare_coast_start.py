@@ -40,3 +40,19 @@ def test_flare_levels_prime_setup_gate_and_start_in_coast(
     assert result["setup_gate_burn_duration_s"] == pytest.approx(0.0)
     assert result["setup_gate_burn_fuel_used"] == pytest.approx(0.0)
     assert result["bot_zem_zev_solve_count"] == 0
+
+
+def test_flare_error_wide_triggers_flare_gate_before_impact() -> None:
+    level = create_level("flare_error")
+    level.set_eval_scenario("mid_wide")
+    bot = create_bot("zem_zev")
+
+    game = LanderGame(level=level, seed=0, bot=bot, headless=True)
+    result = game.run(print_freq=0, max_time=12.0)
+
+    assert result["state"] == "flying"
+    assert result["bot_zem_zev_terminal_gate_done"] is True
+    assert result["bot_zem_zev_terminal_gate_time"] is not None
+    assert result["bot_zem_zev_flare_probe_count"] > 0
+    assert result["bot_zem_zev_flare_gate_mode"] in {"green_exact", "amber_min_error"}
+    assert result["bot_zem_zev_solve_count"] > 0
