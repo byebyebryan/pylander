@@ -10,6 +10,7 @@ from levels.scenario_common import (
     ScenarioCatalogMixin,
     ScenarioLevel,
     ScenarioLevelSpec,
+    sync_engine_pose_velocity,
     validate_scenario_recoverability,
 )
 
@@ -107,20 +108,14 @@ class FlarePlungeLevel(ScenarioCatalogMixin, ScenarioLevel):
         trans.rotation = float(scenario.initial_angle)
         phys.vel = Vector2(float(scenario.initial_vx), float(scenario.initial_vy_up))
 
-        engine = getattr(self, "engine", None)
-        if engine is not None:
-            if hasattr(engine, "teleport_lander"):
-                engine.teleport_lander(
-                    Vector2(trans.pos),
-                    angle=trans.rotation,
-                    clear_velocity=False,
-                    uid=actor.uid,
-                )
-            if hasattr(engine, "set_lander_velocity"):
-                engine.set_lander_velocity(
-                    Vector2(float(scenario.initial_vx), float(scenario.initial_vy_up)),
-                    uid=actor.uid,
-                )
+        sync_engine_pose_velocity(
+            getattr(self, "engine", None),
+            trans.pos,
+            trans.rotation,
+            float(scenario.initial_vx),
+            float(scenario.initial_vy_up),
+            actor.uid,
+        )
 
         setattr(self, "scenario_name", scenario.name)
 

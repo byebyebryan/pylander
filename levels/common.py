@@ -57,9 +57,7 @@ def get_mass(entity) -> float:
     phys = require_component(entity, PhysicsState)
     tank = require_component(entity, FuelTank)
     cargo = entity.get_component(CargoHold)
-    cargo_mass = 0.0
-    if cargo is not None:
-        cargo_mass = max(0.0, min(float(cargo.cargo_mass), float(cargo.max_cargo_mass)))
+    cargo_mass = cargo.effective_mass if cargo is not None else 0.0
     return phys.mass + tank.fuel * tank.density + cargo_mass
 
 
@@ -153,7 +151,49 @@ def apply_setup_transfer_result(
     return result
 
 
-class PresetLevel(Level):
+class EndResultMixin:
+    """Shared should_end / end logic for PresetLevel and ScenarioLevel."""
+
+    def should_end(self, game) -> bool:
+        return should_end_default(
+            game,
+            stop_on_crash=getattr(self, "stop_on_crash", False),
+            stop_on_first_land=getattr(self, "stop_on_first_land", False),
+            stop_on_out_of_fuel=getattr(self, "stop_on_out_of_fuel", False),
+            max_time=getattr(self, "max_time", None),
+        )
+
+    def end(self, game):
+        landing_count = getattr(game, "_landing_count", 0)
+        crash_count = getattr(game, "_crash_count", 0)
+        score = compute_score_default(
+            game,
+            landing_count,
+            crash_count,
+            credits_score=1.0,
+            fuel_score=10.0,
+            landing_score=100.0,
+            crash_penalty=-200.0,
+        )
+        result = build_end_result_default(
+            game,
+            landing_count=landing_count,
+            crash_count=crash_count,
+            score=score,
+        )
+        result["scenario"] = getattr(self, "scenario_name", type(self).__name__)
+        benchmark_mode = getattr(self, "_benchmark_random_mode", None)
+        if benchmark_mode is not None:
+            result["scenario_benchmark_mode"] = benchmark_mode
+        params = getattr(self, "_scenario_params", None)
+        if isinstance(params, dict):
+            for key, value in params.items():
+                if isinstance(value, (int, float, str, bool)):
+                    result[f"scenario_{key}"] = value
+        return result
+
+
+class PresetLevel(EndResultMixin, Level):
     site_specs: tuple[SiteSpec, ...] = ()
     spawn_x: float = 0.0
     spawn_clearance: float = 100.0
@@ -559,45 +599,6 @@ class PresetLevel(Level):
             left_spawns += 1
             if left_spawns >= max_spawns_per_side:
                 break
-
-    def should_end(self, game) -> bool:
-        return should_end_default(
-            game,
-            stop_on_crash=getattr(self, "stop_on_crash", False),
-            stop_on_first_land=getattr(self, "stop_on_first_land", False),
-            stop_on_out_of_fuel=getattr(self, "stop_on_out_of_fuel", False),
-            max_time=getattr(self, "max_time", None),
-        )
-
-    def end(self, game):
-        landing_count = getattr(game, "_landing_count", 0)
-        crash_count = getattr(game, "_crash_count", 0)
-        score = compute_score_default(
-            game,
-            landing_count,
-            crash_count,
-            credits_score=1.0,
-            fuel_score=10.0,
-            landing_score=100.0,
-            crash_penalty=-200.0,
-        )
-        result = build_end_result_default(
-            game,
-            landing_count=landing_count,
-            crash_count=crash_count,
-            score=score,
-        )
-        result["scenario"] = getattr(self, "scenario_name", type(self).__name__)
-        benchmark_mode = getattr(self, "_benchmark_random_mode", None)
-        if isinstance(benchmark_mode, str):
-            result["scenario_benchmark_mode"] = benchmark_mode
-        params = getattr(self, "_scenario_params", None)
-        if isinstance(params, dict):
-            for key, value in params.items():
-                if isinstance(value, (int, float, str, bool)):
-                    result[f"scenario_{key}"] = value
-        return result
-
 
 def compute_score_default(
     game,

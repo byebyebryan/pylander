@@ -5,16 +5,22 @@ import random
 from dataclasses import dataclass
 
 from core.config import GRAVITY
-from core.components import CargoHold, Engine, FuelTank, PhysicsState, Transform
+from core.components import Engine, PhysicsState, Transform
 from core.ecs import require_component
 from core.level import Level
 from core.maths import Vector2
+from levels.common import get_mass
 from levels.scenario_common import (
+    FLARE_ANGLE_PROFILES,
     SampleRange,
     ScenarioCatalogMixin,
     ScenarioLevel,
     ScenarioLevelSpec,
+    angle_from_velocity,
     has_randomized_values,
+    make_flat_scenario_spec,
+    scenario_seed,
+    sync_engine_pose_velocity,
     validate_scenario_recoverability,
 )
 
@@ -29,21 +35,7 @@ class FlareScenario:
     cargo_mass: float = 2250.0
 
 
-_ANGLE_PROFILES: tuple[tuple[str, float], ...] = (
-    ("shallower", 15.0),
-    ("shallow", 30.0),
-    ("mid", 45.0),
-    ("steep", 60.0),
-    ("steeper", 75.0),
-)
-
-
-def _angle_from_velocity(vx: float, vy_up: float, *, opposite: bool = False) -> float:
-    vel_x = -float(vx) if opposite else float(vx)
-    vel_y = -float(vy_up) if opposite else float(vy_up)
-    if abs(vel_x) <= 1e-6 and abs(vel_y) <= 1e-6:
-        return 0.0
-    return math.atan2(vel_x, vel_y)
+_ANGLE_PROFILES = FLARE_ANGLE_PROFILES
 
 
 def _build_angle_scenario(name: str, base_angle_deg: float) -> FlareScenario:
@@ -91,20 +83,6 @@ class _FlareCandidate:
     focus_margin_m: float
 
 
-def _make_spec(*, name: str, start_dx: float, start_dy: float, cargo_mass: float) -> ScenarioLevelSpec:
-    return ScenarioLevelSpec(
-        name=name,
-        start_x=start_dx,
-        target_x=0.0,
-        spawn_clearance=start_dy,
-        terrain_kind="flat",
-        target_mode="flush_flatten",
-        target_offset_y=0.0,
-        target_size=110.0,
-        cargo_mass=cargo_mass,
-    )
-
-
 class FlareNormalLevel(ScenarioCatalogMixin, ScenarioLevel):
     default_bot_name = "zem_zev"
     _scenario_by_name = _SCENARIO_BY_NAME
@@ -115,7 +93,7 @@ class FlareNormalLevel(ScenarioCatalogMixin, ScenarioLevel):
     def __init__(self) -> None:
         super().__init__()
         self._init_scenario_catalog()
-        self.scenario = _make_spec(
+        self.scenario = make_flat_scenario_spec(
             name=self._eval_scenario_name,
             start_dx=0.0,
             start_dy=800.0,
@@ -155,7 +133,7 @@ class FlareNormalLevel(ScenarioCatalogMixin, ScenarioLevel):
         target_pos: Vector2,
     ) -> _FlareCandidate:
         if self._benchmark_random_mode == "median":
-            rng = random.Random(seed ^ (scenario_hash << 1))
+            rng = random.Random(scenario_seed(seed, scenario.name))
             radius = self._resolve_sample_value(scenario.radius, rng)
             angle_deviation_deg = self._resolve_sample_value(scenario.angle_deviation_deg, rng)
             target_flight_time_s = max(
@@ -224,16 +202,7 @@ class FlareNormalLevel(ScenarioCatalogMixin, ScenarioLevel):
 
     @staticmethod
     def _compute_total_mass(actor) -> float:
-        phys = require_component(actor, PhysicsState)
-        tank = require_component(actor, FuelTank)
-        cargo = actor.get_component(CargoHold)
-        cargo_mass = 0.0
-        if cargo is not None:
-            cargo_mass = max(0.0, min(float(cargo.cargo_mass), float(cargo.max_cargo_mass)))
-        return max(
-            0.5,
-            float(phys.mass) + (float(tank.fuel) * float(tank.density)) + cargo_mass,
-        )
+        return max(0.5, get_mass(actor))
 
     @staticmethod
     def _compute_accel_limits(actor) -> tuple[float, float]:
@@ -295,7 +264,7 @@ class FlareNormalLevel(ScenarioCatalogMixin, ScenarioLevel):
             attempt=0,
             target_pos=pre_target,
         )
-        self.scenario = _make_spec(
+        self.scenario = make_flat_scenario_spec(
             name=scenario_base.name,
             start_dx=spec_candidate.start_dx,
             start_dy=max(0.0, spec_candidate.start_dy),
@@ -350,23 +319,17 @@ class FlareNormalLevel(ScenarioCatalogMixin, ScenarioLevel):
 
         trans.pos = Vector2(selected.start_pos)
         actor.start_pos = Vector2(selected.start_pos)
-        trans.rotation = _angle_from_velocity(selected.initial_vx, selected.initial_vy_up, opposite=True)
+        trans.rotation = angle_from_velocity(selected.initial_vx, selected.initial_vy_up, opposite=True)
         phys.vel = Vector2(selected.initial_vx, selected.initial_vy_up)
 
-        engine = getattr(self, "engine", None)
-        if engine is not None:
-            if hasattr(engine, "teleport_lander"):
-                engine.teleport_lander(
-                    Vector2(trans.pos),
-                    angle=trans.rotation,
-                    clear_velocity=False,
-                    uid=actor.uid,
-                )
-            if hasattr(engine, "set_lander_velocity"):
-                engine.set_lander_velocity(
-                    Vector2(selected.initial_vx, selected.initial_vy_up),
-                    uid=actor.uid,
-                )
+        sync_engine_pose_velocity(
+            getattr(self, "engine", None),
+            trans.pos,
+            trans.rotation,
+            selected.initial_vx,
+            selected.initial_vy_up,
+            actor.uid,
+        )
 
         self._set_scenario_params(
             {
