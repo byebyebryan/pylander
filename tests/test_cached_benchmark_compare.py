@@ -74,7 +74,7 @@ def test_observation_only_crash_does_not_mark_notable_regression() -> None:
         baseline_payload=baseline,
         candidate_payload=candidate,
         level_policy={"setup_flat": "normal", "setup_climb": "observe_only"},
-        bot="zem_zev",
+        bot="pdg",
         crash_detail_limit=2,
     )
 
@@ -100,7 +100,7 @@ def test_normal_crash_marks_notable_regression() -> None:
         baseline_payload=baseline,
         candidate_payload=candidate,
         level_policy={"setup_flat": "normal"},
-        bot="zem_zev",
+        bot="pdg",
         crash_detail_limit=2,
     )
 
@@ -174,7 +174,7 @@ def test_global_compute_regression_marks_notable_regression() -> None:
         baseline_payload=baseline,
         candidate_payload=candidate,
         level_policy={"setup_flat": "normal"},
-        bot="zem_zev",
+        bot="pdg",
         crash_detail_limit=2,
     )
 
@@ -208,7 +208,7 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
         baseline_payload=baseline,
         candidate_payload=candidate,
         level_policy={"setup_climb": "observe_only"},
-        bot="zem_zev",
+        bot="pdg",
         crash_detail_limit=2,
     )
 
@@ -221,7 +221,7 @@ def test_selector_pack_stem_changes_with_bot_config_path() -> None:
     common = dict(
         mode="quick",
         selectors=["setup_flat:mid:0-2"],
-        bot="zem_zev",
+        bot="pdg",
         bot_profile_enabled=True,
         bot_profile_interval_s=None,
         bot_profile_log_lines=False,
@@ -242,11 +242,11 @@ def test_run_diag_uses_selected_bot_terminal_metric_namespace() -> None:
         {
             "state": "landed",
             "setup_gate_projected_dx": 12.0,
-            "bot_test_bot_terminal_gate_projected_dx": 4.5,
+            "bot_test_bot_flare_entry_projected_dx": 4.5,
         },
         bot="test-bot",
     )
 
     assert diag["setup_gate_projected_dx"] == 12.0
-    assert diag["bot_terminal_gate_projected_dx"] == 4.5
-    assert diag["bot_terminal_gate_projected_dx_field"] == "bot_test_bot_terminal_gate_projected_dx"
+    assert diag["bot_flare_entry_projected_dx"] == 4.5
+    assert diag["bot_flare_entry_projected_dx_field"] == "bot_test_bot_flare_entry_projected_dx"

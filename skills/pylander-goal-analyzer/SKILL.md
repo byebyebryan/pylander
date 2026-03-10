@@ -10,7 +10,7 @@ Use this skill when the user wants failure analysis and strategy selection for a
 ## Inputs
 
 - `selector_scope`: `level[:scenario[:goal[:seed]]]` or a focused set
-- `bot`: default `zem_zev`
+- `bot`: default `pdg`
 - `goal`: what must improve
 - optional `baseline_ref`: compare against baseline behavior
 
@@ -24,7 +24,7 @@ Use this skill when the user wants failure analysis and strategy selection for a
 3. Summarize measured signals:
 - crashes/success rate
 - fuel/time deltas
-- setup/coast/terminal projected-dx signals
+- setup/coast/flare projected-dx signals
 - trajectory-shape clues from plots
 - compute hot spots (avg/p90/p99 ms/tick)
 4. Produce 1-3 ranked strategy candidates with explicit tradeoffs and expected impact.

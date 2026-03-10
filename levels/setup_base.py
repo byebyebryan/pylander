@@ -29,7 +29,7 @@ class SetupTransferLevel(ScenarioCatalogMixin, PresetLevel):
     - ``_build_scenario_params(scenario, dest_x)`` — dict for ``_scenario_params``
     """
 
-    default_bot_name = "zem_zev"
+    default_bot_name = "pdg"
     dynamic_site_enabled = False
     _supported_eval_goals = (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
 

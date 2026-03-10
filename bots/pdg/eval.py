@@ -29,6 +29,7 @@ def reset_evaluation_state(
 ) -> None:
     bot._elapsed_time_s = 0.0
     bot._active_phase = "setup"
+    bot._active_stage = None
     bot._setup_gate_done = False
     bot._setup_gate_time = None
     bot._setup_gate_altitude = None
@@ -50,12 +51,12 @@ def reset_evaluation_state(
     bot._setup_phase_fuel_start = None
     bot._setup_burn_started = False
     bot._setup_burn_idle_since = None
-    bot._terminal_gate_done = False
-    bot._terminal_gate_time = None
-    bot._terminal_gate_altitude = None
-    bot._terminal_gate_projected_dx = None
-    bot._terminal_gate_x = None
-    bot._terminal_gate_y = None
+    bot._flare_entry_done = False
+    bot._flare_entry_time = None
+    bot._flare_entry_altitude = None
+    bot._flare_entry_projected_dx = None
+    bot._flare_entry_x = None
+    bot._flare_entry_y = None
     bot._flare_gate_ready_ticks = 0
     bot._flare_probe_count = 0
     bot._flare_probe_ms_sum = 0.0
@@ -99,10 +100,10 @@ def build_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | None]
         bot._shape_apex_actual_over_target - bot._shape_apex_target_over_target
     )
     return {
-        "terminal_gate_done": bot._terminal_gate_done,
-        "terminal_gate_time": bot._terminal_gate_time,
-        "terminal_gate_altitude": bot._terminal_gate_altitude,
-        "terminal_gate_projected_dx": bot._terminal_gate_projected_dx,
+        "flare_entry_done": bot._flare_entry_done,
+        "flare_entry_time": bot._flare_entry_time,
+        "flare_entry_altitude": bot._flare_entry_altitude,
+        "flare_entry_projected_dx": bot._flare_entry_projected_dx,
         "solve_count": bot._solve_count,
         "solve_ms_mean": solve_ms_mean,
         "solve_ms_p90": percentile(bot._solve_ms_samples, 0.9),
@@ -130,7 +131,7 @@ def resolve_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | Non
     has_live_progress = (
         int(snapshot.get("solve_count") or 0) > 0
         or int(snapshot.get("flare_probe_count") or 0) > 0
-        or bool(snapshot.get("terminal_gate_done"))
+        or bool(snapshot.get("flare_entry_done"))
         or snapshot.get("shape_curve_rmse") is not None
         or bot._shape_projected_dx_count > 0
     )

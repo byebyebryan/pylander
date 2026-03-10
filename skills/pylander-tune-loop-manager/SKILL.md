@@ -18,7 +18,7 @@ Script-backed status:
 ## Inputs
 
 - `selector_scope` (focused; string or list)
-- `bot` (default `zem_zev`)
+- `bot` (default `pdg`)
 - optional `bot_config_path`
 - `profile`: `light | standard | extensive`
 - optional overrides:

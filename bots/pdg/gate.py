@@ -58,7 +58,7 @@ def _max_tilt(bot, *, alt: float, dx: float, dy: float, vx: float) -> float:
         float(dx),
         float(vx),
         dy=float(dy),
-        phase="terminal",
+        phase="flare",
     )
 
 
@@ -78,7 +78,7 @@ def _nominal_burn_time_candidates(
         dy=dy,
         vx=float(passive.vx),
     )
-    target_vy_up = float(bot._desired_terminal_vy(max(0.0, float(alt)), nominal_thrust_accel, max_tilt))
+    target_vy_up = float(bot._desired_flare_vy(max(0.0, float(alt)), nominal_thrust_accel, max_tilt))
     down_speed = max(0.0, -float(passive.vy_up))
     target_down_speed = max(0.0, -target_vy_up)
     vertical_up_accel = max(
@@ -167,7 +167,7 @@ def _latest_safe_margin_s(
         float(dx),
         float(passive.vx),
         dy=-max(0.0, float(passive.altitude)),
-        phase="terminal",
+        phase="flare",
     )
     spool_time = max(0.0, 1.0 - max(0.0, float(passive.thrust_level))) / max(
         1e-3,

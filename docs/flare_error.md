@@ -1,12 +1,12 @@
 # Flare Error level (`flare_error`)
 
-`flare_error` is the horizontal-error correction benchmark scenario for the unified `zem_zev` controller.
+`flare_error` is the horizontal-error correction benchmark scenario for the unified `pdg` controller.
 
 ## Purpose
 
 - Start from a flare-like inbound arc.
 - Inject bounded projected-impact error.
-- Measure whether unified guidance can recover track quality before terminal entry.
+- Measure whether unified guidance can recover track quality before flare entry.
 
 ## Scenario design
 
@@ -36,11 +36,11 @@ Defaults:
 ## Metrics
 
 - End-to-end objective metrics: `state`, `success`, `fuel_consumed`, `path_efficiency`
-- Unified gate telemetry: `setup_gate_*`, `bot_zem_zev_terminal_gate_*`
+- Unified gate telemetry: `setup_gate_*`, `bot_pdg_flare_entry_*`
 - `setup_gate_*` is emitted at spawn as the coast-entry snapshot; there is no
   setup burn on this level.
 - Coast stays passive and points retrograde until flare entry; all correction is
-  deferred to the flare/terminal phase.
+  deferred to the flare phase.
 - Flare entry uses the same analytic readiness check as `flare_normal`, with a
   conservative latest-safe fallback so wide-error cases still ignite even when
   ballistic `projected_dx` remains large during coast.
@@ -50,10 +50,10 @@ Defaults:
 
 ```bash
 uv run python main.py run --interactive flare_error
-uv run python main.py sim flare_error:mid_tight:0 --bot zem_zev
+uv run python main.py sim flare_error:mid_tight:0 --bot pdg
 uv run python main.py bench \
   flare_error:shallow_tight:0-19 \
   flare_error:mid_wide:0-19 \
   flare_error:steep_wide:0-19 \
-  --bot zem_zev
+  --bot pdg
 ```

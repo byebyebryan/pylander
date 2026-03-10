@@ -1,7 +1,7 @@
 """Optimizer-first powered descent guidance helpers.
 
 This module provides a small receding-horizon trajectory optimizer used by
-`zem_zev`. It keeps the formulation convex (QP/SOCP) so solves are robust and
+`pdg`. It keeps the formulation convex (QP/SOCP) so solves are robust and
 warm-start friendly at runtime.
 """
 

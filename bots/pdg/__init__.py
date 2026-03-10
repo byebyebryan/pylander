@@ -1,4 +1,4 @@
-"""Optimizer-first powered descent bot (ZEM/ZEV replacement).
+"""Optimizer-first staged PDG bot.
 
 This version uses a receding-horizon convex optimizer to generate coupled
 horizontal/vertical thrust commands from a single objective each replan cycle.
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 import os
-from dataclasses import fields, replace
+from dataclasses import dataclass, fields, replace
 from typing import Any
 
 from bots._ballistics import (
@@ -16,29 +16,38 @@ from bots._ballistics import (
     estimate_target_y_projection,
 )
 from bots._bot_math import clamp, engine_profile, finite_altitude, stable
-from bots._zem_gate import evaluate_flare_gate as _evaluate_flare_gate_impl
-from bots._zem_actuation import (
+from bots._optimizer_pdg import PDGOptimizer, PDGOptimizerConfig, PDGPlan
+from bots._targeting import pick_target, target_half_width
+from bots.pdg.actuation import (
     command_from_plan as _command_from_plan_impl,
     command_passive_coast as _command_passive_coast_impl,
 )
-from bots._zem_config import ZemZevConfig
-from bots._zem_eval import (
+from bots.pdg.config import PDGConfig
+from bots.pdg.eval import (
     build_evaluation_decision as _build_evaluation_decision_impl,
     build_evaluation_snapshot as _build_evaluation_snapshot_impl,
     percentile as _percentile_impl,
     reset_evaluation_state as _reset_evaluation_state_impl,
     resolve_evaluation_snapshot as _resolve_evaluation_snapshot_impl,
 )
-from bots._zem_phase import (
+from bots.pdg.gate import evaluate_flare_gate as _evaluate_flare_gate_impl
+from bots.pdg.planner import solve_plan as _solve_plan_impl
+from bots.pdg.stages import (
+    BallisticCoastController,
+    FlightStage,
+    PDGFlareController,
+    PDGSetupController,
+    StageController,
+    TakeoffBootstrapController,
+    TouchdownBrakeController,
+)
+from bots.pdg.tracking import (
     apply_setup_gate_metrics as _apply_setup_gate_metrics_impl,
-    finalize_terminal_gate_metrics as _finalize_terminal_gate_metrics_impl,
+    finalize_flare_entry_metrics as _finalize_flare_entry_metrics_impl,
     maybe_start_shape_window as _maybe_start_shape_window_impl,
-    update_phase_tracking as _update_phase_tracking_impl,
+    refresh_stage_tracking as _refresh_stage_tracking_impl,
     update_shape_window_metrics as _update_shape_window_metrics_impl,
 )
-from bots._zem_planner import solve_plan as _solve_plan_impl
-from bots._optimizer_pdg import PDGOptimizer, PDGOptimizerConfig, PDGPlan
-from bots._targeting import pick_target, target_half_width
 from core.bot import (
     Bot,
     BotAction,
@@ -55,10 +64,30 @@ from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
 _GRAVITY_MAG = abs(float(GRAVITY))
 
 
-class ZemZevBot(Bot):
-    def __init__(self, behavior: str = "zem_zev") -> None:
+@dataclass(frozen=True)
+class UpdateContext:
+    dt: float
+    passive: Sensors
+    target: Any | None
+    dx: float
+    dy: float
+    alt: float
+    projection: BallisticProjection
+    max_power: float
+    min_throttle: float
+    max_throttle: float
+    ramp_up: float
+    max_thrust_accel: float
+    nominal_thrust_accel: float
+    min_thrust_accel: float
+    suggested_stage: FlightStage
+
+
+class PDGBot(Bot):
+    def __init__(self, behavior: str = "pdg") -> None:
         super().__init__()
-        self._cfg = ZemZevConfig()
+        self._bot_name = "pdg"
+        self._cfg = PDGConfig()
         self._optimizer_setup = PDGOptimizer(
             PDGOptimizerConfig(
                 horizon_steps=36,
@@ -67,9 +96,9 @@ class ZemZevBot(Bot):
                 w_path_y=0.025,
             )
         )
-        self._optimizer_terminal = PDGOptimizer(PDGOptimizerConfig(horizon_steps=28))
+        self._optimizer_flare = PDGOptimizer(PDGOptimizerConfig(horizon_steps=28))
 
-        self._behavior = "zem_zev"
+        self._behavior = "pdg"
         self._prev_angle_cmd = 0.0
         self._angle_cmd_initialized = False
         self._thrust_enabled = False
@@ -91,26 +120,34 @@ class ZemZevBot(Bot):
         self._reset_shape_window_state()
         self._last_flight_snapshot: dict[str, float | int | bool | str | None] | None = None
         self._debug_setup = (
-            os.getenv("PYLANDER_ZEM_DEBUG_SETUP", "").strip().lower() in ("1", "true", "yes", "on")
+            os.getenv("PYLANDER_PDG_DEBUG_SETUP", "").strip().lower() in ("1", "true", "yes", "on")
         )
         self._display_mode: str | None = None
         self._display_phase: str | None = None
         self._display_summary = ""
+        self._controllers: dict[FlightStage, StageController] = {
+            FlightStage.TAKEOFF: TakeoffBootstrapController(),
+            FlightStage.SETUP: PDGSetupController(),
+            FlightStage.COAST: BallisticCoastController(),
+            FlightStage.FLARE: PDGFlareController(),
+            FlightStage.TOUCHDOWN: TouchdownBrakeController(),
+        }
         _reset_evaluation_state_impl(self, clear_last_flight_snapshot=True)
 
         self.set_behavior(behavior)
 
     def set_behavior(self, behavior: str) -> None:
         key = str(behavior).strip().lower().replace("-", "_")
-        if key != "zem_zev":
+        if key != "pdg":
             raise ValueError(
-                f"Unknown zem_zev behavior '{behavior}'. Expected one of: zem_zev"
+                f"Unknown pdg behavior '{behavior}'. Expected one of: pdg"
             )
-        self._behavior = "zem_zev"
+        self._behavior = "pdg"
         self._reset_state()
         self._auto_target_uid = None
         self._launch_takeoff_active = False
         self._last_flight_snapshot = None
+        self._transition_to(FlightStage.SETUP, None)
 
     def supported_eval_goals(self) -> tuple[str, ...]:
         return (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
@@ -118,79 +155,74 @@ class ZemZevBot(Bot):
     def prime_setup_gate(self, setup_gate: SetupGateMetrics) -> None:
         _apply_setup_gate_metrics_impl(self, setup_gate=setup_gate)
         self._setup_gate_spawn_primed = True
-        if self._cfg.force_terminal_from_start:
-            self._terminal_gate_done = True
-            self._terminal_gate_time = 0.0
-            self._terminal_gate_altitude = (
+        if self._cfg.force_flare_from_start:
+            self._flare_entry_done = True
+            self._flare_entry_time = 0.0
+            self._flare_entry_altitude = (
                 float(setup_gate.altitude) if setup_gate.altitude is not None else None
             )
-            self._terminal_gate_projected_dx = (
+            self._flare_entry_projected_dx = (
                 float(setup_gate.projected_impact_dx)
                 if setup_gate.projected_impact_dx is not None
                 else None
             )
-            self._terminal_gate_x = float(setup_gate.x) if setup_gate.x is not None else None
-            self._terminal_gate_y = float(setup_gate.y) if setup_gate.y is not None else None
-            self._active_phase = "terminal"
+            self._flare_entry_x = float(setup_gate.x) if setup_gate.x is not None else None
+            self._flare_entry_y = float(setup_gate.y) if setup_gate.y is not None else None
+            self._transition_to(FlightStage.FLARE, None)
         else:
-            self._active_phase = "coast"
-        self._thrust_enabled = False
-        self._plan = None
-        self._plan_elapsed = 0.0
-        self._replan_timer = 0.0
-        self._fallback_steps_remaining = 0
+            self._transition_to(FlightStage.COAST, None)
 
     def apply_config_override(self, overrides: dict[str, Any]) -> None:
         if not isinstance(overrides, dict):
-            raise ValueError("zem_zev bot config override must be a mapping")
+            raise ValueError("pdg bot config override must be a mapping")
         if not overrides:
             return
-        valid_fields = {f.name: f for f in fields(ZemZevConfig)}
+        valid_fields = {f.name: f for f in fields(PDGConfig)}
         patch: dict[str, Any] = {}
         for key, raw_value in overrides.items():
             if key not in valid_fields:
                 known = ", ".join(sorted(valid_fields))
                 raise ValueError(
-                    f"Unknown zem_zev config key '{key}'. Expected one of: {known}"
+                    f"Unknown pdg config key '{key}'. Expected one of: {known}"
                 )
             current = getattr(self._cfg, key)
             if isinstance(current, bool):
                 if not isinstance(raw_value, bool):
-                    raise ValueError(f"zem_zev config key '{key}' must be a boolean")
+                    raise ValueError(f"pdg config key '{key}' must be a boolean")
                 patch[key] = bool(raw_value)
             elif isinstance(current, int) and not isinstance(current, bool):
                 if isinstance(raw_value, bool):
-                    raise ValueError(f"zem_zev config key '{key}' must be an integer")
+                    raise ValueError(f"pdg config key '{key}' must be an integer")
                 if isinstance(raw_value, float):
                     if not float(raw_value).is_integer():
                         raise ValueError(
-                            f"zem_zev config key '{key}' must be an integer; got {raw_value!r}"
+                            f"pdg config key '{key}' must be an integer; got {raw_value!r}"
                         )
                     patch[key] = int(raw_value)
                 elif isinstance(raw_value, int):
                     patch[key] = int(raw_value)
                 else:
-                    raise ValueError(f"zem_zev config key '{key}' must be an integer")
+                    raise ValueError(f"pdg config key '{key}' must be an integer")
             elif isinstance(current, float):
                 if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
-                    raise ValueError(f"zem_zev config key '{key}' must be a number")
+                    raise ValueError(f"pdg config key '{key}' must be a number")
                 patch[key] = float(raw_value)
             elif isinstance(current, tuple):
                 if not isinstance(raw_value, (list, tuple)) or not raw_value:
                     raise ValueError(
-                        f"zem_zev config key '{key}' must be a non-empty list/tuple"
+                        f"pdg config key '{key}' must be a non-empty list/tuple"
                     )
                 parsed: list[int] = []
                 for item in raw_value:
                     if isinstance(item, bool) or not isinstance(item, (int, float)):
                         raise ValueError(
-                            f"zem_zev config key '{key}' entries must be integers"
+                            f"pdg config key '{key}' entries must be integers"
                         )
                     parsed.append(int(item))
                 patch[key] = tuple(parsed)
             else:
                 raise ValueError(
-                    f"zem_zev config key '{key}' has unsupported type for override"
+                    f"pdg config key '{key}' has unsupported type for override"
                 )
         self._cfg = replace(self._cfg, **patch)
 
@@ -212,12 +244,14 @@ class ZemZevBot(Bot):
         self._display_mode = None
         self._display_phase = None
         self._display_summary = ""
+        self._launch_takeoff_active = False
+        self._stage_tracking_next = FlightStage.SETUP.value
         _reset_evaluation_state_impl(self)
 
     def _debug_setup_print(self, line: str) -> None:
         if not self._debug_setup:
             return
-        print(f"ZEMDBG {line}")
+        print(f"PDGDBG {line}")
 
     def _set_display_state(
         self,
@@ -338,7 +372,11 @@ class ZemZevBot(Bot):
         speed = math.sqrt(max(0.0, (cfg.vy_touch_cap * cfg.vy_touch_cap) + (2.0 * vertical_brake * alt_eff)))
         return clamp(speed, cfg.braking_min_speed, cfg.braking_max_speed)
 
-    def _desired_terminal_vy(self, alt: float, max_thrust_accel: float, max_tilt: float) -> float:
+    @staticmethod
+    def _stable(value: float | None, digits: int) -> float:
+        return stable(value, digits)
+
+    def _desired_flare_vy(self, alt: float, max_thrust_accel: float, max_tilt: float) -> float:
         cfg = self._cfg
         vy_mag = cfg.braking_target_ratio * self._braking_speed_limit(alt, max_thrust_accel, max_tilt)
         if alt <= cfg.vy_low_alt_cap_alt:
@@ -381,9 +419,9 @@ class ZemZevBot(Bot):
             tilt = min(tilt, cfg.uphill_setup_tilt_max)
         return tilt
 
-    def _phase_terminal_x_tol(self, phase: str) -> float:
+    def _phase_flare_x_tol(self, phase: str) -> float:
         cfg = self._cfg
-        ratio = cfg.terminal_center_tol_ratio
+        ratio = cfg.flare_center_tol_ratio
         if phase == "setup":
             ratio = cfg.setup_center_tol_ratio
         return max(4.0, float(self._last_target_half) * max(0.05, float(ratio)))
@@ -442,14 +480,14 @@ class ZemZevBot(Bot):
     ) -> PDGOptimizer:
         if phase == "setup":
             return self._optimizer_setup
-        if phase == "terminal":
-            return self._optimizer_terminal
+        if phase in ("flare", "touchdown"):
+            return self._optimizer_flare
         cfg = self._cfg
         down_speed = max(0.0, -float(vy_up))
         t_go = float("inf") if down_speed <= 1e-3 else (max(0.0, alt) / down_speed)
         if alt >= cfg.long_horizon_altitude or t_go >= cfg.long_horizon_time_to_go:
             return self._optimizer_setup
-        return self._optimizer_terminal
+        return self._optimizer_flare
 
     def _replan_policy_for_phase(self, phase: str) -> tuple[float, float, float, float, float]:
         cfg = self._cfg
@@ -461,20 +499,20 @@ class ZemZevBot(Bot):
                 cfg.replan_vx_error_setup,
                 cfg.replan_vy_error_setup,
             )
-        if phase == "terminal":
+        if phase in ("flare", "touchdown"):
             return (
-                cfg.replan_hz_terminal,
-                cfg.replan_dx_error_terminal,
-                cfg.replan_dy_error_terminal,
-                cfg.replan_vx_error_terminal,
-                cfg.replan_vy_error_terminal,
+                cfg.replan_hz_flare,
+                cfg.replan_dx_error_flare,
+                cfg.replan_dy_error_flare,
+                cfg.replan_vx_error_flare,
+                cfg.replan_vy_error_flare,
             )
         return (
-            cfg.replan_hz_terminal,
-            cfg.replan_dx_error_terminal,
-            cfg.replan_dy_error_terminal,
-            cfg.replan_vx_error_terminal,
-            cfg.replan_vy_error_terminal,
+            cfg.replan_hz_flare,
+            cfg.replan_dx_error_flare,
+            cfg.replan_dy_error_flare,
+            cfg.replan_vx_error_flare,
+            cfg.replan_vy_error_flare,
         )
 
     def _state_deviation_requires_replan(
@@ -522,7 +560,7 @@ class ZemZevBot(Bot):
             phase=phase,
         )
 
-    def _update_phase_tracking(
+    def _refresh_stage_tracking(
         self,
         *,
         passive: Sensors,
@@ -530,8 +568,8 @@ class ZemZevBot(Bot):
         dy: float,
         alt: float,
         projection: BallisticProjection,
-    ) -> None:
-        _update_phase_tracking_impl(
+    ) -> FlightStage:
+        token = _refresh_stage_tracking_impl(
             self,
             passive=passive,
             dx=dx,
@@ -539,6 +577,7 @@ class ZemZevBot(Bot):
             alt=alt,
             projection=projection,
         )
+        return FlightStage(str(token))
 
     def _maybe_start_shape_window(
         self,
@@ -592,7 +631,7 @@ class ZemZevBot(Bot):
             return None
         return self._shape_shortfall_count / max(1, self._shape_shortfall_sample_count)
 
-    def _finalize_terminal_gate(
+    def _finalize_flare_entry(
         self,
         *,
         passive: Sensors,
@@ -606,7 +645,7 @@ class ZemZevBot(Bot):
         latest_safe_margin_s: float,
         required_accel_ratio: float,
     ) -> None:
-        _finalize_terminal_gate_metrics_impl(
+        _finalize_flare_entry_metrics_impl(
             self,
             passive=passive,
             alt=alt,
@@ -672,11 +711,165 @@ class ZemZevBot(Bot):
             max_thrust_accel=max_thrust_accel,
         )
 
+    def _command_passive_coast(
+        self,
+        *,
+        dt: float,
+        passive: Sensors,
+    ) -> BotAction:
+        return _command_passive_coast_impl(
+            self,
+            dt=dt,
+            passive=passive,
+        )
+
+    def _transition_to(self, stage: FlightStage, ctx: UpdateContext | None) -> None:
+        current = getattr(self, "_active_stage", None)
+        if current == stage:
+            self._active_phase = stage.value
+            if stage == FlightStage.TAKEOFF:
+                self._launch_takeoff_active = True
+            elif stage != FlightStage.TAKEOFF:
+                self._launch_takeoff_active = False
+            return
+        if current in self._controllers:
+            self._controllers[current].exit(self, ctx)
+        self._active_stage = stage
+        self._active_phase = stage.value
+        self._launch_takeoff_active = stage == FlightStage.TAKEOFF
+        if stage in (FlightStage.TAKEOFF, FlightStage.COAST):
+            self._thrust_enabled = False
+            self._plan = None
+            self._plan_elapsed = 0.0
+            self._replan_timer = 0.0
+            self._fallback_steps_remaining = 0
+        elif stage in (FlightStage.SETUP, FlightStage.FLARE):
+            self._plan = None
+            self._plan_elapsed = 0.0
+            self._replan_timer = 0.0
+            self._fallback_steps_remaining = int(self._cfg.fallback_hold_steps)
+        if stage in self._controllers:
+            self._controllers[stage].enter(self, ctx)
+
+    def _build_update_context(
+        self,
+        *,
+        dt: float,
+        passive: Sensors,
+        target: Any | None,
+        dx: float,
+        dy: float,
+        alt: float,
+        projection: BallisticProjection,
+        max_power: float,
+        min_throttle: float,
+        max_throttle: float,
+        ramp_up: float,
+        max_thrust_accel: float,
+        nominal_thrust_accel: float,
+        min_thrust_accel: float,
+        suggested_stage: FlightStage,
+    ) -> UpdateContext:
+        return UpdateContext(
+            dt=dt,
+            passive=passive,
+            target=target,
+            dx=dx,
+            dy=dy,
+            alt=alt,
+            projection=projection,
+            max_power=max_power,
+            min_throttle=min_throttle,
+            max_throttle=max_throttle,
+            ramp_up=ramp_up,
+            max_thrust_accel=max_thrust_accel,
+            nominal_thrust_accel=nominal_thrust_accel,
+            min_thrust_accel=min_thrust_accel,
+            suggested_stage=suggested_stage,
+        )
+
+    def _run_pdg_stage(
+        self,
+        *,
+        ctx: UpdateContext,
+        stage: FlightStage,
+    ) -> BotAction:
+        phase = stage.value
+        replan_hz, dx_err_lim, dy_err_lim, vx_err_lim, vy_err_lim = self._replan_policy_for_phase(
+            phase
+        )
+
+        self._replan_timer -= max(0.0, ctx.dt)
+        self._plan_elapsed += max(0.0, ctx.dt)
+
+        need_replan = (
+            self._plan is None
+            or not self._plan.feasible
+            or self._replan_timer <= 0.0
+            or self._state_deviation_requires_replan(
+                ctx.passive,
+                dx_err_lim=dx_err_lim,
+                dy_err_lim=dy_err_lim,
+                vx_err_lim=vx_err_lim,
+                vy_err_lim=vy_err_lim,
+            )
+        )
+
+        if need_replan:
+            plan = self._solve_plan(
+                passive=ctx.passive,
+                dx=ctx.dx,
+                dy=ctx.dy,
+                max_thrust_accel=ctx.max_thrust_accel,
+                min_thrust_accel=ctx.min_thrust_accel,
+                nominal_thrust_accel=ctx.nominal_thrust_accel,
+                phase=phase,
+            )
+            if plan is not None and plan.feasible:
+                self._plan = plan
+                self._plan_elapsed = 0.0
+                self._replan_timer = 1.0 / max(1e-3, replan_hz)
+                self._fallback_steps_remaining = int(self._cfg.fallback_hold_steps)
+            else:
+                if self._fallback_steps_remaining > 0 and self._plan is not None and self._plan.feasible:
+                    self._fallback_steps_remaining -= 1
+                else:
+                    self._plan = None
+
+        action = self._command_from_plan(
+            dt=ctx.dt,
+            passive=ctx.passive,
+            dx=ctx.dx,
+            dy=ctx.dy,
+            alt=ctx.alt,
+            max_power=ctx.max_power,
+            min_throttle=ctx.min_throttle,
+            max_throttle=ctx.max_throttle,
+            max_thrust_accel=ctx.max_thrust_accel,
+        )
+        mode = "opt"
+        if self._plan is None or not self._plan.feasible:
+            mode = "fallback"
+            self._fallback_frames += 1
+        action.status = (
+            f"pdg {mode}/{phase} "
+            f"dx={stable(ctx.dx, 1):.1f} pdx={stable(float(ctx.projection.projected_dx), 1):.1f}"
+        )
+        self._set_display_state(
+            mode=mode,
+            phase=phase,
+            summary=(
+                f"dx={stable(ctx.dx, 1):.1f} "
+                f"pdx={stable(float(ctx.projection.projected_dx), 1):.1f}"
+            ),
+        )
+        return action
+
     def update(self, dt: float, passive: Sensors) -> BotAction:
         if passive.state == "crashed":
             return self._reset_with_status(
                 angle=passive.angle,
-                status="zem_zev crashed",
+                status="pdg crashed",
                 mode="idle",
                 phase="crashed",
                 summary="crashed",
@@ -684,7 +877,7 @@ class ZemZevBot(Bot):
         if passive.state == "out_of_fuel":
             return self._reset_with_status(
                 angle=passive.angle,
-                status="zem_zev out_of_fuel",
+                status="pdg out_of_fuel",
                 mode="idle",
                 phase="out_of_fuel",
                 summary="out of fuel",
@@ -692,35 +885,64 @@ class ZemZevBot(Bot):
 
         if passive.state == "landed":
             self._reset_state()
+            self._transition_to(FlightStage.SETUP, None)
 
         max_power, min_throttle, max_throttle, ramp_up = engine_profile(self.vehicle_info)
         target = self._resolve_target_contact(passive)
         target_uid = target.uid if target is not None else None
+        alt = max(0.0, finite_altitude(passive))
+        mass = max(0.5, float(passive.mass))
+        max_force = max_power * max_throttle
+        nominal_force = max_power * min(1.0, max_throttle)
+        min_force = max_power * min_throttle
+        max_thrust_accel = max(0.1, max_force / mass)
+        nominal_thrust_accel = max(0.1, nominal_force / mass)
+        min_thrust_accel = max(0.0, min_force / mass)
 
         if passive.state == "landed":
             landed_uid = self._landed_contact_uid(passive)
             if target_uid is None or landed_uid == target_uid:
                 self._launch_takeoff_active = False
-                action = BotAction(0.0, 0.0, False, status="zem_zev landed")
+                action = BotAction(0.0, 0.0, False, status="pdg landed")
                 self._set_display_state(mode="idle", phase="landed", summary="landed")
                 self.status = action.status
                 return action
-
-            self._launch_takeoff_active = True
-            action = BotAction(
-                self._takeoff_thrust(max_throttle),
-                0.0,
-                False,
-                status="zem_zev takeoff",
+            self._transition_to(FlightStage.TAKEOFF, None)
+            takeoff_ctx = self._build_update_context(
+                dt=dt,
+                passive=passive,
+                target=target,
+                dx=0.0,
+                dy=0.0,
+                alt=alt,
+                projection=estimate_target_y_projection(
+                    dx=0.0,
+                    dy=0.0,
+                    vx=float(passive.vx),
+                    vy_up=float(passive.vy_up),
+                    x=float(passive.x),
+                    y=float(passive.y),
+                ),
+                max_power=max_power,
+                min_throttle=min_throttle,
+                max_throttle=max_throttle,
+                ramp_up=ramp_up,
+                max_thrust_accel=max_thrust_accel,
+                nominal_thrust_accel=nominal_thrust_accel,
+                min_thrust_accel=min_thrust_accel,
+                suggested_stage=FlightStage.TAKEOFF,
             )
-            self._set_display_state(mode="takeoff", phase="takeoff", summary="departing pad")
+            action = self._controllers[FlightStage.TAKEOFF].update(self, takeoff_ctx).action
+            if action is None:
+                raise RuntimeError("pdg takeoff stage did not produce an action")
             self.status = action.status
+            self._last_flight_snapshot = self._build_evaluation_snapshot()
             return action
 
         if passive.state != "flying":
             return self._reset_with_status(
                 angle=passive.angle,
-                status=f"zem_zev {passive.state}",
+                status=f"pdg {passive.state}",
                 mode="idle",
                 phase=str(passive.state),
                 summary=str(passive.state),
@@ -733,31 +955,9 @@ class ZemZevBot(Bot):
             # New run after a reset: discard prior episode telemetry.
             self._last_flight_snapshot = None
 
-        alt = max(0.0, finite_altitude(passive))
-        if self._launch_takeoff_active and alt < self._cfg.launch_takeoff_clear_altitude:
-            action = BotAction(
-                self._takeoff_thrust(max_throttle),
-                0.0,
-                False,
-                status="zem_zev clear_pad",
-            )
-            self._set_display_state(mode="takeoff", phase="takeoff", summary="clearing pad")
-            self.status = action.status
-            return action
-        if self._launch_takeoff_active and alt >= self._cfg.launch_takeoff_clear_altitude:
-            self._launch_takeoff_active = False
-
         if not self._angle_cmd_initialized:
             self._prev_angle_cmd = float(passive.angle)
             self._angle_cmd_initialized = True
-
-        mass = max(0.5, float(passive.mass))
-        max_force = max_power * max_throttle
-        nominal_force = max_power * min(1.0, max_throttle)
-        min_force = max_power * min_throttle
-        max_thrust_accel = max(0.1, max_force / mass)
-        nominal_thrust_accel = max(0.1, nominal_force / mass)
-        min_thrust_accel = max(0.0, min_force / mass)
 
         if target is not None:
             dx = float(target.x) - float(passive.x)
@@ -790,7 +990,7 @@ class ZemZevBot(Bot):
             x=float(passive.x),
             y=float(passive.y),
         )
-        self._update_phase_tracking(
+        suggested_stage = self._refresh_stage_tracking(
             passive=passive,
             dx=dx,
             dy=dy,
@@ -802,131 +1002,36 @@ class ZemZevBot(Bot):
             dx=dx,
             projection=projection,
         )
-        if self._active_phase == "coast":
-            flare_gate = self._evaluate_flare_gate(
-                dt=dt,
-                passive=passive,
-                dx=dx,
-                dy=dy,
-                alt=alt,
-                max_thrust_accel=max_thrust_accel,
-                min_thrust_accel=min_thrust_accel,
-                nominal_thrust_accel=nominal_thrust_accel,
-                thrust_ramp_up=ramp_up,
-            )
-            if flare_gate is not None:
-                self._finalize_terminal_gate(
-                    passive=passive,
-                    alt=alt,
-                    projected_dx=float(projection.projected_dx),
-                    mode=flare_gate.mode,
-                    horizon_s=flare_gate.burn_time_s,
-                    terminal_speed=None,
-                    peak_accel_ratio=None,
-                    od_excess_s=None,
-                    latest_safe_margin_s=flare_gate.latest_safe_margin_s,
-                    required_accel_ratio=flare_gate.required_accel_ratio,
-                )
-                self._active_phase = "terminal"
-                self._plan = None
-                self._plan_elapsed = 0.0
-                self._replan_timer = 0.0
-                self._fallback_steps_remaining = int(self._cfg.fallback_hold_steps)
-            else:
-                self._plan = None
-                self._plan_elapsed = 0.0
-                self._replan_timer = 0.0
-                self._fallback_steps_remaining = 0
-                action = _command_passive_coast_impl(
-                    self,
-                    dt=dt,
-                    passive=passive,
-                )
-                action.status = (
-                    f"zem_zev passive/coast "
-                    f"dx={stable(dx, 1):.1f} pdx={stable(float(projection.projected_dx), 1):.1f}"
-                )
-                self._set_display_state(
-                    mode="passive",
-                    phase="coast",
-                    summary=(
-                        f"dx={stable(dx, 1):.1f} "
-                        f"pdx={stable(float(projection.projected_dx), 1):.1f}"
-                    ),
-                )
-                self.status = action.status
-                self._last_flight_snapshot = self._build_evaluation_snapshot()
-                return action
-        replan_hz, dx_err_lim, dy_err_lim, vx_err_lim, vy_err_lim = self._replan_policy_for_phase(
-            self._active_phase
-        )
-
-        self._replan_timer -= max(0.0, dt)
-        self._plan_elapsed += max(0.0, dt)
-
-        need_replan = (
-            self._plan is None
-            or not self._plan.feasible
-            or self._replan_timer <= 0.0
-            or self._state_deviation_requires_replan(
-                passive,
-                dx_err_lim=dx_err_lim,
-                dy_err_lim=dy_err_lim,
-                vx_err_lim=vx_err_lim,
-                vy_err_lim=vy_err_lim,
-            )
-        )
-
-        if need_replan:
-            plan = self._solve_plan(
-                passive=passive,
-                dx=dx,
-                dy=dy,
-                max_thrust_accel=max_thrust_accel,
-                min_thrust_accel=min_thrust_accel,
-                nominal_thrust_accel=nominal_thrust_accel,
-                phase=self._active_phase,
-            )
-            if plan is not None and plan.feasible:
-                self._plan = plan
-                self._plan_elapsed = 0.0
-                self._replan_timer = 1.0 / max(1e-3, replan_hz)
-                self._fallback_steps_remaining = int(self._cfg.fallback_hold_steps)
-            else:
-                if self._fallback_steps_remaining > 0 and self._plan is not None and self._plan.feasible:
-                    self._fallback_steps_remaining -= 1
-                else:
-                    self._plan = None
-
-        action = self._command_from_plan(
+        ctx = self._build_update_context(
             dt=dt,
             passive=passive,
+            target=target,
             dx=dx,
             dy=dy,
             alt=alt,
+            projection=projection,
             max_power=max_power,
             min_throttle=min_throttle,
             max_throttle=max_throttle,
+            ramp_up=ramp_up,
             max_thrust_accel=max_thrust_accel,
+            nominal_thrust_accel=nominal_thrust_accel,
+            min_thrust_accel=min_thrust_accel,
+            suggested_stage=suggested_stage,
         )
-
-        phase = self._active_phase
-        mode = "opt"
-        if self._plan is None or not self._plan.feasible:
-            mode = "fallback"
-            self._fallback_frames += 1
-        action.status = (
-            f"zem_zev {mode}/{phase} "
-            f"dx={stable(dx, 1):.1f} pdx={stable(float(projection.projected_dx), 1):.1f}"
-        )
-        self._set_display_state(
-            mode=mode,
-            phase=phase,
-            summary=(
-                f"dx={stable(dx, 1):.1f} "
-                f"pdx={stable(float(projection.projected_dx), 1):.1f}"
-            ),
-        )
+        for _ in range(6):
+            active_stage = getattr(self, "_active_stage", None) or FlightStage.SETUP
+            controller = self._controllers[active_stage]
+            result = controller.update(self, ctx)
+            if result.next_stage is not None and result.next_stage != active_stage:
+                self._transition_to(result.next_stage, ctx)
+                continue
+            action = result.action
+            break
+        else:
+            raise RuntimeError("pdg stage router exceeded transition budget")
+        if action is None:
+            raise RuntimeError(f"pdg stage '{self._active_phase}' did not produce an action")
         self.status = action.status
         self._last_flight_snapshot = self._build_evaluation_snapshot()
         return action
@@ -939,7 +1044,7 @@ class ZemZevBot(Bot):
 
     def get_display_state(self) -> BotDisplayState | None:
         return BotDisplayState(
-            bot_name="zem_zev",
+            bot_name="pdg",
             mode=self._display_mode,
             phase=self._display_phase or self._active_phase,
             summary=self._display_summary,
@@ -988,27 +1093,27 @@ class ZemZevBot(Bot):
                     },
                 )
             )
-        if self._terminal_gate_done:
+        if self._flare_entry_done:
             label = "flare"
             if self._flare_gate_mode:
                 mode_label = (
                     "ready" if self._flare_gate_mode == "nominal_ready" else "late"
                 )
                 label = f"{label} {mode_label}"
-            if self._terminal_gate_projected_dx is not None:
-                label = f"{label} dx={stable(self._terminal_gate_projected_dx, 1):.1f}"
-            metadata: dict[str, float | str | None] = {"time_s": self._terminal_gate_time}
+            if self._flare_entry_projected_dx is not None:
+                label = f"{label} dx={stable(self._flare_entry_projected_dx, 1):.1f}"
+            metadata: dict[str, float | str | None] = {"time_s": self._flare_entry_time}
             if self._flare_gate_mode is not None:
                 metadata["mode"] = self._flare_gate_mode
             if self._flare_gate_horizon_s is not None:
                 metadata["horizon_s"] = self._flare_gate_horizon_s
             out.append(
                 PlotMarker(
-                    id="terminal_entry",
-                    name="terminal_entry",
+                    id="flare_entry",
+                    name="flare_entry",
                     label=label,
-                    x=self._terminal_gate_x,
-                    y=self._terminal_gate_y,
+                    x=self._flare_entry_x,
+                    y=self._flare_entry_y,
                     metadata=metadata,
                 )
             )
@@ -1018,10 +1123,10 @@ class ZemZevBot(Bot):
         return _build_evaluation_decision_impl(self)
 
 def create_bot() -> Bot:
-    return ZemZevBot()
+    return PDGBot()
 
 def list_behavior_names() -> tuple[str, ...]:
-    return ("zem_zev",)
+    return ("pdg",)
 
 
-__all__ = ["ZemZevBot", "create_bot", "list_behavior_names"]
+__all__ = ["PDGBot", "create_bot", "list_behavior_names"]

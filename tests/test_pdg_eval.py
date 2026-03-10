@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from bots._zem_eval import build_evaluation_decision, reset_evaluation_state
+from bots.pdg.eval import build_evaluation_decision, reset_evaluation_state
 
 
 class _Bot:
@@ -10,17 +10,17 @@ class _Bot:
         self._setup_gate_time = 6.0
         self._setup_gate_altitude = 120.0
         self._setup_gate_projected_dx = 9.0
-        self._last_flight_snapshot = {"kind": "zem_zev"}
+        self._last_flight_snapshot = {"kind": "pdg"}
         self._elapsed_time_s = 99.0
-        self._active_phase = "terminal"
+        self._active_phase = "flare"
         self._setup_gate_projected_apex_y = 1.0
         self._setup_gate_projected_apex_over_target = 2.0
         self._setup_burn_started = True
         self._setup_burn_idle_since = 1.0
-        self._terminal_gate_done = True
-        self._terminal_gate_time = 7.0
-        self._terminal_gate_altitude = 80.0
-        self._terminal_gate_projected_dx = 4.0
+        self._flare_entry_done = True
+        self._flare_entry_time = 7.0
+        self._flare_entry_altitude = 80.0
+        self._flare_entry_projected_dx = 4.0
         self._last_projection_dx = 3.0
         self._last_projection_t_fall = 2.0
         self._last_projection_has_target_y = True
@@ -63,11 +63,11 @@ def test_reset_evaluation_state_preserves_or_clears_last_snapshot() -> None:
     bot = _Bot(eval_goal="setup", setup_done=True)
 
     reset_evaluation_state(bot)
-    assert bot._last_flight_snapshot == {"kind": "zem_zev"}
+    assert bot._last_flight_snapshot == {"kind": "pdg"}
     assert bot._elapsed_time_s == 0.0
     assert bot._active_phase == "setup"
     assert bot._setup_gate_done is False
-    assert bot._terminal_gate_done is False
+    assert bot._flare_entry_done is False
     assert bot._clearance_active is False
     assert bot._debug_setup_last_print_t == -1.0
     assert bot._debug_setup_post_end_time is None

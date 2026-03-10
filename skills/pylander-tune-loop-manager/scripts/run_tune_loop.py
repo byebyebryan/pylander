@@ -111,7 +111,7 @@ def run_tune_loop(payload: dict[str, Any]) -> dict[str, Any]:
             "payload": {
                 "mode": str(payload.get("regression_mode") or "quick"),
                 "baseline_ref": str(payload.get("baseline_ref") or "main"),
-                "bot": str(payload.get("bot") or "zem_zev"),
+                "bot": str(payload.get("bot") or "pdg"),
             },
         }
     else:

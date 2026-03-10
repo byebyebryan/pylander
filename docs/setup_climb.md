@@ -10,8 +10,8 @@
 
 Guidance note:
 
-- `zem_zev` handles climb with the same optimizer loop used on other levels.
-- There is currently no climb-specific trajectory shaping in `zem_zev`; climb is
+- `pdg` handles climb with the same optimizer loop used on other levels.
+- There is currently no climb-specific trajectory shaping in `pdg`; climb is
   a direct stress test of the generic setup controller.
 
 ## Scenario design
@@ -36,25 +36,25 @@ Defaults:
 ## Metrics
 
 - End-to-end objective metrics: `state`, `success`, `setup_transfer_arrived`, `setup_transfer_landed_site_uid`
-- Unified gate telemetry: `setup_gate_*`, `bot_zem_zev_terminal_gate_*`
+- Unified gate telemetry: `setup_gate_*`, `bot_pdg_flare_entry_*`
 - Goal metadata when using goal selectors: `eval_goal`, `eval_early_end`, `eval_end_reason`
 
-Additional retained `zem_zev` diagnostics exported for climb tuning:
+Additional retained `pdg` diagnostics exported for climb tuning:
 
-- `bot_zem_zev_shape_apex_error`
-- `bot_zem_zev_shape_curve_rmse`
-- `bot_zem_zev_shape_projected_dx_abs_mean`
-- `bot_zem_zev_shape_projected_dx_abs_max`
-- `bot_zem_zev_shape_shortfall_ratio`
+- `bot_pdg_shape_apex_error`
+- `bot_pdg_shape_curve_rmse`
+- `bot_pdg_shape_projected_dx_abs_mean`
+- `bot_pdg_shape_projected_dx_abs_max`
+- `bot_pdg_shape_shortfall_ratio`
 
 ## Commands
 
 ```bash
 uv run python main.py run --interactive setup_climb
-uv run python main.py sim setup_climb:mid:0 --bot zem_zev
+uv run python main.py sim setup_climb:mid:0 --bot pdg
 uv run python main.py bench \
   setup_climb:low:0-9 \
   setup_climb:mid:0-9 \
   setup_climb:high:0-9 \
-  --bot zem_zev
+  --bot pdg
 ```

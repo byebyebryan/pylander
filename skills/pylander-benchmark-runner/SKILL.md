@@ -10,7 +10,7 @@ Use this skill when the user asks to run benchmarks, compare a change against a 
 ## Inputs
 
 - `mode`: `smoke | quick | full | focused`
-- `bot` (default: `zem_zev`)
+- `bot` (default: `pdg`)
 - `bot_config_path` (optional JSON override path; forwarded as `--bot-config`)
 - `seed_spec` (optional override, e.g. `0-9`)
 - `selectors` (focused mode)

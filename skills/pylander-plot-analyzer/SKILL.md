@@ -20,7 +20,7 @@ Use this skill to interpret generated plot bundles.
 - trajectory undershoot/overshoot patterns
 - late correction burden
 - setup/coast handoff quality hints
-- thrust-vector instability or terminal clutter patterns
+- thrust-vector instability or flare-phase clutter patterns
 4. Return follow-up commands (`sim`, profiled `sim`, focused re-plot) for top issues.
 
 ## Output contract

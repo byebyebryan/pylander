@@ -76,7 +76,7 @@ def test_estimate_ground_time_to_impact_matches_ballistic_fall_time() -> None:
     assert t == pytest.approx(expected)
 
 
-def test_plunge_and_zem_are_bots(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_plunge_and_pdg_are_bots(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PYLANDER_BOT_PROFILE", "1")
 
     plunge = create_bot("plunge")
@@ -90,13 +90,13 @@ def test_plunge_and_zem_are_bots(monkeypatch: pytest.MonkeyPatch) -> None:
     plunge_result = plunge_game.run(print_freq=0, max_steps=40, max_time=20.0)
     assert float(plunge_result["bot_profile_update_ms_per_tick"]) >= 0.0
 
-    zem = create_bot("zem_zev")
-    assert isinstance(zem, Bot)
-    zem_game = LanderGame(
+    pdg = create_bot("pdg")
+    assert isinstance(pdg, Bot)
+    pdg_game = LanderGame(
         level=create_level_by_name("flare_normal"),
         seed=0,
-        bot=zem,
+        bot=pdg,
         headless=True,
     )
-    zem_result = zem_game.run(print_freq=0, max_steps=40, max_time=20.0)
-    assert float(zem_result["bot_profile_update_ms_per_tick"]) >= 0.0
+    pdg_result = pdg_game.run(print_freq=0, max_steps=40, max_time=20.0)
+    assert float(pdg_result["bot_profile_update_ms_per_tick"]) >= 0.0

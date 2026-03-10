@@ -13,7 +13,7 @@ Use this skill to generate plot artifacts for human and AI analysis.
 - `benchmark_json` (for `health`/`triage`; optional in `compare`)
 - `compare_json` (for `compare`/`triage`)
 - `selectors` (for `focus`)
-- `bot` (default: `zem_zev`)
+- `bot` (default: `pdg`)
 - `top_n` (default: `8`)
 - `plot_mode` (default: `all`)
 - `plot_output` (default: `both`)
@@ -28,7 +28,7 @@ Use this skill to generate plot artifacts for human and AI analysis.
 
 1. Build case list:
 - `compare`/`triage`: prioritize new global crashes from compare report
-- fallback to benchmark records with large generic setup miss, bot-owned terminal miss, or fuel signals
+- fallback to benchmark records with large generic setup miss, bot-owned flare-entry miss, or fuel signals
 - `focus`: use explicit selectors only
 2. Generate plot command(s) per case:
 - `main.py plot <selector> --plot <plot_mode> --plot-output <plot_output> --plot-max-side-px <px>`
@@ -43,4 +43,4 @@ Use this skill to generate plot artifacts for human and AI analysis.
 - Use `--plot-output split` when image complexity is the main concern.
 - Keep `plot_max_side_px` around 1800 for robust ingestion quality.
 - Current triage ranking uses `setup_gate_projected_dx` and the selected bot's
-  `bot_<botname>_terminal_gate_projected_dx` when available.
+  `bot_<botname>_flare_entry_projected_dx` when available.

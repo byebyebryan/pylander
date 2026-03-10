@@ -381,7 +381,7 @@ def build_selectors(
 def build_bench_command(
     *,
     selectors: list[str],
-    bot: str = "zem_zev",
+    bot: str = "pdg",
     json_path: str = "auto",
     csv_path: str = "auto",
     bot_config_path: str | None = None,
@@ -439,7 +439,7 @@ def main() -> None:
         default=[],
         help="Levels to keep as observation-only (csv or repeated)",
     )
-    ap.add_argument("--bot", default="zem_zev")
+    ap.add_argument("--bot", default="pdg")
     ap.add_argument("--bot-config", default=None)
     ap.add_argument(
         "--bot-profile",

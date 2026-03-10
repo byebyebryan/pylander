@@ -37,7 +37,7 @@ Defaults:
 
 - default scenario: `mid_normal`
 - recommended benchmark subset: `low_normal`, `mid_normal`, `high_normal`
-- level default bot: `zem_zev`
+- level default bot: `pdg`
 
 ## Goals and metrics
 

@@ -27,7 +27,7 @@ Execute focused benchmark validation:
 - `branch_id`: unique short token
 - `hypothesis`: expected improvement and affected phase(s)
 - `selectors`: focused selectors/seeds to validate
-- `bot`: default `zem_zev`
+- `bot`: default `pdg`
 - optional `baseline_ref`
 - optional `bot_config_path`
 - optional `loop_profile` for branch-local looping (default: `light`)

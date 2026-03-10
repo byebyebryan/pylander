@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from core.eval_schema import (
-    BOT_ZEM_RESULT_FIELDS,
+    BOT_PDG_RESULT_FIELDS,
     EFFICIENCY_METRIC_FIELDS,
     FINAL_RESULT_SECTIONS,
 )
@@ -67,9 +67,9 @@ def _collect_bot_sections(result: dict[str, Any]) -> list[tuple[str, list[tuple[
             continue
         if key.startswith("bot_profile_"):
             continue
-        if key in BOT_ZEM_RESULT_FIELDS:
-            bot_name = "zem_zev"
-            label = key.removeprefix("bot_zem_zev_")
+        if key in BOT_PDG_RESULT_FIELDS:
+            bot_name = "pdg"
+            label = key.removeprefix("bot_pdg_")
         else:
             parts = key.split("_", 2)
             if len(parts) < 3:

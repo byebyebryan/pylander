@@ -1,20 +1,19 @@
 """Rendering system for terrain visualization (Level-centric)."""
 
+import math
 import logging
 import os
 import random
+from typing import TYPE_CHECKING
+
 import pygame
 
-logger = logging.getLogger(__name__)
-from .camera import OffsetCamera, Camera
-from .minimap import Minimap
-from typing import TYPE_CHECKING
-import math
 from .auto_zoom import AutoZoomController
-from .hud import HudOverlay
-from .overlays import SensorOverlay
+from .camera import Camera, OffsetCamera
 from .fps_overlay import FpsOverlay
-from core.maths import Range1D
+from .hud import HudOverlay
+from .minimap import Minimap
+from .overlays import SensorOverlay
 from core.components import (
     Engine,
     FuelTank,
@@ -26,12 +25,14 @@ from core.components import (
 )
 from core.ecs import require_component
 from core.lander_visuals import Thrust
-from core.maths import RigidTransform2, Vector2
+from core.maths import Range1D, RigidTransform2, Vector2
 from core.terrain import (
     pick_lod_for_world_step,
     sample_ballistic_trajectory,
     terrain_resolution,
 )
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from core.level import Level

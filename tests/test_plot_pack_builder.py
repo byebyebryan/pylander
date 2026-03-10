@@ -35,7 +35,7 @@ def test_build_cases_from_records_uses_selected_bot_terminal_metric_namespace() 
                 "seed": 0,
                 "state": "landed",
                 "setup_gate_projected_dx": 12.0,
-                "bot_test_bot_terminal_gate_projected_dx": 4.5,
+                "bot_test_bot_flare_entry_projected_dx": 4.5,
                 "fuel_consumed": 18.0,
             }
         ],
@@ -46,5 +46,5 @@ def test_build_cases_from_records_uses_selected_bot_terminal_metric_namespace() 
     assert len(cases) == 1
     evidence = dict(cases[0]["evidence"])
     assert evidence["setup_gate_projected_dx"] == 12.0
-    assert evidence["bot_terminal_gate_projected_dx"] == 4.5
-    assert evidence["bot_terminal_gate_projected_dx_field"] == "bot_test_bot_terminal_gate_projected_dx"
+    assert evidence["bot_flare_entry_projected_dx"] == 4.5
+    assert evidence["bot_flare_entry_projected_dx_field"] == "bot_test_bot_flare_entry_projected_dx"

@@ -282,7 +282,7 @@ def _to_float(value: Any, default: float = 0.0) -> float:
 
 
 def _run_diag(record: dict[str, Any], *, bot: str) -> dict[str, Any]:
-    terminal_dx_key = _bot_metric_key(bot, "terminal_gate_projected_dx")
+    terminal_dx_key = _bot_metric_key(bot, "flare_entry_projected_dx")
     keys = (
         "state",
         "failure_mode",
@@ -300,8 +300,8 @@ def _run_diag(record: dict[str, Any], *, bot: str) -> dict[str, Any]:
     for key in keys:
         if key in record:
             out[key] = record.get(key)
-    out["bot_terminal_gate_projected_dx_field"] = terminal_dx_key
-    out["bot_terminal_gate_projected_dx"] = record.get(terminal_dx_key)
+    out["bot_flare_entry_projected_dx_field"] = terminal_dx_key
+    out["bot_flare_entry_projected_dx"] = record.get(terminal_dx_key)
     return out
 
 
@@ -886,7 +886,7 @@ def _print_compare(
                 f"time={_to_float(candidate_metrics.get('time'), 0.0):.2f} "
                 f"fuel={_to_float(candidate_metrics.get('fuel_consumed'), 0.0):.3f} "
                 f"setup_dx={_to_float(candidate_metrics.get('setup_gate_projected_dx'), 0.0):.3f} "
-                f"terminal_dx={_to_float(candidate_metrics.get('bot_terminal_gate_projected_dx'), 0.0):.3f}"
+                f"terminal_dx={_to_float(candidate_metrics.get('bot_flare_entry_projected_dx'), 0.0):.3f}"
             )
             if baseline_metrics:
                 print(
@@ -1071,7 +1071,7 @@ def main() -> None:
         default=[],
         help="Levels to keep as observation-only (csv or repeated)",
     )
-    ap.add_argument("--bot", default="zem_zev")
+    ap.add_argument("--bot", default="pdg")
     ap.add_argument("--bot-config", default=None)
     ap.add_argument(
         "--bot-profile",

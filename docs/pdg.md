@@ -1,15 +1,16 @@
-# ZEM/ZEV Optimizer Bot (`zem_zev`)
+# Staged PDG Bot (`pdg`)
 
-Implementation: [`bots/zem_zev.py`](../bots/zem_zev.py), [`bots/_optimizer_pdg.py`](../bots/_optimizer_pdg.py), [`bots/_zem_config.py`](../bots/_zem_config.py), [`bots/_zem_phase.py`](../bots/_zem_phase.py), [`bots/_zem_planner.py`](../bots/_zem_planner.py), [`bots/_zem_actuation.py`](../bots/_zem_actuation.py), [`bots/_zem_telemetry.py`](../bots/_zem_telemetry.py)
+Implementation: [`bots/pdg/__init__.py`](../bots/pdg/__init__.py), [`bots/pdg/stages.py`](../bots/pdg/stages.py), [`bots/pdg/config.py`](../bots/pdg/config.py), [`bots/pdg/tracking.py`](../bots/pdg/tracking.py), [`bots/pdg/planner.py`](../bots/pdg/planner.py), [`bots/pdg/actuation.py`](../bots/pdg/actuation.py), [`bots/pdg/gate.py`](../bots/pdg/gate.py), [`bots/_optimizer_pdg.py`](../bots/_optimizer_pdg.py)
 
-`zem_zev` is the unified optimizer-first full-envelope guidance bot used by default in `setup_flat`, `setup_downhill`, `flare_error`, `setup_climb`, and `flare_normal`.
+`pdg` is the unified optimizer-first full-envelope guidance bot used by default in `setup_flat`, `setup_downhill`, `flare_error`, `setup_climb`, and `flare_normal`.
 
 Implementation note:
 
-- `zem_zev` uses the `Bot.update(dt, sensors)` API.
-- Core planning, actuation, phase tracking, and telemetry assembly are split into `_zem_*` helper modules, with `ZemZevBot` acting as the orchestration shell.
+- `pdg` uses the `Bot.update(dt, sensors)` API.
+- `PDGBot` is a staged router over concrete guidance controllers.
+- Core planning, actuation, tracking, gate logic, and telemetry assembly live under `bots/pdg/`.
 - Phase tracking uses analytic ballistic projection against target geometry (target x/y) rather than terrain-impact sensing.
-- Setup/coast phases use stricter center-first terminal-x tolerance and optional apex-shaped y-reference blending.
+- Setup/coast phases use stricter center-first flare-x tolerance and optional apex-shaped y-reference blending.
 
 ## Naming
 
@@ -18,7 +19,7 @@ Both names appear in literature:
 - `ZEM/ZEV` (Zero-Effort-Miss / Zero-Effort-Velocity)
 - `ZEV/ZEM` (same terms reversed)
 
-This repo uses `zem_zev` for consistency with bot naming.
+This repo uses `pdg` because the current concrete strategy is PDG-guided burns with a ballistic coast-to-flare handoff.
 
 ## Guidance model
 
@@ -72,7 +73,7 @@ This is why optimization is solved against nominal limits first and only uses OD
 
 Each frame:
 
-1. update phase tracking (`setup`, `coast`, `terminal`, `touchdown`),
+1. update stage tracking (`setup`, `coast`, `flare`, `touchdown`),
 2. if in `coast`, hold passive retrograde attitude and evaluate a cheap analytic flare gate,
 3. otherwise replan on schedule or state-deviation trigger,
 4. track plan between replans,
@@ -82,7 +83,7 @@ Each frame:
 For uphill transfers, setup planning remains generic:
 
 - there is currently no climb-specific trajectory shaping;
-- climb behavior reflects the same generic setup/coast/terminal loop used on
+- climb behavior reflects the same generic setup/coast/flare loop used on
   other levels.
 
 Reference path shaping now has two layers during setup:
@@ -95,10 +96,10 @@ The setup y-reference is parameterized by an apex-over-target target:
 - `apex_target = clamp(setup_apex_height_per_dx * |dx_anchor|, setup_apex_height_min, setup_apex_height_max)`
 - blend by `setup_apex_ref_blend`.
 
-Terminal-x tolerance is also phase-specific:
+Flare-x tolerance is also phase-specific:
 
 - setup: `setup_center_tol_ratio * target_half_width`
-- terminal: `terminal_center_tol_ratio * target_half_width`
+- flare: `flare_center_tol_ratio * target_half_width`
 
 This replaces the prior "full pad-width deadband at all phases" behavior and
 pushes setup to hold impact projection closer to pad center before passive
@@ -108,28 +109,28 @@ Throttle allocation includes simple on/off hysteresis to reduce min-throttle cha
 
 ## Telemetry fields
 
-`zem_zev` publishes generic and bot-owned telemetry:
+`pdg` publishes generic and bot-owned telemetry:
 
 - generic setup contract: `setup_gate_*`, `setup_goal_*`
   - on `flare_normal` / `flare_error`, `setup_gate_*` is primed from the spawn
     state to indicate coast entry rather than post-burn setup completion
-- bot-owned terminal handoff: `bot_zem_zev_terminal_gate_done`, `bot_zem_zev_terminal_gate_time`, `bot_zem_zev_terminal_gate_altitude`, `bot_zem_zev_terminal_gate_projected_dx`
-- bot-owned flare-gate diagnostics: `bot_zem_zev_flare_probe_count`, `bot_zem_zev_flare_gate_mode`, `bot_zem_zev_flare_gate_horizon_s`, `bot_zem_zev_flare_gate_terminal_speed`, `bot_zem_zev_flare_gate_peak_accel_ratio`, `bot_zem_zev_flare_gate_od_excess_s`, `bot_zem_zev_flare_gate_latest_safe_margin_s`, `bot_zem_zev_flare_gate_required_accel_ratio`
+- bot-owned flare handoff: `bot_pdg_flare_entry_done`, `bot_pdg_flare_entry_time`, `bot_pdg_flare_entry_altitude`, `bot_pdg_flare_entry_projected_dx`
+- bot-owned flare-gate diagnostics: `bot_pdg_flare_probe_count`, `bot_pdg_flare_gate_mode`, `bot_pdg_flare_gate_horizon_s`, `bot_pdg_flare_gate_terminal_speed`, `bot_pdg_flare_gate_peak_accel_ratio`, `bot_pdg_flare_gate_od_excess_s`, `bot_pdg_flare_gate_latest_safe_margin_s`, `bot_pdg_flare_gate_required_accel_ratio`
   - `flare_probe_*` stays present for schema compatibility but remains zero in the analytic coast path
   - `flare_gate_mode` is `nominal_ready` or `latest_safe`
   - `flare_gate_horizon_s` is the chosen analytic burn-duration estimate
-- bot-owned compute/fallback: `bot_zem_zev_solve_count`, `bot_zem_zev_solve_ms_mean`, `bot_zem_zev_solve_ms_p90`, `bot_zem_zev_fallback_frames`
-- bot-owned shape quality: `bot_zem_zev_shape_apex_error`, `bot_zem_zev_shape_curve_rmse`, `bot_zem_zev_shape_projected_dx_abs_mean`, `bot_zem_zev_shape_projected_dx_abs_max`, `bot_zem_zev_shape_shortfall_ratio`
+- bot-owned compute/fallback: `bot_pdg_solve_count`, `bot_pdg_solve_ms_mean`, `bot_pdg_solve_ms_p90`, `bot_pdg_fallback_frames`
+- bot-owned shape quality: `bot_pdg_shape_apex_error`, `bot_pdg_shape_curve_rmse`, `bot_pdg_shape_projected_dx_abs_mean`, `bot_pdg_shape_projected_dx_abs_max`, `bot_pdg_shape_shortfall_ratio`
 
 Setup-gate debug traces can be enabled with:
 
 ```bash
-PYLANDER_ZEM_DEBUG_SETUP=1 uv run python main.py sim setup_flat:near:0 --bot zem_zev
+PYLANDER_PDG_DEBUG_SETUP=1 uv run python main.py sim setup_flat:near:0 --bot pdg
 ```
 
 Goal-based eval boundary:
 
-- selector goal `setup` (for example `setup_downhill:mid:setup:0 --bot zem_zev`) -> early stop on the generic `setup_gate_done` milestone
+- selector goal `setup` (for example `setup_downhill:mid:setup:0 --bot pdg`) -> early stop on the generic `setup_gate_done` milestone
 
 ## Tuning knobs
 
@@ -144,7 +145,7 @@ Goal-based eval boundary:
 Centering pressure by phase:
 
 - `setup_center_tol_ratio`
-- `terminal_center_tol_ratio`
+- `flare_center_tol_ratio`
 
 Trajectory shape controls:
 
@@ -153,11 +154,11 @@ Trajectory shape controls:
 
 ## Compute cost
 
-Solver load is controlled with setup/terminal replanning and a zero-solve coast mode:
+Solver load is controlled with setup/flare replanning and a zero-solve coast mode:
 
 - setup: lower replan rate, looser deviation thresholds
 - coast: passive retrograde actuation plus analytic flare-gate math only
-- terminal: higher replan rate, tighter deviation thresholds
+- flare: higher replan rate, tighter deviation thresholds
 
 Use `bench --workers N` for throughput when running large benchmark suites.
 If process workers are blocked, benchmarking now errors (no implicit fallback);

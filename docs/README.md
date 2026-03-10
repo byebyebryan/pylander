@@ -13,7 +13,7 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 
 ## Controllers and levels
 
-- Unified optimizer bot: [`zem_zev.md`](zem_zev.md)
+- Unified optimizer bot: [`pdg.md`](pdg.md)
 - Terminal/plunge benchmark level + bot: [`plunge.md`](plunge.md)
 - Query API + profiling details: [`overview.md`](overview.md)
 - Flare-flight levels:

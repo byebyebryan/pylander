@@ -255,14 +255,14 @@ def test_save_trajectory_plots_shallow_split_is_not_extremely_flat(tmp_path: Pat
 
 def test_sorted_gate_events_prefers_short_labels_and_time_order() -> None:
     events = [
-        {"name": "terminal_entry", "time_s": 3.2, "label": "flare green dx=4.0"},
+        {"name": "flare_entry", "time_s": 3.2, "label": "flare green dx=4.0"},
         {"name": "setup_gate", "time_s": 1.1, "label": "setup gate"},
         {"name": "success", "time_s": 4.0, "label": "landed"},
     ]
 
     assert _sorted_gate_events(events) == [
         ("setup_gate", 1.1, "setup gate"),
-        ("terminal_entry", 3.2, "flare green dx=4.0"),
+        ("flare_entry", 3.2, "flare green dx=4.0"),
     ]
 
 

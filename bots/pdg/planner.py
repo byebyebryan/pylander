@@ -33,14 +33,14 @@ def solve_plan(
         dy=dy,
         phase=phase,
     )
-    target_vy = bot._desired_terminal_vy(alt_guidance, nominal_thrust_accel, max_tilt)
+    target_vy = bot._desired_flare_vy(alt_guidance, nominal_thrust_accel, max_tilt)
     descent_floor_vy = bot._descent_floor_vy(alt_guidance, nominal_thrust_accel, max_tilt)
     optimizer = bot._select_optimizer(
         phase=phase,
         alt=alt_guidance,
         vy_up=float(passive.vy_up),
     )
-    terminal_x_tol = bot._phase_terminal_x_tol(phase)
+    flare_x_tol = bot._phase_flare_x_tol(phase)
     y_ref_override = None
     shape_blend = bot._shape_ref_blend_for_phase(phase)
     if shape_blend > 1e-6 and float(passive.vy_up) > 0.0:
@@ -85,7 +85,7 @@ def solve_plan(
         pad_half_width=bot._last_target_half,
         altitude_hint=alt_guidance,
         warm_start=bot._plan,
-        terminal_x_tol=terminal_x_tol,
+        terminal_x_tol=flare_x_tol,
         y_ref_override=y_ref_override,
     )
     if plan is not None:

@@ -57,7 +57,7 @@ def _verdict(compare: dict[str, Any]) -> tuple[str, dict[str, Any], list[str]]:
         if scenario:
             follow_ups.append(
                 "uv run python main.py plot "
-                f"{scenario}:0 --bot zem_zev --plot all --plot-output both"
+                f"{scenario}:0 --bot pdg --plot all --plot-output both"
             )
 
     evidence = {
@@ -74,7 +74,7 @@ def _run_compare(payload: dict[str, Any]) -> str:
     if mode not in {"quick", "full"}:
         raise ValueError("mode must be quick or full")
 
-    bot = str(payload.get("bot") or "zem_zev")
+    bot = str(payload.get("bot") or "pdg")
     baseline_ref = str(payload.get("baseline_ref") or "main").strip() or "main"
     bot_config_path = str(payload.get("bot_config_path") or "").strip()
 

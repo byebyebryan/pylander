@@ -4,22 +4,22 @@ from dataclasses import dataclass
 
 
 @dataclass(frozen=True)
-class ZemZevConfig:
+class PDGConfig:
     # Receding horizon scheduling
     replan_hz_setup: float = 2.5
-    replan_hz_terminal: float = 7.0
+    replan_hz_flare: float = 7.0
     replan_dx_error_setup: float = 48.0
     replan_dy_error_setup: float = 30.0
     replan_vx_error_setup: float = 7.0
     replan_vy_error_setup: float = 7.0
-    replan_dx_error_terminal: float = 24.0
-    replan_dy_error_terminal: float = 18.0
-    replan_vx_error_terminal: float = 4.0
-    replan_vy_error_terminal: float = 4.0
+    replan_dx_error_flare: float = 24.0
+    replan_dy_error_flare: float = 18.0
+    replan_vx_error_flare: float = 4.0
+    replan_vy_error_flare: float = 4.0
     fallback_hold_steps: int = 12
     long_horizon_altitude: float = 120.0
     long_horizon_time_to_go: float = 6.0
-    force_terminal_from_start: bool = False
+    force_flare_from_start: bool = False
 
     # Attitude/allocator limits
     max_tilt: float = 0.78
@@ -94,7 +94,7 @@ class ZemZevConfig:
 
     # Phase centering + setup/coast shape objective
     setup_center_tol_ratio: float = 0.20
-    terminal_center_tol_ratio: float = 1.0
+    flare_center_tol_ratio: float = 1.0
     setup_apex_height_per_dx: float = 0.18
     setup_apex_height_min: float = 30.0
     setup_apex_height_max: float = 240.0

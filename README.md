@@ -6,7 +6,7 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 
 - Start here: [`docs/README.md`](docs/README.md)
 - Bot framework + API: [`docs/overview.md`](docs/overview.md)
-- Bot docs: [`docs/plunge.md`](docs/plunge.md), [`docs/zem_zev.md`](docs/zem_zev.md)
+- Bot docs: [`docs/plunge.md`](docs/plunge.md), [`docs/pdg.md`](docs/pdg.md)
 - Scenario docs: [`docs/flare_normal.md`](docs/flare_normal.md), [`docs/flare_error.md`](docs/flare_error.md), [`docs/setup_downhill.md`](docs/setup_downhill.md), [`docs/setup_flat.md`](docs/setup_flat.md), [`docs/setup_climb.md`](docs/setup_climb.md)
 
 ## Features
@@ -15,7 +15,7 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 - Physics-based lander with fuel and overdrive
 - Credits, landing targets, and refueling loop
 - Headless deterministic evaluation + benchmark reports
-- Unified optimizer bot (`zem_zev`) for full-envelope flight
+- Unified optimizer bot (`pdg`) for full-envelope flight
 - Terminal benchmark bot (`plunge`)
 
 ## Setup
@@ -46,23 +46,23 @@ Run `uv run python main.py --help` for full help.
 
 ```bash
 uv run python main.py play
-uv run python main.py play flat --bot zem_zev
+uv run python main.py play flat --bot pdg
 ```
 
 Legacy compatibility path:
 
 ```bash
 uv run python main.py run --interactive
-uv run python main.py run --interactive flat --bot zem_zev
+uv run python main.py run --interactive flat --bot pdg
 ```
 
 ### Single headless run (`sim`)
 
 ```bash
-uv run python main.py sim flare_normal:mid:0 --bot zem_zev
-uv run python main.py sim setup_downhill:mid:setup:0 --bot zem_zev
-uv run python main.py sim flare_error:mid_wide:3 --bot zem_zev
-uv run python main.py sim setup_climb:mid:0 --bot zem_zev
+uv run python main.py sim flare_normal:mid:0 --bot pdg
+uv run python main.py sim setup_downhill:mid:setup:0 --bot pdg
+uv run python main.py sim flare_error:mid_wide:3 --bot pdg
+uv run python main.py sim setup_climb:mid:0 --bot pdg
 uv run python main.py sim plunge:mid_normal:0 --bot plunge
 ```
 
@@ -77,8 +77,8 @@ Selector format:
 ### Plot run (`plot`)
 
 ```bash
-uv run python main.py plot setup_flat:far:0 --bot zem_zev
-uv run python main.py plot setup_flat:far:0 --bot zem_zev --plot all --plot-output both
+uv run python main.py plot setup_flat:far:0 --bot pdg
+uv run python main.py plot setup_flat:far:0 --bot pdg --plot all --plot-output both
 ```
 
 Plot outputs are written under `outputs/plots/<selector>_<timestamp>/` when plotting is enabled.
@@ -91,7 +91,7 @@ uv run python main.py bench \
   flare_error:shallow_tight:0-19 \
   flare_error:mid_wide:0-19 \
   flare_error:steep_wide:0-19 \
-  --bot zem_zev
+  --bot pdg
 
 # Multi-level benchmark + reports (one selector per level/scenario spec)
   uv run python main.py bench \
@@ -101,7 +101,7 @@ uv run python main.py bench \
   setup_downhill \
   setup_flat \
   setup_climb \
-  --bot zem_zev \
+  --bot pdg \
   --json auto \
   --csv auto
 ```
@@ -129,7 +129,7 @@ Default policy profile:
 Repo shorthand:
 
 - `flare levels` means `flare_normal` + `flare_error`
-- `plunge` is a separate terminal/plunge benchmark level
+- `plunge` is a separate plunge benchmark level
 
 Focused benchmark-pack selectors also accept explicit group aliases:
 
@@ -191,8 +191,8 @@ Setup-phase evaluation metrics are reported through generic fields such as
 `setup_gate_*` and `setup_goal_*`. For `flare_normal` and `flare_error`,
 `setup_gate_*` is a spawn-time coast-entry snapshot rather than a post-burn
 setup latch. Bot-owned diagnostics stay namespaced under
-`bot_<botname>_*`, for example `bot_zem_zev_terminal_gate_projected_dx`,
-`bot_zem_zev_flare_gate_mode`, and `bot_zem_zev_shape_curve_rmse`.
+`bot_<botname>_*`, for example `bot_pdg_flare_entry_projected_dx`,
+`bot_pdg_flare_gate_mode`, and `bot_pdg_shape_curve_rmse`.
 
 When plotting is enabled, runs now emit `plot_paths` and a plot manifest path for bundle-style outputs.
 
@@ -256,7 +256,7 @@ Telemetry diagnostics executors:
 The game loop now supports lightweight bot-loop profiling in headless mode:
 
 ```bash
-PYLANDER_BOT_PROFILE=1 uv run python main.py sim flare_normal:mid:0 --bot zem_zev
+PYLANDER_BOT_PROFILE=1 uv run python main.py sim flare_normal:mid:0 --bot pdg
 ```
 
 Optional interval override (seconds):

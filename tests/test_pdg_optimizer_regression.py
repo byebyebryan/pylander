@@ -22,13 +22,13 @@ def _run_level(
     level.stop_on_crash = True
     level.stop_on_out_of_fuel = True
     level.stop_on_first_land = True
-    bot = create_bot("zem_zev")
+    bot = create_bot("pdg")
     game = LanderGame(level=level, seed=0, bot=bot, headless=True)
     result = game.run(print_freq=0, max_steps=max_steps, max_time=max_time)
     return result, bot
 
 
-def test_zem_smoke_plunge_climb_launch_seed0() -> None:
+def test_pdg_smoke_plunge_climb_launch_seed0() -> None:
     # Fast envelope smoke: verify stable in-flight behavior without crashes.
     cases = [
         ("flare_normal", "mid", 20.0, 15.0),
@@ -44,7 +44,7 @@ def test_zem_smoke_plunge_climb_launch_seed0() -> None:
             assert abs(float(landing_offset)) <= max_offset
 
 
-def test_zem_launch_landing_offset_bound_seed0() -> None:
+def test_pdg_launch_landing_offset_bound_seed0() -> None:
     result, _bot = _run_level(level_name="setup_flat", scenario="near", max_time=35.0)
     assert result.get("state") == "landed"
     landing_offset = result.get("landing_offset")
@@ -53,7 +53,7 @@ def test_zem_launch_landing_offset_bound_seed0() -> None:
     assert abs(float(landing_offset)) <= 40.0
 
 
-def test_zem_passive_coast_suppresses_solver_work_mid_flare() -> None:
+def test_pdg_passive_coast_suppresses_solver_work_mid_flare() -> None:
     # Early flare run should remain ungated before control solves begin.
     _result, bot = _run_level(
         level_name="flare_normal",
@@ -64,7 +64,7 @@ def test_zem_passive_coast_suppresses_solver_work_mid_flare() -> None:
     snapshot = bot.get_bot_telemetry()
     assert int(snapshot.get("solve_count") or 0) == 0
     assert int(snapshot.get("flare_probe_count") or 0) == 0
-    assert snapshot.get("terminal_gate_done") is False
+    assert snapshot.get("flare_entry_done") is False
     assert snapshot.get("flare_gate_mode") is None
     assert int(snapshot.get("fallback_frames") or 0) == 0
     assert snapshot.get("shape_curve_rmse") is None

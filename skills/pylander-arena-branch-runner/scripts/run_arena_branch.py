@@ -97,7 +97,7 @@ def _run_validation(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str],
     if not selectors:
         raise ValueError("selectors must be non-empty when execute-validation is enabled")
 
-    bot = str(payload.get("bot") or "zem_zev")
+    bot = str(payload.get("bot") or "pdg")
     baseline_ref = str(payload.get("baseline_ref") or "").strip()
     bot_config_path = str(payload.get("bot_config_path") or "").strip()
 

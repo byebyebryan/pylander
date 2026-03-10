@@ -13,7 +13,7 @@ Default is planning only.
 
 - `mode`: `test | bench | both` (default `both`)
 - optional `baseline_ref`: default `main`
-- optional `bot`: default `zem_zev`
+- optional `bot`: default `pdg`
 - optional `bot_config_path`
 - optional `selectors`
 - optional `seed_spec`

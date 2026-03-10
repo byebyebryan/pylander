@@ -1,15 +1,15 @@
 # Bot development framework
 
-Pylander bot work is now centered on a unified in-flight controller (`zem_zev`) plus a dedicated terminal benchmark bot (`plunge`).
+Pylander bot work is now centered on a unified in-flight controller (`pdg`) plus a dedicated plunge benchmark bot (`plunge`).
 
 ## Control model
 
-- `zem_zev`: optimizer-first coupled 2-axis guidance used by default in `setup_flat`, `setup_downhill`, `flare_error`, `setup_climb`, and `flare_normal`.
-- `plunge`: terminal-only benchmark bot for the separate `plunge` level.
+- `pdg`: optimizer-first coupled 2-axis guidance used by default in `setup_flat`, `setup_downhill`, `flare_error`, `setup_climb`, and `flare_normal`.
+- `plunge`: dedicated plunge benchmark bot for the separate `plunge` level.
 
-Repo shorthand keeps the flare-flight levels (`flare_normal`, `flare_error`) separate from the terminal/plunge benchmark (`plunge`).
+Repo shorthand keeps the flare-flight levels (`flare_normal`, `flare_error`) separate from the plunge benchmark (`plunge`).
 
-The in-flight path is a single owner with internal phases (`setup -> coast -> terminal -> touchdown`), not inter-bot runtime handoffs. In `zem_zev`, `coast` remains passive in actuation: zero thrust, retrograde attitude hold, and low-rate flare-gate probing until terminal ignition.
+The in-flight path is a single owner with internal stages (`setup -> coast -> flare -> touchdown`), not inter-bot runtime handoffs. In `pdg`, `coast` remains passive in actuation: zero thrust, retrograde attitude hold, and low-rate flare-gate probing until flare ignition.
 
 ## How to iterate
 
@@ -29,7 +29,7 @@ Core metrics from game + batch aggregation:
 - Eval metadata: `eval_goal`, `eval_early_end`, `eval_end_reason`
 - Generic setup/eval telemetry: `setup_gate_*`, `setup_goal_*`
   - on `flare_normal` / `flare_error`, `setup_gate_*` is the spawn-time coast-entry snapshot
-- Bot-owned diagnostics: `bot_<botname>_*` (for example `bot_zem_zev_*`)
+- Bot-owned diagnostics: `bot_<botname>_*` (for example `bot_pdg_*`)
 
 ## Where things live
 

@@ -5,7 +5,7 @@
 ## Purpose
 
 - Stress final convergence and touchdown from curved, descending entries.
-- Validate robustness and efficiency of unified `zem_zev` landing behavior.
+- Validate robustness and efficiency of unified `pdg` landing behavior.
 
 ## Level setup
 
@@ -32,28 +32,28 @@ Defaults:
 ## Eval behavior
 
 - Single landing-goal evaluation path (coast entry to touchdown).
-- The run primes `setup_gate_*` at `t=0.0` from the spawn state so `zem_zev`
+- The run primes `setup_gate_*` at `t=0.0` from the spawn state so `pdg`
   starts directly in `coast` with no setup burn.
 - During coast, the vehicle stays passive and points retrograde until flare
   entry.
-- Flare entry is no longer gated by ballistic `projected_dx` alone; `zem_zev`
+- Flare entry is no longer gated by ballistic `projected_dx` alone; `pdg`
   uses a cheap analytic readiness check plus a conservative latest-safe fallback
-  to decide when to hand off from coast to terminal.
+  to decide when to hand off from coast to flare.
 
 ## Commands
 
 ```bash
 uv run python main.py run --interactive flare_normal
-uv run python main.py sim flare_normal:mid:0 --bot zem_zev
+uv run python main.py sim flare_normal:mid:0 --bot pdg
 uv run python main.py bench \
   flare_normal:shallower:0-9 \
   flare_normal:shallow:0-9 \
   flare_normal:mid:0-9 \
   flare_normal:steep:0-9 \
   flare_normal:steeper:0-9 \
-  --bot zem_zev
+  --bot pdg
 ```
 
 ## Related docs
 
-- Unified controller details: [`zem_zev.md`](zem_zev.md)
+- Unified controller details: [`pdg.md`](pdg.md)

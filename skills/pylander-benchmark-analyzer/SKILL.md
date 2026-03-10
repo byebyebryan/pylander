@@ -18,7 +18,7 @@ This skill is for:
 
 - `mode`: `health | compare | focus | triage`
 - `pack_mode`: `smoke | quick | full | focused`
-- `bot` (default `zem_zev`)
+- `bot` (default `pdg`)
 - `bot_config_path` (optional JSON override path; forwarded as `--bot-config`)
 - `baseline_ref` (required for `compare`)
 - `seed_spec` (optional)
@@ -132,9 +132,9 @@ Use these heuristics consistently.
 Use available gate and ZEM fields to detect shaping issues:
 
 - high `|setup_gate_projected_dx|` suggests poor setup handoff
-- high `|bot_<botname>_terminal_gate_projected_dx|` suggests insufficient passive alignment
-- large gap between setup and terminal projected-dx suggests heavy late correction burden
-- large `bot_zem_zev_shape_curve_rmse` / `bot_zem_zev_shape_apex_error` suggests trajectory shape mismatch
+- high `|bot_<botname>_flare_entry_projected_dx|` suggests insufficient passive alignment
+- large gap between setup and flare-entry projected-dx suggests heavy late correction burden
+- large `bot_pdg_shape_curve_rmse` / `bot_pdg_shape_apex_error` suggests trajectory shape mismatch
 - gate ordering anomalies (for runs with both timestamps) indicate phase/control bugs
 
 ### Compute

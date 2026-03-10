@@ -18,8 +18,7 @@ _TALL_SPATIAL_RATIO_CUTOFF = 1.35
 _EVENT_DISPLAY_NAMES: dict[str, str] = {
     "setup_gate": "setup",
     "flare_gate": "flare",
-    "terminal_gate": "flare",
-    "terminal_entry": "flare",
+    "flare_entry": "flare",
     "success": "landed",
     "crash": "crash",
     "out_of_fuel": "fuel out",
@@ -27,8 +26,7 @@ _EVENT_DISPLAY_NAMES: dict[str, str] = {
 _EVENT_COLORS: dict[str, str] = {
     "setup_gate": "#1f77b4",
     "flare_gate": "#ff7f0e",
-    "terminal_gate": "#ff7f0e",
-    "terminal_entry": "#ff7f0e",
+    "flare_entry": "#ff7f0e",
     "success": "#2ecc71",
     "crash": "#d62728",
     "out_of_fuel": "#8c564b",
@@ -36,8 +34,7 @@ _EVENT_COLORS: dict[str, str] = {
 _EVENT_MARKERS: dict[str, str] = {
     "setup_gate": "o",
     "flare_gate": "D",
-    "terminal_gate": "D",
-    "terminal_entry": "D",
+    "flare_entry": "D",
     "success": "*",
     "crash": "X",
     "out_of_fuel": "X",
@@ -45,8 +42,7 @@ _EVENT_MARKERS: dict[str, str] = {
 _TIMESERIES_GATE_EVENT_NAMES: tuple[str, ...] = (
     "setup_gate",
     "flare_gate",
-    "terminal_gate",
-    "terminal_entry",
+    "flare_entry",
 )
 
 
