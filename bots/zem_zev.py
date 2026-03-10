@@ -68,8 +68,6 @@ class ZemZevBot(Bot):
             )
         )
         self._optimizer_terminal = PDGOptimizer(PDGOptimizerConfig(horizon_steps=28))
-        self._optimizer_flare_probe: dict[int, PDGOptimizer] = {}
-        self._rebuild_flare_probe_optimizers()
 
         self._behavior = "zem_zev"
         self._prev_angle_cmd = 0.0
@@ -120,7 +118,22 @@ class ZemZevBot(Bot):
     def prime_setup_gate(self, setup_gate: SetupGateMetrics) -> None:
         _apply_setup_gate_metrics_impl(self, setup_gate=setup_gate)
         self._setup_gate_spawn_primed = True
-        self._active_phase = "coast"
+        if self._cfg.force_terminal_from_start:
+            self._terminal_gate_done = True
+            self._terminal_gate_time = 0.0
+            self._terminal_gate_altitude = (
+                float(setup_gate.altitude) if setup_gate.altitude is not None else None
+            )
+            self._terminal_gate_projected_dx = (
+                float(setup_gate.projected_impact_dx)
+                if setup_gate.projected_impact_dx is not None
+                else None
+            )
+            self._terminal_gate_x = float(setup_gate.x) if setup_gate.x is not None else None
+            self._terminal_gate_y = float(setup_gate.y) if setup_gate.y is not None else None
+            self._active_phase = "terminal"
+        else:
+            self._active_phase = "coast"
         self._thrust_enabled = False
         self._plan = None
         self._plan_elapsed = 0.0
@@ -180,7 +193,6 @@ class ZemZevBot(Bot):
                     f"zem_zev config key '{key}' has unsupported type for override"
                 )
         self._cfg = replace(self._cfg, **patch)
-        self._rebuild_flare_probe_optimizers()
 
     def _reset_state(self) -> None:
         self._prev_angle_cmd = 0.0
@@ -206,32 +218,6 @@ class ZemZevBot(Bot):
         if not self._debug_setup:
             return
         print(f"ZEMDBG {line}")
-
-    def _rebuild_flare_probe_optimizers(self) -> None:
-        unique_steps = sorted({max(16, int(step)) for step in self._cfg.flare_gate_horizon_steps})
-        self._optimizer_flare_probe = {
-            steps: PDGOptimizer(
-                PDGOptimizerConfig(
-                    horizon_steps=steps,
-                    w_terminal_x=180.0,
-                    w_terminal_y=220.0,
-                    w_terminal_vx=120.0,
-                    w_terminal_vy=60.0,
-                    w_effort=0.005,
-                    w_smooth=0.05,
-                    w_path_x=0.0,
-                    w_path_y=0.0,
-                    w_upward_vy=0.5,
-                    w_descent_floor=0.1,
-                    w_altitude_progress=0.0,
-                    w_downspeed_progress=0.0,
-                    w_thrust_linear=0.05,
-                    w_overdrive_linear=2.0,
-                    w_overdrive_quadratic=8.0,
-                )
-            )
-            for steps in unique_steps
-        }
 
     def _set_display_state(
         self,
@@ -614,9 +600,9 @@ class ZemZevBot(Bot):
         projected_dx: float,
         mode: str,
         horizon_s: float,
-        terminal_speed: float,
-        peak_accel_ratio: float,
-        od_excess_s: float,
+        terminal_speed: float | None,
+        peak_accel_ratio: float | None,
+        od_excess_s: float | None,
         latest_safe_margin_s: float,
         required_accel_ratio: float,
     ) -> None:
@@ -829,23 +815,22 @@ class ZemZevBot(Bot):
                 thrust_ramp_up=ramp_up,
             )
             if flare_gate is not None:
-                probe = flare_gate.probe
                 self._finalize_terminal_gate(
                     passive=passive,
                     alt=alt,
-                    projected_dx=probe.terminal_dx,
+                    projected_dx=float(projection.projected_dx),
                     mode=flare_gate.mode,
-                    horizon_s=probe.horizon_s,
-                    terminal_speed=probe.terminal_speed,
-                    peak_accel_ratio=probe.peak_accel_ratio,
-                    od_excess_s=probe.od_excess_s,
+                    horizon_s=flare_gate.burn_time_s,
+                    terminal_speed=None,
+                    peak_accel_ratio=None,
+                    od_excess_s=None,
                     latest_safe_margin_s=flare_gate.latest_safe_margin_s,
-                    required_accel_ratio=probe.required_accel_ratio,
+                    required_accel_ratio=flare_gate.required_accel_ratio,
                 )
                 self._active_phase = "terminal"
-                self._plan = probe.plan
+                self._plan = None
                 self._plan_elapsed = 0.0
-                self._replan_timer = 1.0 / max(1e-3, self._cfg.replan_hz_terminal)
+                self._replan_timer = 0.0
                 self._fallback_steps_remaining = int(self._cfg.fallback_hold_steps)
             else:
                 self._plan = None
@@ -1006,7 +991,9 @@ class ZemZevBot(Bot):
         if self._terminal_gate_done:
             label = "flare"
             if self._flare_gate_mode:
-                mode_label = "green" if self._flare_gate_mode == "green_exact" else "amber"
+                mode_label = (
+                    "ready" if self._flare_gate_mode == "nominal_ready" else "late"
+                )
                 label = f"{label} {mode_label}"
             if self._terminal_gate_projected_dx is not None:
                 label = f"{label} dx={stable(self._terminal_gate_projected_dx, 1):.1f}"

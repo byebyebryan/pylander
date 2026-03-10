@@ -63,7 +63,7 @@ def test_zem_passive_coast_suppresses_solver_work_mid_flare() -> None:
     )
     snapshot = bot.get_bot_telemetry()
     assert int(snapshot.get("solve_count") or 0) == 0
-    assert int(snapshot.get("flare_probe_count") or 0) <= 1
+    assert int(snapshot.get("flare_probe_count") or 0) == 0
     assert snapshot.get("terminal_gate_done") is False
     assert snapshot.get("flare_gate_mode") is None
     assert int(snapshot.get("fallback_frames") or 0) == 0

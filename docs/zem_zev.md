@@ -73,7 +73,7 @@ This is why optimization is solved against nominal limits first and only uses OD
 Each frame:
 
 1. update phase tracking (`setup`, `coast`, `terminal`, `touchdown`),
-2. if in `coast`, hold passive retrograde attitude and run a low-rate flare-gate probe,
+2. if in `coast`, hold passive retrograde attitude and evaluate a cheap analytic flare gate,
 3. otherwise replan on schedule or state-deviation trigger,
 4. track plan between replans,
 5. allocate acceleration to thrust+angle with tilt/rate limits,
@@ -115,6 +115,9 @@ Throttle allocation includes simple on/off hysteresis to reduce min-throttle cha
     state to indicate coast entry rather than post-burn setup completion
 - bot-owned terminal handoff: `bot_zem_zev_terminal_gate_done`, `bot_zem_zev_terminal_gate_time`, `bot_zem_zev_terminal_gate_altitude`, `bot_zem_zev_terminal_gate_projected_dx`
 - bot-owned flare-gate diagnostics: `bot_zem_zev_flare_probe_count`, `bot_zem_zev_flare_gate_mode`, `bot_zem_zev_flare_gate_horizon_s`, `bot_zem_zev_flare_gate_terminal_speed`, `bot_zem_zev_flare_gate_peak_accel_ratio`, `bot_zem_zev_flare_gate_od_excess_s`, `bot_zem_zev_flare_gate_latest_safe_margin_s`, `bot_zem_zev_flare_gate_required_accel_ratio`
+  - `flare_probe_*` stays present for schema compatibility but remains zero in the analytic coast path
+  - `flare_gate_mode` is `nominal_ready` or `latest_safe`
+  - `flare_gate_horizon_s` is the chosen analytic burn-duration estimate
 - bot-owned compute/fallback: `bot_zem_zev_solve_count`, `bot_zem_zev_solve_ms_mean`, `bot_zem_zev_solve_ms_p90`, `bot_zem_zev_fallback_frames`
 - bot-owned shape quality: `bot_zem_zev_shape_apex_error`, `bot_zem_zev_shape_curve_rmse`, `bot_zem_zev_shape_projected_dx_abs_mean`, `bot_zem_zev_shape_projected_dx_abs_max`, `bot_zem_zev_shape_shortfall_ratio`
 
@@ -150,10 +153,10 @@ Trajectory shape controls:
 
 ## Compute cost
 
-Solver load is controlled with setup/terminal replanning plus low-rate coast probes:
+Solver load is controlled with setup/terminal replanning and a zero-solve coast mode:
 
 - setup: lower replan rate, looser deviation thresholds
-- coast: passive retrograde actuation plus low-rate flare-gate probes
+- coast: passive retrograde actuation plus analytic flare-gate math only
 - terminal: higher replan rate, tighter deviation thresholds
 
 Use `bench --workers N` for throughput when running large benchmark suites.

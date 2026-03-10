@@ -19,6 +19,7 @@ class ZemZevConfig:
     fallback_hold_steps: int = 12
     long_horizon_altitude: float = 120.0
     long_horizon_time_to_go: float = 6.0
+    force_terminal_from_start: bool = False
 
     # Attitude/allocator limits
     max_tilt: float = 0.78
@@ -80,24 +81,15 @@ class ZemZevConfig:
     touchdown_phase_speed: float = 2.5
     touchdown_phase_dx_ratio: float = 0.65
 
-    # Hybrid flare gate: ZEM/ZEV-style prefilter plus long-horizon probe solves.
-    flare_gate_probe_hz: float = 2.0
-    flare_gate_force_probe_margin_s: float = 2.0
-    flare_gate_prefilter_max_ratio: float = 1.10
-    flare_gate_prefilter_min_up_accel: float = 0.5
-    flare_gate_horizon_steps: tuple[int, ...] = (48, 60, 72, 84)
-    flare_gate_probe_target_vy: float = -2.0
-    flare_gate_probe_descent_floor_vy: float = -18.0
-    flare_gate_probe_terminal_x_tol: float = 18.0
-    flare_gate_terminal_alt_err_m: float = 8.0
-    flare_gate_exact_terminal_speed_mps: float = 5.5
-    flare_gate_safe_terminal_speed_mps: float = 8.0
-    flare_gate_exact_dx_abs: float = 20.0
-    flare_gate_exact_peak_ratio: float = 1.40
-    flare_gate_safe_peak_ratio: float = 1.70
-    flare_gate_exact_od_excess_s: float = 1.5
-    flare_gate_safe_od_excess_s: float = 3.0
-    flare_gate_amber_margin_s: float = 1.0
+    # Cheap analytic flare gate: nominal-thrust readiness plus latest-safe fallback.
+    flare_gate_nominal_ratio: float = 0.92
+    flare_gate_nominal_min_up_accel: float = 0.5
+    flare_gate_nominal_buffer_s: float = 0.4
+    flare_gate_burn_time_min_s: float = 3.0
+    flare_gate_burn_time_max_s: float = 14.0
+    flare_gate_burn_time_offset_short_s: float = 0.8
+    flare_gate_burn_time_offset_long_s: float = 0.8
+    flare_gate_hysteresis_ticks: int = 2
     flare_gate_latest_safe_buffer_s: float = 0.6
 
     # Phase centering + setup/coast shape objective
