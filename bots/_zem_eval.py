@@ -56,7 +56,7 @@ def reset_evaluation_state(
     bot._terminal_gate_projected_dx = None
     bot._terminal_gate_x = None
     bot._terminal_gate_y = None
-    bot._flare_probe_timer = 0.0
+    bot._flare_gate_ready_ticks = 0
     bot._flare_probe_count = 0
     bot._flare_probe_ms_sum = 0.0
     bot._flare_probe_ms_samples = []

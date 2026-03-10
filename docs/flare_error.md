@@ -41,9 +41,9 @@ Defaults:
   setup burn on this level.
 - Coast stays passive and points retrograde until flare entry; all correction is
   deferred to the flare/terminal phase.
-- Flare entry uses the same reachability probe as `flare_normal`, so wide-error
-  cases can still ignite the burn even when ballistic `projected_dx` remains
-  large during coast.
+- Flare entry uses the same analytic readiness check as `flare_normal`, with a
+  conservative latest-safe fallback so wide-error cases still ignite even when
+  ballistic `projected_dx` remains large during coast.
 - Goal metadata: `eval_goal`, `eval_early_end`, `eval_end_reason`
 
 ## Commands

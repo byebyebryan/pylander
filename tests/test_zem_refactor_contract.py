@@ -127,7 +127,7 @@ def test_zem_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> Non
         PlotMarker(
             id="terminal_entry",
             name="terminal_entry",
-            label="terminal entry pdx=-4.6",
+            label="flare dx=-4.6",
             x=140.0,
             y=180.0,
             metadata={"time_s": 7.0},
