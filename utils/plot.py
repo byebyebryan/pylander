@@ -8,13 +8,46 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from core.components import Engine, PhysicsState, Transform
+from core.components import Engine, LanderState, PhysicsState, Transform
 from core.ecs import require_component
 
 
 PlotMode = Literal["none", "speed", "thrust", "all"]
 PlotOutputProfile = Literal["combined", "split", "both"]
 _TALL_SPATIAL_RATIO_CUTOFF = 1.35
+_EVENT_DISPLAY_NAMES: dict[str, str] = {
+    "setup_gate": "setup",
+    "flare_gate": "flare",
+    "terminal_gate": "flare",
+    "terminal_entry": "flare",
+    "success": "landed",
+    "crash": "crash",
+    "out_of_fuel": "fuel out",
+}
+_EVENT_COLORS: dict[str, str] = {
+    "setup_gate": "#1f77b4",
+    "flare_gate": "#ff7f0e",
+    "terminal_gate": "#ff7f0e",
+    "terminal_entry": "#ff7f0e",
+    "success": "#2ecc71",
+    "crash": "#d62728",
+    "out_of_fuel": "#8c564b",
+}
+_EVENT_MARKERS: dict[str, str] = {
+    "setup_gate": "o",
+    "flare_gate": "D",
+    "terminal_gate": "D",
+    "terminal_entry": "D",
+    "success": "*",
+    "crash": "X",
+    "out_of_fuel": "X",
+}
+_TIMESERIES_GATE_EVENT_NAMES: tuple[str, ...] = (
+    "setup_gate",
+    "flare_gate",
+    "terminal_gate",
+    "terminal_entry",
+)
 
 
 @dataclass
@@ -259,30 +292,24 @@ def _draw_events(ax, *, events: list[dict[str, float | str | None]] | None) -> N
     event_list = list(events or [])
     if not event_list:
         return
-    color_by_name = {
-        "setup_gate": "#1f77b4",
-        "flare_gate": "#ff7f0e",
-        "terminal_gate": "#ff7f0e",
-        "terminal_entry": "#ff7f0e",
-    }
     labeled_kinds: set[str] = set()
     for event in event_list:
         raw_name = event.get("name")
         event_name = str(raw_name) if isinstance(raw_name, str) and raw_name else "event"
         event_x = float(event.get("x", 0.0) or 0.0)
         event_y = float(event.get("y", 0.0) or 0.0)
-        color = color_by_name.get(event_name, "#222222")
-        legend_label = event_name.replace("_", " ")
+        color = _EVENT_COLORS.get(event_name, "#222222")
+        legend_label = _EVENT_DISPLAY_NAMES.get(event_name, event_name.replace("_", " "))
         scatter_label = legend_label if event_name not in labeled_kinds else None
         labeled_kinds.add(event_name)
         ax.scatter(
             [event_x],
             [event_y],
-            s=44.0,
-            marker="o",
+            s=64.0 if event_name == "success" else 48.0,
+            marker=_EVENT_MARKERS.get(event_name, "o"),
             color=color,
             edgecolors="#FFFFFF",
-            linewidths=0.8,
+            linewidths=1.0,
             zorder=6,
             label=scatter_label,
         )
@@ -296,6 +323,76 @@ def _draw_events(ax, *, events: list[dict[str, float | str | None]] | None) -> N
             fontsize=7,
             color=color,
             zorder=7,
+        )
+
+
+def _sorted_gate_events(
+    events: list[dict[str, float | str | None]] | None,
+) -> list[tuple[str, float, str]]:
+    out: list[tuple[str, float, str]] = []
+    seen: set[tuple[str, float]] = set()
+    for event in events or []:
+        raw_name = event.get("name")
+        event_name = str(raw_name) if isinstance(raw_name, str) and raw_name else ""
+        if event_name not in _TIMESERIES_GATE_EVENT_NAMES:
+            continue
+        raw_time = event.get("time_s")
+        try:
+            time_s = float(raw_time)  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        key = (event_name, round(time_s, 6))
+        if key in seen:
+            continue
+        seen.add(key)
+        short_label = _EVENT_DISPLAY_NAMES.get(event_name, event_name.replace("_", " "))
+        raw_label = event.get("label")
+        if isinstance(raw_label, str) and raw_label.strip():
+            label = raw_label.strip()
+        else:
+            label = short_label
+        out.append((event_name, time_s, label))
+    out.sort(key=lambda item: item[1])
+    return out
+
+
+def _draw_timeseries_event_lines(
+    ax,
+    *,
+    events: list[dict[str, float | str | None]] | None,
+) -> None:
+    gate_events = _sorted_gate_events(events)
+    if not gate_events:
+        return
+    top_y = 0.98
+    for idx, (event_name, time_s, label) in enumerate(gate_events):
+        color = _EVENT_COLORS.get(event_name, "#444444")
+        ax.axvline(
+            time_s,
+            color=color,
+            linewidth=1.0,
+            linestyle=(0, (4, 4)),
+            alpha=0.72,
+            zorder=0,
+        )
+        ax.text(
+            time_s,
+            top_y - (0.08 * (idx % 2)),
+            label,
+            rotation=90,
+            rotation_mode="anchor",
+            transform=ax.get_xaxis_transform(),
+            fontsize=7,
+            color=color,
+            ha="right",
+            va="top",
+            bbox={
+                "boxstyle": "round,pad=0.14",
+                "facecolor": "#ffffff",
+                "edgecolor": "none",
+                "alpha": 0.72,
+            },
+            zorder=5,
         )
 
 
@@ -736,13 +833,24 @@ def _draw_trajectory_comparison_spatial_panel(
     actual_line = ax.plot(
         ctx.xs,
         ctx.ys,
-        color="#b0b7bf",
-        linewidth=2.6,
-        alpha=0.98,
-        zorder=4,
+        color="#1b263b",
+        linewidth=3.2,
+        alpha=0.99,
+        zorder=6,
         label="actual trajectory",
     )[0]
-    actual_line.set_path_effects([pe.Stroke(linewidth=4.8, foreground="#ffffff"), pe.Normal()])
+    actual_line.set_path_effects([pe.Stroke(linewidth=6.0, foreground="#ffffff"), pe.Normal()])
+    ax.scatter(
+        [ctx.xs[0], ctx.xs[-1]],
+        [ctx.ys[0], ctx.ys[-1]],
+        s=(26.0, 34.0),
+        marker="o",
+        facecolors=("#ffffff", "#1b263b"),
+        edgecolors="#1b263b",
+        linewidths=1.1,
+        alpha=0.98,
+        zorder=7,
+    )
 
     setup_event = _find_event(events, name="setup_gate")
     if target is None:
@@ -839,7 +947,14 @@ def _draw_trajectory_comparison_spatial_panel(
     )
 
 
-def _draw_speed_thrust_timeseries_panel(ax, *, ctx: _PlotContext, title: str, show_xlabel: bool) -> None:
+def _draw_speed_thrust_timeseries_panel(
+    ax,
+    *,
+    ctx: _PlotContext,
+    events,
+    title: str,
+    show_xlabel: bool,
+) -> None:
     import numpy as np
 
     t = np.array(ctx.sample_times, dtype=float)
@@ -858,6 +973,7 @@ def _draw_speed_thrust_timeseries_panel(ax, *, ctx: _PlotContext, title: str, sh
     ax_thrust.set_ylabel("thrust")
     max_thrust = max(ctx.thrusts) if ctx.thrusts else 1.0
     ax_thrust.set_ylim(0.0, max(1.0, max_thrust * 1.05))
+    _draw_timeseries_event_lines(ax, events=events)
     ax.set_xlabel("time (s)" if show_xlabel else "")
     ax.set_title(title)
     ax.legend(
@@ -901,6 +1017,7 @@ def _draw_ballistic_projection_timeseries_panel(
     ax,
     *,
     ctx: _PlotContext,
+    events,
     target: dict[str, float | str | None] | None,
     title: str,
     show_xlabel: bool,
@@ -930,6 +1047,7 @@ def _draw_ballistic_projection_timeseries_panel(
     y_max = max(float(apex_arr.max(initial=0.0)), float(dx_arr.max(initial=0.0)), 0.0)
     span = max(1.0, y_max - y_min)
     ax.set_ylim(y_min - (0.04 * span), y_max + (0.18 * span))
+    _draw_timeseries_event_lines(ax, events=events)
     ax.set_xlabel("time (s)" if show_xlabel else "")
     ax.set_ylabel("target-relative")
     ax.set_title(title)
@@ -938,7 +1056,14 @@ def _draw_ballistic_projection_timeseries_panel(
     ax.tick_params(labelbottom=True)
 
 
-def _draw_hv_timeseries_panel(ax, *, ctx: _PlotContext, title: str, show_xlabel: bool) -> None:
+def _draw_hv_timeseries_panel(
+    ax,
+    *,
+    ctx: _PlotContext,
+    events,
+    title: str,
+    show_xlabel: bool,
+) -> None:
     import numpy as np
 
     t = np.array(ctx.sample_times, dtype=float)
@@ -951,6 +1076,7 @@ def _draw_hv_timeseries_panel(ax, *, ctx: _PlotContext, title: str, show_xlabel:
     y_max = max(float(vx.max(initial=0.0)), float(vy.max(initial=0.0)), 0.0)
     span = max(1.0, y_max - y_min)
     ax.set_ylim(y_min - (0.04 * span), y_max + (0.16 * span))
+    _draw_timeseries_event_lines(ax, events=events)
     ax.set_xlabel("time (s)" if show_xlabel else "")
     ax.set_ylabel("velocity")
     ax.set_title(title)
@@ -963,6 +1089,7 @@ def _draw_thrust_component_timeseries_panel(
     ax,
     *,
     ctx: _PlotContext,
+    events,
     title: str,
     show_xlabel: bool,
 ) -> None:
@@ -979,6 +1106,7 @@ def _draw_thrust_component_timeseries_panel(
     y_max = max(float(thrust_x.max(initial=0.0)), float(thrust_y.max(initial=0.0)), 0.0)
     span = max(1.0, y_max - y_min)
     ax.set_ylim(y_min - (0.04 * span), y_max + (0.16 * span))
+    _draw_timeseries_event_lines(ax, events=events)
     ax.set_xlabel("time (s)" if show_xlabel else "")
     ax.set_ylabel("thrust component")
     ax.set_title(title)
@@ -1181,6 +1309,7 @@ def _render_combined_plot(
         _draw_ballistic_projection_timeseries_panel(
             ax_projection,
             ctx=ctx,
+            events=events,
             target=target,
             title="Ballistic target projection",
             show_xlabel=False,
@@ -1188,18 +1317,21 @@ def _render_combined_plot(
         _draw_speed_thrust_timeseries_panel(
             ax_series,
             ctx=ctx,
+            events=events,
             title="Speed + thrust over time",
             show_xlabel=False,
         )
         _draw_hv_timeseries_panel(
             ax_hv,
             ctx=ctx,
+            events=events,
             title="Horizontal/vertical velocity",
             show_xlabel=False,
         )
         _draw_thrust_component_timeseries_panel(
             ax_thrust_components,
             ctx=ctx,
+            events=events,
             title="Horizontal/vertical thrust components",
             show_xlabel=False,
         )
@@ -1358,6 +1490,7 @@ def _render_split_plots(
         _draw_ballistic_projection_timeseries_panel(
             ax,
             ctx=ctx,
+            events=events,
             target=target,
             title="Ballistic target projection",
             show_xlabel=True,
@@ -1371,6 +1504,7 @@ def _render_split_plots(
         _draw_speed_thrust_timeseries_panel(
             ax,
             ctx=ctx,
+            events=events,
             title="Speed + thrust over time",
             show_xlabel=True,
         )
@@ -1383,6 +1517,7 @@ def _render_split_plots(
         _draw_hv_timeseries_panel(
             ax,
             ctx=ctx,
+            events=events,
             title="Horizontal/vertical velocity",
             show_xlabel=True,
         )
@@ -1395,6 +1530,7 @@ def _render_split_plots(
         _draw_thrust_component_timeseries_panel(
             ax,
             ctx=ctx,
+            events=events,
             title="Horizontal/vertical thrust components",
             show_xlabel=True,
         )
@@ -1677,6 +1813,35 @@ class Plotter:
             event_payload[str(key)] = value
         self._events.append(event_payload)
 
+    def _build_outcome_event(self) -> dict[str, float | str | None] | None:
+        if not self._sampling_enabled:
+            return None
+        state = self.lander.get_component(LanderState)
+        trans = self.lander.get_component(Transform)
+        if state is None or trans is None:
+            return None
+        outcome_name: str | None = None
+        outcome_label: str | None = None
+        if str(state.state) == "landed":
+            outcome_name = "success"
+            outcome_label = "landed"
+        elif str(state.state) == "crashed":
+            outcome_name = "crash"
+            outcome_label = "crash"
+        elif str(state.state) == "out_of_fuel":
+            outcome_name = "out_of_fuel"
+            outcome_label = "fuel out"
+        if outcome_name is None:
+            return None
+        event_time_s = self._sample_time_s + max(0.0, self._time_accum)
+        return {
+            "name": outcome_name,
+            "x": float(trans.pos.x),
+            "y": float(trans.pos.y),
+            "label": outcome_label,
+            "time_s": float(event_time_s),
+        }
+
     def finalize(self) -> dict:
         if not self.enabled:
             return {}
@@ -1694,6 +1859,10 @@ class Plotter:
                 resolved_mode = "speed"
             tag = _sanitize_filename_token(self._selector_tag)
             bundle_dir = _collision_safe_dir(Path("outputs") / "plots" / f"{tag}_{ts}")
+            events = list(self._events)
+            outcome_event = self._build_outcome_event()
+            if outcome_event is not None:
+                events.append(outcome_event)
             return save_trajectory_plots(
                 self.terrain,
                 self._samples,
@@ -1702,7 +1871,7 @@ class Plotter:
                 out_dir=str(bundle_dir),
                 overview_dir=str(Path("outputs") / "plots" / "overview"),
                 max_side_px=self.max_side_px,
-                events=self._events,
+                events=events,
                 target=self._target,
                 selector_tag=tag,
             )

@@ -1004,11 +1004,12 @@ class ZemZevBot(Bot):
                 )
             )
         if self._terminal_gate_done:
-            label = "terminal entry"
+            label = "flare"
             if self._flare_gate_mode:
-                label = f"{label} {self._flare_gate_mode}"
+                mode_label = "green" if self._flare_gate_mode == "green_exact" else "amber"
+                label = f"{label} {mode_label}"
             if self._terminal_gate_projected_dx is not None:
-                label = f"{label} pdx={stable(self._terminal_gate_projected_dx, 1):.1f}"
+                label = f"{label} dx={stable(self._terminal_gate_projected_dx, 1):.1f}"
             metadata: dict[str, float | str | None] = {"time_s": self._terminal_gate_time}
             if self._flare_gate_mode is not None:
                 metadata["mode"] = self._flare_gate_mode

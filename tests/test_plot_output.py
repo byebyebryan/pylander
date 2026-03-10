@@ -5,6 +5,9 @@ from pathlib import Path
 
 import matplotlib.image as mpimg
 
+from core.components import FlightState, LanderState, Transform
+from core.lander import Lander
+from core.maths import Vector2
 from conftest import FlatTerrain
 from utils.plot import (
     _ballistic_projection_series,
@@ -12,6 +15,8 @@ from utils.plot import (
     _combined_spatial_arrangement,
     _compute_figure_size,
     _projected_intercept_from_state,
+    _sorted_gate_events,
+    Plotter,
     save_trajectory_plots,
 )
 
@@ -246,3 +251,41 @@ def test_save_trajectory_plots_shallow_split_is_not_extremely_flat(tmp_path: Pat
 
     image = mpimg.imread(Path(result["plot_path"]))
     assert image.shape[1] / image.shape[0] < 2.6
+
+
+def test_sorted_gate_events_prefers_short_labels_and_time_order() -> None:
+    events = [
+        {"name": "terminal_entry", "time_s": 3.2, "label": "flare green dx=4.0"},
+        {"name": "setup_gate", "time_s": 1.1, "label": "setup gate"},
+        {"name": "success", "time_s": 4.0, "label": "landed"},
+    ]
+
+    assert _sorted_gate_events(events) == [
+        ("setup_gate", 1.1, "setup gate"),
+        ("terminal_entry", 3.2, "flare green dx=4.0"),
+    ]
+
+
+def test_plotter_finalize_appends_landing_outcome_event(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    lander = Lander(start_pos=Vector2(0.0, 40.0))
+    plotter = Plotter(FlatTerrain(), lander, enabled=True, mode="speed", output_profile="combined")
+    plotter.set_selector_tag("landing_case")
+    plotter.seed_initial_sample()
+
+    transform = lander.get_component(Transform)
+    state = lander.get_component(LanderState)
+    assert transform is not None
+    assert state is not None
+    transform.pos = Vector2(24.0, 0.0)
+    state.state = FlightState.LANDED
+
+    result = plotter.finalize()
+    manifest = Path(result["plot_manifest_path"])
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    success_events = [event for event in payload["events"] if event.get("name") == "success"]
+
+    assert len(success_events) == 1
+    assert success_events[0]["label"] == "landed"
+    assert success_events[0]["x"] == 24.0
+    assert success_events[0]["y"] == 0.0
