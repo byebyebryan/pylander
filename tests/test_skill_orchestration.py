@@ -352,13 +352,13 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
                                 "candidate_state": "crashed",
                                 "candidate_failure_mode": "impact",
                                 "repro": {
-                                    "plot": "uv run python main.py plot setup_flat:mid:0 --bot zem_zev",
+                                    "plot": "uv run python main.py plot setup_flat:mid:0 --bot pdg",
                                     "sim_trace": (
-                                        "uv run python main.py sim setup_flat:mid:0 --bot zem_zev --freq 1"
+                                        "uv run python main.py sim setup_flat:mid:0 --bot pdg --freq 1"
                                     ),
                                     "sim_profile": (
                                         "PYLANDER_BOT_PROFILE=1 uv run python main.py sim setup_flat:mid:0 "
-                                        "--bot zem_zev --freq 1"
+                                        "--bot pdg --freq 1"
                                     ),
                                 },
                             }

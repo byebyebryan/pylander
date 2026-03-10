@@ -84,7 +84,7 @@ class _FlareCandidate:
 
 
 class FlareNormalLevel(ScenarioCatalogMixin, ScenarioLevel):
-    default_bot_name = "zem_zev"
+    default_bot_name = "pdg"
     _scenario_by_name = _SCENARIO_BY_NAME
     _default_scenario_name = _DEFAULT_SCENARIO
     _smoke_benchmark_scenarios = _SMOKE_BENCHMARK_SCENARIOS

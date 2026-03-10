@@ -83,7 +83,7 @@ def run_tune_arena(payload: dict[str, Any], *, execute_workers: bool) -> dict[st
         raise ValueError("branches must be a non-empty list")
 
     selectors = [str(s).strip() for s in payload.get("focused_selectors") or [] if str(s).strip()]
-    bot = str(payload.get("bot") or "zem_zev")
+    bot = str(payload.get("bot") or "pdg")
     baseline_ref = str(payload.get("baseline_ref") or "main").strip() or "main"
 
     rows: list[dict[str, Any]] = []

@@ -109,7 +109,7 @@ def _probe_template(
         return {
             "probe_id": f"probe_{idx:02d}_phase_handoff",
             "kind": "metric",
-            "file_target": "bots/zem_zev.py",
+            "file_target": "bots/pdg/__init__.py",
             "insertion_anchor": "phase transition and projected-dx handoff points",
             "schema": {
                 "metric": "phase_handoff_dx",
@@ -120,7 +120,7 @@ def _probe_template(
                 "mode": "phase_transition",
                 "sample_rate": 1.0,
             },
-            "expected_signal": "Projected-dx drift captured at setup/coast/terminal handoff boundaries.",
+            "expected_signal": "Projected-dx drift captured at setup/coast/flare handoff boundaries.",
             "risk_and_overhead": {
                 "expected_avg_overhead_ms": max(0.0, avg_budget * 0.30),
                 "expected_p99_overhead_ms": max(0.0, p99_budget * 0.50),
@@ -133,7 +133,7 @@ def _probe_template(
         return {
             "probe_id": f"probe_{idx:02d}_debug_counter",
             "kind": "counter",
-            "file_target": "bots/zem_zev.py",
+            "file_target": "bots/pdg/__init__.py",
             "insertion_anchor": "debug setup trace emission point",
             "schema": {
                 "metric": "setup_debug_event_count",
@@ -192,14 +192,14 @@ def _validation_commands(
     if not commands:
         commands.extend(
             [
-                "uv run python main.py sim setup_flat:near:0 --bot zem_zev --freq 1",
-                "PYLANDER_BOT_PROFILE=1 uv run python main.py sim setup_flat:near:0 --bot zem_zev --freq 1",
+                "uv run python main.py sim setup_flat:near:0 --bot pdg --freq 1",
+                "PYLANDER_BOT_PROFILE=1 uv run python main.py sim setup_flat:near:0 --bot pdg --freq 1",
             ]
         )
 
     if primary_env_flag:
         commands.append(
-            f"{primary_env_flag}=1 uv run python main.py sim setup_flat:near:0 --bot zem_zev --freq 1"
+            f"{primary_env_flag}=1 uv run python main.py sim setup_flat:near:0 --bot pdg --freq 1"
         )
 
     return commands

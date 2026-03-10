@@ -122,7 +122,7 @@ def route_tuning(payload: dict[str, Any]) -> dict[str, Any]:
             "strategy_winner_ref": strategy_winner_ref,
             "focused_selectors": selectors,
             "baseline_ref": baseline_ref,
-            "bot": str(payload.get("bot") or "zem_zev"),
+            "bot": str(payload.get("bot") or "pdg"),
         }
     else:
         cmd = (
@@ -135,7 +135,7 @@ def route_tuning(payload: dict[str, Any]) -> dict[str, Any]:
             "selector_scope": selectors,
             "baseline_ref": baseline_ref,
             "profile": str(payload.get("profile") or "standard"),
-            "bot": str(payload.get("bot") or "zem_zev"),
+            "bot": str(payload.get("bot") or "pdg"),
         }
 
     out: dict[str, Any] = {

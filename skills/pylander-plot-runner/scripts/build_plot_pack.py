@@ -72,7 +72,7 @@ def _build_cases_from_records(
     bot: str,
 ) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
-    terminal_dx_key = _bot_metric_key(bot, "terminal_gate_projected_dx")
+    terminal_dx_key = _bot_metric_key(bot, "flare_entry_projected_dx")
 
     for rec in records:
         if str(rec.get("state") or "") == "crashed":
@@ -114,8 +114,8 @@ def _build_cases_from_records(
                 "reason": reason,
                 "evidence": {
                     "setup_gate_projected_dx": rec.get("setup_gate_projected_dx"),
-                    "bot_terminal_gate_projected_dx_field": terminal_dx_key,
-                    "bot_terminal_gate_projected_dx": rec.get(terminal_dx_key),
+                    "bot_flare_entry_projected_dx_field": terminal_dx_key,
+                    "bot_flare_entry_projected_dx": rec.get(terminal_dx_key),
                     "fuel_consumed": rec.get("fuel_consumed"),
                 },
             }
@@ -264,7 +264,7 @@ def main() -> None:
     ap.add_argument("--benchmark-json", type=str, default=None)
     ap.add_argument("--compare-json", type=str, default=None)
     ap.add_argument("--selectors", nargs="*", default=[])
-    ap.add_argument("--bot", default="zem_zev")
+    ap.add_argument("--bot", default="pdg")
     ap.add_argument("--top-n", type=int, default=8)
     ap.add_argument("--plot-mode", default="all", choices=("speed", "thrust", "all"))
     ap.add_argument("--plot-output", default="both", choices=("combined", "split", "both"))

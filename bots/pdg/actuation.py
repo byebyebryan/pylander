@@ -109,7 +109,7 @@ def command_from_plan(
         bot._active_phase == "setup"
         and bot._setup_burn_started
         and (not bot._setup_gate_done)
-        and (not bot._terminal_gate_done)
+        and (not bot._flare_entry_done)
         and (bot._last_projection_dx is not None)
         and abs(float(dx)) > 1e-3
         and float(dy) <= 0.0

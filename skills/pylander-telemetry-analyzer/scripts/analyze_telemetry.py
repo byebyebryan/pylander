@@ -89,7 +89,7 @@ def _repro_commands(
     ]
     if include_debug:
         commands.append(
-            "PYLANDER_ZEM_DEBUG_SETUP=1 uv run python main.py sim "
+            "PYLANDER_PDG_DEBUG_SETUP=1 uv run python main.py sim "
             f"{selector_token} --bot {bot} --freq 1"
         )
     return commands
@@ -175,7 +175,7 @@ def _parse_sim_log(path: Path) -> dict[str, Any]:
                         "total": to_float(prof_match.group("total"), 0.0),
                     }
                 )
-        if stripped.startswith("ZEMDBG"):
+        if stripped.startswith("PDGDBG"):
             zemdbg_count += 1
 
         phase_match = _PHASE_RE.search(stripped)
@@ -389,7 +389,7 @@ def _findings_from_benchmark(
 ) -> tuple[list[dict[str, Any]], list[str]]:
     findings: list[dict[str, Any]] = []
     repro_bundle: list[str] = []
-    terminal_dx_key = _bot_metric_key(bot, "terminal_gate_projected_dx")
+    flare_dx_key = _bot_metric_key(bot, "flare_entry_projected_dx")
 
     records = [record for record in list(benchmark.get("records") or []) if isinstance(record, dict)]
     crashed_records = [record for record in records if str(record.get("state") or "") == "crashed"]
@@ -421,8 +421,8 @@ def _findings_from_benchmark(
     scored_phase: list[tuple[float, dict[str, Any]]] = []
     for record in records:
         setup_dx = abs(to_float(record.get("setup_gate_projected_dx"), 0.0))
-        terminal_dx = abs(to_float(record.get(terminal_dx_key), 0.0))
-        score = max(setup_dx, terminal_dx)
+        flare_dx = abs(to_float(record.get(flare_dx_key), 0.0))
+        score = max(setup_dx, flare_dx)
         if score <= 50.0:
             continue
         scored_phase.append((score, record))
@@ -439,8 +439,8 @@ def _findings_from_benchmark(
                 selector=selector,
                 measured_evidence={
                     "setup_gate_projected_dx": record.get("setup_gate_projected_dx"),
-                    "bot_terminal_gate_projected_dx_field": terminal_dx_key,
-                    "bot_terminal_gate_projected_dx": record.get(terminal_dx_key),
+                    "bot_flare_entry_projected_dx_field": flare_dx_key,
+                    "bot_flare_entry_projected_dx": record.get(flare_dx_key),
                 },
                 likely_cause=(
                     "Setup/coast handoff is leaving excessive lateral correction burden later in flight."
@@ -578,7 +578,7 @@ def _findings_from_sim_logs(
                         "zemdbg_count": to_int(sim.get("zemdbg_count"), 0),
                     },
                     likely_cause=(
-                        "Phase switching likely triggered a computationally expensive terminal solve."
+                        "Phase switching likely triggered a computationally expensive flare solve."
                     ),
                     confidence="low",
                     source_refs=[f"sim_log:{sim.get('path')}"],
@@ -613,7 +613,7 @@ def _probe_request(
 
     if not findings:
         questions.append(
-            "No clear anomaly was extracted; add focused counters around setup/terminal control decisions."
+            "No clear anomaly was extracted; add focused counters around setup/flare control decisions."
         )
 
     has_perf = any(str(item.get("category") or "") == "perf" for item in findings)
@@ -635,7 +635,7 @@ def _probe_request(
         zemdbg_lines = sum(to_int(sim.get("zemdbg_count"), 0) for sim in sim_logs)
         if zemdbg_lines <= 0:
             questions.append(
-                "Enable `PYLANDER_ZEM_DEBUG_SETUP=1` on the failing selector to inspect setup gate transitions."
+                "Enable `PYLANDER_PDG_DEBUG_SETUP=1` on the failing selector to inspect setup gate transitions."
             )
 
     if low_confidence:
@@ -774,7 +774,7 @@ def main() -> None:
     parser.add_argument("--benchmark-json", default=None)
     parser.add_argument("--compare-json", default=None)
     parser.add_argument("--sim-log", action="append", default=[])
-    parser.add_argument("--bot", default="zem_zev")
+    parser.add_argument("--bot", default="pdg")
     parser.add_argument("--max-findings", type=int, default=8)
     parser.add_argument("--output-report", default=None)
     args = parser.parse_args()

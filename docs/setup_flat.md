@@ -1,6 +1,6 @@
 # Setup Flat level (`setup_flat`)
 
-`setup_flat` is the flat pad-to-pad transfer scenario handled end-to-end by `zem_zev`.
+`setup_flat` is the flat pad-to-pad transfer scenario handled end-to-end by `pdg`.
 
 ## Level setup
 
@@ -20,12 +20,12 @@ Scenarios:
 
 ## Runtime behavior
 
-`zem_zev` handles:
+`pdg` handles:
 
 1. destination selection from pad contacts,
 2. upright takeoff + pad clear,
 3. transfer guidance,
-4. terminal landing on destination pad.
+4. flare and touchdown on the destination pad.
 
 Run-end transfer fields:
 
@@ -36,14 +36,14 @@ Run-end transfer fields:
 - `failure_mode="wrong_pad"` when landed on the source pad
 - `failure_mode="off_target"` when landed away from both pads
 
-Additional guidance diagnostics from `zem_zev` are merged into setup-flat results
+Additional guidance diagnostics from `pdg` are merged into setup-flat results
 through the generic `setup_gate_*` fields plus retained bot-owned
-`bot_zem_zev_*` telemetry.
+`bot_pdg_*` telemetry.
 
 ## Commands
 
 ```bash
 uv run python main.py run --interactive setup_flat
-uv run python main.py sim setup_flat:near:0 --bot zem_zev
-uv run python main.py bench setup_flat:near:0-9 setup_flat:mid:0-9 setup_flat:far:0-9 --bot zem_zev
+uv run python main.py sim setup_flat:near:0 --bot pdg
+uv run python main.py bench setup_flat:near:0-9 setup_flat:mid:0-9 setup_flat:far:0-9 --bot pdg
 ```

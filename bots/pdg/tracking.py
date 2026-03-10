@@ -25,23 +25,23 @@ def _capture_setup_gate_state(bot, *, passive: Sensors) -> None:
     bot._setup_gate_vy_up = float(passive.vy_up)
 
 
-def _capture_terminal_gate_state(bot, *, passive: Sensors) -> None:
-    bot._terminal_gate_x = float(passive.x)
-    bot._terminal_gate_y = float(passive.y)
+def _capture_flare_entry_state(bot, *, passive: Sensors) -> None:
+    bot._flare_entry_x = float(passive.x)
+    bot._flare_entry_y = float(passive.y)
 
 
-def finalize_terminal_gate_metrics(
+def finalize_flare_entry_metrics(
     bot,
     *,
     passive: Sensors,
     alt: float,
     projected_dx: float,
 ) -> None:
-    bot._terminal_gate_done = True
-    bot._terminal_gate_time = bot._elapsed_time_s
-    bot._terminal_gate_altitude = float(alt)
-    bot._terminal_gate_projected_dx = float(projected_dx)
-    _capture_terminal_gate_state(bot, passive=passive)
+    bot._flare_entry_done = True
+    bot._flare_entry_time = bot._elapsed_time_s
+    bot._flare_entry_altitude = float(alt)
+    bot._flare_entry_projected_dx = float(projected_dx)
+    _capture_flare_entry_state(bot, passive=passive)
 
 
 def _projected_impact_angle_deg(*, vx: float, vy_up: float, t_fall: float) -> float:
@@ -121,7 +121,7 @@ def apply_setup_gate_metrics(
     bot._setup_gate_burn_avg_thrust_level = setup_gate.burn_avg_thrust_level
 
 
-def update_phase_tracking(
+def refresh_stage_tracking(
     bot,
     *,
     passive: Sensors,
@@ -129,7 +129,7 @@ def update_phase_tracking(
     dy: float,
     alt: float,
     projection: BallisticProjection,
-) -> None:
+) -> str:
     cfg = bot._cfg
     projected_dx = float(projection.projected_dx)
     t_fall = max(0.0, float(projection.t_fall))
@@ -164,7 +164,7 @@ def update_phase_tracking(
         and not_falling_short
         and not_overshooting_setup
     )
-    if (not bot._setup_gate_done) and (not bot._terminal_gate_done):
+    if (not bot._setup_gate_done) and (not bot._flare_entry_done):
         if (not bot._setup_burn_started) and (thrust_level >= cfg.setup_gate_burn_start_thrust):
             bot._setup_burn_started = True
             bot._setup_burn_idle_since = None
@@ -219,23 +219,23 @@ def update_phase_tracking(
     speed = math.hypot(float(passive.vx), float(passive.vy_up))
     touchdown_dx_limit = max(12.0, cfg.touchdown_phase_dx_ratio * bot._last_target_half)
     in_touchdown_corridor = abs(float(dx)) <= touchdown_dx_limit
+    next_stage = "setup"
     if (
         alt <= cfg.touchdown_phase_altitude
         and speed <= cfg.touchdown_phase_speed
         and in_touchdown_corridor
     ):
-        bot._active_phase = "touchdown"
-    elif bot._terminal_gate_done:
-        bot._active_phase = "terminal"
+        next_stage = "touchdown"
+    elif bot._flare_entry_done:
+        next_stage = "flare"
     elif bot._setup_gate_done:
         if bot._setup_gate_spawn_primed:
-            bot._active_phase = "coast"
+            next_stage = "coast"
         elif bot._uphill_transfer or (not setup_ready_diag):
-            bot._active_phase = "setup"
+            next_stage = "setup"
         else:
-            bot._active_phase = "coast"
-    else:
-        bot._active_phase = "setup"
+            next_stage = "coast"
+    bot._stage_tracking_next = next_stage
 
     if (
         bot._debug_setup
@@ -248,11 +248,12 @@ def update_phase_tracking(
         bot._debug_setup_print(
             "post_gate "
             f"t={bot._elapsed_time_s:6.2f} "
-            f"ph={bot._active_phase:8s} "
+            f"ph={next_stage:8s} "
             f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
             f"signed={shortfall_metric:8.2f} "
             f"thrust={float(passive.thrust_level):5.2f}"
         )
+    return next_stage
 
 
 def maybe_start_shape_window(
@@ -266,7 +267,7 @@ def maybe_start_shape_window(
         return
     if bot._setup_gate_done:
         return
-    if bot._launch_takeoff_active:
+    if bot._active_phase == "takeoff":
         return
     if abs(float(dx)) <= 1e-3:
         return
@@ -319,7 +320,7 @@ def update_shape_window_metrics(
     bot._shape_curve_count += 1
 
     if (
-        bot._terminal_gate_done or bot._active_phase in ("terminal", "touchdown")
+        bot._flare_entry_done or bot._active_phase in ("flare", "touchdown")
     ) and not bot._shape_window_done:
         bot._shape_window_done = True
         bot._shape_window_end_time = bot._elapsed_time_s

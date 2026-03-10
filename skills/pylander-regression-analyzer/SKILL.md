@@ -25,7 +25,7 @@ Run compare first, then gate:
 
 - `mode`: usually `quick`, optionally `full`
 - `baseline_ref`: usually `main`
-- `bot`: default `zem_zev`
+- `bot`: default `pdg`
 - optional `bot_config_path`
 - optional `compare_report_path` (required when `--no-execute`)
 - optional level policy overrides:

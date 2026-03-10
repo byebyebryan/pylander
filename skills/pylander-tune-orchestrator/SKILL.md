@@ -25,7 +25,7 @@ Optional worker execution for branches that provide `worker_input`:
 - `focused_selectors`
 - `branches` (each branch must provide one of: `report_path`, `inline_report`, or `worker_input` when worker execution is enabled)
 - `baseline_ref` (default: `main`)
-- `bot` (default `zem_zev`)
+- `bot` (default `pdg`)
 
 ## Default branch plan
 

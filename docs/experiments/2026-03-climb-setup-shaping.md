@@ -2,7 +2,7 @@
 
 ## Scope and goal
 
-This experiment focused on `zem_zev` setup-phase behavior for `climb`, with a narrow objective:
+This experiment focused on `pdg` setup-phase behavior for `climb`, with a narrow objective:
 
 - get setup onto a ballistic path centered on target (`projected_dx ~= 0`),
 - hit a usable apex margin above target (treated as roughly +100 during tuning),
@@ -28,11 +28,11 @@ These commits are already on `main`:
 Current uncommitted experiment files:
 
 - `bots/_optimizer_pdg.py`
-- `bots/_zem_planner.py`
-- `bots/_zem_actuation.py`
-- `bots/_zem_phase.py`
-- `bots/_zem_config.py`
-- `bots/zem_zev.py`
+- `bots/pdg/planner.py`
+- `bots/pdg/actuation.py`
+- `bots/pdg/tracking.py`
+- `bots/pdg/config.py`
+- `bots/pdg/__init__.py`
 - `levels/climb.py`
 
 Main themes:
@@ -71,7 +71,7 @@ Main themes:
 Command pattern:
 
 ```bash
-uv run python main.py sim climb:<scenario>:0 --bot zem_zev --freq 0 --eval-mode focused
+uv run python main.py sim climb:<scenario>:0 --bot pdg --freq 0 --eval-mode focused
 ```
 
 | Scenario | Setup gate time (s) | Setup gate projected dx | Setup gate apex over target |
@@ -85,14 +85,14 @@ uv run python main.py sim climb:<scenario>:0 --bot zem_zev --freq 0 --eval-mode 
 Command pattern:
 
 ```bash
-uv run python main.py sim climb:<scenario>:0 --bot zem_zev --freq 0 --eval-mode full
+uv run python main.py sim climb:<scenario>:0 --bot pdg --freq 0 --eval-mode full
 ```
 
 | Scenario | Final state | Fuel consumed | Notes |
 |---|---|---:|---|
-| `slope_low` | `crashed` | 32.07 | setup gate reached, terminal gate not reached |
-| `slope_mid` | `landed` | 38.97 | terminal gate reached |
-| `slope_high` | `landed` | 52.33 | terminal gate reached |
+| `slope_low` | `crashed` | 32.07 | setup gate reached, flare entry not reached |
+| `slope_mid` | `landed` | 38.97 | flare entry reached |
+| `slope_high` | `landed` | 52.33 | flare entry reached |
 
 ### Broad regression signal (quick pack)
 
@@ -102,7 +102,7 @@ Command used:
 uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py \
   --mode quick \
   --baseline-ref main \
-  --bot zem_zev
+  --bot pdg
 ```
 
 Candidate output:

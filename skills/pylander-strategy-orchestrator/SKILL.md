@@ -24,7 +24,7 @@ Optional worker execution for branches that provide `worker_input` instead of `r
 - `arena_id`
 - `branches` (each branch must provide one of: `report_path`, `inline_report`, or `worker_input` when worker execution is enabled)
 - `focused_selectors`
-- `bot` (default `zem_zev`)
+- `bot` (default `pdg`)
 - optional `baseline_ref`
 
 ## Workflow

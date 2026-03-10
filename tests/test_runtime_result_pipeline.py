@@ -18,7 +18,7 @@ class _Bot(Bot):
         raise_decision: bool = False,
     ) -> None:
         super().__init__()
-        self._bot_name = "zem_zev"
+        self._bot_name = "pdg"
         self._decision = decision
         self._telemetry = telemetry
         self._phase_snapshot = phase_snapshot
@@ -51,7 +51,7 @@ def test_resolve_headless_bot_eval_decision_ignores_errors_and_invalid_types() -
 
 
 def test_merge_bot_snapshots_into_result_prefixes_fields_and_preserves_existing() -> None:
-    result = {"bot_zem_zev_value": "existing", "setup_gate_done": "existing"}
+    result = {"bot_pdg_value": "existing", "setup_gate_done": "existing"}
     actor_bots = {
         "a": _Bot(
             telemetry={"value": 7, "solve_count": 9, "bot_other_done": True},
@@ -76,15 +76,15 @@ def test_merge_bot_snapshots_into_result_prefixes_fields_and_preserves_existing(
 
     merge_bot_snapshots_into_result(actor_bots=actor_bots, result=result)
 
-    assert result["bot_zem_zev_value"] == "existing"
-    assert result["bot_zem_zev_solve_count"] == 9
-    assert result["bot_zem_zev_ignored"] == 1
+    assert result["bot_pdg_value"] == "existing"
+    assert result["bot_pdg_solve_count"] == 9
+    assert result["bot_pdg_ignored"] == 1
     assert result["setup_gate_done"] == "existing"
     assert result["setup_gate_time"] == 4.0
     assert result["setup_gate_projected_dx"] == 7.5
     assert result["setup_gate_projected_impact_angle_deg"] == 61.0
     assert result["setup_gate_burn_avg_thrust_level"] == 0.82
-    assert result["bot_zem_zev_value"] == "existing"
+    assert result["bot_pdg_value"] == "existing"
     assert result["bot_other_done"] is True
 
 

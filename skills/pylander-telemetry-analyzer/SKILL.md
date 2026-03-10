@@ -14,7 +14,7 @@ This skill is read-only by default.
 - `benchmark_json` (optional)
 - `compare_json` (optional)
 - `sim_log` (optional, repeatable)
-- `bot` (default `zem_zev`)
+- `bot` (default `pdg`)
 - `max_findings` (default `8`)
 
 At least one source input is required.
@@ -28,12 +28,12 @@ At least one source input is required.
 - Compare report JSON from benchmark tooling (preferred for regression truth)
 - Benchmark records JSON for phase/perf outliers
 - Sim log text (`--freq 1`) for per-tick state, profiler lines, and sectioned final-result blocks
-- Optional setup debug traces (`PYLANDER_ZEM_DEBUG_SETUP=1`)
+- Optional setup debug traces (`PYLANDER_PDG_DEBUG_SETUP=1`)
 
 Current signal conventions:
 
 - generic setup metrics: `setup_gate_*`, `setup_goal_*`
-- bot-owned diagnostics: `bot_<botname>_*` (for example `bot_zem_zev_*`)
+- bot-owned diagnostics: `bot_<botname>_*` (for example `bot_pdg_*`)
 - profiler fields: `bot_profile_*` covering passive/update/total timing
 
 ## Output contract

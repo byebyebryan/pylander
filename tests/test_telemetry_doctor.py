@@ -35,7 +35,7 @@ def test_parse_sim_log_extracts_final_results_and_profile(tmp_path: Path) -> Non
                 "Mode: headless run",
                 "Selector: setup_flat:near:0",
                 "bot_prof: ticks=16 passive=0.012ms/t update=10.364ms/t total=10.387ms/t",
-                "t=  0.02 | ship x=-0.0 alt=0.0 vx=-0.00 vy=0.00 ang=0.0 thr=0% fuel=100.0% | bot=zem_zev mode=opt phase=setup dx=214.5 pdx=214.5 slv:177.0ms",
+                "t=  0.02 | ship x=-0.0 alt=0.0 vx=-0.00 vy=0.00 ang=0.0 thr=0% fuel=100.0% | bot=pdg mode=opt phase=setup dx=214.5 pdx=214.5 slv:177.0ms",
                 "",
                 "============================================================",
                 "FINAL RESULTS",
@@ -76,9 +76,9 @@ def test_analyze_compare_produces_crash_and_perf_findings() -> None:
                         "candidate_state": "crashed",
                         "candidate_failure_mode": "impact",
                         "repro": {
-                            "plot": "uv run python main.py plot setup_flat:mid:2 --bot zem_zev",
-                            "sim_trace": "uv run python main.py sim setup_flat:mid:2 --bot zem_zev --freq 1",
-                            "sim_profile": "PYLANDER_BOT_PROFILE=1 uv run python main.py sim setup_flat:mid:2 --bot zem_zev --freq 1",
+                            "plot": "uv run python main.py plot setup_flat:mid:2 --bot pdg",
+                            "sim_trace": "uv run python main.py sim setup_flat:mid:2 --bot pdg --freq 1",
+                            "sim_profile": "PYLANDER_BOT_PROFILE=1 uv run python main.py sim setup_flat:mid:2 --bot pdg --freq 1",
                         },
                     }
                 ],
@@ -100,7 +100,7 @@ def test_analyze_compare_produces_crash_and_perf_findings() -> None:
         compare_payload=compare_payload,
         sim_logs=[],
         source_paths={"benchmark_json": "", "compare_json": "/tmp/compare.json", "sim_logs": []},
-        bot="zem_zev",
+        bot="pdg",
         max_findings=8,
     )
 
@@ -121,7 +121,7 @@ def test_analyze_benchmark_without_compare_requests_probe() -> None:
                 "seed": 0,
                 "state": "landed",
                 "setup_gate_projected_dx": 140.0,
-                "bot_test_bot_terminal_gate_projected_dx": 82.0,
+                "bot_test_bot_flare_entry_projected_dx": 82.0,
                 "bot_profile_total_ms_per_tick": 1.4,
                 "bot_profile_total_ms_per_tick_p99": 62.0,
                 "bot_profile_update_ms_per_tick_p99": 55.0,
@@ -143,9 +143,9 @@ def test_analyze_benchmark_without_compare_requests_probe() -> None:
     assert any("baseline-vs-candidate" in q for q in report["probe_request"]["questions"])
     phase_findings = [item for item in report["top_findings"] if item["category"] == "phase"]
     assert phase_findings
-    assert phase_findings[0]["measured_evidence"]["bot_terminal_gate_projected_dx"] == 82.0
+    assert phase_findings[0]["measured_evidence"]["bot_flare_entry_projected_dx"] == 82.0
     assert (
-        phase_findings[0]["measured_evidence"]["bot_terminal_gate_projected_dx_field"]
-        == "bot_test_bot_terminal_gate_projected_dx"
+        phase_findings[0]["measured_evidence"]["bot_flare_entry_projected_dx_field"]
+        == "bot_test_bot_flare_entry_projected_dx"
     )
     contracts.validate_contract_data(report, "telemetry_triage_report.v1")

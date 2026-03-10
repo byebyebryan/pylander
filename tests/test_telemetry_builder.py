@@ -56,7 +56,7 @@ def _triage_payload() -> dict[str, object]:
             }
         ],
         "repro_bundle": [
-            "uv run python main.py sim setup_flat:far:0 --bot zem_zev --freq 1",
+            "uv run python main.py sim setup_flat:far:0 --bot pdg --freq 1",
         ],
         "probe_request": {
             "needed": True,
@@ -75,7 +75,7 @@ def test_build_probe_plan_emits_valid_contract(tmp_path: Path) -> None:
     plan = builder.build_probe_plan(
         triage,
         triage_report_path=str(triage_path),
-        scope=["runtime", "zem"],
+        scope=["runtime", "pdg"],
         overhead_budget_avg_ms=0.05,
         overhead_budget_p99_ms=0.20,
     )

@@ -20,18 +20,18 @@ from app.run_batch import ResolvedBenchRun, parse_seed_spec, resolve_benchmark_p
 def test_bot_registry_exposes_only_supported_bots() -> None:
     bots = list_available_bots()
     assert "plunge" in bots
-    assert "zem_zev" in bots
+    assert "pdg" in bots
     assert "coast" not in bots
     assert "flare" not in bots
     assert "setup" not in bots
     assert "launch" not in bots
 
     plunge_bot = create_bot("plunge")
-    zem_bot = create_bot("zem_zev")
+    pdg_bot = create_bot("pdg")
     assert plunge_bot.__class__.__name__ == "PlungeBot"
-    assert zem_bot.__class__.__name__ == "ZemZevBot"
+    assert pdg_bot.__class__.__name__ == "PDGBot"
     assert isinstance(plunge_bot, Bot)
-    assert isinstance(zem_bot, Bot)
+    assert isinstance(pdg_bot, Bot)
 
 
 def test_create_bot_rejects_config_override_for_unsupported_bot() -> None:
@@ -39,9 +39,9 @@ def test_create_bot_rejects_config_override_for_unsupported_bot() -> None:
         create_bot("plunge", config_override={"setup_gate_projected_dx_abs": 42.0})
 
 
-def test_create_bot_applies_zem_bot_config_override() -> None:
+def test_create_bot_applies_pdg_bot_config_override() -> None:
     bot = create_bot(
-        "zem_zev",
+        "pdg",
         config_override={
             "setup_gate_projected_dx_abs": 42.0,
             "fallback_hold_steps": 10.0,
@@ -108,7 +108,7 @@ def test_setup_climb_rejects_unknown_scenario() -> None:
 def test_setup_climb_target_is_terrain_bound_flush_pad() -> None:
     level = create_level_by_name("setup_climb")
     level.set_eval_scenario("mid")
-    game = LanderGame(level=level, seed=0, bot=create_bot("zem_zev"), headless=True)
+    game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     target = next(
         site
         for site in game.level.world.site_entities
@@ -124,7 +124,7 @@ def test_setup_climb_target_is_terrain_bound_flush_pad() -> None:
 def test_landed_site_uid_requires_pad_overlap(level_name: str) -> None:
     level = create_level_by_name(level_name)
     level.set_eval_scenario("mid")
-    _game = LanderGame(level=level, seed=0, bot=create_bot("zem_zev"), headless=True)
+    _game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     target = next(spec for spec in level.site_specs if spec.uid == "setup_transfer_target")
     half = 0.5 * float(target.size)
     assert level._resolve_landed_site_uid(float(target.x)) == "setup_transfer_target"
@@ -134,7 +134,7 @@ def test_landed_site_uid_requires_pad_overlap(level_name: str) -> None:
 def _spawn_state(level_name: str, scenario: str, seed: int) -> tuple[float, float, float, float, float]:
     level = create_level_by_name(level_name)
     level.set_eval_scenario(scenario)
-    game = LanderGame(level=level, seed=seed, bot=create_bot("zem_zev"), headless=True)
+    game = LanderGame(level=level, seed=seed, bot=create_bot("pdg"), headless=True)
     actor = game.level.world.actors[0]
     trans = require_component(actor, Transform)
     phys = require_component(actor, PhysicsState)
@@ -161,10 +161,10 @@ def test_setup_and_flare_error_scenarios_are_seed_deterministic() -> None:
     assert climb_a == pytest.approx(climb_b)
 
 
-def test_zem_setup_goal_ends_headless_run_early() -> None:
+def test_pdg_setup_goal_ends_headless_run_early() -> None:
     level = create_level_by_name("setup_downhill")
     level.set_eval_scenario("mid")
-    bot = create_bot("zem_zev")
+    bot = create_bot("pdg")
     bot.set_eval_goal("setup")
     game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="setup")
 
@@ -210,7 +210,7 @@ def test_non_landing_goal_without_decision_fails_goal_not_reached() -> None:
 
 def test_normalize_run_result_uses_canonical_eval_fields() -> None:
     record = normalize_run_result(
-        bot_name="zem_zev",
+        bot_name="pdg",
         level_name="setup_downhill",
         scenario="mid",
         seed=3,
@@ -241,19 +241,19 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
             "setup_gate_burn_fuel_used": 17.0,
             "setup_gate_burn_avg_thrust_level": 0.84,
             "setup_transfer_arrived": False,
-            "bot_zem_zev_terminal_gate_done": True,
-            "bot_zem_zev_terminal_gate_time": 8.6,
-            "bot_zem_zev_terminal_gate_altitude": 72.0,
-            "bot_zem_zev_terminal_gate_projected_dx": 4.5,
-            "bot_zem_zev_solve_count": 32,
-            "bot_zem_zev_solve_ms_mean": 3.2,
-            "bot_zem_zev_solve_ms_p90": 7.4,
-            "bot_zem_zev_fallback_frames": 1,
-            "bot_zem_zev_shape_apex_error": 4.0,
-            "bot_zem_zev_shape_curve_rmse": 14.5,
-            "bot_zem_zev_shape_projected_dx_abs_mean": 18.0,
-            "bot_zem_zev_shape_projected_dx_abs_max": 41.0,
-            "bot_zem_zev_shape_shortfall_ratio": 0.12,
+            "bot_pdg_flare_entry_done": True,
+            "bot_pdg_flare_entry_time": 8.6,
+            "bot_pdg_flare_entry_altitude": 72.0,
+            "bot_pdg_flare_entry_projected_dx": 4.5,
+            "bot_pdg_solve_count": 32,
+            "bot_pdg_solve_ms_mean": 3.2,
+            "bot_pdg_solve_ms_p90": 7.4,
+            "bot_pdg_fallback_frames": 1,
+            "bot_pdg_shape_apex_error": 4.0,
+            "bot_pdg_shape_curve_rmse": 14.5,
+            "bot_pdg_shape_projected_dx_abs_mean": 18.0,
+            "bot_pdg_shape_projected_dx_abs_max": 41.0,
+            "bot_pdg_shape_shortfall_ratio": 0.12,
         },
     )
     assert record["success"] is True
@@ -271,34 +271,34 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
     assert record["setup_gate_burn_duration_s"] == pytest.approx(6.0)
     assert record["setup_gate_burn_fuel_used"] == pytest.approx(17.0)
     assert record["setup_transfer_arrived"] is False
-    assert record["bot_zem_zev_terminal_gate_done"] is True
-    assert record["bot_zem_zev_terminal_gate_time"] == pytest.approx(8.6)
-    assert record["bot_zem_zev_terminal_gate_altitude"] == pytest.approx(72.0)
-    assert record["bot_zem_zev_terminal_gate_projected_dx"] == pytest.approx(4.5)
-    assert record["bot_zem_zev_solve_count"] == pytest.approx(32.0)
-    assert record["bot_zem_zev_solve_ms_mean"] == pytest.approx(3.2)
-    assert record["bot_zem_zev_solve_ms_p90"] == pytest.approx(7.4)
-    assert record["bot_zem_zev_fallback_frames"] == pytest.approx(1.0)
-    assert record["bot_zem_zev_shape_apex_error"] == pytest.approx(4.0)
-    assert record["bot_zem_zev_shape_curve_rmse"] == pytest.approx(14.5)
-    assert record["bot_zem_zev_shape_projected_dx_abs_mean"] == pytest.approx(18.0)
-    assert record["bot_zem_zev_shape_projected_dx_abs_max"] == pytest.approx(41.0)
-    assert record["bot_zem_zev_shape_shortfall_ratio"] == pytest.approx(0.12)
+    assert record["bot_pdg_flare_entry_done"] is True
+    assert record["bot_pdg_flare_entry_time"] == pytest.approx(8.6)
+    assert record["bot_pdg_flare_entry_altitude"] == pytest.approx(72.0)
+    assert record["bot_pdg_flare_entry_projected_dx"] == pytest.approx(4.5)
+    assert record["bot_pdg_solve_count"] == pytest.approx(32.0)
+    assert record["bot_pdg_solve_ms_mean"] == pytest.approx(3.2)
+    assert record["bot_pdg_solve_ms_p90"] == pytest.approx(7.4)
+    assert record["bot_pdg_fallback_frames"] == pytest.approx(1.0)
+    assert record["bot_pdg_shape_apex_error"] == pytest.approx(4.0)
+    assert record["bot_pdg_shape_curve_rmse"] == pytest.approx(14.5)
+    assert record["bot_pdg_shape_projected_dx_abs_mean"] == pytest.approx(18.0)
+    assert record["bot_pdg_shape_projected_dx_abs_max"] == pytest.approx(41.0)
+    assert record["bot_pdg_shape_shortfall_ratio"] == pytest.approx(0.12)
 
 
 def test_setup_flat_run_merges_bot_telemetry_fields_into_result() -> None:
     level = create_level_by_name("setup_flat")
     level.set_eval_scenario("near")
-    game = LanderGame(level=level, seed=0, bot=create_bot("zem_zev"), headless=True)
+    game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     result = game.run(print_freq=0, max_steps=2, max_time=2.0)
-    assert "bot_zem_zev_solve_count" in result
-    assert "bot_zem_zev_shape_curve_rmse" in result
+    assert "bot_pdg_solve_count" in result
+    assert "bot_pdg_shape_curve_rmse" in result
 
 
 def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
     records = [
         normalize_run_result(
-            bot_name="zem_zev",
+            bot_name="pdg",
             level_name="setup_downhill",
             scenario="mid",
             seed=0,
@@ -394,7 +394,7 @@ def test_hud_display_state_prefers_structured_display_state() -> None:
     class _Bot:
         def get_display_state(self):
             return BotDisplayState(
-                bot_name="zem_zev",
+                bot_name="pdg",
                 mode="opt",
                 phase="setup",
                 summary="dx=12.3 pdx=-4.0",
@@ -402,14 +402,14 @@ def test_hud_display_state_prefers_structured_display_state() -> None:
 
     display = resolve_bot_display_state(_Bot())
     assert display is not None
-    assert display.bot_name == "zem_zev"
+    assert display.bot_name == "pdg"
     assert display.phase == "setup"
 
 
 def test_parse_args_accepts_level_goal_selector() -> None:
-    _parser, command = parse_command(["sim", "setup_downhill:mid:setup:0", "--bot", "zem_zev"])
+    _parser, command = parse_command(["sim", "setup_downhill:mid:setup:0", "--bot", "pdg"])
     assert isinstance(command, RunCommand)
-    assert command.run.bot_name == "zem_zev"
+    assert command.run.bot_name == "pdg"
     assert command.run.eval_goal == "setup"
 
 
@@ -430,12 +430,12 @@ def test_parse_play_command_uses_interactive_defaults() -> None:
 
 
 def test_parse_play_command_accepts_selector_and_bot() -> None:
-    _parser, command = parse_command(["play", "setup_flat:far:3", "--bot", "zem_zev"])
+    _parser, command = parse_command(["play", "setup_flat:far:3", "--bot", "pdg"])
     assert isinstance(command, RunCommand)
     assert command.run.level_name == "setup_flat"
     assert command.run.scenario_name == "far"
     assert command.run.seed == 3
-    assert command.run.bot_name == "zem_zev"
+    assert command.run.bot_name == "pdg"
     assert command.run.headless is False
 
 
@@ -500,7 +500,7 @@ def test_parse_plot_command_output_flags_override_defaults() -> None:
             "plot",
             "setup_flat:far:3",
             "--bot",
-            "zem_zev",
+            "pdg",
             "--plot-output",
             "both",
             "--plot-max-side-px",
@@ -542,7 +542,7 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
     )
 
     cfg = BenchSettings(
-        bot_name="zem_zev",
+        bot_name="pdg",
         bot_config_path=None,
         selectors=(BenchTarget(level_name="setup_flat", scenario_name="mid", seed_spec="0"),),
         lander_name=None,
@@ -563,7 +563,7 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
 
 
 def test_plot_command_enables_plot_mode_by_default() -> None:
-    _parser, command = parse_command(["plot", "setup_flat:far:3", "--bot", "zem_zev"])
+    _parser, command = parse_command(["plot", "setup_flat:far:3", "--bot", "pdg"])
     assert isinstance(command, RunCommand)
     assert command.run.level_name == "setup_flat"
     assert command.run.scenario_name == "far"

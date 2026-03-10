@@ -24,9 +24,9 @@ from levels import create_level, list_available_levels
 
 def test_resolve_default_bot_name_normalizes_whitespace() -> None:
     class _Level:
-        default_bot_name = "  zem_zev  "
+        default_bot_name = "  pdg  "
 
-    assert resolve_default_bot_name(_Level()) == "zem_zev"
+    assert resolve_default_bot_name(_Level()) == "pdg"
 
 
 def test_set_eval_scenario_checked_requires_capability() -> None:
