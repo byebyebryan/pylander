@@ -27,6 +27,13 @@ DEFAULT_SEEDS = {
     "focused": "0-9",
 }
 
+FOCUSED_SELECTOR_GROUPS: dict[str, tuple[str, ...]] = {
+    "flare": ("flare_normal", "flare_error"),
+    "flare_flight": ("flare_normal", "flare_error"),
+    "plunge": ("plunge",),
+    "terminal_plunge": ("plunge",),
+}
+
 
 @dataclass(frozen=True)
 class ResolvedSelectorPack:
@@ -93,6 +100,30 @@ def _split_focused_selectors(values: Iterable[str]) -> list[str]:
             continue
         out.extend(_split_csv([raw]))
     return out
+
+
+def _resolve_focused_selector_group(raw: str, *, known_levels: set[str]) -> tuple[str, ...] | None:
+    token = str(raw).strip().lower()
+    if not token.startswith("@"):
+        return None
+
+    group_name = token[1:].strip()
+    if not group_name:
+        raise ValueError("Empty focused selector group '@'. Expected a token such as @flare")
+
+    levels = FOCUSED_SELECTOR_GROUPS.get(group_name)
+    if levels is None:
+        known = ", ".join(f"@{name}" for name in sorted(FOCUSED_SELECTOR_GROUPS))
+        raise ValueError(
+            f"Unknown focused selector group '@{group_name}'. Expected one of: {known}"
+        )
+
+    missing = sorted(level_name for level_name in levels if level_name not in known_levels)
+    if missing:
+        raise ValueError(
+            f"Focused selector group '@{group_name}' references unknown levels: {', '.join(missing)}"
+        )
+    return levels
 
 
 def _load_level_profiles() -> dict[str, LevelBenchmarkProfile]:
@@ -208,6 +239,21 @@ def _build_focused_mode(
     included: set[str] = set()
 
     for raw in _split_focused_selectors(selectors_raw):
+        group_levels = _resolve_focused_selector_group(raw, known_levels=known_levels)
+        if group_levels is not None:
+            for level_name in group_levels:
+                profile = profiles[level_name]
+                scenarios = profile.scenarios.full
+                if scenarios:
+                    selectors.extend(
+                        _selector(level_name, scenario, seed_spec, eval_goal="landing")
+                        for scenario in scenarios
+                    )
+                else:
+                    selectors.append(_selector(level_name, None, seed_spec, eval_goal="landing"))
+                included.add(level_name)
+            continue
+
         parsed = parse_selector(raw, default_level=None, known_levels=known_levels)
         level_name = parsed.level_name
         profile = profiles[level_name]
@@ -376,7 +422,10 @@ def main() -> None:
         "--selectors",
         nargs="*",
         default=[],
-        help="Focused selectors (level[:scenario[:goal[:seed]]])",
+        help=(
+            "Focused selectors (level[:scenario[:goal[:seed]]]) or group aliases "
+            "(@flare, @flare_flight, @plunge, @terminal_plunge)"
+        ),
     )
     ap.add_argument(
         "--exclude-levels",

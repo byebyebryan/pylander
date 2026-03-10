@@ -95,6 +95,33 @@ def test_focused_selector_preserves_goal_slot() -> None:
     assert pack.selectors == ["setup_flat:mid:setup:0-2"]
 
 
+def test_focused_selector_group_flare_excludes_plunge() -> None:
+    pack = selector_pack.build_selectors(
+        mode="focused",
+        focused_selectors=["@flare"],
+    )
+    assert pack.included_levels == ["flare_error", "flare_normal"]
+    assert all(item.startswith(("flare_error:", "flare_normal:")) for item in pack.selectors)
+    assert all(not item.startswith("plunge:") for item in pack.selectors)
+
+
+def test_focused_selector_group_plunge_is_separate() -> None:
+    pack = selector_pack.build_selectors(
+        mode="focused",
+        focused_selectors=["@plunge"],
+    )
+    assert pack.included_levels == ["plunge"]
+    assert all(item.startswith("plunge:") for item in pack.selectors)
+
+
+def test_unknown_focused_selector_group_errors() -> None:
+    with pytest.raises(ValueError, match="Unknown focused selector group '@not_real'"):
+        selector_pack.build_selectors(
+            mode="focused",
+            focused_selectors=["@not_real"],
+        )
+
+
 def test_build_bench_command_includes_profile_flags() -> None:
     cmd = selector_pack.build_bench_command(
         selectors=["setup_flat:mid:0-1"],

@@ -50,7 +50,7 @@ def test_level_eval_goal_support_matches_declared_catalogs() -> None:
     assert resolve_level_eval_goals(create_level("setup_climb")) == ("landing", "setup")
     assert resolve_level_eval_goals(create_level("flare_error")) == ("landing",)
     assert resolve_level_eval_goals(create_level("flare_normal")) == ("landing",)
-    assert resolve_level_eval_goals(create_level("flare_plunge")) == ("landing",)
+    assert resolve_level_eval_goals(create_level("plunge")) == ("landing",)
 
 
 def test_set_eval_goal_checked_rejects_unsupported_goal() -> None:
