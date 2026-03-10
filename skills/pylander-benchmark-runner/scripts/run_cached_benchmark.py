@@ -1050,7 +1050,15 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Run cached Pylander benchmarks with optional baseline compare")
     ap.add_argument("--mode", choices=("smoke", "quick", "full", "focused"), required=True)
     ap.add_argument("--seed-spec", default=None, help="Override default seed range, e.g. 0-9")
-    ap.add_argument("--selectors", nargs="*", default=[], help="Focused selectors")
+    ap.add_argument(
+        "--selectors",
+        nargs="*",
+        default=[],
+        help=(
+            "Focused selectors or group aliases "
+            "(@flare, @flare_flight, @plunge, @terminal_plunge)"
+        ),
+    )
     ap.add_argument(
         "--exclude-levels",
         nargs="*",

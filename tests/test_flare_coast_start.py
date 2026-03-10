@@ -16,7 +16,7 @@ from levels import create_level
         ("flare_error", "mid_tight"),
     ),
 )
-def test_flare_levels_prime_setup_gate_and_start_in_coast(
+def test_flare_flight_levels_prime_setup_gate_and_start_in_coast(
     level_name: str,
     scenario_name: str,
 ) -> None:
@@ -60,7 +60,7 @@ def test_flare_error_wide_triggers_flare_gate_before_impact() -> None:
     assert result["bot_zem_zev_solve_count"] > 0
 
 
-def test_flare_levels_can_force_terminal_from_spawn() -> None:
+def test_flare_flight_levels_can_force_terminal_from_spawn() -> None:
     level = create_level("flare_normal")
     level.set_eval_scenario("mid")
     bot = create_bot("zem_zev")

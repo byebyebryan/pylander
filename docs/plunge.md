@@ -1,4 +1,4 @@
-# Flare Plunge phase (`flare_plunge` level + `plunge` bot)
+# Terminal Plunge phase (`plunge` level + `plunge` bot)
 
 `plunge` is the terminal-only benchmark: burn timing, flare, and touchdown without upstream trajectory setup complexity.
 
@@ -10,7 +10,7 @@ Implementation note:
 
 ## Scenario setup
 
-Defined in [`levels/flare_plunge.py`](../levels/flare_plunge.py):
+Defined in [`levels/plunge.py`](../levels/plunge.py):
 
 - Spawn centered above target (`start_x = target_x = 0`)
 - Initial attitude upright (`angle = 0`)
@@ -56,11 +56,11 @@ Metrics to watch:
 ## Commands
 
 ```bash
-uv run python main.py run --interactive flare_plunge
-uv run python main.py sim flare_plunge:mid_normal:0 --bot plunge
+uv run python main.py run --interactive plunge
+uv run python main.py sim plunge:mid_normal:0 --bot plunge
 uv run python main.py bench \
-  flare_plunge:low_normal:0-9 \
-  flare_plunge:mid_normal:0-9 \
-  flare_plunge:high_normal:0-9 \
+  plunge:low_normal:0-9 \
+  plunge:mid_normal:0-9 \
+  plunge:high_normal:0-9 \
   --bot plunge
 ```

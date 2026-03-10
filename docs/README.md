@@ -14,11 +14,12 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 ## Controllers and levels
 
 - Unified optimizer bot: [`zem_zev.md`](zem_zev.md)
-- Terminal benchmark bot: [`flare_plunge.md`](flare_plunge.md)
+- Terminal/plunge benchmark level + bot: [`plunge.md`](plunge.md)
 - Query API + profiling details: [`overview.md`](overview.md)
-- Scenario levels:
+- Flare-flight levels:
   - `flare_normal`: [`flare_normal.md`](flare_normal.md)
   - `flare_error`: [`flare_error.md`](flare_error.md)
+- Setup levels:
   - `setup_downhill`: [`setup_downhill.md`](setup_downhill.md)
   - `setup_flat`: [`setup_flat.md`](setup_flat.md)
   - `setup_climb`: [`setup_climb.md`](setup_climb.md)

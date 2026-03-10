@@ -82,7 +82,7 @@ def test_plunge_and_zem_are_bots(monkeypatch: pytest.MonkeyPatch) -> None:
     plunge = create_bot("plunge")
     assert isinstance(plunge, Bot)
     plunge_game = LanderGame(
-        level=create_level_by_name("flare_plunge"),
+        level=create_level_by_name("plunge"),
         seed=0,
         bot=plunge,
         headless=True,

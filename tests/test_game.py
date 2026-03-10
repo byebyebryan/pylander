@@ -54,8 +54,9 @@ def test_create_bot_applies_zem_bot_config_override() -> None:
 
 def test_level_registry_still_includes_phase_levels() -> None:
     levels = list_available_levels()
+    assert "flare_plunge" not in levels
     for name in (
-        "flare_plunge",
+        "plunge",
         "flare_normal",
         "flare_error",
         "setup_downhill",
@@ -326,14 +327,14 @@ def test_parse_seed_spec_keeps_order_and_deduplicates() -> None:
 def test_parser_rejects_removed_bot_behavior_flag() -> None:
     parser = build_parser()
     with pytest.raises(SystemExit):
-        parser.parse_args(["run", "flare_plunge", "--bot-behavior", "balanced"])
+        parser.parse_args(["run", "plunge", "--bot-behavior", "balanced"])
 
 
 def test_resolve_batch_plan_expands_all_scenarios_without_seed_spec(monkeypatch) -> None:
     config = BenchSettings(
         bot_name=None,
         bot_config_path=None,
-        selectors=(BenchTarget(level_name="flare_plunge", scenario_name=None, seed_spec=None),),
+        selectors=(BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None),),
         lander_name=None,
         workers=1,
         max_time=300.0,
@@ -353,8 +354,8 @@ def test_resolve_batch_plan_expands_all_scenarios_without_seed_spec(monkeypatch)
     monkeypatch.setattr(run_batch_module, "_scenario_has_randomized_fields", lambda _l, _s: False)
     plan = resolve_benchmark_plan(config)
     assert plan == [
-        ResolvedBenchRun(0, "flare_plunge", "low_normal", "landing"),
-        ResolvedBenchRun(0, "flare_plunge", "mid_normal", "landing"),
+        ResolvedBenchRun(0, "plunge", "low_normal", "landing"),
+        ResolvedBenchRun(0, "plunge", "mid_normal", "landing"),
     ]
 
 
@@ -439,10 +440,10 @@ def test_parse_play_command_accepts_selector_and_bot() -> None:
 
 
 def test_parse_bench_command_uses_expected_defaults() -> None:
-    _parser, command = parse_command(["bench", "flare_plunge"])
+    _parser, command = parse_command(["bench", "plunge"])
     assert isinstance(command, BenchCommand)
     assert command.bench.selectors == (
-        BenchTarget(level_name="flare_plunge", scenario_name=None, seed_spec=None),
+        BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None),
     )
     assert command.bench.workers == max(1, int(os.cpu_count() or 1) - 2)
     assert command.bench.plot_output == "combined"
@@ -454,14 +455,14 @@ def test_parse_bench_command_uses_expected_defaults() -> None:
 
 def test_parse_bench_command_rejects_workers_override() -> None:
     with pytest.raises(SystemExit):
-        parse_command(["bench", "flare_plunge", "--workers", "1"])
+        parse_command(["bench", "plunge", "--workers", "1"])
 
 
 def test_parse_bench_command_profile_flags_override_defaults() -> None:
     _parser, command = parse_command(
         [
             "bench",
-            "flare_plunge",
+            "plunge",
             "--no-bot-profile",
             "--bot-profile-logs",
             "--bot-profile-interval-s",
@@ -478,7 +479,7 @@ def test_parse_bench_command_plot_flags_override_defaults() -> None:
     _parser, command = parse_command(
         [
             "bench",
-            "flare_plunge",
+            "plunge",
             "--plot",
             "all",
             "--plot-output",

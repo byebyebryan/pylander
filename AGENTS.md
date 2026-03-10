@@ -54,7 +54,7 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - Require reproducible evals (seed + scenario + bot + config).
 - Use benchmarks/evals to guide decisions and catch regressions.
 - Use metric gates for bot changes: require measurable improvement or document explicit tradeoffs.
-- Validate downstream impact after focused tuning with a cross-level check (`flare_plunge`/`flare_normal`/`flare_error`/`setup_downhill`/`setup_flat`/`setup_climb`) before merge.
+- Validate downstream impact after focused tuning with a cross-level check (`plunge`/`flare_normal`/`flare_error`/`setup_downhill`/`setup_flat`/`setup_climb`) before merge.
 
 ## Skill-driven workflow
 - Preferred loop:
@@ -90,6 +90,9 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - Selector model:
   - run/sim/plot: `level[:scenario[:goal[:seed]]]`
   - bench: `level[:scenario[:goal[:seed_spec]]]`
+- Terminology:
+  - `flare levels` means the flare-flight levels `flare_normal` and `flare_error`
+  - `plunge` is a separate terminal/plunge benchmark and should be included only when explicitly named
 - Prefer explicit selectors in evals/benchmarks for reproducibility.
 - Use `--bot-config <path>` for tuned bot overrides; ensure comparisons use like-for-like bot config.
 - For broad regression checks, prefer `skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py` (cache-aware baseline compare).

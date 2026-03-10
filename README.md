@@ -6,7 +6,7 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 
 - Start here: [`docs/README.md`](docs/README.md)
 - Bot framework + API: [`docs/overview.md`](docs/overview.md)
-- Bot docs: [`docs/flare_plunge.md`](docs/flare_plunge.md), [`docs/zem_zev.md`](docs/zem_zev.md)
+- Bot docs: [`docs/plunge.md`](docs/plunge.md), [`docs/zem_zev.md`](docs/zem_zev.md)
 - Scenario docs: [`docs/flare_normal.md`](docs/flare_normal.md), [`docs/flare_error.md`](docs/flare_error.md), [`docs/setup_downhill.md`](docs/setup_downhill.md), [`docs/setup_flat.md`](docs/setup_flat.md), [`docs/setup_climb.md`](docs/setup_climb.md)
 
 ## Features
@@ -63,7 +63,7 @@ uv run python main.py sim flare_normal:mid:0 --bot zem_zev
 uv run python main.py sim setup_downhill:mid:setup:0 --bot zem_zev
 uv run python main.py sim flare_error:mid_wide:3 --bot zem_zev
 uv run python main.py sim setup_climb:mid:0 --bot zem_zev
-uv run python main.py sim flare_plunge:mid_normal:0 --bot plunge
+uv run python main.py sim plunge:mid_normal:0 --bot plunge
 ```
 
 Selector format:
@@ -95,7 +95,7 @@ uv run python main.py bench \
 
 # Multi-level benchmark + reports (one selector per level/scenario spec)
   uv run python main.py bench \
-  flare_plunge \
+  plunge \
   flare_normal \
   flare_error \
   setup_downhill \
@@ -124,7 +124,27 @@ Default policy profile:
 
 - `flat`, `mountains`: `excluded`
 - `setup_climb`: `observe_only`
-- `flare_plunge`, `flare_normal`, `flare_error`, `setup_downhill`, `setup_flat`: `normal`
+- `plunge`, `flare_normal`, `flare_error`, `setup_downhill`, `setup_flat`: `normal`
+
+Repo shorthand:
+
+- `flare levels` means `flare_normal` + `flare_error`
+- `plunge` is a separate terminal/plunge benchmark level
+
+Focused benchmark-pack selectors also accept explicit group aliases:
+
+- `@flare` / `@flare_flight` -> `flare_normal`, `flare_error`
+- `@plunge` / `@terminal_plunge` -> `plunge`
+
+Example:
+
+```bash
+uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py \
+  --mode focused \
+  --selectors @flare \
+  --seed-spec 0-9 \
+  --baseline-ref main
+```
 
 ## Key options
 
@@ -243,7 +263,7 @@ Optional interval override (seconds):
 
 ```bash
   PYLANDER_BOT_PROFILE=1 PYLANDER_BOT_PROFILE_INTERVAL_S=2 \
-  uv run python main.py sim flare_plunge:mid_normal:0 --bot plunge
+  uv run python main.py sim plunge:mid_normal:0 --bot plunge
 ```
 
 Profiled timing covers passive pre-update work, bot update time, and total
