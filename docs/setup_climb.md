@@ -10,9 +10,9 @@
 
 Guidance note:
 
-- `pdg` handles climb with the same optimizer loop used on other levels.
-- There is currently no climb-specific trajectory shaping in `pdg`; climb is
-  a direct stress test of the generic setup controller.
+- `pdg` now routes climb through the same dedicated setup controller used by
+  `setup_flat` and `setup_downhill`.
+- `setup_climb` is a normal benchmark/gating level, not observe-only.
 
 ## Scenario design
 

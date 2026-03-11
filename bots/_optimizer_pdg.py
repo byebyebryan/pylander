@@ -41,6 +41,13 @@ class PDGOptimizerConfig:
     w_thrust_linear: float = 0.14
     w_overdrive_linear: float = 1.40
     w_overdrive_quadratic: float = 6.00
+    w_setup_projected_dx: float = 60.0
+    w_setup_target_y_cross: float = 55.0
+    w_setup_apex: float = 26.0
+    w_setup_angle: float = 22.0
+    w_late_thrust: float = 0.0
+    setup_angle_slope_min: float = 0.0
+    setup_angle_slope_max: float = 0.0
 
     # Altitude-adaptive reference profile (lateral-first then descend).
     ref_hold_frac_min: float = 0.0
@@ -120,6 +127,13 @@ class PDGOptimizer:
         self._vy_floor: cp.Parameter | None = None
         self._g_param: cp.Parameter | None = None
         self._x_tol: cp.Parameter | None = None
+        self._setup_t_cross_ref: cp.Parameter | None = None
+        self._setup_t_apex_ref: cp.Parameter | None = None
+        self._setup_cross_drop: cp.Parameter | None = None
+        self._setup_cross_vy_mag: cp.Parameter | None = None
+        self._setup_apex_drop: cp.Parameter | None = None
+        self._setup_apex_target: cp.Parameter | None = None
+        self._setup_apex_tol: cp.Parameter | None = None
 
         self._build_problem()
 
@@ -196,8 +210,16 @@ class PDGOptimizer:
         y_ref = cp.Parameter(n + 1)
         vy_floor = cp.Parameter()
         x_tol = cp.Parameter(nonneg=True)
+        setup_t_cross_ref = cp.Parameter(nonneg=True)
+        setup_t_apex_ref = cp.Parameter(nonneg=True)
+        setup_cross_drop = cp.Parameter(nonneg=True)
+        setup_cross_vy_mag = cp.Parameter(nonneg=True)
+        setup_apex_drop = cp.Parameter(nonneg=True)
+        setup_apex_target = cp.Parameter(nonneg=True)
+        setup_apex_tol = cp.Parameter(nonneg=True)
         thrust_norm = cp.Variable(n, nonneg=True)
         od_slack = cp.Variable(n, nonneg=True)
+        late_ramp = np.linspace(0.0, 1.0, n, dtype=float)
 
         constraints: list[cp.Expression] = [
             x[0] == x0,
@@ -230,6 +252,7 @@ class PDGOptimizer:
         upward_penalty = cp.sum_squares(cp.pos(vy[:-1]))
         descent_floor_penalty = cp.sum_squares(cp.pos(vy[:-1] - vy_floor))
         min_accel_soft = cp.sum_squares(cp.pos(a_min - ay))
+        late_thrust = cp.sum(cp.multiply(late_ramp, thrust_norm))
 
         terminal = (
             # Penalize only outside the pad corridor to avoid over-centering waste.
@@ -239,7 +262,7 @@ class PDGOptimizer:
             + cfg.w_terminal_vy * cp.square(vy[n] - target_vy)
         )
 
-        objective = cp.Minimize(
+        objective_expr = (
             terminal
             + (cfg.w_effort * effort)
             + (cfg.w_smooth * smooth)
@@ -252,9 +275,34 @@ class PDGOptimizer:
             + (cfg.w_altitude_progress * cp.sum(y[:-1] - target_y))
             + (cfg.w_downspeed_progress * cp.sum(vy[:-1]))
             + (cfg.w_thrust_linear * cp.sum(thrust_norm))
+            + (cfg.w_late_thrust * late_thrust)
             + (cfg.w_overdrive_linear * cp.sum(od_slack))
             + (cfg.w_overdrive_quadratic * cp.sum_squares(od_slack))
         )
+        if (
+            cfg.w_setup_projected_dx > 0.0
+            or cfg.w_setup_target_y_cross > 0.0
+            or cfg.w_setup_apex > 0.0
+            or cfg.w_setup_angle > 0.0
+        ):
+            y_cross_proxy = y[n] + (vy[n] * setup_t_cross_ref) - setup_cross_drop - target_y
+            projected_dx_proxy = target_x - x[n] - (vx[n] * setup_t_cross_ref)
+            apex_proxy = y[n] + (vy[n] * setup_t_apex_ref) - setup_apex_drop - target_y
+            vy_cross_down_proxy = setup_cross_vy_mag - vy[n]
+            apex_low = cp.square(cp.pos((setup_apex_target - setup_apex_tol) - apex_proxy))
+            apex_high = cp.square(cp.pos(apex_proxy - (setup_apex_target + setup_apex_tol)))
+            angle_shallow = cp.square(
+                cp.pos((cfg.setup_angle_slope_min * cp.abs(vx[n])) - vy_cross_down_proxy)
+            )
+            descend_guard = cp.square(cp.pos(-vy_cross_down_proxy))
+            objective_expr = (
+                objective_expr
+                + (cfg.w_setup_projected_dx * cp.square(projected_dx_proxy))
+                + (cfg.w_setup_target_y_cross * cp.square(y_cross_proxy))
+                + (cfg.w_setup_apex * (apex_low + apex_high))
+                + (cfg.w_setup_angle * (angle_shallow + descend_guard))
+            )
+        objective = cp.Minimize(objective_expr)
 
         self._problem = cp.Problem(objective, constraints)
 
@@ -282,6 +330,13 @@ class PDGOptimizer:
         self._vy_floor = vy_floor
         self._g_param = g_param
         self._x_tol = x_tol
+        self._setup_t_cross_ref = setup_t_cross_ref
+        self._setup_t_apex_ref = setup_t_apex_ref
+        self._setup_cross_drop = setup_cross_drop
+        self._setup_cross_vy_mag = setup_cross_vy_mag
+        self._setup_apex_drop = setup_apex_drop
+        self._setup_apex_target = setup_apex_target
+        self._setup_apex_tol = setup_apex_tol
 
     def solve(
         self,
@@ -305,6 +360,10 @@ class PDGOptimizer:
         warm_start: PDGPlan | None,
         terminal_x_tol: float | None = None,
         y_ref_override: list[float] | tuple[float, ...] | np.ndarray | None = None,
+        setup_t_cross_ref: float = 0.0,
+        setup_t_apex_ref: float = 0.0,
+        setup_apex_target: float = 0.0,
+        setup_apex_tol: float = 0.0,
     ) -> PDGPlan | None:
         if self._problem is None:
             return None
@@ -340,6 +399,17 @@ class PDGOptimizer:
         self._g_param.value = max(0.0, float(gravity_mag))
         x_tol = float(pad_half_width) if terminal_x_tol is None else float(terminal_x_tol)
         self._x_tol.value = max(0.0, x_tol)
+        self._setup_t_cross_ref.value = max(0.0, float(setup_t_cross_ref))
+        self._setup_t_apex_ref.value = max(0.0, float(setup_t_apex_ref))
+        self._setup_cross_drop.value = 0.5 * max(0.0, float(gravity_mag)) * max(
+            0.0, float(setup_t_cross_ref) * float(setup_t_cross_ref)
+        )
+        self._setup_cross_vy_mag.value = max(0.0, float(gravity_mag) * float(setup_t_cross_ref))
+        self._setup_apex_drop.value = 0.5 * max(0.0, float(gravity_mag)) * max(
+            0.0, float(setup_t_apex_ref) * float(setup_t_apex_ref)
+        )
+        self._setup_apex_target.value = max(0.0, float(setup_apex_target))
+        self._setup_apex_tol.value = max(0.0, float(setup_apex_tol))
 
         x_ref, y_ref_default = self._reference_profiles(
             x=float(x),

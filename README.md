@@ -123,8 +123,7 @@ level metadata from `benchmark_profile()`:
 Default policy profile:
 
 - `flat`, `mountains`: `excluded`
-- `setup_climb`: `observe_only`
-- `plunge`, `flare_normal`, `flare_error`, `setup_downhill`, `setup_flat`: `normal`
+- `plunge`, `flare_normal`, `flare_error`, `setup_downhill`, `setup_flat`, `setup_climb`: `normal`
 
 Repo shorthand:
 

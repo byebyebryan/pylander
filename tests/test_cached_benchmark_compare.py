@@ -108,6 +108,32 @@ def test_normal_crash_marks_notable_regression() -> None:
     assert len(report["global"]["crash"]["new_crashes"]) == 1
 
 
+def test_setup_climb_crash_now_gates_global_regressions() -> None:
+    baseline = {
+        "records": [
+            _record(level="setup_climb", scenario="mid", seed=0, state="landed", success=True, fuel=30.0),
+        ]
+    }
+    candidate = {
+        "records": [
+            _record(level="setup_climb", scenario="mid", seed=0, state="crashed", success=False, fuel=31.0),
+        ]
+    }
+    report = cached_bench._print_compare(
+        baseline_commit="base",
+        candidate_commit="cand",
+        baseline_payload=baseline,
+        candidate_payload=candidate,
+        level_policy={"setup_climb": "normal"},
+        bot="pdg",
+        crash_detail_limit=2,
+    )
+
+    assert report["notable_regression"] is True
+    assert len(report["global"]["crash"]["new_crashes"]) == 1
+    assert len(report["observation"]["crash"]["new_crashes"]) == 0
+
+
 def test_scenario_regressions_group_by_level_and_scenario() -> None:
     baseline = {
         "records": [

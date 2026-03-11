@@ -43,9 +43,10 @@ Defaults:
 Common `pdg` setup-shape tuning knobs for this level:
 
 - setup gate burn-end latch: `setup_gate_burn_start_thrust`, `setup_gate_idle_thrust_max`, `setup_gate_burn_end_settle_s`
-- setup burn taper/cut: `setup_burn_taper_*`, `setup_burn_cut_overshoot_*`
+- setup burn decisiveness: `setup_active_thrust_floor`, `setup_late_thrust_weight`
 - setup centering tolerance: `setup_center_tol_ratio`
-- setup apex shaping: `setup_apex_height_*`, `setup_apex_ref_blend`
+- setup apex shaping: `setup_apex_height_*`, `setup_gate_apex_tol_*`
+- setup descent corridor: `setup_descent_angle_deg_*`
 
 ## Commands
 

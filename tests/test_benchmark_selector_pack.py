@@ -21,7 +21,8 @@ def test_smoke_pack_uses_profile_policies() -> None:
     pack = selector_pack.build_selectors(mode="smoke")
     assert all(not item.startswith("flat") for item in pack.selectors)
     assert all(not item.startswith("mountains") for item in pack.selectors)
-    assert "setup_climb" in pack.observe_only_levels_effective
+    assert "setup_climb" not in pack.observe_only_levels_effective
+    assert pack.effective_level_policy["setup_climb"] == "normal"
     assert "flat" in pack.excluded_levels_effective
     assert "mountains" in pack.excluded_levels_effective
     assert len(pack.selectors) == 6

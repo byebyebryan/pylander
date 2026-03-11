@@ -59,9 +59,7 @@ class PDGSetupController(StageController):
         super().__init__(FlightStage.SETUP)
 
     def update(self, bot, ctx) -> StageTickResult:
-        if ctx.suggested_stage != self.stage:
-            return StageTickResult(next_stage=ctx.suggested_stage)
-        return StageTickResult(action=bot._run_pdg_stage(ctx=ctx, stage=self.stage))
+        return bot._run_setup_controller(ctx=ctx)
 
 
 class BallisticCoastController(StageController):

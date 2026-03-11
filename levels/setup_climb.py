@@ -37,8 +37,6 @@ class SetupClimbLevel(SetupTransferLevel):
     _default_scenario_name = _DEFAULT_SCENARIO
     _smoke_benchmark_scenarios = _SMOKE_BENCHMARK_SCENARIOS
     _quick_benchmark_scenarios = _QUICK_BENCHMARK_SCENARIOS
-    _benchmark_policy = "observe_only"
-
     def scenario_has_randomized_fields(self, _name: str | None = None) -> bool:
         return False
 

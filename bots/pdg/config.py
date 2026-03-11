@@ -23,14 +23,19 @@ class PDGConfig:
 
     # Attitude/allocator limits
     max_tilt: float = 0.78
+    setup_max_tilt: float = 1.05
     max_tilt_low_alt: float = 0.18
     max_tilt_low_alt_far: float = 0.34
     low_alt_tilt_alt: float = 20.0
     low_alt_tilt_dx: float = 12.0
     low_alt_tilt_vx: float = 2.4
     uphill_setup_dy_min: float = 20.0
-    uphill_setup_tilt_alt: float = 140.0
-    uphill_setup_tilt_max: float = 0.26
+    uphill_setup_tilt_alt: float = 260.0
+    uphill_setup_tilt_max: float = 0.30
+    uphill_setup_relaxed_dy_max: float = 300.0
+    uphill_setup_tilt_relaxed_max: float = 0.40
+    downhill_setup_dy_min: float = 300.0
+    downhill_setup_tilt_max: float = 1.18
     angle_rate: float = 2.4
     throttle_off_threshold_scale: float = 0.85
 
@@ -63,20 +68,21 @@ class PDGConfig:
     # Telemetry gates for focused launch/coast evals and phase tracking
     setup_gate_projected_dx_abs: float = 55.0
     setup_gate_projected_dx_target_ratio: float = 1.0
-    setup_gate_vx_track_abs: float = 3.8
-    setup_gate_vx_track_ratio: float = 0.18
-    setup_gate_vy_up_max: float = -1.0
-    setup_gate_shortfall_abs: float = 20.0
-    setup_gate_shortfall_ratio: float = 0.30
     setup_gate_idle_thrust_max: float = 0.03
     setup_gate_burn_start_thrust: float = 0.20
+    setup_gate_burn_start_thrust_near: float = 0.10
+    setup_gate_burn_start_thrust_far: float = 0.28
     setup_gate_burn_end_settle_s: float = 0.25
-    setup_burn_taper_start_abs: float = 72.0
-    setup_burn_taper_start_ratio: float = 1.30
-    setup_burn_taper_overshoot_abs: float = 120.0
-    setup_burn_taper_overshoot_ratio: float = 2.20
-    setup_burn_cut_overshoot_abs: float = 4.0
-    setup_burn_cut_overshoot_ratio: float = 0.08
+    setup_failure_cut_idle_s: float = 0.35
+    setup_burn_max_s: float = 8.75
+    setup_gate_apex_tol_abs: float = 18.0
+    setup_gate_apex_tol_ratio: float = 0.20
+    setup_active_thrust_floor: float = 0.70
+    setup_active_thrust_floor_near: float = 0.45
+    setup_active_thrust_floor_far: float = 0.72
+    setup_late_thrust_weight: float = 0.50
+    setup_distance_scale_near: float = 220.0
+    setup_distance_scale_far: float = 700.0
     touchdown_phase_altitude: float = 4.0
     touchdown_phase_speed: float = 2.5
     touchdown_phase_dx_ratio: float = 0.65
@@ -96,9 +102,12 @@ class PDGConfig:
     setup_center_tol_ratio: float = 0.20
     flare_center_tol_ratio: float = 1.0
     setup_apex_height_per_dx: float = 0.18
+    setup_apex_height_per_uphill_dy: float = 0.15
     setup_apex_height_min: float = 30.0
     setup_apex_height_max: float = 240.0
-    setup_apex_ref_blend: float = 0.45
+    setup_descent_angle_deg_min: float = 45.0
+    setup_descent_angle_deg_target: float = 55.0
+    setup_descent_angle_deg_max: float = 70.0
 
     # Launch-from-pad bootstrap when starting landed with a different target.
     launch_takeoff_clear_altitude: float = 10.0
