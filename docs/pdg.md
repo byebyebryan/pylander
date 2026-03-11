@@ -10,7 +10,7 @@ Implementation note:
 - `PDGBot` is a staged router over concrete guidance controllers.
 - Core planning, actuation, tracking, gate logic, and telemetry assembly live under `bots/pdg/`.
 - Phase tracking uses analytic ballistic projection against target geometry (target x/y) rather than terrain-impact sensing.
-- Setup/coast phases use stricter center-first flare-x tolerance and optional apex-shaped y-reference blending.
+- Setup now has a dedicated controller with its own burn/cut behavior and ballistic-shape objective.
 
 ## Naming
 
@@ -80,21 +80,16 @@ Each frame:
 5. allocate acceleration to thrust+angle with tilt/rate limits,
 6. fallback only when optimizer result is infeasible.
 
-For uphill transfers, setup planning remains generic:
+Setup planning remains generic across flat/downhill/climb, but it is now handled by a dedicated setup controller rather than the generic stage runner.
 
-- there is currently no climb-specific trajectory shaping;
-- climb behavior reflects the same generic setup/coast/flare loop used on
-  other levels.
+The setup solve targets a ballistic transfer at burn end:
 
-Reference path shaping now has two layers during setup:
+- center the projected target-y crossing (`projected_dx -> 0`),
+- raise the projected apex above target using `setup_apex_height_*`,
+- keep the final descent path inside a configured angle corridor,
+- encourage a strong early burn and a decisive cut instead of lingering trim thrust.
 
-- base profile from optimizer defaults (`_reference_profiles`),
-- setup override that blends a ballistic-like parabolic y-reference when `vy_up > 0`.
-
-The setup y-reference is parameterized by an apex-over-target target:
-
-- `apex_target = clamp(setup_apex_height_per_dx * |dx_anchor|, setup_apex_height_min, setup_apex_height_max)`
-- blend by `setup_apex_ref_blend`.
+The exact apex geometry ratio is not optimized directly. Setup uses a convexified terminal proxy derived from a frozen ballistic reference time each replan.
 
 Flare-x tolerance is also phase-specific:
 
@@ -130,7 +125,8 @@ PYLANDER_PDG_DEBUG_SETUP=1 uv run python main.py sim setup_flat:near:0 --bot pdg
 
 Goal-based eval boundary:
 
-- selector goal `setup` (for example `setup_downhill:mid:setup:0 --bot pdg`) -> early stop on the generic `setup_gate_done` milestone
+- selector goal `setup` (for example `setup_downhill:mid:setup:0 --bot pdg`) -> early stop at setup gate
+- setup-goal success is metric-gated: valid target-y solution, projected dx inside corridor, apex inside tolerance band, and impact angle inside the configured descent corridor
 
 ## Tuning knobs
 
@@ -139,7 +135,7 @@ Goal-based eval boundary:
 - setup gate latches on burn-end settle (reduces under-reporting during active burn):
   `setup_gate_burn_start_thrust`, `setup_gate_idle_thrust_max`,
   `setup_gate_burn_end_settle_s`
-- setup burn shaping before gate: `setup_burn_taper_*`, `setup_burn_cut_overshoot_*`
+- setup burn floor / decisiveness: `setup_active_thrust_floor`, `setup_late_thrust_weight`
 - flare-gate strictness: `flare_gate_*`
 
 Centering pressure by phase:
@@ -150,7 +146,8 @@ Centering pressure by phase:
 Trajectory shape controls:
 
 - `setup_apex_height_per_dx`, `setup_apex_height_min`, `setup_apex_height_max`
-- `setup_apex_ref_blend`
+- `setup_gate_apex_tol_abs`, `setup_gate_apex_tol_ratio`
+- `setup_descent_angle_deg_min`, `setup_descent_angle_deg_target`, `setup_descent_angle_deg_max`
 
 ## Compute cost
 

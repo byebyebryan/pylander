@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+from bots._ballistics import estimate_target_y_projection
 from bots._bot_math import finite_altitude
 from bots._optimizer_pdg import PDGPlan
+from bots.pdg.setup import (
+    apex_target_and_tolerance,
+    select_reference_times,
+)
 from core.bot import Sensors
 from core.config import GRAVITY
 
@@ -39,33 +44,41 @@ def solve_plan(
         phase=phase,
         alt=alt_guidance,
         vy_up=float(passive.vy_up),
+        dy=dy,
     )
     flare_x_tol = bot._phase_flare_x_tol(phase)
     y_ref_override = None
-    shape_blend = bot._shape_ref_blend_for_phase(phase)
-    if shape_blend > 1e-6 and float(passive.vy_up) > 0.0:
-        n = optimizer.horizon_steps
-        apex_dx = bot._shape_anchor_dx_abs if bot._shape_window_started else abs(dx)
-        apex_target = bot._shape_apex_target(apex_dx)
-        shape_ref = bot._shape_y_ref(
-            n=n,
-            x0=float(passive.x),
-            y0=float(passive.y),
-            target_x=target_x_plan,
-            target_y=target_y_plan,
-            apex_over_target=apex_target,
+    setup_t_cross_ref = 0.0
+    setup_t_apex_ref = 0.0
+    setup_apex_target = 0.0
+    setup_apex_tol = 0.0
+    if phase == "setup":
+        dx_anchor_abs, setup_t_apex_ref, setup_t_cross_ref = select_reference_times(
+            bot,
+            passive=passive,
+            dx=dx,
+            dy=dy,
+            plan=bot._plan,
         )
-        if shape_blend >= 1.0:
-            y_ref_override = shape_ref
-        else:
-            linear_ref = [
-                float(passive.y) + ((target_y_plan - float(passive.y)) * (i / max(1, n)))
-                for i in range(n + 1)
-            ]
-            y_ref_override = [
-                ((1.0 - shape_blend) * linear_ref[i]) + (shape_blend * shape_ref[i])
-                for i in range(n + 1)
-            ]
+        setup_apex_target, setup_apex_tol = apex_target_and_tolerance(
+            bot,
+            dx_anchor_abs=dx_anchor_abs,
+            dy=dy,
+        )
+        # Keep projected target-y crossing grounded in a descending ballistic solution.
+        if setup_t_cross_ref <= setup_t_apex_ref:
+            projection = estimate_target_y_projection(
+                dx=dx,
+                dy=dy,
+                vx=float(passive.vx),
+                vy_up=float(passive.vy_up),
+                x=float(passive.x),
+                y=float(passive.y),
+                min_t_fall=0.0,
+                gravity_mag=_GRAVITY_MAG,
+            )
+            if bool(projection.has_target_y_solution):
+                setup_t_cross_ref = max(setup_t_apex_ref + 0.05, float(projection.t_fall))
 
     plan = optimizer.solve(
         x=float(passive.x),
@@ -87,6 +100,10 @@ def solve_plan(
         warm_start=bot._plan,
         terminal_x_tol=flare_x_tol,
         y_ref_override=y_ref_override,
+        setup_t_cross_ref=setup_t_cross_ref,
+        setup_t_apex_ref=setup_t_apex_ref,
+        setup_apex_target=setup_apex_target,
+        setup_apex_tol=setup_apex_tol,
     )
     if plan is not None:
         bot._last_solve_ms = float(plan.solve_time_ms)

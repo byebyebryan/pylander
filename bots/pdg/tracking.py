@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 
 from bots._ballistics import BallisticProjection
+from bots.pdg.setup import projected_impact_angle_deg as _projected_impact_angle_deg
 from core.bot import Sensors, SetupGateMetrics
 from core.config import GRAVITY
 
@@ -44,13 +45,7 @@ def finalize_flare_entry_metrics(
     _capture_flare_entry_state(bot, passive=passive)
 
 
-def _projected_impact_angle_deg(*, vx: float, vy_up: float, t_fall: float) -> float:
-    vy_down = abs(float(vy_up) - (_GRAVITY_MAG * max(0.0, float(t_fall))))
-    vx_abs = abs(float(vx))
-    return math.degrees(math.atan2(vy_down, vx_abs))
-
-
-def _finalize_setup_gate_metrics(
+def finalize_setup_gate_metrics(
     bot,
     *,
     passive: Sensors,
@@ -65,9 +60,9 @@ def _finalize_setup_gate_metrics(
     )
     has_target_y_solution = bool(getattr(projection, "has_target_y_solution", True))
     projected_impact_dx = float(projection.projected_dx) if has_target_y_solution else None
-    projected_impact_angle_deg = None
+    impact_angle_deg = None
     if has_target_y_solution:
-        projected_impact_angle_deg = _projected_impact_angle_deg(
+        impact_angle_deg = _projected_impact_angle_deg(
             vx=float(passive.vx),
             vy_up=float(passive.vy_up),
             t_fall=float(projection.t_fall),
@@ -90,7 +85,7 @@ def _finalize_setup_gate_metrics(
     bot._setup_gate_projected_apex_over_target = apex_over_target
     bot._setup_gate_has_target_y_solution = has_target_y_solution
     bot._setup_gate_projected_impact_dx = projected_impact_dx
-    bot._setup_gate_projected_impact_angle_deg = projected_impact_angle_deg
+    bot._setup_gate_projected_impact_angle_deg = impact_angle_deg
     bot._setup_gate_burn_duration_s = burn_duration_s
     bot._setup_gate_burn_fuel_used = fuel_used
     bot._setup_gate_burn_avg_thrust_level = burn_avg_thrust_level
@@ -138,83 +133,21 @@ def refresh_stage_tracking(
     bot._last_projection_t_fall = t_fall
     bot._last_projection_has_target_y = has_target_y_solution
 
-    track_vx = dx / max(0.75, t_fall)
-    setup_dx_limit = max(
-        cfg.setup_gate_projected_dx_abs,
-        cfg.setup_gate_projected_dx_target_ratio * bot._last_target_half,
-    )
-    setup_vx_limit = max(
-        cfg.setup_gate_vx_track_abs,
-        cfg.setup_gate_vx_track_ratio * abs(track_vx),
-    )
-    shortfall_guard = max(
-        cfg.setup_gate_shortfall_abs,
-        cfg.setup_gate_shortfall_ratio * bot._last_target_half,
-    )
-    shortfall_metric = (
-        projected_dx * math.copysign(1.0, float(dx)) if abs(float(dx)) > 1e-3 else 0.0
-    )
-    not_falling_short = shortfall_metric <= shortfall_guard
-    not_overshooting_setup = shortfall_metric >= -shortfall_guard
     thrust_level = float(passive.thrust_level)
-    setup_ready_diag = (
-        abs(projected_dx) <= setup_dx_limit
-        and abs(float(passive.vx) - track_vx) <= setup_vx_limit
-        and float(passive.vy_up) <= cfg.setup_gate_vy_up_max
-        and not_falling_short
-        and not_overshooting_setup
-    )
-    if (not bot._setup_gate_done) and (not bot._flare_entry_done):
-        if (not bot._setup_burn_started) and (thrust_level >= cfg.setup_gate_burn_start_thrust):
-            bot._setup_burn_started = True
-            bot._setup_burn_idle_since = None
-            bot._debug_setup_print(
-                "burn_start "
-                f"t={bot._elapsed_time_s:6.2f} "
-                f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
-                f"thrust={thrust_level:5.2f}"
-            )
-        if bot._setup_burn_started:
-            if thrust_level <= cfg.setup_gate_idle_thrust_max:
-                if bot._setup_burn_idle_since is None:
-                    bot._setup_burn_idle_since = bot._elapsed_time_s
-                idle_elapsed = bot._elapsed_time_s - bot._setup_burn_idle_since
-                if idle_elapsed >= cfg.setup_gate_burn_end_settle_s:
-                    _finalize_setup_gate_metrics(
-                        bot,
-                        passive=passive,
-                        alt=alt,
-                        projection=projection,
-                    )
-                    bot._debug_setup_post_end_time = bot._elapsed_time_s + 4.0
-                    bot._debug_setup_print(
-                        "gate_latch_burn_end "
-                        f"t={bot._elapsed_time_s:6.2f} "
-                        f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
-                        f"proj_apex_over_target={bot._setup_gate_projected_apex_over_target:8.2f} "
-                        f"signed={shortfall_metric:8.2f} "
-                        f"thrust={thrust_level:5.2f}"
-                    )
-            else:
-                bot._setup_burn_idle_since = None
-            if (
-                bot._debug_setup
-                and (bot._elapsed_time_s - bot._debug_setup_last_print_t) >= 0.25
-            ):
-                idle_elapsed = 0.0
-                if bot._setup_burn_idle_since is not None:
-                    idle_elapsed = bot._elapsed_time_s - bot._setup_burn_idle_since
-                bot._debug_setup_last_print_t = bot._elapsed_time_s
-                bot._debug_setup_print(
-                    "setup_track "
-                    f"t={bot._elapsed_time_s:6.2f} "
-                    f"ph={bot._active_phase:8s} "
-                    f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
-                    f"signed={shortfall_metric:8.2f} "
-                    f"thrust={thrust_level:5.2f} "
-                    f"ready={int(setup_ready_diag)} "
-                    f"idle_elapsed={idle_elapsed:5.2f}"
-                )
+    if (
+        bot._debug_setup
+        and bot._active_phase == "setup"
+        and (bot._elapsed_time_s - bot._debug_setup_last_print_t) >= 0.25
+    ):
+        bot._debug_setup_last_print_t = bot._elapsed_time_s
+        bot._debug_setup_print(
+            "setup_track "
+            f"t={bot._elapsed_time_s:6.2f} "
+            f"ph={bot._active_phase:8s} "
+            f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
+            f"has_target={int(has_target_y_solution)} "
+            f"thrust={thrust_level:5.2f}"
+        )
 
     speed = math.hypot(float(passive.vx), float(passive.vy_up))
     touchdown_dx_limit = max(12.0, cfg.touchdown_phase_dx_ratio * bot._last_target_half)
@@ -231,8 +164,6 @@ def refresh_stage_tracking(
     elif bot._setup_gate_done:
         if bot._setup_gate_spawn_primed:
             next_stage = "coast"
-        elif bot._uphill_transfer or (not setup_ready_diag):
-            next_stage = "setup"
         else:
             next_stage = "coast"
     bot._stage_tracking_next = next_stage
@@ -250,7 +181,6 @@ def refresh_stage_tracking(
             f"t={bot._elapsed_time_s:6.2f} "
             f"ph={next_stage:8s} "
             f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
-            f"signed={shortfall_metric:8.2f} "
             f"thrust={float(passive.thrust_level):5.2f}"
         )
     return next_stage

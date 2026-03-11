@@ -139,7 +139,7 @@ def apply_bot_eval_to_result(
             if not isinstance(key, str):
                 continue
             result[str(key)] = value
-    if eval_goal == EVAL_GOAL_SETUP and decision is not None and decision.success is True:
+    if eval_goal == EVAL_GOAL_SETUP and bool(result.get("setup_gate_done")):
         _copy_setup_gate_result_to_setup_goal(result)
 
     if eval_goal != EVAL_GOAL_LANDING:
@@ -148,7 +148,10 @@ def apply_bot_eval_to_result(
             result["failure_mode"] = "none"
         else:
             result["success"] = False
-            result["failure_mode"] = "goal_not_reached"
+            if decision is not None and decision.failure_mode is not None:
+                result["failure_mode"] = str(decision.failure_mode)
+            else:
+                result["failure_mode"] = "goal_not_reached"
             result.setdefault("eval_end_reason", "goal_not_reached")
         return
 

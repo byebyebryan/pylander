@@ -171,12 +171,16 @@ def test_pdg_setup_goal_ends_headless_run_early() -> None:
     result = game.run(print_freq=0, max_time=120.0)
     assert result["eval_goal"] == "setup"
     assert result["eval_early_end"] is True
-    assert result["success"] is True
-    assert result["failure_mode"] == "none"
     assert result["setup_gate_done"] is True
     assert result["setup_goal_done"] is True
     assert result["setup_goal_has_target_y_solution"] is True
     assert result["setup_goal_projected_impact_angle_deg"] is not None
+    if result["success"]:
+        assert result["failure_mode"] == "none"
+        assert result["setup_quality_verdict"] == "pass"
+    else:
+        assert result["failure_mode"] == "setup_quality_failed"
+        assert result["setup_quality_verdict"] in {"dx", "apex", "angle", "no_target_y_solution"}
 
 
 def test_non_landing_goal_without_decision_fails_goal_not_reached() -> None:

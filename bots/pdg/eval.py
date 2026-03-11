@@ -4,6 +4,7 @@ from core.bot import BotEvalDecision
 from core.eval_goals import EVAL_GOAL_SETUP
 
 from bots._bot_math import clamp
+from bots.pdg.setup import apex_target_and_tolerance, transfer_dy_for_setup
 
 
 def percentile(values: list[float], p: float) -> float:
@@ -50,7 +51,13 @@ def reset_evaluation_state(
     bot._setup_phase_thrust_integral = 0.0
     bot._setup_phase_fuel_start = None
     bot._setup_burn_started = False
+    bot._setup_burn_start_time = None
     bot._setup_burn_idle_since = None
+    bot._setup_cut_latched = False
+    bot._setup_settle_start_time = None
+    bot._setup_quality_verdict = None
+    bot._setup_gate_quality_pass = None
+    bot._setup_gate_quality_verdict = None
     bot._flare_entry_done = False
     bot._flare_entry_time = None
     bot._flare_entry_altitude = None
@@ -118,6 +125,7 @@ def build_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | None]
         "flare_gate_latest_safe_margin_s": bot._flare_gate_latest_safe_margin_s,
         "flare_gate_required_accel_ratio": bot._flare_gate_required_accel_ratio,
         "fallback_frames": bot._fallback_frames,
+        "setup_quality_verdict": bot._setup_gate_quality_verdict or bot._setup_quality_verdict,
         "shape_apex_error": shape_apex_error,
         "shape_curve_rmse": shape_curve_rmse,
         "shape_projected_dx_abs_mean": shape_projected_dx_abs_mean,
@@ -145,10 +153,62 @@ def build_evaluation_decision(bot) -> BotEvalDecision | None:
         return None
     if not bot._setup_gate_done:
         return None
+    dx_anchor_abs = bot._shape_anchor_dx_abs if bot._shape_anchor_dx_abs > 0.0 else 0.0
+    raw_gate_y = getattr(bot, "_setup_gate_y", None)
+    gate_y = float(raw_gate_y) if raw_gate_y is not None else float(bot._last_target_y)
+    transfer_dy = transfer_dy_for_setup(bot, dy=float(bot._last_target_y) - gate_y)
+    descending_transfer = transfer_dy < 0.0
+    apex_target, apex_tolerance = apex_target_and_tolerance(
+        bot,
+        dx_anchor_abs=dx_anchor_abs,
+        dy=float(bot._last_target_y) - gate_y,
+    )
+    dx_limit = max(
+        float(bot._cfg.setup_gate_projected_dx_abs),
+        float(bot._cfg.setup_gate_projected_dx_target_ratio) * float(bot._last_target_half),
+    )
+    has_target_y = bool(bot._setup_gate_has_target_y_solution)
+    projected_dx = bot._setup_gate_projected_dx
+    apex_over_target = bot._setup_gate_projected_apex_over_target
+    impact_angle = bot._setup_gate_projected_impact_angle_deg
+    verdict = "pass"
+    success = True
+    if not has_target_y:
+        verdict = "no_target_y_solution"
+        success = False
+    elif projected_dx is None or abs(float(projected_dx)) > dx_limit:
+        verdict = "dx"
+        success = False
+    elif apex_over_target is None or abs(float(apex_over_target) - apex_target) > apex_tolerance:
+        verdict = "apex"
+        success = False
+    elif impact_angle is None:
+        verdict = "angle"
+        success = False
+    elif float(impact_angle) < float(bot._cfg.setup_descent_angle_deg_min):
+        verdict = "angle"
+        success = False
+    elif (not descending_transfer) and float(impact_angle) > float(
+        bot._cfg.setup_descent_angle_deg_max
+    ):
+        verdict = "angle"
+        success = False
+    bot._setup_gate_quality_pass = success
+    bot._setup_gate_quality_verdict = verdict
+    metrics = {"setup_quality_verdict": verdict}
+    if success:
+        metrics["setup_quality_pass"] = True
+        return BotEvalDecision(
+            should_end=True,
+            success=True,
+            failure_mode="none",
+            end_reason="goal_reached",
+            metrics=metrics,
+        )
     return BotEvalDecision(
         should_end=True,
-        success=True,
-        failure_mode="none",
-        end_reason="goal_reached",
-        metrics={},
+        success=False,
+        failure_mode="setup_quality_failed",
+        end_reason="setup_quality_failed",
+        metrics=metrics,
     )

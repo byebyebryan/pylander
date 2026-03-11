@@ -32,17 +32,23 @@ from bots.pdg.eval import (
 )
 from bots.pdg.gate import evaluate_flare_gate as _evaluate_flare_gate_impl
 from bots.pdg.planner import solve_plan as _solve_plan_impl
+from bots.pdg.setup import (
+    descent_angle_slope_bounds,
+    evaluate_setup_quality as _evaluate_setup_quality_impl,
+)
 from bots.pdg.stages import (
     BallisticCoastController,
     FlightStage,
     PDGFlareController,
     PDGSetupController,
     StageController,
+    StageTickResult,
     TakeoffBootstrapController,
     TouchdownBrakeController,
 )
 from bots.pdg.tracking import (
     apply_setup_gate_metrics as _apply_setup_gate_metrics_impl,
+    finalize_setup_gate_metrics as _finalize_setup_gate_metrics_impl,
     finalize_flare_entry_metrics as _finalize_flare_entry_metrics_impl,
     maybe_start_shape_window as _maybe_start_shape_window_impl,
     refresh_stage_tracking as _refresh_stage_tracking_impl,
@@ -88,15 +94,9 @@ class PDGBot(Bot):
         super().__init__()
         self._bot_name = "pdg"
         self._cfg = PDGConfig()
-        self._optimizer_setup = PDGOptimizer(
-            PDGOptimizerConfig(
-                horizon_steps=36,
-                w_terminal_x=48.0,
-                w_path_x=0.09,
-                w_path_y=0.025,
-            )
-        )
-        self._optimizer_flare = PDGOptimizer(PDGOptimizerConfig(horizon_steps=28))
+        self._optimizer_setup = self._build_setup_optimizer(uphill=False)
+        self._optimizer_setup_uphill = self._build_setup_optimizer(uphill=True)
+        self._optimizer_flare = self._build_flare_optimizer()
 
         self._behavior = "pdg"
         self._prev_angle_cmd = 0.0
@@ -135,6 +135,47 @@ class PDGBot(Bot):
         _reset_evaluation_state_impl(self, clear_last_flight_snapshot=True)
 
         self.set_behavior(behavior)
+
+    def _build_setup_optimizer(self, *, uphill: bool) -> PDGOptimizer:
+        angle_slope_min, angle_slope_max = descent_angle_slope_bounds(self)
+        if uphill:
+            w_projected_dx = 82.0
+            w_target_y_cross = 76.0
+            w_apex = 42.0
+            w_angle = 24.0
+        else:
+            w_projected_dx = 120.0
+            w_target_y_cross = 55.0
+            w_apex = 24.0
+            w_angle = 32.0
+        return PDGOptimizer(
+            PDGOptimizerConfig(
+                horizon_steps=36,
+                w_terminal_x=48.0,
+                w_path_x=0.09,
+                w_path_y=0.025,
+                w_setup_projected_dx=w_projected_dx,
+                w_setup_target_y_cross=w_target_y_cross,
+                w_setup_apex=w_apex,
+                w_setup_angle=w_angle,
+                w_late_thrust=float(self._cfg.setup_late_thrust_weight),
+                setup_angle_slope_min=angle_slope_min,
+                setup_angle_slope_max=angle_slope_max,
+            )
+        )
+
+    @staticmethod
+    def _build_flare_optimizer() -> PDGOptimizer:
+        return PDGOptimizer(
+            PDGOptimizerConfig(
+                horizon_steps=28,
+                w_setup_projected_dx=0.0,
+                w_setup_target_y_cross=0.0,
+                w_setup_apex=0.0,
+                w_setup_angle=0.0,
+                w_late_thrust=0.0,
+            )
+        )
 
     def set_behavior(self, behavior: str) -> None:
         key = str(behavior).strip().lower().replace("-", "_")
@@ -225,6 +266,9 @@ class PDGBot(Bot):
                     f"pdg config key '{key}' has unsupported type for override"
                 )
         self._cfg = replace(self._cfg, **patch)
+        self._optimizer_setup = self._build_setup_optimizer(uphill=False)
+        self._optimizer_setup_uphill = self._build_setup_optimizer(uphill=True)
+        self._optimizer_flare = self._build_flare_optimizer()
 
     def _reset_state(self) -> None:
         self._prev_angle_cmd = 0.0
@@ -404,20 +448,23 @@ class PDGBot(Bot):
         phase: str | None = None,
     ) -> float:
         cfg = self._cfg
+        if phase == "setup":
+            tilt = cfg.setup_max_tilt
+            if float(dy) <= -cfg.downhill_setup_dy_min:
+                tilt = max(tilt, cfg.downhill_setup_tilt_max)
+            if float(dy) >= cfg.uphill_setup_dy_min and alt <= cfg.uphill_setup_tilt_alt:
+                uphill_tilt_max = cfg.uphill_setup_tilt_max
+                if float(dy) <= cfg.uphill_setup_relaxed_dy_max:
+                    uphill_tilt_max = max(uphill_tilt_max, cfg.uphill_setup_tilt_relaxed_max)
+                tilt = min(tilt, uphill_tilt_max)
+            return tilt
         if alt < cfg.low_alt_tilt_alt:
             if abs(dx) <= cfg.low_alt_tilt_dx and abs(vx) <= cfg.low_alt_tilt_vx:
                 tilt = cfg.max_tilt_low_alt
             else:
                 tilt = cfg.max_tilt_low_alt_far
-        else:
-            tilt = cfg.max_tilt
-        if (
-            phase == "setup"
-            and float(dy) >= cfg.uphill_setup_dy_min
-            and alt <= cfg.uphill_setup_tilt_alt
-        ):
-            tilt = min(tilt, cfg.uphill_setup_tilt_max)
-        return tilt
+            return tilt
+        return cfg.max_tilt
 
     def _phase_flare_x_tol(self, phase: str) -> float:
         cfg = self._cfg
@@ -433,6 +480,12 @@ class PDGBot(Bot):
             float(cfg.setup_apex_height_min),
             float(cfg.setup_apex_height_max),
         )
+
+    def _setup_distance_alpha(self, dx_abs: float) -> float:
+        cfg = self._cfg
+        near = float(cfg.setup_distance_scale_near)
+        far = max(near + 1.0, float(cfg.setup_distance_scale_far))
+        return clamp((max(0.0, float(dx_abs)) - near) / (far - near), 0.0, 1.0)
 
     def _shape_y_ref(
         self,
@@ -459,9 +512,6 @@ class PDGBot(Bot):
         return y_ref
 
     def _shape_ref_blend_for_phase(self, phase: str) -> float:
-        cfg = self._cfg
-        if phase == "setup":
-            return clamp(float(cfg.setup_apex_ref_blend), 0.0, 1.0)
         return 0.0
 
     def _plan_index(self) -> int:
@@ -477,8 +527,11 @@ class PDGBot(Bot):
         phase: str,
         alt: float,
         vy_up: float,
+        dy: float = 0.0,
     ) -> PDGOptimizer:
         if phase == "setup":
+            if float(dy) >= float(self._cfg.uphill_setup_dy_min):
+                return self._optimizer_setup_uphill
             return self._optimizer_setup
         if phase in ("flare", "touchdown"):
             return self._optimizer_flare
@@ -723,6 +776,174 @@ class PDGBot(Bot):
             passive=passive,
         )
 
+    def _evaluate_setup_quality(
+        self,
+        *,
+        passive: Sensors,
+        dx: float,
+        dy: float,
+        projection: BallisticProjection,
+    ):
+        dx_anchor_abs = self._shape_anchor_dx_abs if self._shape_window_started else abs(float(dx))
+        return _evaluate_setup_quality_impl(
+            self,
+            passive=passive,
+            dx=dx,
+            dy=dy,
+            projection=projection,
+            dx_anchor_abs=dx_anchor_abs,
+        )
+
+    def _run_setup_controller(
+        self,
+        *,
+        ctx: UpdateContext,
+    ) -> StageTickResult:
+        quality = self._evaluate_setup_quality(
+            passive=ctx.passive,
+            dx=ctx.dx,
+            dy=ctx.dy,
+            projection=ctx.projection,
+        )
+        self._setup_quality_verdict = quality.verdict
+
+        if self._setup_cut_latched:
+            settle_start = self._setup_settle_start_time or self._elapsed_time_s
+            action = self._command_passive_coast(dt=ctx.dt, passive=ctx.passive)
+            action.status = f"pdg settle/setup {quality.verdict}"
+            self._set_display_state(mode="passive", phase="setup", summary=f"cut {quality.verdict}")
+            if (self._elapsed_time_s - settle_start) >= float(self._cfg.setup_gate_burn_end_settle_s):
+                _finalize_setup_gate_metrics_impl(
+                    self,
+                    passive=ctx.passive,
+                    alt=ctx.alt,
+                    projection=ctx.projection,
+                )
+                self._setup_gate_quality_pass = bool(quality.passed)
+                self._setup_gate_quality_verdict = quality.verdict
+                self._debug_setup_post_end_time = self._elapsed_time_s + 4.0
+                return StageTickResult(action=action, next_stage=FlightStage.COAST)
+            return StageTickResult(action=action)
+
+        action = self._run_pdg_stage(ctx=ctx, stage=FlightStage.SETUP)
+        planner_target_thrust = float(action.target_thrust)
+        setup_cut_thrust = float(self._cfg.setup_gate_burn_start_thrust)
+        setup_thrust_floor_ratio = float(self._cfg.setup_active_thrust_floor)
+        if float(ctx.dy) >= float(self._cfg.uphill_setup_dy_min):
+            dx_anchor_abs = self._shape_anchor_dx_abs if self._shape_window_started else abs(float(ctx.dx))
+            distance_alpha = self._setup_distance_alpha(dx_anchor_abs)
+            setup_cut_thrust = (
+                ((1.0 - distance_alpha) * float(self._cfg.setup_gate_burn_start_thrust_near))
+                + (distance_alpha * float(self._cfg.setup_gate_burn_start_thrust_far))
+            )
+            setup_thrust_floor_ratio = (
+                ((1.0 - distance_alpha) * float(self._cfg.setup_active_thrust_floor_near))
+                + (distance_alpha * float(self._cfg.setup_active_thrust_floor_far))
+            )
+        if (not quality.passed) and abs(float(ctx.dx)) > 1e-3:
+            self._setup_burn_started = True
+            self._setup_burn_idle_since = None
+            if self._setup_burn_start_time is None:
+                self._setup_burn_start_time = self._elapsed_time_s
+        if self._setup_burn_started and (not quality.passed):
+            burn_elapsed = self._elapsed_time_s - float(self._setup_burn_start_time or self._elapsed_time_s)
+            uphill_under_apex = (
+                float(ctx.dy) >= float(self._cfg.uphill_setup_dy_min)
+                and float(quality.projected_apex_over_target)
+                < (float(quality.apex_target) - float(quality.apex_tolerance))
+                and (
+                    quality.projected_dx is None
+                    or (float(quality.projected_dx) * float(ctx.dx)) >= 0.0
+                )
+            )
+            if quality.verdict != "no_target_y_solution" and not uphill_under_apex:
+                if (
+                    planner_target_thrust < setup_cut_thrust
+                    and burn_elapsed >= 0.75
+                ):
+                    self._setup_cut_latched = True
+                    self._setup_settle_start_time = self._elapsed_time_s
+                    self._setup_gate_quality_pass = False
+                    self._setup_gate_quality_verdict = quality.verdict
+                    settle_action = self._command_passive_coast(dt=ctx.dt, passive=ctx.passive)
+                    settle_action.status = f"pdg settle/setup {quality.verdict}"
+                    self._set_display_state(
+                        mode="passive",
+                        phase="setup",
+                        summary=f"cut {quality.verdict}",
+                    )
+                    return StageTickResult(action=settle_action)
+                self._setup_burn_idle_since = None
+            else:
+                if (
+                    planner_target_thrust < setup_cut_thrust
+                    and burn_elapsed >= 0.75
+                ):
+                    if self._setup_burn_idle_since is None:
+                        self._setup_burn_idle_since = self._elapsed_time_s
+                else:
+                    self._setup_burn_idle_since = None
+                idle_elapsed = 0.0
+                if self._setup_burn_idle_since is not None:
+                    idle_elapsed = self._elapsed_time_s - float(self._setup_burn_idle_since)
+                if (
+                    burn_elapsed >= float(self._cfg.setup_burn_max_s)
+                    or (
+                        self._setup_burn_idle_since is not None
+                        and idle_elapsed >= float(self._cfg.setup_failure_cut_idle_s)
+                    )
+                ):
+                    self._setup_cut_latched = True
+                    self._setup_settle_start_time = self._elapsed_time_s
+                    self._setup_gate_quality_pass = False
+                    self._setup_gate_quality_verdict = quality.verdict
+                    settle_action = self._command_passive_coast(dt=ctx.dt, passive=ctx.passive)
+                    settle_action.status = f"pdg settle/setup {quality.verdict}"
+                    self._set_display_state(
+                        mode="passive",
+                        phase="setup",
+                        summary=f"cut {quality.verdict}",
+                    )
+                    return StageTickResult(action=settle_action)
+            thrust_floor = min(
+                float(ctx.max_throttle),
+                setup_thrust_floor_ratio * float(ctx.max_throttle),
+            )
+            if planner_target_thrust < thrust_floor:
+                action.target_thrust = thrust_floor
+            self._thrust_enabled = True
+
+        if quality.passed and self._setup_burn_started:
+            self._setup_cut_latched = True
+            self._setup_settle_start_time = self._elapsed_time_s
+            self._setup_gate_quality_pass = True
+            self._setup_gate_quality_verdict = quality.verdict
+            settle_action = self._command_passive_coast(dt=ctx.dt, passive=ctx.passive)
+            settle_action.status = "pdg settle/setup pass"
+            self._set_display_state(mode="passive", phase="setup", summary="cut pass")
+            return StageTickResult(action=settle_action)
+
+        action.status = f"pdg opt/setup {quality.verdict}"
+        if self._debug_setup and (self._elapsed_time_s - self._debug_setup_last_print_t) >= 0.24:
+            self._debug_setup_last_print_t = self._elapsed_time_s
+            self._debug_setup_print(
+                "setup_cmd "
+                f"t={self._elapsed_time_s:6.2f} "
+                f"cmd_thrust={float(action.target_thrust):5.2f} "
+                f"cmd_angle={math.degrees(float(action.target_angle)):6.2f} "
+                f"q={quality.verdict}"
+            )
+        self._set_display_state(
+            mode="opt",
+            phase="setup",
+            summary=(
+                f"dx={stable(ctx.dx, 1):.1f} "
+                f"pdx={stable(float(ctx.projection.projected_dx), 1):.1f} "
+                f"q={quality.verdict}"
+            ),
+        )
+        return StageTickResult(action=action)
+
     def _transition_to(self, stage: FlightStage, ctx: UpdateContext | None) -> None:
         current = getattr(self, "_active_stage", None)
         if current == stage:
@@ -748,6 +969,11 @@ class PDGBot(Bot):
             self._plan_elapsed = 0.0
             self._replan_timer = 0.0
             self._fallback_steps_remaining = int(self._cfg.fallback_hold_steps)
+        if stage == FlightStage.SETUP:
+            self._setup_cut_latched = False
+            self._setup_settle_start_time = None
+            self._setup_quality_verdict = None
+            self._setup_burn_start_time = None
         if stage in self._controllers:
             self._controllers[stage].enter(self, ctx)
 

@@ -157,3 +157,32 @@ def test_apply_bot_eval_to_result_copies_setup_gate_metrics_into_setup_goal() ->
     assert result["setup_goal_projected_impact_angle_deg"] == 58.0
     assert result["setup_goal_fuel_consumed"] == 19.0
     assert result["setup_goal_burn_avg_thrust_level"] == 0.87
+
+
+def test_apply_bot_eval_to_result_preserves_setup_gate_metrics_on_failure() -> None:
+    result: dict[str, object] = {
+        "setup_gate_done": True,
+        "setup_gate_time": 4.0,
+        "setup_gate_projected_dx": 120.0,
+    }
+    decision = BotEvalDecision(
+        should_end=True,
+        success=False,
+        failure_mode="setup_quality_failed",
+        end_reason="setup_quality_failed",
+        metrics={"setup_quality_verdict": "dx"},
+    )
+
+    apply_bot_eval_to_result(
+        result=result,
+        eval_goal="setup",
+        decision=decision,
+    )
+
+    assert result["eval_early_end"] is True
+    assert result["failure_mode"] == "setup_quality_failed"
+    assert result["eval_end_reason"] == "setup_quality_failed"
+    assert result["setup_quality_verdict"] == "dx"
+    assert result["setup_goal_done"] is True
+    assert result["setup_goal_time"] == 4.0
+    assert result["setup_goal_projected_dx"] == 120.0
