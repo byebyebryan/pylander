@@ -475,6 +475,139 @@ def _draw_target(ax, *, target: dict[str, float | str | None] | None) -> None:
         )
 
 
+def _spatial_limits_with_target(
+    ctx: _PlotContext,
+    *,
+    target: dict[str, float | str | None] | None,
+    extra_points: list[tuple[float, float]] | None = None,
+) -> tuple[float, float, float, float]:
+    min_x = float(ctx.min_x)
+    max_x = float(ctx.max_x)
+    lower_y = float(ctx.lower_y)
+    upper_y = float(ctx.upper_y)
+    if target is not None:
+        try:
+            target_x = float(target.get("x", 0.0) or 0.0)
+            target_y = float(target.get("y", 0.0) or 0.0)
+            target_size = abs(float(target.get("size", 0.0) or 0.0))
+        except (TypeError, ValueError):
+            target_x = 0.0
+            target_y = 0.0
+            target_size = 0.0
+
+        half_width = max(18.0, 0.5 * target_size)
+        cap_height = max(10.0, half_width * 0.18)
+        x_pad = max(12.0, 0.20 * half_width)
+        y_pad = max(12.0, 0.35 * cap_height)
+        min_x = min(min_x, target_x - half_width - x_pad)
+        max_x = max(max_x, target_x + half_width + x_pad)
+        lower_y = min(lower_y, target_y - cap_height - y_pad)
+        upper_y = max(upper_y, target_y + cap_height + y_pad)
+    if extra_points:
+        point_x_pad = max(8.0, 0.02 * max(max_x - min_x, 1.0))
+        point_y_pad = max(8.0, 0.03 * max(upper_y - lower_y, 1.0))
+        for point_x, point_y in extra_points:
+            min_x = min(min_x, float(point_x) - point_x_pad)
+            max_x = max(max_x, float(point_x) + point_x_pad)
+            lower_y = min(lower_y, float(point_y) - point_y_pad)
+            upper_y = max(upper_y, float(point_y) + point_y_pad)
+    return min_x, max_x, lower_y, upper_y
+
+
+def _curve_apex_point(xs: list[float], ys: list[float]) -> tuple[float, float] | None:
+    if not xs or not ys:
+        return None
+    count = min(len(xs), len(ys))
+    if count < 3:
+        return None
+    apex_idx = max(range(count), key=lambda idx: float(ys[idx]))
+    if apex_idx <= 0 or apex_idx >= count - 1:
+        return None
+    apex_y = float(ys[apex_idx])
+    rise_eps = 1e-6
+    has_climb = any((apex_y - float(y_val)) > rise_eps for y_val in ys[:apex_idx])
+    has_descent = any((apex_y - float(y_val)) > rise_eps for y_val in ys[apex_idx + 1 : count])
+    if not (has_climb and has_descent):
+        return None
+    return float(xs[apex_idx]), apex_y
+
+
+def _projected_apex_point(
+    ctx: _PlotContext,
+    *,
+    target: dict[str, float | str | None] | None,
+    events: list[dict[str, float | str | None]] | None = None,
+    gravity_mag: float = 9.8,
+) -> tuple[float, float] | None:
+    if target is None:
+        return None
+    try:
+        target_x = float(target.get("x", 0.0) or 0.0)
+        target_y = float(target.get("y", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return None
+    state_x = float(ctx.xs[-1]) if ctx.xs else 0.0
+    state_y = float(ctx.ys[-1]) if ctx.ys else 0.0
+    state_vx = float(ctx.vxs[-1]) if ctx.vxs else 0.0
+    state_vy = float(ctx.vys[-1]) if ctx.vys else 0.0
+    for event in reversed(list(events or [])):
+        try:
+            event_x = float(event.get("x"))  # type: ignore[arg-type]
+            event_y = float(event.get("y"))  # type: ignore[arg-type]
+            event_vx = float(event.get("vx"))  # type: ignore[arg-type]
+            event_vy = float(event.get("vy_up"))  # type: ignore[arg-type]
+        except (TypeError, ValueError):
+            continue
+        state_x = event_x
+        state_y = event_y
+        state_vx = event_vx
+        state_vy = event_vy
+        break
+    curve_xs, curve_ys, _has_target_y_solution = _ballistic_curve_from_state(
+        x=state_x,
+        y=state_y,
+        vx=state_vx,
+        vy_up=state_vy,
+        target_x=target_x,
+        target_y=target_y,
+        gravity_mag=gravity_mag,
+    )
+    return _curve_apex_point(curve_xs, curve_ys)
+
+
+def _draw_apex_marker(
+    ax,
+    *,
+    point: tuple[float, float] | None,
+    label: str,
+    color: str,
+) -> None:
+    if point is None:
+        return
+    apex_x, apex_y = point
+    ax.scatter(
+        [apex_x],
+        [apex_y],
+        s=42.0,
+        marker="^",
+        facecolors="#ffffff",
+        edgecolors=color,
+        linewidths=1.1,
+        alpha=0.98,
+        zorder=8,
+        label=label,
+    )
+    ax.annotate(
+        label,
+        xy=(apex_x, apex_y),
+        xytext=(5, 7),
+        textcoords="offset points",
+        fontsize=7,
+        color=color,
+        zorder=9,
+    )
+
+
 def _vector_sample_indices(sample_times: list[float]) -> list[int]:
     if len(sample_times) <= 1:
         return [0]
@@ -637,16 +770,24 @@ def _draw_spatial_common(
     ctx: _PlotContext,
     events,
     target,
+    extra_points: list[tuple[float, float]] | None = None,
     title: str,
     legend_ax=None,
     show_xlabel: bool = True,
 ) -> None:
     _draw_events(ax, events=events)
     _draw_target(ax, target=target)
-    ax.set_xlim(ctx.min_x, ctx.max_x)
-    ax.set_ylim(ctx.lower_y, ctx.upper_y)
+    min_x, max_x, lower_y, upper_y = _spatial_limits_with_target(
+        ctx,
+        target=target,
+        extra_points=extra_points,
+    )
+    ax.set_xlim(min_x, max_x)
+    ax.set_ylim(lower_y, upper_y)
     ax.set_aspect("equal", adjustable="box")
-    ax.set_anchor("C" if _is_tall_spatial(ctx.span_x, ctx.span_y) else "W")
+    span_x = max_x - min_x
+    span_y = upper_y - lower_y
+    ax.set_anchor("C" if _is_tall_spatial(span_x, span_y) else "W")
     ax.set_xlabel("x (world units)" if show_xlabel else "")
     ax.set_ylabel("y (world units)")
     ax.set_title(title, pad=10.0)
@@ -702,12 +843,18 @@ def _draw_spatial_panel(
         else fig.colorbar(lc, ax=ax, pad=0.01)
     )
     cbar.set_label(cbar_label)
+    actual_apex = _curve_apex_point(ctx.xs, ctx.ys)
+    projected_apex = _projected_apex_point(ctx, target=target, events=events)
+    _draw_apex_marker(ax, point=actual_apex, label="apex", color="#1b263b")
+    _draw_apex_marker(ax, point=projected_apex, label="projected apex", color="#cc0000")
+    extra_points = [point for point in (actual_apex, projected_apex) if point is not None]
 
     _draw_spatial_common(
         ax,
         ctx=ctx,
         events=events,
         target=target,
+        extra_points=extra_points or None,
         title=title,
         legend_ax=legend_ax,
         show_xlabel=show_xlabel,
@@ -791,12 +938,18 @@ def _draw_vector_spatial_panel(
             zorder=6,
             label="zero thrust",
         )
+    actual_apex = _curve_apex_point(ctx.xs, ctx.ys)
+    projected_apex = _projected_apex_point(ctx, target=target, events=events)
+    _draw_apex_marker(ax, point=actual_apex, label="apex", color="#1b263b")
+    _draw_apex_marker(ax, point=projected_apex, label="projected apex", color="#cc0000")
+    extra_points = [point for point in (actual_apex, projected_apex) if point is not None]
 
     _draw_spatial_common(
         ax,
         ctx=ctx,
         events=events,
         target=target,
+        extra_points=extra_points or None,
         title=title,
         legend_ax=legend_ax,
         show_xlabel=show_xlabel,
@@ -847,6 +1000,11 @@ def _draw_trajectory_comparison_spatial_panel(
         alpha=0.98,
         zorder=7,
     )
+    overlay_points: list[tuple[float, float]] = []
+    actual_apex = _curve_apex_point(ctx.xs, ctx.ys)
+    if actual_apex is not None:
+        overlay_points.append(actual_apex)
+    _draw_apex_marker(ax, point=actual_apex, label="actual apex", color="#1b263b")
 
     setup_event = _find_event(events, name="setup_gate")
     if target is None:
@@ -857,6 +1015,7 @@ def _draw_trajectory_comparison_spatial_panel(
             ctx=ctx,
             events=events,
             target=target,
+            extra_points=overlay_points or None,
             title=title,
             legend_ax=legend_ax,
             show_xlabel=show_xlabel,
@@ -868,6 +1027,10 @@ def _draw_trajectory_comparison_spatial_panel(
     except (TypeError, ValueError):
         target_x = 0.0
         target_y = 0.0
+    projected_apex = _projected_apex_point(ctx, target=target, events=events)
+    if projected_apex is not None:
+        overlay_points.append(projected_apex)
+    _draw_apex_marker(ax, point=projected_apex, label="projected apex", color="#cc0000")
 
     actual_apex_y = max(float(ctx.ys[0]), max(float(y) for y in ctx.ys))
     reference_curve = _idealized_reference_curve(
@@ -879,6 +1042,9 @@ def _draw_trajectory_comparison_spatial_panel(
     )
     if reference_curve is not None:
         ref_xs, ref_ys = reference_curve
+        ref_apex = _curve_apex_point(ref_xs, ref_ys)
+        if ref_apex is not None:
+            overlay_points.append(ref_apex)
         ref_line = ax.plot(
             ref_xs,
             ref_ys,
@@ -890,6 +1056,7 @@ def _draw_trajectory_comparison_spatial_panel(
             label="idealized reference",
         )[0]
         ref_line.set_path_effects([pe.Stroke(linewidth=4.2, foreground="#111111"), pe.Normal()])
+        _draw_apex_marker(ax, point=ref_apex, label="reference apex", color="#00aa00")
 
     if setup_event is not None:
         event_x = float(setup_event.get("x", 0.0) or 0.0)
@@ -906,6 +1073,9 @@ def _draw_trajectory_comparison_spatial_panel(
                 target_y=target_y,
             )
             if has_target_y_solution:
+                setup_apex = _curve_apex_point(setup_curve_xs, setup_curve_ys)
+                if setup_apex is not None:
+                    overlay_points.append(setup_apex)
                 setup_line = ax.plot(
                     setup_curve_xs,
                     setup_curve_ys,
@@ -917,6 +1087,7 @@ def _draw_trajectory_comparison_spatial_panel(
                     label="setup gate ballistic",
                 )[0]
                 setup_line.set_path_effects([pe.Stroke(linewidth=4.4, foreground="#111111"), pe.Normal()])
+                _draw_apex_marker(ax, point=setup_apex, label="setup ballistic apex", color="#cc0000")
                 ax.scatter(
                     [setup_curve_xs[0], setup_curve_xs[-1]],
                     [setup_curve_ys[0], setup_curve_ys[-1]],
@@ -937,6 +1108,7 @@ def _draw_trajectory_comparison_spatial_panel(
         ctx=ctx,
         events=events,
         target=target,
+        extra_points=overlay_points or None,
         title=title,
         legend_ax=legend_ax,
         show_xlabel=show_xlabel,

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import matplotlib.image as mpimg
+import pytest
 
 from core.components import FlightState, LanderState, Transform
 from core.lander import Lander
@@ -12,9 +13,12 @@ from conftest import FlatTerrain
 from utils.plot import (
     _ballistic_projection_series,
     _build_plot_context,
+    _curve_apex_point,
     _combined_spatial_arrangement,
     _compute_figure_size,
+    _projected_apex_point,
     _projected_intercept_from_state,
+    _spatial_limits_with_target,
     _sorted_gate_events,
     Plotter,
     save_trajectory_plots,
@@ -147,6 +151,76 @@ def test_build_plot_context_limits_wide_shallow_spatial_ratio() -> None:
 def test_build_plot_context_widens_tall_spatial_ratio_for_column_layouts() -> None:
     ctx = _build_plot_context(FlatTerrain(), _tall_samples())
     assert ctx.span_x / ctx.span_y >= 1.24
+
+
+def test_spatial_limits_expand_to_include_target_footprint() -> None:
+    ctx = _build_plot_context(FlatTerrain(), _samples())
+    min_x, max_x, lower_y, upper_y = _spatial_limits_with_target(
+        ctx,
+        target={"x": 420.0, "y": 0.0, "size": 120.0, "label": "landing target"},
+    )
+
+    assert max_x >= 480.0
+    assert min_x <= ctx.min_x
+    assert lower_y <= -20.0
+    assert upper_y >= ctx.upper_y
+
+
+def test_spatial_limits_expand_to_include_overlay_apex_points() -> None:
+    ctx = _build_plot_context(FlatTerrain(), _samples())
+    min_x, max_x, lower_y, upper_y = _spatial_limits_with_target(
+        ctx,
+        target=None,
+        extra_points=[(260.0, 420.0)],
+    )
+
+    assert max_x >= 268.0
+    assert upper_y >= 428.0
+    assert min_x <= ctx.min_x
+    assert lower_y <= ctx.lower_y
+
+
+def test_curve_apex_point_returns_peak_sample() -> None:
+    apex = _curve_apex_point([0.0, 10.0, 20.0], [2.0, 8.0, 5.0])
+    assert apex == (10.0, 8.0)
+
+
+def test_curve_apex_point_returns_none_without_climb_then_descend() -> None:
+    assert _curve_apex_point([0.0, 10.0, 20.0], [2.0, 5.0, 8.0]) is None
+    assert _curve_apex_point([0.0, 10.0, 20.0], [8.0, 5.0, 2.0]) is None
+
+
+def test_projected_apex_point_returns_none_from_descending_final_state() -> None:
+    ctx = _build_plot_context(FlatTerrain(), _samples())
+    apex = _projected_apex_point(ctx, target={"x": 120.0, "y": 0.0})
+    assert apex is None
+
+
+def test_projected_apex_point_returns_engine_off_apex_when_ballistic_arc_exists() -> None:
+    ctx = _build_plot_context(FlatTerrain(), _tall_samples())
+    apex = _projected_apex_point(ctx, target={"x": 120.0, "y": 0.0})
+    assert apex is not None
+    assert apex[1] > ctx.ys[-1]
+
+
+def test_projected_apex_point_prefers_latest_gate_event_state() -> None:
+    ctx = _build_plot_context(FlatTerrain(), _samples())
+    apex = _projected_apex_point(
+        ctx,
+        target={"x": 400.0, "y": 400.0},
+        events=[
+            {
+                "name": "setup_gate",
+                "x": 65.04117237026318,
+                "y": 185.80941328059802,
+                "vx": 31.050384900676764,
+                "vy_up": 72.7007888280466,
+            }
+        ],
+    )
+    assert apex is not None
+    assert apex[0] == pytest.approx(295.3868331553314, abs=1.5)
+    assert apex[1] == pytest.approx(455.4729181897932, abs=1.0)
 
 
 def test_projected_intercept_crosses_target_y_when_reachable() -> None:
