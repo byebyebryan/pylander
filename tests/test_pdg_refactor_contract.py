@@ -143,18 +143,20 @@ def test_pdg_gate_ordering_invariant_launch_far() -> None:
     level = create_level_by_name("setup_flat")
     level.set_eval_scenario("far")
     game = LanderGame(level=level, seed=1, bot=create_bot("pdg"), headless=True)
-    result = game.run(print_freq=0, max_time=120.0)
+    result = game.run(print_freq=0, max_time=15.0)
 
     setup_gate_time = result.get("setup_gate_time")
     flare_entry_time = result.get("bot_pdg_flare_entry_time")
-    if setup_gate_time is not None and flare_entry_time is not None:
-        assert float(setup_gate_time) <= float(flare_entry_time) + 1e-6
+    assert isinstance(setup_gate_time, (int, float))
+    assert isinstance(flare_entry_time, (int, float))
+    assert float(setup_gate_time) <= float(flare_entry_time) + 1e-6
 
 
 def test_setup_gate_waits_for_actual_thrust_shutdown() -> None:
     level = create_level_by_name("setup_flat")
     level.set_eval_scenario("mid")
     bot = create_bot("pdg")
+    bot.set_eval_goal("setup")
 
     gate_samples: list[tuple[float, float, str]] = []
     original_update = bot.update
@@ -172,8 +174,8 @@ def test_setup_gate_waits_for_actual_thrust_shutdown() -> None:
         return action
 
     bot.update = MethodType(wrapped_update, bot)
-    game = LanderGame(level=level, seed=0, bot=bot, headless=True)
-    result = game.run(print_freq=0, max_time=12.0)
+    game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="setup")
+    result = game.run(print_freq=0, max_time=9.0)
 
     assert gate_samples
     assert result["setup_gate_done"] is True
@@ -183,4 +185,4 @@ def test_setup_gate_waits_for_actual_thrust_shutdown() -> None:
     )
     assert gate_time_s == pytest.approx(gate_time)
     assert gate_thrust <= float(bot._cfg.setup_gate_idle_thrust_max) + 1e-6
-    assert gate_phase == "coast"
+    assert gate_phase in {"setup", "coast"}

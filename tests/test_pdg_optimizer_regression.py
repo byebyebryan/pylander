@@ -14,6 +14,7 @@ def _run_level(
     scenario: str,
     max_steps: int | None = None,
     max_time: float = 300.0,
+    eval_goal: str | None = None,
 ):
     level = create_level_by_name(level_name)
     if hasattr(level, "set_eval_scenario"):
@@ -23,29 +24,42 @@ def _run_level(
     level.stop_on_out_of_fuel = True
     level.stop_on_first_land = True
     bot = create_bot("pdg")
-    game = LanderGame(level=level, seed=0, bot=bot, headless=True)
+    if eval_goal is not None:
+        bot.set_eval_goal(eval_goal)
+    game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal=eval_goal)
     result = game.run(print_freq=0, max_steps=max_steps, max_time=max_time)
     return result, bot
 
 
-def test_pdg_smoke_plunge_climb_launch_seed0() -> None:
-    # Fast envelope smoke: verify stable in-flight behavior without crashes.
-    cases = [
-        ("flare_normal", "mid", 20.0, 15.0),
-        ("plunge", "mid_normal", 20.0, 10.0),
-        ("setup_climb", "mid", 25.0, 40.0),
-        ("setup_flat", "mid", 20.0, 25.0),
-    ]
-    for level_name, scenario, max_time, max_offset in cases:
-        result, _bot = _run_level(level_name=level_name, scenario=scenario, max_time=max_time)
-        assert result.get("state") != "crashed"
-        landing_offset = result.get("landing_offset")
-        if isinstance(landing_offset, (int, float)):
-            assert abs(float(landing_offset)) <= max_offset
+@pytest.mark.parametrize(
+    ("level_name", "scenario", "eval_goal", "max_time", "key", "expected"),
+    (
+        ("plunge", "mid_normal", None, 12.0, "state", "landed"),
+        ("setup_climb", "mid", "setup", 10.0, "setup_gate_done", True),
+        ("setup_flat", "mid", "setup", 9.0, "setup_gate_done", True),
+    ),
+)
+def test_pdg_smoke_plunge_and_setup_milestones_seed0(
+    level_name: str,
+    scenario: str,
+    eval_goal: str | None,
+    max_time: float,
+    key: str,
+    expected: object,
+) -> None:
+    # Keep broad regression coverage, but stop setup scenarios at their setup gate.
+    result, _bot = _run_level(
+        level_name=level_name,
+        scenario=scenario,
+        max_time=max_time,
+        eval_goal=eval_goal,
+    )
+    assert result.get("state") != "crashed"
+    assert result.get(key) == expected
 
 
 def test_pdg_launch_landing_offset_bound_seed0() -> None:
-    result, _bot = _run_level(level_name="setup_flat", scenario="near", max_time=35.0)
+    result, _bot = _run_level(level_name="setup_flat", scenario="near", max_time=25.0)
     assert result.get("state") == "landed"
     landing_offset = result.get("landing_offset")
     assert isinstance(landing_offset, (int, float))

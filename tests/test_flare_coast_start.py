@@ -50,7 +50,7 @@ def test_flare_error_wide_triggers_flare_gate_before_impact() -> None:
     bot = create_bot("pdg")
 
     game = LanderGame(level=level, seed=0, bot=bot, headless=True)
-    result = game.run(print_freq=0, max_time=12.0)
+    result = game.run(print_freq=0, max_time=7.0)
 
     assert result["state"] == "flying"
     assert result["bot_pdg_flare_entry_done"] is True
@@ -80,8 +80,8 @@ def test_flare_flight_levels_can_force_flare_from_spawn() -> None:
 @pytest.mark.parametrize(
     ("level_name", "scenario_name", "max_time"),
     (
-        ("flare_normal", "mid", 10.0),
-        ("flare_error", "mid_wide", 10.0),
+        ("flare_normal", "mid", 9.0),
+        ("flare_error", "mid_wide", 7.0),
     ),
 )
 def test_flare_gate_handoff_does_not_execute_probe_pulse(
