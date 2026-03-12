@@ -86,7 +86,7 @@ def test_build_evaluation_decision_returns_setup_quality_failure() -> None:
     assert decision.metrics == {"setup_quality_verdict": "dx"}
 
 
-def test_build_evaluation_decision_allows_steep_downhill_setup_entry() -> None:
+def test_build_evaluation_decision_ignores_apex_mismatch_for_steep_setup_entry() -> None:
     bot = _Bot(eval_goal="setup", setup_done=True)
     bot._setup_gate_y = 120.0
     bot._last_target_y = 0.0

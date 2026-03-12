@@ -4,7 +4,7 @@ from core.bot import BotEvalDecision
 from core.eval_goals import EVAL_GOAL_SETUP
 
 from bots._bot_math import clamp
-from bots.pdg.setup import apex_target_and_tolerance, transfer_dy_for_setup
+from bots.pdg.setup import setup_dx_limit
 
 
 def percentile(values: list[float], p: float) -> float:
@@ -153,23 +153,9 @@ def build_evaluation_decision(bot) -> BotEvalDecision | None:
         return None
     if not bot._setup_gate_done:
         return None
-    dx_anchor_abs = bot._shape_anchor_dx_abs if bot._shape_anchor_dx_abs > 0.0 else 0.0
-    raw_gate_y = getattr(bot, "_setup_gate_y", None)
-    gate_y = float(raw_gate_y) if raw_gate_y is not None else float(bot._last_target_y)
-    transfer_dy = transfer_dy_for_setup(bot, dy=float(bot._last_target_y) - gate_y)
-    descending_transfer = transfer_dy < 0.0
-    apex_target, apex_tolerance = apex_target_and_tolerance(
-        bot,
-        dx_anchor_abs=dx_anchor_abs,
-        dy=float(bot._last_target_y) - gate_y,
-    )
-    dx_limit = max(
-        float(bot._cfg.setup_gate_projected_dx_abs),
-        float(bot._cfg.setup_gate_projected_dx_target_ratio) * float(bot._last_target_half),
-    )
+    dx_limit = setup_dx_limit(bot)
     has_target_y = bool(bot._setup_gate_has_target_y_solution)
     projected_dx = bot._setup_gate_projected_dx
-    apex_over_target = bot._setup_gate_projected_apex_over_target
     impact_angle = bot._setup_gate_projected_impact_angle_deg
     verdict = "pass"
     success = True
@@ -179,18 +165,10 @@ def build_evaluation_decision(bot) -> BotEvalDecision | None:
     elif projected_dx is None or abs(float(projected_dx)) > dx_limit:
         verdict = "dx"
         success = False
-    elif apex_over_target is None or abs(float(apex_over_target) - apex_target) > apex_tolerance:
-        verdict = "apex"
-        success = False
     elif impact_angle is None:
         verdict = "angle"
         success = False
     elif float(impact_angle) < float(bot._cfg.setup_descent_angle_deg_min):
-        verdict = "angle"
-        success = False
-    elif (not descending_transfer) and float(impact_angle) > float(
-        bot._cfg.setup_descent_angle_deg_max
-    ):
         verdict = "angle"
         success = False
     bot._setup_gate_quality_pass = success

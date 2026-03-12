@@ -82,14 +82,16 @@ Each frame:
 
 Setup planning remains generic across flat/downhill/climb, but it is now handled by a dedicated setup controller rather than the generic stage runner.
 
-The setup solve targets a ballistic transfer at burn end:
+The setup solve is now geometry-first and `pdx`-first:
 
-- center the projected target-y crossing (`projected_dx -> 0`),
-- raise the projected apex above target using `setup_apex_height_*`,
-- keep the final descent path inside a configured angle corridor,
-- encourage a strong early burn and a decisive cut instead of lingering trim thrust.
+- reduce projected miss over the active handoff window instead of only at the final horizon node,
+- keep enough target-y support for the burn to hand off into a valid engine-off transfer,
+- penalize excess loft more weakly than lack of loft, so setup prefers "just enough" hang time,
+- steepen entry only when the live post-cut transfer is shallower than `setup_descent_angle_deg_target`,
+- forbid setup thrust from pointing away from the actual target direction while setup is still outside the `dx` corridor.
 
-The exact apex geometry ratio is not optimized directly. Setup uses a convexified terminal proxy derived from a frozen ballistic reference time each replan.
+Apex is still reported for telemetry, but it is no longer the setup success target.
+The optimizer also constrains future projected miss to stay on the target side during setup, which prevents the old "push past zero then correct" behavior without allowing reverse target-direction thrust.
 
 Flare-x tolerance is also phase-specific:
 
@@ -126,7 +128,8 @@ PYLANDER_PDG_DEBUG_SETUP=1 uv run python main.py sim setup_flat:near:0 --bot pdg
 Goal-based eval boundary:
 
 - selector goal `setup` (for example `setup_downhill:mid:setup:0 --bot pdg`) -> early stop at setup gate
-- setup-goal success is metric-gated: valid target-y solution, projected dx inside corridor, apex inside tolerance band, and impact angle inside the configured descent corridor
+- setup-goal success is metric-gated: valid target-y solution, projected dx inside corridor, and impact angle above `setup_descent_angle_deg_min`
+- apex telemetry remains available in `setup_gate_*` / `setup_goal_*`, but apex-band matching is no longer part of the setup verdict
 
 ## Tuning knobs
 
@@ -146,7 +149,9 @@ Centering pressure by phase:
 Trajectory shape controls:
 
 - `setup_apex_height_per_dx`, `setup_apex_height_min`, `setup_apex_height_max`
+  - still used for legacy shape telemetry and fallback reference timing
 - `setup_gate_apex_tol_abs`, `setup_gate_apex_tol_ratio`
+  - still published in setup telemetry, but no longer used for setup-goal pass/fail
 - `setup_descent_angle_deg_min`, `setup_descent_angle_deg_target`, `setup_descent_angle_deg_max`
 
 ## Compute cost

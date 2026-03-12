@@ -1,14 +1,18 @@
 # Setup Tuning Notes
 
-Checkpoint for the dedicated PDG setup controller and its current setup-goal tuning state.
+Checkpoint for the dedicated PDG setup controller after the `pdx`-first shaping rebuild.
 
 ## Current behavior
 
-- Setup uses a dedicated controller with its own burn / cut / settle flow instead of reusing the generic stage wrapper.
-- Setup quality is metric-gated at the setup gate.
-- Downhill steep entry is allowed as long as the transfer is descending, has a target-y solution, and is not shallow.
-- Uphill setup uses live-state crossing references.
-- Flat and downhill setup use plan-terminal crossing references.
+- Setup is now geometry-first instead of apex-band-first.
+- The setup objective is:
+  - pathwise `projected_dx` reduction over the active handoff window
+  - one-sided target-y support, with a weaker excess-loft penalty instead of a symmetric crossing target
+  - one-sided angle shortfall shaping, active only when the live post-cut entry is shallower than `setup_descent_angle_deg_target`
+- Setup thrust may not point away from the actual target direction while setup is still outside the `dx` corridor.
+- Future projected miss is constrained to stay on the target side during setup planning.
+- Setup pass latching is settle-aware again: the controller cuts when the short settle window still projects a valid setup gate.
+- Setup reference times are now live-state based for every setup case; the old plan-terminal proxy was removed.
 
 ## Current setup-goal status
 
@@ -20,72 +24,60 @@ uv run python main.py sim <selector> --bot pdg --freq 0 -t 25
 
 | Selector | Verdict | Notes |
 | --- | --- | --- |
-| `setup_flat:near:setup:0` | `dx` | `projected_dx=131.13`, `angle=55.88` |
-| `setup_flat:mid:setup:0` | `angle` | `projected_dx=-6.15`, `angle=34.98` |
-| `setup_flat:far:setup:0` | `dx` | `projected_dx=-206.10`, `angle=29.88` |
-| `setup_downhill:low:setup:0` | `pass` | `projected_dx=11.60`, `angle=61.88` |
-| `setup_downhill:mid:setup:0` | `pass` | `projected_dx=-3.10`, `angle=69.86` |
-| `setup_downhill:high:setup:0` | `pass` | `projected_dx=8.94`, `angle=78.42` |
-| `setup_climb:low:setup:0` | `dx` | `projected_dx=178.08`, `angle=69.41` |
-| `setup_climb:mid:setup:0` | `pass` | `projected_dx=-0.05`, `angle=63.01` |
-| `setup_climb:high:setup:0` | `apex` | `projected_dx=-51.76`, `apex_over_target=30.60` |
+| `setup_flat:near:setup:0` | `pass` | `projected_dx=51.06`, `angle=51.66`, `alt=37.70` |
+| `setup_flat:mid:setup:0` | `angle` | `projected_dx=-53.57`, `angle=33.80`, `alt=67.10` |
+| `setup_flat:far:setup:0` | `dx` | `projected_dx=-94.01`, `angle=41.13`, `alt=113.90` |
+| `setup_downhill:low:setup:0` | `pass` | `projected_dx=50.01`, `angle=64.51`, `alt=41.62` |
+| `setup_downhill:mid:setup:0` | `pass` | `projected_dx=47.24`, `angle=71.72`, `alt=30.63` |
+| `setup_downhill:high:setup:0` | `pass` | `projected_dx=49.71`, `angle=79.97`, `alt=31.38` |
+| `setup_climb:low:setup:0` | `pass` | `projected_dx=51.61`, `angle=52.09`, `alt=113.27` |
+| `setup_climb:mid:setup:0` | `pass` | `projected_dx=-7.81`, `angle=45.26`, `alt=155.38` |
+| `setup_climb:high:setup:0` | `pass` | `projected_dx=-41.23`, `angle=46.95`, `alt=96.15` |
 
 Summary:
 
-- Working: all three downhill cases, `setup_climb:mid`
-- Not working: all three flat cases, `setup_climb:low`, `setup_climb:high`
+- Working: `7/9`
+- Remaining failures: `setup_flat:mid`, `setup_flat:far`
 
-## What is working
+## What improved
 
-- The downhill apex target fix was important. Using the frozen transfer height delta made the downhill cases solvable.
-- Relaxing the upper impact-angle limit for descending transfers was correct. Steep downhill entries like `78 deg` should not hard-fail setup.
-- The uphill-specific live-state crossing reference helped climb cases more than flat/downhill.
-- The dedicated setup burn / cut / settle path is structurally working and is DPP-safe.
+- The previous flat pathology is gone:
+  - no setup x-thrust away from the target direction
+  - no abrupt high-apex climb caused by symmetric setup shaping
+- Downhill stays solved under the rebuilt objective.
+- Climb-low and climb-high both moved from failure to pass under the geometry-first gate.
+- End-to-end smokes stay healthy:
+  - `setup_flat:near:0` landed in `16.60s`, offset `10.74`
+  - `setup_downhill:mid:0` landed in `22.80s`, offset `5.51`
+  - `setup_climb:mid:0` landed in `27.57s`, offset `0.10`
+  - `flare_normal:mid:0`, `flare_error:mid_wide:0`, and `plunge:mid_normal:0` all still land
 
-## What is not working
+## What is still not working
 
-- Flat setup still has poor lateral closure:
-  - near stops short
-  - far overshoots badly
-  - mid is almost centered but still too shallow
-- Climb setup still under-builds the ballistic arc at the edges:
-  - low is still too far short laterally
-  - high still under-builds apex and slightly overshoots dx
+- `setup_flat:mid` still cuts into a shallow overshoot:
+  - `projected_dx=-53.57`
+  - `angle=33.80`
+- `setup_flat:far` still overshoots harder and is also shallow:
+  - `projected_dx=-94.01`
+  - `angle=41.13`
 
-## Failed experiments
+These are now clearly the same remaining problem:
 
-These were tried and then reverted because they made the pack worse overall:
+- the rebuilt objective fixed the wrong-direction thrust and the runaway climb
+- the remaining flat gap is a large-distance shallow-overshoot case
+- the next pass should focus on reducing cutoff horizontal speed in long flat transfers without reopening the old downhill/climb regressions
 
-- Extending setup burns for same-sign `dx` failures:
-  - caused runaway vertical buildup and much worse flat / climb-low outcomes
-- Using live-state crossing references for every setup case:
-  - helped uphill
-  - hurt downhill badly, especially `setup_downhill:high`
-- Lowering `launch_takeoff_clear_altitude` from `10` to `5`:
-  - made flat and downhill regress sharply
-- Flat-only setup tilt schedule:
-  - did not improve flat near/far
-  - added noise without fixing the miss pattern
-- Global distance-scaled setup cut / thrust-floor thresholds:
-  - helped some uphill cases
-  - hurt flat cases
-  - final code keeps the uphill-only part
+## Key design changes from the reverted pass
 
-## Things to remember before the next pass
-
-- Do not re-tighten downhill steep-angle gating unless there is a separate reason tied to flare feasibility. For descending transfers, steep is not a setup invalidation.
-- The flat problem looks different from the uphill problem:
-  - flat near needs more lateral closure without triggering runaway vertical burn
-  - flat far needs less shallow overshoot
-- The current flat failures look more like a cut / crossing-policy issue than an apex-target issue.
-- The current climb-high failure is no longer an angle problem. It is an under-built apex problem.
-
-## Likely next steps
-
-1. Treat flat setup as its own tuning path instead of sharing the same setup cut / crossing behavior as downhill.
-2. Revisit the flat setup cutoff logic around low-thrust taper versus forced floor.
-3. For climb-high, focus on apex buildup without reintroducing the old no-target-y failure mode.
-4. Keep using setup-goal runs first; only switch to full landing runs after setup metrics improve.
+- Apex is no longer a setup pass/fail target.
+- Setup quality now gates on:
+  - target-y reachability
+  - projected `dx`
+  - minimum descent angle
+- The setup controller no longer fails reachable setup just because the planner briefly tapers thrust.
+- Overshoot handling is geometry-based instead of scenario-based:
+  - no-away thrust is tied to actual target direction
+  - future projected miss is kept on the target side inside the optimizer
 
 ## Useful commands
 
@@ -112,5 +104,10 @@ uv run python main.py plot <selector> --bot pdg --freq 0 -t 25 -p all -o both
 Shared-stack smoke:
 
 ```bash
+uv run python main.py sim setup_flat:near:0 --bot pdg --freq 0 -t 45
+uv run python main.py sim setup_downhill:mid:0 --bot pdg --freq 0 -t 45
+uv run python main.py sim setup_climb:mid:0 --bot pdg --freq 0 -t 45
 uv run python main.py sim flare_normal:mid:0 --bot pdg --freq 0 -t 20
+uv run python main.py sim flare_error:mid_wide:0 --bot pdg --freq 0 -t 20
+uv run python main.py sim plunge:mid_normal:0 --bot pdg --freq 0 -t 20
 ```

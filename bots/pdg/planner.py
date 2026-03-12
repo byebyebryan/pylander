@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import math
+
 from bots._ballistics import estimate_target_y_projection
 from bots._bot_math import finite_altitude
 from bots._optimizer_pdg import PDGPlan
 from bots.pdg.setup import (
-    apex_target_and_tolerance,
     select_reference_times,
+    setup_dx_limit,
+    setup_objective_geometry,
 )
 from core.bot import Sensors
 from core.config import GRAVITY
@@ -23,6 +26,7 @@ def solve_plan(
     min_thrust_accel: float,
     nominal_thrust_accel: float,
     phase: str,
+    projection=None,
 ) -> PDGPlan | None:
     alt = max(0.0, finite_altitude(passive))
     target_x = float(passive.x) + dx
@@ -49,24 +53,11 @@ def solve_plan(
     flare_x_tol = bot._phase_flare_x_tol(phase)
     y_ref_override = None
     setup_t_cross_ref = 0.0
-    setup_t_apex_ref = 0.0
-    setup_apex_target = 0.0
-    setup_apex_tol = 0.0
+    setup_t_angle_ref = 0.0
+    setup_no_away_ax_sign = 0.0
+    setup_angle_scale = 0.0
     if phase == "setup":
-        dx_anchor_abs, setup_t_apex_ref, setup_t_cross_ref = select_reference_times(
-            bot,
-            passive=passive,
-            dx=dx,
-            dy=dy,
-            plan=bot._plan,
-        )
-        setup_apex_target, setup_apex_tol = apex_target_and_tolerance(
-            bot,
-            dx_anchor_abs=dx_anchor_abs,
-            dy=dy,
-        )
-        # Keep projected target-y crossing grounded in a descending ballistic solution.
-        if setup_t_cross_ref <= setup_t_apex_ref:
+        if projection is None:
             projection = estimate_target_y_projection(
                 dx=dx,
                 dy=dy,
@@ -77,8 +68,41 @@ def solve_plan(
                 min_t_fall=0.0,
                 gravity_mag=_GRAVITY_MAG,
             )
-            if bool(projection.has_target_y_solution):
-                setup_t_cross_ref = max(setup_t_apex_ref + 0.05, float(projection.t_fall))
+        _dx_anchor_abs, setup_t_apex_ref, setup_t_cross_ref = select_reference_times(
+            bot,
+            passive=passive,
+            dx=dx,
+            dy=dy,
+            plan=bot._plan,
+        )
+        # Keep projected target-y crossing grounded in a descending ballistic solution.
+        if setup_t_cross_ref <= setup_t_apex_ref and bool(projection.has_target_y_solution):
+            setup_t_cross_ref = max(setup_t_apex_ref + 0.05, float(projection.t_fall))
+        if bool(projection.has_target_y_solution):
+            setup_t_angle_ref = max(0.0, float(projection.t_fall))
+        objective_geometry = setup_objective_geometry(
+            bot,
+            passive=passive,
+            dx=dx,
+            projection=projection,
+            setup_t_cross_ref=setup_t_cross_ref,
+        )
+        if abs(float(dx)) > float(setup_dx_limit(bot)):
+            lateral_accel_cap = max(1e-3, float(max_thrust_accel) * math.sin(float(max_tilt)))
+            lateral_dx = max(0.0, abs(float(dx)) - float(objective_geometry.dx_limit))
+            setup_t_cross_ref = max(
+                setup_t_cross_ref,
+                math.sqrt((2.0 * lateral_dx) / lateral_accel_cap),
+            )
+            objective_geometry = setup_objective_geometry(
+                bot,
+                passive=passive,
+                dx=dx,
+                projection=projection,
+                setup_t_cross_ref=setup_t_cross_ref,
+            )
+        setup_no_away_ax_sign = objective_geometry.no_away_ax_sign
+        setup_angle_scale = objective_geometry.angle_scale
 
     plan = optimizer.solve(
         x=float(passive.x),
@@ -101,9 +125,9 @@ def solve_plan(
         terminal_x_tol=flare_x_tol,
         y_ref_override=y_ref_override,
         setup_t_cross_ref=setup_t_cross_ref,
-        setup_t_apex_ref=setup_t_apex_ref,
-        setup_apex_target=setup_apex_target,
-        setup_apex_tol=setup_apex_tol,
+        setup_t_angle_ref=setup_t_angle_ref,
+        setup_no_away_dir=setup_no_away_ax_sign,
+        setup_angle_active=setup_angle_scale,
     )
     if plan is not None:
         bot._last_solve_ms = float(plan.solve_time_ms)
