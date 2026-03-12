@@ -13,6 +13,9 @@ Checkpoint for the dedicated PDG setup controller after the `pdx`-first shaping 
 - Future projected miss is constrained to stay on the target side during setup planning.
 - Setup cut remains settle-aware, but setup-gate telemetry now waits for actual thrust to decay to idle so the recorded handoff state is truly ballistic.
 - Setup reference times are now live-state based for every setup case; the old plan-terminal proxy was removed.
+- Flare now uses a recoverability-based dynamic tilt cap:
+  - lateral authority can relax beyond the base flare tilt envelope only when the current state can still brake vertically after that side-burn
+  - gate, planner, and actuation all consult the same helper so the flare stack stays consistent
 
 ## Current setup-goal status
 
@@ -66,6 +69,35 @@ These are now clearly the same remaining problem:
 - the rebuilt objective fixed the wrong-direction thrust and the runaway climb
 - the remaining flat gap is a large-distance shallow-overshoot case
 - the next pass should focus on reducing cutoff horizontal speed in long flat transfers without reopening the old downhill/climb regressions
+
+## Flare follow-up after the setup-gate fix
+
+After the setup-gate correction, the remaining bad full-flight behavior on
+`setup_flat:mid` / `setup_flat:far` was mostly flare-side, not setup-side:
+
+- setup handoff geometry was imperfect but recoverable
+- flare was already trying to use as much lateral authority as the old flare
+  tilt cap allowed
+- the fixed flare tilt cap was too conservative for the hot flat recoveries
+
+The current flare change keeps the one-engine thrust coupling but relaxes flare
+tilt dynamically from recoverability instead of a hard altitude rule:
+
+- if a more sideways flare burn would still leave a vertically recoverable state,
+  flare may use more tilt
+- if the state is vertically tight, flare falls back to the old base flare tilt
+
+Quick regression result from the current dynamic-tilt pass:
+
+- focused 70-run slice (`setup_flat:{mid,far}`, `setup_downhill:mid`,
+  `setup_climb:mid`, `flare_normal:mid`, `flare_error:mid_wide`,
+  `plunge:mid_normal`, seeds `0-9`) landed `70/70`
+- seed-0 flat full-flight improved materially versus the committed baseline:
+  - `setup_flat:mid:0` offset `0.62` vs `3.40`
+  - `setup_flat:far:0` offset `0.88` vs `4.24`
+- representative flare flights stayed healthy:
+  - `flare_normal:mid:0` still landed cleanly at offset `2.94`
+  - `flare_error:mid_wide:0` still landed at offset `15.54`
 
 ## Findings from the next attempted pass
 

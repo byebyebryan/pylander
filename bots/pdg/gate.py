@@ -58,27 +58,27 @@ def _clamp(value: float, lo: float, hi: float) -> float:
     return max(float(lo), min(float(hi), float(value)))
 
 
-def _max_tilt(bot, *, alt: float, dx: float, dy: float, vx: float) -> float:
+def _max_tilt(
+    bot,
+    *,
+    alt: float,
+    dx: float,
+    dy: float,
+    vx: float,
+    vy_up: float,
+    max_thrust_accel: float,
+    lateral_dx: float | None = None,
+) -> float:
     return bot._resolve_max_tilt(
         max(0.0, float(alt)),
         float(dx),
         float(vx),
         dy=float(dy),
         phase="flare",
+        vy_up=float(vy_up),
+        max_thrust_accel=float(max_thrust_accel),
+        lateral_dx=None if lateral_dx is None else float(lateral_dx),
     )
-
-
-def _lateral_correction_time(*, dx: float, vx: float, lateral_accel: float) -> float:
-    accel = max(1e-3, float(lateral_accel))
-    lateral_speed = float(vx)
-    target_dx = float(dx)
-    if abs(target_dx) <= 1e-6 and abs(lateral_speed) <= 1e-6:
-        return 0.0
-    t_stop = abs(lateral_speed) / accel
-    x_stop = 0.5 * lateral_speed * t_stop
-    residual_dx = target_dx - x_stop
-    t_translate = 0.0 if abs(residual_dx) <= 1e-6 else 2.0 * math.sqrt(abs(residual_dx) / accel)
-    return t_stop + t_translate
 
 
 def _burn_time_candidates(
@@ -89,6 +89,8 @@ def _burn_time_candidates(
     dx: float,
     dy: float,
     thrust_accel: float,
+    tilt_accel: float,
+    lateral_dx: float | None = None,
     include_max_time: bool = False,
 ) -> tuple[list[float], float, float]:
     max_tilt = _max_tilt(
@@ -97,6 +99,9 @@ def _burn_time_candidates(
         dx=dx,
         dy=dy,
         vx=float(passive.vx),
+        vy_up=float(passive.vy_up),
+        max_thrust_accel=float(tilt_accel),
+        lateral_dx=lateral_dx,
     )
     target_vy_up = float(bot._desired_flare_vy(max(0.0, float(alt)), thrust_accel, max_tilt))
     down_speed = max(0.0, -float(passive.vy_up))
@@ -190,12 +195,15 @@ def _latest_safe_state(
 ) -> LatestSafeState:
     lateral_miss = float(dx) if lateral_dx is None else float(lateral_dx)
     down_speed = max(0.0, -float(passive.vy_up))
-    max_tilt = bot._resolve_max_tilt(
-        max(0.0, float(passive.altitude)),
-        float(dx),
-        float(passive.vx),
-        dy=-max(0.0, float(passive.altitude)),
-        phase="flare",
+    max_tilt = _max_tilt(
+        bot,
+        alt=max(0.0, float(passive.altitude)),
+        dx=dx,
+        dy=dy,
+        vx=float(passive.vx),
+        vy_up=float(passive.vy_up),
+        max_thrust_accel=max_thrust_accel,
+        lateral_dx=lateral_dx,
     )
     spool_time = max(0.0, 1.0 - max(0.0, float(passive.thrust_level))) / max(
         1e-3,
@@ -221,10 +229,12 @@ def _latest_safe_state(
         dx=dx,
         dy=dy,
         thrust_accel=max_thrust_accel,
+        tilt_accel=max_thrust_accel,
+        lateral_dx=lateral_dx,
         include_max_time=True,
     )
     t_brake_v = down_speed / vertical_up_accel
-    t_brake_x = _lateral_correction_time(
+    t_brake_x = bot._flare_lateral_correction_time(
         dx=lateral_miss,
         vx=float(passive.vx),
         lateral_accel=lateral_accel,
@@ -307,6 +317,8 @@ def evaluate_flare_gate(
         dx=dx,
         dy=dy,
         thrust_accel=nominal_thrust_accel,
+        tilt_accel=max_thrust_accel,
+        lateral_dx=projected_dx,
     )
     nominal_candidates = [
         _evaluate_candidate(

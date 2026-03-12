@@ -23,6 +23,7 @@ class PDGConfig:
 
     # Attitude/allocator limits
     max_tilt: float = 0.78
+    flare_dynamic_tilt_max: float = 0.95
     setup_max_tilt: float = 1.05
     max_tilt_low_alt: float = 0.18
     max_tilt_low_alt_far: float = 0.34
