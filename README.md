@@ -24,6 +24,15 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 uv sync
 ```
 
+## Testing
+
+```bash
+uv run pytest
+```
+
+Pytest now runs in parallel by default via `xdist`. Use `uv run pytest -n 0`
+when you want a serial run for debugging.
+
 ## Command model
 
 ```bash
