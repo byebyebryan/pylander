@@ -436,7 +436,22 @@ class PDGBot(Bot):
             vy_mag = min(vy_mag, cfg.vy_touch_cap + 0.3)
         return -max(cfg.braking_min_speed, vy_mag)
 
-    def _resolve_max_tilt(
+    @staticmethod
+    def _flare_lateral_correction_time(*, dx: float, vx: float, lateral_accel: float) -> float:
+        accel = max(1e-3, float(lateral_accel))
+        lateral_speed = float(vx)
+        target_dx = float(dx)
+        if abs(target_dx) <= 1e-6 and abs(lateral_speed) <= 1e-6:
+            return 0.0
+        t_stop = abs(lateral_speed) / accel
+        x_stop = 0.5 * lateral_speed * t_stop
+        residual_dx = target_dx - x_stop
+        t_translate = (
+            0.0 if abs(residual_dx) <= 1e-6 else 2.0 * math.sqrt(abs(residual_dx) / accel)
+        )
+        return t_stop + t_translate
+
+    def _resolve_static_max_tilt(
         self,
         alt: float,
         dx: float,
@@ -463,6 +478,141 @@ class PDGBot(Bot):
                 tilt = cfg.max_tilt_low_alt_far
             return tilt
         return cfg.max_tilt
+
+    def _flare_tilt_is_recoverable(
+        self,
+        *,
+        tilt: float,
+        height_to_target: float,
+        lateral_dx: float,
+        vx: float,
+        vy_up: float,
+        max_thrust_accel: float,
+    ) -> bool:
+        if height_to_target <= 0.0:
+            return False
+        lateral_accel = max(0.5, float(max_thrust_accel) * math.sin(float(tilt)))
+        side_burn_time = self._flare_lateral_correction_time(
+            dx=lateral_dx,
+            vx=vx,
+            lateral_accel=lateral_accel,
+        )
+        upward_accel = float(max_thrust_accel) * math.cos(float(tilt))
+        net_vertical_accel = upward_accel - _GRAVITY_MAG
+        height_after = (
+            float(height_to_target)
+            + (float(vy_up) * side_burn_time)
+            + (0.5 * net_vertical_accel * side_burn_time * side_burn_time)
+        )
+        if not math.isfinite(height_after) or height_after <= 0.0:
+            return False
+        vy_after = float(vy_up) + (net_vertical_accel * side_burn_time)
+        down_speed_after = max(0.0, -vy_after)
+        recover_tilt = self._resolve_static_max_tilt(
+            float(height_after),
+            0.0,
+            0.0,
+            dy=-float(height_after),
+            phase="flare",
+        )
+        recover_limit = self._braking_speed_limit(
+            float(height_after),
+            float(max_thrust_accel),
+            recover_tilt,
+        )
+        return down_speed_after <= recover_limit
+
+    def _resolve_safe_flare_max_tilt(
+        self,
+        alt: float,
+        dx: float,
+        vx: float,
+        *,
+        dy: float,
+        vy_up: float,
+        max_thrust_accel: float,
+        lateral_dx: float | None,
+    ) -> float:
+        base_tilt = self._resolve_static_max_tilt(
+            alt,
+            dx,
+            vx,
+            dy=dy,
+            phase="flare",
+        )
+        dynamic_cap = max(base_tilt, float(self._cfg.flare_dynamic_tilt_max))
+        if dynamic_cap <= base_tilt + 1e-6:
+            return base_tilt
+        height_to_target = max(0.0, -float(dy))
+        lateral_miss = float(dx) if lateral_dx is None else float(lateral_dx)
+        if not self._flare_tilt_is_recoverable(
+            tilt=base_tilt,
+            height_to_target=height_to_target,
+            lateral_dx=lateral_miss,
+            vx=vx,
+            vy_up=vy_up,
+            max_thrust_accel=max_thrust_accel,
+        ):
+            return base_tilt
+        lo = base_tilt
+        hi = dynamic_cap
+        if self._flare_tilt_is_recoverable(
+            tilt=hi,
+            height_to_target=height_to_target,
+            lateral_dx=lateral_miss,
+            vx=vx,
+            vy_up=vy_up,
+            max_thrust_accel=max_thrust_accel,
+        ):
+            return hi
+        for _ in range(8):
+            mid = 0.5 * (lo + hi)
+            if self._flare_tilt_is_recoverable(
+                tilt=mid,
+                height_to_target=height_to_target,
+                lateral_dx=lateral_miss,
+                vx=vx,
+                vy_up=vy_up,
+                max_thrust_accel=max_thrust_accel,
+            ):
+                lo = mid
+            else:
+                hi = mid
+        return lo
+
+    def _resolve_max_tilt(
+        self,
+        alt: float,
+        dx: float,
+        vx: float,
+        *,
+        dy: float = 0.0,
+        phase: str | None = None,
+        vy_up: float | None = None,
+        max_thrust_accel: float | None = None,
+        lateral_dx: float | None = None,
+    ) -> float:
+        if (
+            phase == "flare"
+            and vy_up is not None
+            and max_thrust_accel is not None
+        ):
+            return self._resolve_safe_flare_max_tilt(
+                alt,
+                dx,
+                vx,
+                dy=dy,
+                vy_up=float(vy_up),
+                max_thrust_accel=float(max_thrust_accel),
+                lateral_dx=lateral_dx,
+            )
+        return self._resolve_static_max_tilt(
+            alt,
+            dx,
+            vx,
+            dy=dy,
+            phase=phase,
+        )
 
     def _phase_flare_x_tol(self, phase: str) -> float:
         cfg = self._cfg
@@ -746,6 +896,7 @@ class PDGBot(Bot):
         dt: float,
         passive: Sensors,
         dx: float,
+        projected_dx: float | None,
         dy: float,
         alt: float,
         max_power: float,
@@ -758,6 +909,7 @@ class PDGBot(Bot):
             dt=dt,
             passive=passive,
             dx=dx,
+            projected_dx=projected_dx,
             dy=dy,
             alt=alt,
             max_power=max_power,
@@ -1152,6 +1304,7 @@ class PDGBot(Bot):
             dt=ctx.dt,
             passive=ctx.passive,
             dx=ctx.dx,
+            projected_dx=float(ctx.projection.projected_dx),
             dy=ctx.dy,
             alt=ctx.alt,
             max_power=ctx.max_power,

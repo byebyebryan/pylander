@@ -104,6 +104,16 @@ coast begins.
 
 Throttle allocation includes simple on/off hysteresis to reduce min-throttle chatter near cutoff.
 
+Flare tilt is now recoverability-based instead of a single fixed cap:
+
+- start from the normal flare tilt envelope for the current altitude/state
+- allow extra sideways tilt up to `flare_dynamic_tilt_max` only when the current
+  lateral miss can be corrected while the remaining vertical state still stays
+  inside the braking envelope
+- use the same dynamic flare tilt helper in gate evaluation, flare planning, and
+  final actuation clamping so the controller stack does not disagree about what
+  is feasible
+
 ## Telemetry fields
 
 `pdg` publishes generic and bot-owned telemetry:
@@ -140,6 +150,7 @@ Goal-based eval boundary:
   `setup_gate_burn_end_settle_s`
 - setup burn floor / decisiveness: `setup_active_thrust_floor`, `setup_late_thrust_weight`
 - flare-gate strictness: `flare_gate_*`
+- flare lateral-authority ceiling: `flare_dynamic_tilt_max`
 
 Centering pressure by phase:
 

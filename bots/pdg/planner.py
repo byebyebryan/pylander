@@ -41,6 +41,13 @@ def solve_plan(
         float(passive.vx),
         dy=dy,
         phase=phase,
+        vy_up=float(passive.vy_up) if phase == "flare" else None,
+        max_thrust_accel=max_thrust_accel if phase == "flare" else None,
+        lateral_dx=(
+            float(projection.projected_dx)
+            if phase == "flare" and projection is not None
+            else None
+        ),
     )
     target_vy = bot._desired_flare_vy(alt_guidance, nominal_thrust_accel, max_tilt)
     descent_floor_vy = bot._descent_floor_vy(alt_guidance, nominal_thrust_accel, max_tilt)
