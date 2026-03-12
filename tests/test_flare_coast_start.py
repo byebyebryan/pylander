@@ -5,8 +5,62 @@ from types import MethodType
 import pytest
 
 from bots import create_bot
+from bots.pdg.gate import _latest_safe_state
+from core.bot import Sensors
 from game import LanderGame
 from levels import create_level
+
+
+def _sensors(*, vx: float, vy_up: float, altitude: float, thrust_level: float = 0.0) -> Sensors:
+    return Sensors(
+        x=0.0,
+        y=altitude,
+        altitude=altitude,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=vx,
+        vy_up=vy_up,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=1000.0,
+        thrust_level=thrust_level,
+        fuel=100.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+
+
+def test_latest_safe_margin_shrinks_when_lateral_overshoot_requires_more_time() -> None:
+    bot = create_bot("pdg")
+    passive = _sensors(vx=28.0, vy_up=-12.0, altitude=120.0)
+
+    mild_overshoot = _latest_safe_state(
+        bot,
+        passive=passive,
+        dx=-20.0,
+        dy=-120.0,
+        alt=120.0,
+        max_thrust_accel=22.0,
+        thrust_ramp_up=2.0,
+    )
+    larger_overshoot = _latest_safe_state(
+        bot,
+        passive=passive,
+        dx=-60.0,
+        dy=-120.0,
+        alt=120.0,
+        max_thrust_accel=22.0,
+        thrust_ramp_up=2.0,
+    )
+
+    assert larger_overshoot.margin_s < mild_overshoot.margin_s
+    assert (
+        larger_overshoot.best_candidate.required_accel_ratio
+        > mild_overshoot.best_candidate.required_accel_ratio
+    )
 
 
 @pytest.mark.parametrize(
