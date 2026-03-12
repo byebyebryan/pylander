@@ -135,7 +135,7 @@ Goal-based eval boundary:
 
 `setup` -> `coast` transition strictness:
 
-- setup gate latches on burn-end settle (reduces under-reporting during active burn):
+- setup cut still uses burn-end settle prediction, but `setup_gate` only finalizes once actual thrust decays to `setup_gate_idle_thrust_max`:
   `setup_gate_burn_start_thrust`, `setup_gate_idle_thrust_max`,
   `setup_gate_burn_end_settle_s`
 - setup burn floor / decisiveness: `setup_active_thrust_floor`, `setup_late_thrust_weight`

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from types import MethodType
+
+import pytest
+
 from bots import create_bot
 from core.bot import BotAction, FlightPhaseSnapshot, PlotMarker, Sensors, SetupGateMetrics
 from game import LanderGame
@@ -145,3 +149,38 @@ def test_pdg_gate_ordering_invariant_launch_far() -> None:
     flare_entry_time = result.get("bot_pdg_flare_entry_time")
     if setup_gate_time is not None and flare_entry_time is not None:
         assert float(setup_gate_time) <= float(flare_entry_time) + 1e-6
+
+
+def test_setup_gate_waits_for_actual_thrust_shutdown() -> None:
+    level = create_level_by_name("setup_flat")
+    level.set_eval_scenario("mid")
+    bot = create_bot("pdg")
+
+    gate_samples: list[tuple[float, float, str]] = []
+    original_update = bot.update
+
+    def wrapped_update(self, dt: float, passive: Sensors) -> BotAction:
+        action = original_update(dt, passive)
+        if self._setup_gate_done:
+            gate_samples.append(
+                (
+                    float(self._elapsed_time_s),
+                    float(passive.thrust_level),
+                    str(self._active_phase),
+                )
+            )
+        return action
+
+    bot.update = MethodType(wrapped_update, bot)
+    game = LanderGame(level=level, seed=0, bot=bot, headless=True)
+    result = game.run(print_freq=0, max_time=12.0)
+
+    assert gate_samples
+    assert result["setup_gate_done"] is True
+    gate_time = float(result["setup_gate_time"])
+    gate_time_s, gate_thrust, gate_phase = next(
+        sample for sample in gate_samples if sample[0] >= (gate_time - 1e-6)
+    )
+    assert gate_time_s == pytest.approx(gate_time)
+    assert gate_thrust <= float(bot._cfg.setup_gate_idle_thrust_max) + 1e-6
+    assert gate_phase == "coast"
