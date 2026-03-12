@@ -11,7 +11,7 @@ Checkpoint for the dedicated PDG setup controller after the `pdx`-first shaping 
   - one-sided angle shortfall shaping, active only when the live post-cut entry is shallower than `setup_descent_angle_deg_target`
 - Setup thrust may not point away from the actual target direction while setup is still outside the `dx` corridor.
 - Future projected miss is constrained to stay on the target side during setup planning.
-- Setup pass latching is settle-aware again: the controller cuts when the short settle window still projects a valid setup gate.
+- Setup cut remains settle-aware, but setup-gate telemetry now waits for actual thrust to decay to idle so the recorded handoff state is truly ballistic.
 - Setup reference times are now live-state based for every setup case; the old plan-terminal proxy was removed.
 
 ## Current setup-goal status
@@ -66,6 +66,35 @@ These are now clearly the same remaining problem:
 - the rebuilt objective fixed the wrong-direction thrust and the runaway climb
 - the remaining flat gap is a large-distance shallow-overshoot case
 - the next pass should focus on reducing cutoff horizontal speed in long flat transfers without reopening the old downhill/climb regressions
+
+## Findings from the next attempted pass
+
+The follow-on tuning pass was tried and then reverted because it regressed the
+shared-stack `setup_flat:mid:0` smoke even though it improved some focused setup
+metrics.
+
+What was learned:
+
+- A corridor-style `projected_dx` objective by itself is not enough. It still
+  let the optimizer carry too much horizontal speed into long flat handoffs.
+- Uniform setup-horizon weighting also was not enough. The flat failures are not
+  mainly caused by tail-weighting alone.
+- A kinematic crossing-time floor that accounts for current targetward `vx`
+  improved the focused `setup_flat:far:setup:0` geometry in the right direction:
+  lower fuel, less time aloft, and steeper entry than the naive zero-velocity
+  floor.
+- Increasing angle pressure and excess-loft pressure without a stronger
+  end-to-end acceptance check can make the focused setup plots look cleaner while
+  still regressing the downstream shared stack.
+
+Working hypothesis after the reverted pass:
+
+- The remaining flat problem is still “too much horizontal energy at handoff,”
+  but not every convex proxy for that helps downstream behavior.
+- The most promising source-level idea from the reverted pass was the
+  kinematic crossing-time floor based on current targetward `vx`; that is worth
+  revisiting, but only with end-to-end `setup_flat:mid:0` smoke in the inner
+  loop.
 
 ## Key design changes from the reverted pass
 

@@ -396,6 +396,10 @@ class PDGBot(Bot):
             self._setup_phase_fuel_start = float(passive.fuel)
         self._setup_phase_thrust_integral += float(passive.thrust_level) * max(0.0, float(dt))
 
+    def _setup_gate_thrust_is_idle(self, passive: Sensors) -> bool:
+        idle_thrust_max = max(0.0, float(self._cfg.setup_gate_idle_thrust_max))
+        return float(getattr(passive, "thrust_level", 0.0)) <= idle_thrust_max
+
     def _braking_speed_limit(self, alt: float, max_thrust_accel: float, max_tilt: float) -> float:
         cfg = self._cfg
         alt_eff = max(0.0, alt - cfg.braking_alt_margin)
@@ -819,11 +823,10 @@ class PDGBot(Bot):
         self._setup_quality_verdict = quality.verdict
 
         if self._setup_cut_latched:
-            settle_start = self._setup_settle_start_time or self._elapsed_time_s
             action = self._command_passive_coast(dt=ctx.dt, passive=ctx.passive)
             action.status = f"pdg settle/setup {quality.verdict}"
             self._set_display_state(mode="passive", phase="setup", summary=f"cut {quality.verdict}")
-            if (self._elapsed_time_s - settle_start) >= float(self._cfg.setup_gate_burn_end_settle_s):
+            if self._setup_gate_thrust_is_idle(ctx.passive):
                 _finalize_setup_gate_metrics_impl(
                     self,
                     passive=ctx.passive,
