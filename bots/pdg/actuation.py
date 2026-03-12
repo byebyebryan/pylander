@@ -33,6 +33,23 @@ def command_passive_coast(
     return BotAction(target_thrust=0.0, target_angle=angle_cmd, refuel=False)
 
 
+def command_zero_thrust_hold_angle(
+    bot,
+    *,
+    dt: float,
+    hold_angle: float,
+) -> BotAction:
+    angle_cmd = rate_limit_angle_command(
+        float(hold_angle),
+        bot._prev_angle_cmd,
+        dt,
+        max_rate=bot._cfg.angle_rate,
+    )
+    bot._prev_angle_cmd = angle_cmd
+    bot._thrust_enabled = False
+    return BotAction(target_thrust=0.0, target_angle=angle_cmd, refuel=False)
+
+
 def command_from_plan(
     bot,
     *,
