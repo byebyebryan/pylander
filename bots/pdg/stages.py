@@ -73,6 +73,7 @@ class BallisticCoastController(StageController):
             dt=ctx.dt,
             passive=ctx.passive,
             dx=ctx.dx,
+            projected_dx=float(ctx.projection.projected_dx),
             dy=ctx.dy,
             alt=ctx.alt,
             max_thrust_accel=ctx.max_thrust_accel,
