@@ -54,6 +54,7 @@ def reset_evaluation_state(
     bot._setup_burn_start_time = None
     bot._setup_burn_idle_since = None
     bot._setup_cut_latched = False
+    bot._setup_cut_hold_angle = None
     bot._setup_settle_start_time = None
     bot._setup_quality_verdict = None
     bot._setup_gate_quality_pass = None

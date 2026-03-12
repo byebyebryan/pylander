@@ -12,6 +12,7 @@ from core.config import GRAVITY
 _GRAVITY_MAG = abs(float(GRAVITY))
 _SETTLE_ROTATION_RATE = math.radians(90.0)
 _SETTLE_THRUST_EFFECT_SCALE = 1.0
+_SETTLE_STEP_S = 0.05
 
 
 @dataclass(frozen=True)
@@ -276,6 +277,7 @@ def evaluate_setup_quality_after_settle(
     dy: float,
     settle_s: float,
     dx_anchor_abs: float,
+    settle_angle_target: float | None = None,
 ) -> SetupQualityStatus:
     settle_dt = max(0.0, float(settle_s))
     max_power, _min_throttle, _max_throttle, _ramp_up = engine_profile(getattr(bot, "vehicle_info", None))
@@ -283,38 +285,45 @@ def evaluate_setup_quality_after_settle(
     vehicle_info = getattr(bot, "vehicle_info", None)
     if vehicle_info is not None:
         thrust_down_rate = max(0.0, float(vehicle_info.thrust_decrease_rate))
-    thrust_start = max(0.0, float(getattr(passive, "thrust_level", 0.0)))
-    thrust_end = max(0.0, thrust_start - (thrust_down_rate * settle_dt))
-    thrust_avg = 0.5 * (thrust_start + thrust_end)
-    thrust_acc = (
-        _SETTLE_THRUST_EFFECT_SCALE
-        * (thrust_avg * max_power)
-        / max(0.5, float(getattr(passive, "mass", 1.0)))
-    )
-    current_angle = float(getattr(passive, "angle", 0.0))
-    retrograde_angle = _retrograde_angle_target(vx=float(passive.vx), vy_up=float(passive.vy_up))
-    angle_step = _angle_diff(current_angle, retrograde_angle)
-    angle_step = max(
-        -(_SETTLE_ROTATION_RATE * settle_dt),
-        min(_SETTLE_ROTATION_RATE * settle_dt, angle_step),
-    )
-    thrust_angle_avg = current_angle + (0.5 * angle_step)
-    thrust_ax = math.sin(thrust_angle_avg) * thrust_acc
-    thrust_ay = math.cos(thrust_angle_avg) * thrust_acc
     target_x = float(passive.x) + float(dx)
     target_y = float(passive.y) + float(dy)
-    x_settle = (
-        float(passive.x)
-        + (float(passive.vx) * settle_dt)
-        + (0.5 * thrust_ax * settle_dt * settle_dt)
-    )
-    y_settle = (
-        float(passive.y)
-        + (float(passive.vy_up) * settle_dt)
-        + (0.5 * (thrust_ay - _GRAVITY_MAG) * settle_dt * settle_dt)
-    )
-    vx_settle = float(passive.vx) + (thrust_ax * settle_dt)
-    vy_settle = float(passive.vy_up) + ((thrust_ay - _GRAVITY_MAG) * settle_dt)
+    x_settle = float(passive.x)
+    y_settle = float(passive.y)
+    vx_settle = float(passive.vx)
+    vy_settle = float(passive.vy_up)
+    angle_settle = float(getattr(passive, "angle", 0.0))
+    thrust_settle = max(0.0, float(getattr(passive, "thrust_level", 0.0)))
+    mass = max(0.5, float(getattr(passive, "mass", 1.0)))
+    time_remaining = settle_dt
+    while time_remaining > 1e-9:
+        step_dt = min(_SETTLE_STEP_S, time_remaining)
+        if settle_angle_target is None:
+            target_angle = _retrograde_angle_target(vx=vx_settle, vy_up=vy_settle)
+        else:
+            target_angle = float(settle_angle_target)
+        angle_delta = _angle_diff(angle_settle, target_angle)
+        angle_step = max(
+            -(_SETTLE_ROTATION_RATE * step_dt),
+            min(_SETTLE_ROTATION_RATE * step_dt, angle_delta),
+        )
+        angle_mid = angle_settle + (0.5 * angle_step)
+        thrust_next = max(0.0, thrust_settle - (thrust_down_rate * step_dt))
+        thrust_avg = 0.5 * (thrust_settle + thrust_next)
+        thrust_acc = (
+            _SETTLE_THRUST_EFFECT_SCALE
+            * (thrust_avg * max_power)
+            / mass
+        )
+        thrust_ax = math.sin(angle_mid) * thrust_acc
+        thrust_ay = math.cos(angle_mid) * thrust_acc
+        net_ay = thrust_ay - _GRAVITY_MAG
+        x_settle += (vx_settle * step_dt) + (0.5 * thrust_ax * step_dt * step_dt)
+        y_settle += (vy_settle * step_dt) + (0.5 * net_ay * step_dt * step_dt)
+        vx_settle += thrust_ax * step_dt
+        vy_settle += net_ay * step_dt
+        angle_settle += angle_step
+        thrust_settle = thrust_next
+        time_remaining -= step_dt
     dx_settle = target_x - x_settle
     dy_settle = target_y - y_settle
     settled_passive = SimpleNamespace(
@@ -343,6 +352,27 @@ def evaluate_setup_quality_after_settle(
     )
 
 
+def setup_cut_wind_down_s(
+    bot,
+    *,
+    passive: Sensors,
+    minimum_s: float,
+) -> float:
+    settle_s = max(0.0, float(minimum_s))
+    thrust_start = max(0.0, float(getattr(passive, "thrust_level", 0.0)))
+    idle_thrust_max = max(0.0, float(bot._cfg.setup_gate_idle_thrust_max))
+    if thrust_start <= idle_thrust_max:
+        return settle_s
+    thrust_down_rate = 1.8
+    vehicle_info = getattr(bot, "vehicle_info", None)
+    if vehicle_info is not None:
+        thrust_down_rate = max(0.0, float(vehicle_info.thrust_decrease_rate))
+    if thrust_down_rate <= 1e-6:
+        return settle_s
+    wind_down_s = (thrust_start - idle_thrust_max) / thrust_down_rate
+    return max(settle_s, float(wind_down_s))
+
+
 __all__ = [
     "SetupObjectiveGeometry",
     "SetupQualityStatus",
@@ -353,6 +383,7 @@ __all__ = [
     "evaluate_setup_quality_after_settle",
     "projected_impact_angle_deg",
     "select_reference_times",
+    "setup_cut_wind_down_s",
     "setup_dx_limit",
     "setup_objective_geometry",
     "transfer_dy_for_setup",

@@ -21,6 +21,7 @@ from bots._targeting import pick_target, target_half_width
 from bots.pdg.actuation import (
     command_from_plan as _command_from_plan_impl,
     command_passive_coast as _command_passive_coast_impl,
+    command_zero_thrust_hold_angle as _command_zero_thrust_hold_angle_impl,
 )
 from bots.pdg.config import PDGConfig
 from bots.pdg.eval import (
@@ -35,6 +36,8 @@ from bots.pdg.planner import solve_plan as _solve_plan_impl
 from bots.pdg.setup import (
     evaluate_setup_quality as _evaluate_setup_quality_impl,
     evaluate_setup_quality_after_settle as _evaluate_setup_quality_after_settle_impl,
+    setup_cut_wind_down_s as _setup_cut_wind_down_s_impl,
+    transfer_dy_for_setup as _transfer_dy_for_setup_impl,
 )
 from bots.pdg.stages import (
     BallisticCoastController,
@@ -773,6 +776,21 @@ class PDGBot(Bot):
             passive=passive,
         )
 
+    def _command_setup_settle(
+        self,
+        *,
+        dt: float,
+        passive: Sensors,
+    ) -> BotAction:
+        hold_angle = getattr(self, "_setup_cut_hold_angle", None)
+        if hold_angle is None:
+            return self._command_passive_coast(dt=dt, passive=passive)
+        return _command_zero_thrust_hold_angle_impl(
+            self,
+            dt=dt,
+            hold_angle=float(hold_angle),
+        )
+
     def _evaluate_setup_quality(
         self,
         *,
@@ -798,6 +816,7 @@ class PDGBot(Bot):
         dx: float,
         dy: float,
         settle_s: float,
+        settle_angle_target: float | None = None,
     ):
         dx_anchor_abs = self._shape_anchor_dx_abs if self._shape_window_started else abs(float(dx))
         return _evaluate_setup_quality_after_settle_impl(
@@ -807,7 +826,30 @@ class PDGBot(Bot):
             dy=dy,
             settle_s=settle_s,
             dx_anchor_abs=dx_anchor_abs,
+            settle_angle_target=settle_angle_target,
         )
+
+    def _setup_cut_wind_down_s(
+        self,
+        *,
+        passive: Sensors,
+        minimum_s: float,
+    ) -> float:
+        return _setup_cut_wind_down_s_impl(
+            self,
+            passive=passive,
+            minimum_s=minimum_s,
+        )
+
+    def _setup_settle_hold_angle(
+        self,
+        *,
+        dy: float,
+    ) -> float | None:
+        transfer_dy = _transfer_dy_for_setup_impl(self, dy=dy)
+        if transfer_dy < float(self._cfg.uphill_setup_dy_min):
+            return None
+        return float(self._prev_angle_cmd)
 
     def _run_setup_controller(
         self,
@@ -823,7 +865,7 @@ class PDGBot(Bot):
         self._setup_quality_verdict = quality.verdict
 
         if self._setup_cut_latched:
-            action = self._command_passive_coast(dt=ctx.dt, passive=ctx.passive)
+            action = self._command_setup_settle(dt=ctx.dt, passive=ctx.passive)
             action.status = f"pdg settle/setup {quality.verdict}"
             self._set_display_state(mode="passive", phase="setup", summary=f"cut {quality.verdict}")
             if self._setup_gate_thrust_is_idle(ctx.passive):
@@ -861,11 +903,17 @@ class PDGBot(Bot):
                 self._setup_burn_start_time = self._elapsed_time_s
         settled_quality = quality
         if self._setup_burn_started:
+            settle_s = self._setup_cut_wind_down_s(
+                passive=ctx.passive,
+                minimum_s=float(self._cfg.setup_gate_burn_end_settle_s),
+            )
+            settle_angle_target = self._setup_settle_hold_angle(dy=ctx.dy)
             settled_quality = self._evaluate_setup_quality_after_settle(
                 passive=ctx.passive,
                 dx=ctx.dx,
                 dy=ctx.dy,
-                settle_s=float(self._cfg.setup_gate_burn_end_settle_s),
+                settle_s=settle_s,
+                settle_angle_target=settle_angle_target,
             )
         overshot_target_direction = (
             quality.projected_dx is not None
@@ -875,9 +923,10 @@ class PDGBot(Bot):
         if settled_quality.passed and self._setup_burn_started:
             self._setup_cut_latched = True
             self._setup_settle_start_time = self._elapsed_time_s
+            self._setup_cut_hold_angle = self._setup_settle_hold_angle(dy=ctx.dy)
             self._setup_gate_quality_pass = True
             self._setup_gate_quality_verdict = settled_quality.verdict
-            settle_action = self._command_passive_coast(dt=ctx.dt, passive=ctx.passive)
+            settle_action = self._command_setup_settle(dt=ctx.dt, passive=ctx.passive)
             settle_action.status = "pdg settle/setup pass"
             self._set_display_state(mode="passive", phase="setup", summary="cut pass")
             return StageTickResult(action=settle_action)
@@ -890,9 +939,10 @@ class PDGBot(Bot):
                 ):
                     self._setup_cut_latched = True
                     self._setup_settle_start_time = self._elapsed_time_s
+                    self._setup_cut_hold_angle = self._setup_settle_hold_angle(dy=ctx.dy)
                     self._setup_gate_quality_pass = False
                     self._setup_gate_quality_verdict = quality.verdict
-                    settle_action = self._command_passive_coast(dt=ctx.dt, passive=ctx.passive)
+                    settle_action = self._command_setup_settle(dt=ctx.dt, passive=ctx.passive)
                     settle_action.status = f"pdg settle/setup {quality.verdict}"
                     self._set_display_state(
                         mode="passive",
@@ -903,9 +953,10 @@ class PDGBot(Bot):
                 if burn_elapsed >= float(self._cfg.setup_burn_max_s):
                     self._setup_cut_latched = True
                     self._setup_settle_start_time = self._elapsed_time_s
+                    self._setup_cut_hold_angle = self._setup_settle_hold_angle(dy=ctx.dy)
                     self._setup_gate_quality_pass = False
                     self._setup_gate_quality_verdict = quality.verdict
-                    settle_action = self._command_passive_coast(dt=ctx.dt, passive=ctx.passive)
+                    settle_action = self._command_setup_settle(dt=ctx.dt, passive=ctx.passive)
                     settle_action.status = f"pdg settle/setup {quality.verdict}"
                     self._set_display_state(
                         mode="passive",
@@ -935,9 +986,10 @@ class PDGBot(Bot):
                 ):
                     self._setup_cut_latched = True
                     self._setup_settle_start_time = self._elapsed_time_s
+                    self._setup_cut_hold_angle = self._setup_settle_hold_angle(dy=ctx.dy)
                     self._setup_gate_quality_pass = False
                     self._setup_gate_quality_verdict = quality.verdict
-                    settle_action = self._command_passive_coast(dt=ctx.dt, passive=ctx.passive)
+                    settle_action = self._command_setup_settle(dt=ctx.dt, passive=ctx.passive)
                     settle_action.status = f"pdg settle/setup {quality.verdict}"
                     self._set_display_state(
                         mode="passive",
@@ -1001,6 +1053,7 @@ class PDGBot(Bot):
             self._fallback_steps_remaining = int(self._cfg.fallback_hold_steps)
         if stage == FlightStage.SETUP:
             self._setup_cut_latched = False
+            self._setup_cut_hold_angle = None
             self._setup_settle_start_time = None
             self._setup_quality_verdict = None
             self._setup_burn_start_time = None

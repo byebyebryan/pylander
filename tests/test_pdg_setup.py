@@ -9,6 +9,7 @@ from bots.pdg.config import PDGConfig
 from bots.pdg.setup import (
     evaluate_setup_quality,
     evaluate_setup_quality_after_settle,
+    setup_cut_wind_down_s,
     setup_objective_geometry,
 )
 from core.config import GRAVITY
@@ -173,3 +174,31 @@ def test_evaluate_setup_quality_after_settle_matches_ballistic_propagation_witho
     assert settled_quality.passed is direct_quality.passed
     assert settled_quality.projected_dx == pytest.approx(direct_quality.projected_dx)
     assert settled_quality.impact_angle_deg == pytest.approx(direct_quality.impact_angle_deg)
+
+
+def test_setup_cut_wind_down_s_uses_idle_decay_time_when_longer_than_minimum() -> None:
+    bot = _Bot()
+    bot.vehicle_info = SimpleNamespace(thrust_decrease_rate=1.8)
+    passive = SimpleNamespace(thrust_level=1.6)
+
+    settle_s = setup_cut_wind_down_s(
+        bot,
+        passive=passive,
+        minimum_s=0.25,
+    )
+
+    assert settle_s == pytest.approx((1.6 - 0.03) / 1.8)
+
+
+def test_setup_cut_wind_down_s_respects_minimum_when_already_near_idle() -> None:
+    bot = _Bot()
+    bot.vehicle_info = SimpleNamespace(thrust_decrease_rate=1.8)
+    passive = SimpleNamespace(thrust_level=0.02)
+
+    settle_s = setup_cut_wind_down_s(
+        bot,
+        passive=passive,
+        minimum_s=0.25,
+    )
+
+    assert settle_s == pytest.approx(0.25)
