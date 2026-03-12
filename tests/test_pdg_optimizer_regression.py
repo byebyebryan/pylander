@@ -163,3 +163,49 @@ def test_pdg_optimizer_supports_runtime_path_override_and_rejects_bad_length() -
     )
     assert plan is not None
     assert plan.feasible
+
+
+def test_pdg_optimizer_setup_no_away_constraint_follows_target_direction() -> None:
+    optimizer = PDGOptimizer(
+        PDGOptimizerConfig(
+            horizon_steps=10,
+            step_dt=0.2,
+            w_terminal_x=0.0,
+            w_terminal_y=0.0,
+            w_terminal_vx=0.0,
+            w_terminal_vy=0.0,
+            w_path_x=0.0,
+            w_path_y=0.0,
+            w_upward_vy=0.0,
+            w_setup_projected_dx=40.0,
+            w_setup_target_y_cross=20.0,
+            w_setup_apex=8.0,
+            w_setup_angle=0.0,
+        )
+    )
+
+    plan = optimizer.solve(
+        x=0.0,
+        y=140.0,
+        vx=25.0,
+        vy=6.0,
+        target_x=120.0,
+        target_y=0.0,
+        y_floor=-8.0,
+        target_vy=-2.0,
+        max_thrust_accel=22.0,
+        min_thrust_accel=2.0,
+        nominal_thrust_accel=12.0,
+        max_tilt_rad=1.0,
+        descent_floor_vy=-8.0,
+        gravity_mag=1.62,
+        pad_half_width=55.0,
+        altitude_hint=140.0,
+        warm_start=None,
+        setup_t_cross_ref=4.0,
+        setup_no_away_dir=1.0,
+    )
+
+    assert plan is not None
+    assert plan.feasible
+    assert min(float(ax) for ax in plan.ax) >= -1e-6

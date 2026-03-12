@@ -2,12 +2,16 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 from bots._ballistics import ballistic_apex_from_state, estimate_target_y_projection
+from bots._bot_math import engine_profile
 from core.bot import Sensors
 from core.config import GRAVITY
 
 _GRAVITY_MAG = abs(float(GRAVITY))
+_SETTLE_ROTATION_RATE = math.radians(90.0)
+_SETTLE_THRUST_EFFECT_SCALE = 1.0
 
 
 @dataclass(frozen=True)
@@ -22,6 +26,16 @@ class SetupQualityStatus:
     projected_apex_over_target: float
     ratio_min: float
     ratio_max: float
+
+
+@dataclass(frozen=True)
+class SetupObjectiveGeometry:
+    has_target_y_solution: bool
+    dx_limit: float
+    projected_dx: float
+    impact_angle_deg: float | None
+    no_away_ax_sign: float
+    angle_scale: float
 
 
 def _direction_sign(bot, *, dx: float) -> float:
@@ -62,6 +76,14 @@ def transfer_dy_for_setup(bot, *, dy: float) -> float:
     return transfer_dy
 
 
+def setup_dx_limit(bot) -> float:
+    cfg = bot._cfg
+    return max(
+        float(cfg.setup_gate_projected_dx_abs),
+        float(cfg.setup_gate_projected_dx_target_ratio) * float(bot._last_target_half),
+    )
+
+
 def descent_angle_ratio_bounds(bot) -> tuple[float, float]:
     cfg = bot._cfg
     angle_min = max(1.0, float(cfg.setup_descent_angle_deg_min))
@@ -88,16 +110,11 @@ def select_reference_times(
     dy: float,
     plan,
 ) -> tuple[float, float, float]:
-    use_live_reference = float(dy) >= float(bot._cfg.uphill_setup_dy_min)
     ref_x = float(passive.x)
     ref_y = float(passive.y)
     ref_vx = float(passive.vx)
     ref_vy = float(passive.vy_up)
-    if (not use_live_reference) and plan is not None and getattr(plan, "feasible", False):
-        ref_x = float(plan.x[-1])
-        ref_y = float(plan.y[-1])
-        ref_vx = float(plan.vx[-1])
-        ref_vy = float(plan.vy[-1])
+    _ = plan
 
     dx_anchor_abs = bot._shape_anchor_dx_abs if bot._shape_window_started else abs(float(dx))
     apex_target, _ = apex_target_and_tolerance(bot, dx_anchor_abs=dx_anchor_abs, dy=dy)
@@ -133,6 +150,58 @@ def projected_impact_angle_deg(*, vx: float, vy_up: float, t_fall: float) -> flo
     return math.degrees(math.atan2(vy_down, abs(float(vx))))
 
 
+def _angle_diff(current: float, target: float) -> float:
+    return (float(target) - float(current) + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def _retrograde_angle_target(*, vx: float, vy_up: float) -> float:
+    speed = math.hypot(float(vx), float(vy_up))
+    if speed <= 1e-3:
+        return 0.0
+    return math.atan2(-float(vx), -float(vy_up))
+
+
+def setup_objective_geometry(
+    bot,
+    *,
+    passive: Sensors,
+    dx: float,
+    projection,
+    setup_t_cross_ref: float,
+) -> SetupObjectiveGeometry:
+    dx_limit = setup_dx_limit(bot)
+    has_solution = bool(getattr(projection, "has_target_y_solution", True))
+    if has_solution and getattr(projection, "projected_dx", None) is not None:
+        projected_dx = float(projection.projected_dx)
+    else:
+        projected_dx = float(dx) - (float(passive.vx) * max(0.0, float(setup_t_cross_ref)))
+
+    impact_angle = None
+    if has_solution:
+        impact_angle = projected_impact_angle_deg(
+            vx=float(passive.vx),
+            vy_up=float(passive.vy_up),
+            t_fall=float(projection.t_fall),
+        )
+
+    no_away_ax_sign = 0.0
+    if abs(float(dx)) > dx_limit and abs(float(dx)) > 1e-6:
+        no_away_ax_sign = _direction_sign(bot, dx=dx)
+
+    angle_scale = 0.0
+    if has_solution and impact_angle is not None:
+        angle_scale = 1.0 if impact_angle < float(bot._cfg.setup_descent_angle_deg_target) else 0.0
+
+    return SetupObjectiveGeometry(
+        has_target_y_solution=has_solution,
+        dx_limit=dx_limit,
+        projected_dx=projected_dx,
+        impact_angle_deg=impact_angle,
+        no_away_ax_sign=no_away_ax_sign,
+        angle_scale=angle_scale,
+    )
+
+
 def evaluate_setup_quality(
     bot,
     *,
@@ -143,22 +212,15 @@ def evaluate_setup_quality(
     dx_anchor_abs: float,
 ) -> SetupQualityStatus:
     cfg = bot._cfg
-    transfer_dy = transfer_dy_for_setup(bot, dy=dy)
-    descending_transfer = transfer_dy < 0.0
     apex_target, apex_tolerance = apex_target_and_tolerance(
         bot,
         dx_anchor_abs=dx_anchor_abs,
         dy=dy,
     )
-    dx_limit = max(
-        float(cfg.setup_gate_projected_dx_abs),
-        float(cfg.setup_gate_projected_dx_target_ratio) * float(bot._last_target_half),
-    )
+    dx_limit = setup_dx_limit(bot)
     ratio_min, ratio_max = descent_angle_ratio_bounds(bot)
 
-    target_x = float(passive.x) + float(dx)
     target_y = float(bot._last_target_y)
-    direction_sign = _direction_sign(bot, dx=dx)
     apex = ballistic_apex_from_state(
         x=float(passive.x),
         y=float(passive.y),
@@ -167,9 +229,6 @@ def evaluate_setup_quality(
         gravity_mag=_GRAVITY_MAG,
     )
     projected_apex_over_target = float(apex.y_apex) - target_y
-    d_pa_signed = None
-    if apex.x_apex is not None:
-        d_pa_signed = direction_sign * (target_x - float(apex.x_apex))
     has_solution = bool(getattr(projection, "has_target_y_solution", True))
     projected_dx = float(projection.projected_dx) if has_solution else None
     impact_angle = None
@@ -188,28 +247,12 @@ def evaluate_setup_quality(
     elif projected_dx is None or abs(projected_dx) > dx_limit:
         verdict = "dx"
         passed = False
-    elif abs(projected_apex_over_target - apex_target) > apex_tolerance:
-        verdict = "apex"
-        passed = False
     elif impact_angle is None:
         verdict = "angle"
         passed = False
     elif impact_angle < float(cfg.setup_descent_angle_deg_min):
         verdict = "angle"
         passed = False
-    elif (not descending_transfer) and impact_angle > float(cfg.setup_descent_angle_deg_max):
-        verdict = "angle"
-        passed = False
-    elif d_pa_signed is None or d_pa_signed <= 0.0:
-        verdict = "angle"
-        passed = False
-    elif projected_apex_over_target > 1e-6:
-        if (not descending_transfer) and d_pa_signed < (ratio_min * projected_apex_over_target):
-            verdict = "angle"
-            passed = False
-        elif d_pa_signed > (ratio_max * projected_apex_over_target):
-            verdict = "angle"
-            passed = False
 
     return SetupQualityStatus(
         verdict=verdict,
@@ -225,13 +268,92 @@ def evaluate_setup_quality(
     )
 
 
+def evaluate_setup_quality_after_settle(
+    bot,
+    *,
+    passive: Sensors,
+    dx: float,
+    dy: float,
+    settle_s: float,
+    dx_anchor_abs: float,
+) -> SetupQualityStatus:
+    settle_dt = max(0.0, float(settle_s))
+    max_power, _min_throttle, _max_throttle, _ramp_up = engine_profile(getattr(bot, "vehicle_info", None))
+    thrust_down_rate = 1.8
+    vehicle_info = getattr(bot, "vehicle_info", None)
+    if vehicle_info is not None:
+        thrust_down_rate = max(0.0, float(vehicle_info.thrust_decrease_rate))
+    thrust_start = max(0.0, float(getattr(passive, "thrust_level", 0.0)))
+    thrust_end = max(0.0, thrust_start - (thrust_down_rate * settle_dt))
+    thrust_avg = 0.5 * (thrust_start + thrust_end)
+    thrust_acc = (
+        _SETTLE_THRUST_EFFECT_SCALE
+        * (thrust_avg * max_power)
+        / max(0.5, float(getattr(passive, "mass", 1.0)))
+    )
+    current_angle = float(getattr(passive, "angle", 0.0))
+    retrograde_angle = _retrograde_angle_target(vx=float(passive.vx), vy_up=float(passive.vy_up))
+    angle_step = _angle_diff(current_angle, retrograde_angle)
+    angle_step = max(
+        -(_SETTLE_ROTATION_RATE * settle_dt),
+        min(_SETTLE_ROTATION_RATE * settle_dt, angle_step),
+    )
+    thrust_angle_avg = current_angle + (0.5 * angle_step)
+    thrust_ax = math.sin(thrust_angle_avg) * thrust_acc
+    thrust_ay = math.cos(thrust_angle_avg) * thrust_acc
+    target_x = float(passive.x) + float(dx)
+    target_y = float(passive.y) + float(dy)
+    x_settle = (
+        float(passive.x)
+        + (float(passive.vx) * settle_dt)
+        + (0.5 * thrust_ax * settle_dt * settle_dt)
+    )
+    y_settle = (
+        float(passive.y)
+        + (float(passive.vy_up) * settle_dt)
+        + (0.5 * (thrust_ay - _GRAVITY_MAG) * settle_dt * settle_dt)
+    )
+    vx_settle = float(passive.vx) + (thrust_ax * settle_dt)
+    vy_settle = float(passive.vy_up) + ((thrust_ay - _GRAVITY_MAG) * settle_dt)
+    dx_settle = target_x - x_settle
+    dy_settle = target_y - y_settle
+    settled_passive = SimpleNamespace(
+        x=x_settle,
+        y=y_settle,
+        vx=vx_settle,
+        vy_up=vy_settle,
+    )
+    projection = estimate_target_y_projection(
+        dx=dx_settle,
+        dy=dy_settle,
+        vx=vx_settle,
+        vy_up=vy_settle,
+        x=x_settle,
+        y=y_settle,
+        min_t_fall=0.0,
+        gravity_mag=_GRAVITY_MAG,
+    )
+    return evaluate_setup_quality(
+        bot,
+        passive=settled_passive,
+        dx=dx_settle,
+        dy=dy_settle,
+        projection=projection,
+        dx_anchor_abs=dx_anchor_abs,
+    )
+
+
 __all__ = [
+    "SetupObjectiveGeometry",
     "SetupQualityStatus",
     "apex_target_and_tolerance",
     "descent_angle_ratio_bounds",
     "descent_angle_slope_bounds",
     "evaluate_setup_quality",
+    "evaluate_setup_quality_after_settle",
     "projected_impact_angle_deg",
     "select_reference_times",
+    "setup_dx_limit",
+    "setup_objective_geometry",
     "transfer_dy_for_setup",
 ]

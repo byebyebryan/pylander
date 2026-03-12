@@ -33,8 +33,8 @@ from bots.pdg.eval import (
 from bots.pdg.gate import evaluate_flare_gate as _evaluate_flare_gate_impl
 from bots.pdg.planner import solve_plan as _solve_plan_impl
 from bots.pdg.setup import (
-    descent_angle_slope_bounds,
     evaluate_setup_quality as _evaluate_setup_quality_impl,
+    evaluate_setup_quality_after_settle as _evaluate_setup_quality_after_settle_impl,
 )
 from bots.pdg.stages import (
     BallisticCoastController,
@@ -137,30 +137,21 @@ class PDGBot(Bot):
         self.set_behavior(behavior)
 
     def _build_setup_optimizer(self, *, uphill: bool) -> PDGOptimizer:
-        angle_slope_min, angle_slope_max = descent_angle_slope_bounds(self)
-        if uphill:
-            w_projected_dx = 82.0
-            w_target_y_cross = 76.0
-            w_apex = 42.0
-            w_angle = 24.0
-        else:
-            w_projected_dx = 120.0
-            w_target_y_cross = 55.0
-            w_apex = 24.0
-            w_angle = 32.0
+        _ = uphill
         return PDGOptimizer(
             PDGOptimizerConfig(
                 horizon_steps=36,
                 w_terminal_x=48.0,
                 w_path_x=0.09,
                 w_path_y=0.025,
-                w_setup_projected_dx=w_projected_dx,
-                w_setup_target_y_cross=w_target_y_cross,
-                w_setup_apex=w_apex,
-                w_setup_angle=w_angle,
+                w_setup_projected_dx=90.0,
+                w_setup_target_y_cross=72.0,
+                w_setup_apex=18.0,
+                w_setup_angle=44.0,
                 w_late_thrust=float(self._cfg.setup_late_thrust_weight),
-                setup_angle_slope_min=angle_slope_min,
-                setup_angle_slope_max=angle_slope_max,
+                setup_angle_slope_target=math.tan(
+                    math.radians(float(self._cfg.setup_descent_angle_deg_target))
+                ),
             )
         )
 
@@ -601,6 +592,7 @@ class PDGBot(Bot):
         min_thrust_accel: float,
         nominal_thrust_accel: float,
         phase: str,
+        projection: BallisticProjection | None = None,
     ) -> PDGPlan | None:
         return _solve_plan_impl(
             self,
@@ -611,6 +603,7 @@ class PDGBot(Bot):
             min_thrust_accel=min_thrust_accel,
             nominal_thrust_accel=nominal_thrust_accel,
             phase=phase,
+            projection=projection,
         )
 
     def _refresh_stage_tracking(
@@ -794,6 +787,24 @@ class PDGBot(Bot):
             dx_anchor_abs=dx_anchor_abs,
         )
 
+    def _evaluate_setup_quality_after_settle(
+        self,
+        *,
+        passive: Sensors,
+        dx: float,
+        dy: float,
+        settle_s: float,
+    ):
+        dx_anchor_abs = self._shape_anchor_dx_abs if self._shape_window_started else abs(float(dx))
+        return _evaluate_setup_quality_after_settle_impl(
+            self,
+            passive=passive,
+            dx=dx,
+            dy=dy,
+            settle_s=settle_s,
+            dx_anchor_abs=dx_anchor_abs,
+        )
+
     def _run_setup_controller(
         self,
         *,
@@ -845,22 +856,48 @@ class PDGBot(Bot):
             self._setup_burn_idle_since = None
             if self._setup_burn_start_time is None:
                 self._setup_burn_start_time = self._elapsed_time_s
+        settled_quality = quality
+        if self._setup_burn_started:
+            settled_quality = self._evaluate_setup_quality_after_settle(
+                passive=ctx.passive,
+                dx=ctx.dx,
+                dy=ctx.dy,
+                settle_s=float(self._cfg.setup_gate_burn_end_settle_s),
+            )
+        overshot_target_direction = (
+            quality.projected_dx is not None
+            and abs(float(ctx.dx)) > 1e-3
+            and (float(quality.projected_dx) * float(ctx.dx)) < 0.0
+        )
+        if settled_quality.passed and self._setup_burn_started:
+            self._setup_cut_latched = True
+            self._setup_settle_start_time = self._elapsed_time_s
+            self._setup_gate_quality_pass = True
+            self._setup_gate_quality_verdict = settled_quality.verdict
+            settle_action = self._command_passive_coast(dt=ctx.dt, passive=ctx.passive)
+            settle_action.status = "pdg settle/setup pass"
+            self._set_display_state(mode="passive", phase="setup", summary="cut pass")
+            return StageTickResult(action=settle_action)
         if self._setup_burn_started and (not quality.passed):
             burn_elapsed = self._elapsed_time_s - float(self._setup_burn_start_time or self._elapsed_time_s)
-            uphill_under_apex = (
-                float(ctx.dy) >= float(self._cfg.uphill_setup_dy_min)
-                and float(quality.projected_apex_over_target)
-                < (float(quality.apex_target) - float(quality.apex_tolerance))
-                and (
-                    quality.projected_dx is None
-                    or (float(quality.projected_dx) * float(ctx.dx)) >= 0.0
-                )
-            )
-            if quality.verdict != "no_target_y_solution" and not uphill_under_apex:
+            if quality.verdict != "no_target_y_solution":
                 if (
-                    planner_target_thrust < setup_cut_thrust
+                    overshot_target_direction
                     and burn_elapsed >= 0.75
                 ):
+                    self._setup_cut_latched = True
+                    self._setup_settle_start_time = self._elapsed_time_s
+                    self._setup_gate_quality_pass = False
+                    self._setup_gate_quality_verdict = quality.verdict
+                    settle_action = self._command_passive_coast(dt=ctx.dt, passive=ctx.passive)
+                    settle_action.status = f"pdg settle/setup {quality.verdict}"
+                    self._set_display_state(
+                        mode="passive",
+                        phase="setup",
+                        summary=f"cut {quality.verdict}",
+                    )
+                    return StageTickResult(action=settle_action)
+                if burn_elapsed >= float(self._cfg.setup_burn_max_s):
                     self._setup_cut_latched = True
                     self._setup_settle_start_time = self._elapsed_time_s
                     self._setup_gate_quality_pass = False
@@ -909,19 +946,9 @@ class PDGBot(Bot):
                 float(ctx.max_throttle),
                 setup_thrust_floor_ratio * float(ctx.max_throttle),
             )
-            if planner_target_thrust < thrust_floor:
+            if (not overshot_target_direction) and planner_target_thrust < thrust_floor:
                 action.target_thrust = thrust_floor
             self._thrust_enabled = True
-
-        if quality.passed and self._setup_burn_started:
-            self._setup_cut_latched = True
-            self._setup_settle_start_time = self._elapsed_time_s
-            self._setup_gate_quality_pass = True
-            self._setup_gate_quality_verdict = quality.verdict
-            settle_action = self._command_passive_coast(dt=ctx.dt, passive=ctx.passive)
-            settle_action.status = "pdg settle/setup pass"
-            self._set_display_state(mode="passive", phase="setup", summary="cut pass")
-            return StageTickResult(action=settle_action)
 
         action.status = f"pdg opt/setup {quality.verdict}"
         if self._debug_setup and (self._elapsed_time_s - self._debug_setup_last_print_t) >= 0.24:
@@ -1050,6 +1077,7 @@ class PDGBot(Bot):
                 min_thrust_accel=ctx.min_thrust_accel,
                 nominal_thrust_accel=ctx.nominal_thrust_accel,
                 phase=phase,
+                projection=ctx.projection,
             )
             if plan is not None and plan.feasible:
                 self._plan = plan

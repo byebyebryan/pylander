@@ -180,7 +180,7 @@ def test_pdg_setup_goal_ends_headless_run_early() -> None:
         assert result["setup_quality_verdict"] == "pass"
     else:
         assert result["failure_mode"] == "setup_quality_failed"
-        assert result["setup_quality_verdict"] in {"dx", "apex", "angle", "no_target_y_solution"}
+        assert result["setup_quality_verdict"] in {"dx", "angle", "no_target_y_solution"}
 
 
 def test_non_landing_goal_without_decision_fails_goal_not_reached() -> None:
