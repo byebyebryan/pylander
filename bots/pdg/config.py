@@ -87,6 +87,7 @@ class PDGConfig:
     touchdown_phase_altitude: float = 4.0
     touchdown_phase_speed: float = 2.5
     touchdown_phase_dx_ratio: float = 0.65
+    touchdown_phase_time_to_go: float = 3.5
 
     # Cheap analytic flare gate: nominal-thrust readiness plus latest-safe fallback.
     flare_gate_nominal_ratio: float = 0.92

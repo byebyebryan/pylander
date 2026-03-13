@@ -1010,6 +1010,13 @@ class PDGBot(Bot):
         *,
         ctx: UpdateContext,
     ) -> StageTickResult:
+        if (
+            ctx.suggested_stage != FlightStage.SETUP
+            and (not self._setup_cut_latched)
+            and (not self._setup_gate_done)
+        ):
+            return StageTickResult(next_stage=ctx.suggested_stage)
+
         quality = self._evaluate_setup_quality(
             passive=ctx.passive,
             dx=ctx.dx,

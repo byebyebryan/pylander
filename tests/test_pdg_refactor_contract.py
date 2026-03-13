@@ -5,6 +5,8 @@ from types import MethodType
 import pytest
 
 from bots import create_bot
+from bots._ballistics import BallisticProjection
+from bots.pdg import FlightStage, UpdateContext
 from core.bot import BotAction, FlightPhaseSnapshot, PlotMarker, Sensors, SetupGateMetrics
 from game import LanderGame
 from levels import create_level as create_level_by_name
@@ -186,3 +188,92 @@ def test_setup_gate_waits_for_actual_thrust_shutdown() -> None:
     assert gate_time_s == pytest.approx(gate_time)
     assert gate_thrust <= float(bot._cfg.setup_gate_idle_thrust_max) + 1e-6
     assert gate_phase in {"setup", "coast"}
+
+
+def test_direct_descent_terminal_handoff_prefers_touchdown() -> None:
+    bot = create_bot("pdg")
+    passive = Sensors(
+        x=0.0,
+        y=60.0,
+        altitude=60.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-30.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=13500.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    stage = bot._refresh_stage_tracking(
+        passive=passive,
+        dx=0.0,
+        dy=-60.0,
+        alt=60.0,
+        projection=BallisticProjection(
+            projected_dx=0.0,
+            t_fall=1.7,
+            target_x=0.0,
+            impact_x=0.0,
+            has_target_y_solution=True,
+        ),
+    )
+
+    assert stage == FlightStage.TOUCHDOWN
+
+
+def test_setup_controller_honors_touchdown_stage_suggestion_before_setup_gate() -> None:
+    bot = create_bot("pdg")
+    passive = Sensors(
+        x=0.0,
+        y=60.0,
+        altitude=60.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=-30.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=13500.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    ctx = UpdateContext(
+        dt=1.0 / 30.0,
+        passive=passive,
+        target=None,
+        dx=0.0,
+        dy=-60.0,
+        alt=60.0,
+        projection=BallisticProjection(
+            projected_dx=0.0,
+            t_fall=1.7,
+            target_x=0.0,
+            impact_x=0.0,
+            has_target_y_solution=True,
+        ),
+        max_power=230000.0,
+        min_throttle=0.25,
+        max_throttle=1.6,
+        ramp_up=1.1,
+        max_thrust_accel=27.0,
+        nominal_thrust_accel=17.0,
+        min_thrust_accel=4.0,
+        suggested_stage=FlightStage.TOUCHDOWN,
+    )
+
+    result = bot._run_setup_controller(ctx=ctx)
+
+    assert result.next_stage == FlightStage.TOUCHDOWN
+    assert result.action is None
