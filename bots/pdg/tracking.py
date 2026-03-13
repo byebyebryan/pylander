@@ -152,12 +152,25 @@ def refresh_stage_tracking(
     speed = math.hypot(float(passive.vx), float(passive.vy_up))
     touchdown_dx_limit = max(12.0, cfg.touchdown_phase_dx_ratio * bot._last_target_half)
     in_touchdown_corridor = abs(float(dx)) <= touchdown_dx_limit
+    in_touchdown_projected_corridor = abs(projected_dx) <= touchdown_dx_limit
+    direct_touchdown_terminal = (
+        (not bot._setup_gate_done)
+        and (not bot._flare_entry_done)
+        and (not bot._shape_window_started)
+        and has_target_y_solution
+        and in_touchdown_corridor
+        and in_touchdown_projected_corridor
+        and abs(float(passive.vx)) <= float(cfg.touchdown_phase_speed)
+        and t_fall <= float(cfg.touchdown_phase_time_to_go)
+    )
     next_stage = "setup"
     if (
         alt <= cfg.touchdown_phase_altitude
         and speed <= cfg.touchdown_phase_speed
         and in_touchdown_corridor
     ):
+        next_stage = "touchdown"
+    elif direct_touchdown_terminal:
         next_stage = "touchdown"
     elif bot._flare_entry_done:
         next_stage = "flare"

@@ -80,6 +80,12 @@ Each frame:
 5. allocate acceleration to thrust+angle with tilt/rate limits,
 6. fallback only when optimizer result is infeasible.
 
+For pure direct-descents with no setup shaping window and near-zero lateral
+miss, stage tracking may also hand off straight from `setup` to `touchdown`
+once ballistic time-to-impact is short enough. That path is intended for
+plunge-like terminal descents and bypasses the normal setup-to-coast-to-flare
+chain.
+
 Setup planning remains generic across flat/downhill/climb, but it is now handled by a dedicated setup controller rather than the generic stage runner.
 
 The setup solve is now geometry-first and `pdx`-first:
@@ -148,6 +154,7 @@ Goal-based eval boundary:
 - setup cut still uses burn-end settle prediction, but `setup_gate` only finalizes once actual thrust decays to `setup_gate_idle_thrust_max`:
   `setup_gate_burn_start_thrust`, `setup_gate_idle_thrust_max`,
   `setup_gate_burn_end_settle_s`
+- direct-descent touchdown handoff: `touchdown_phase_time_to_go`
 - setup burn floor / decisiveness: `setup_active_thrust_floor`, `setup_late_thrust_weight`
 - flare-gate strictness: `flare_gate_*`
 - flare lateral-authority ceiling: `flare_dynamic_tilt_max`

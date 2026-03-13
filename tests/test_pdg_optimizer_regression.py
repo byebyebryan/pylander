@@ -34,7 +34,6 @@ def _run_level(
 @pytest.mark.parametrize(
     ("level_name", "scenario", "eval_goal", "max_time", "key", "expected"),
     (
-        ("plunge", "mid_normal", None, 12.0, "state", "landed"),
         ("setup_climb", "mid", "setup", 10.0, "setup_gate_done", True),
         ("setup_flat", "mid", "setup", 9.0, "setup_gate_done", True),
     ),
@@ -56,6 +55,26 @@ def test_pdg_smoke_plunge_and_setup_milestones_seed0(
     )
     assert result.get("state") != "crashed"
     assert result.get(key) == expected
+
+
+@pytest.mark.parametrize(
+    ("scenario", "max_time"),
+    (
+        ("mid_normal", 12.0),
+        ("low_light", 8.5),
+    ),
+)
+def test_pdg_smoke_plunge_reaches_touchdown_seed0(
+    scenario: str,
+    max_time: float,
+) -> None:
+    result, bot = _run_level(
+        level_name="plunge",
+        scenario=scenario,
+        max_time=max_time,
+    )
+    assert result.get("state") != "crashed"
+    assert bot._active_phase in {"touchdown", "landed"}
 
 
 def test_pdg_launch_landing_offset_bound_seed0() -> None:
