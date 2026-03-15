@@ -5,6 +5,7 @@ import os
 import pytest
 
 import app.run_batch as run_batch_module
+import app.run_single as run_single_module
 from app.cli import build_parser, parse_command
 from app.config import BenchCommand, BenchSettings, BenchTarget, RunCommand
 from bots import create_bot, list_available_bots
@@ -326,6 +327,31 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
 
 def test_parse_seed_spec_keeps_order_and_deduplicates() -> None:
     assert parse_seed_spec("0-2,2,5,4-3") == [0, 1, 2, 5, 4, 3]
+
+
+def test_resolve_default_bot_invalid_level_fails_fast() -> None:
+    with pytest.raises(ValueError, match="Failed to load level 'missing_level'"):
+        run_single_module.resolve_default_bot("missing_level")
+
+
+def test_resolve_benchmark_plan_invalid_level_fails_fast() -> None:
+    config = BenchSettings(
+        bot_name=None,
+        bot_config_path=None,
+        selectors=(BenchTarget(level_name="missing_level", scenario_name=None, seed_spec=None),),
+        lander_name=None,
+        workers=1,
+        max_time=300.0,
+        max_steps=None,
+        plot_mode="none",
+        plot_output="combined",
+        plot_max_side_px=1800,
+        json_path=None,
+        csv_path=None,
+    )
+
+    with pytest.raises(ValueError, match="Failed to load level 'missing_level'"):
+        resolve_benchmark_plan(config)
 
 
 def test_parser_rejects_removed_bot_behavior_flag() -> None:

@@ -298,6 +298,7 @@ def build_setup_gate_metrics_from_state(
         projected_apex_y=apex_y,
         projected_apex_over_target=projected_apex_over_target,
         has_target_y_solution=has_target_y_solution,
+        projected_dx=projected_impact_dx,
         projected_impact_dx=projected_impact_dx,
         projected_impact_angle_deg=projected_impact_angle_deg,
         burn_duration_s=0.0,

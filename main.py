@@ -21,13 +21,13 @@ def main() -> None:
 
     if isinstance(command, RunCommand):
         cfg = command.run
-        if cfg.headless:
-            default_bot_name = resolve_default_bot(cfg.level_name)
-            if not (cfg.bot_name or default_bot_name):
-                parser.error("Headless run requires a bot name or a level default bot")
-            if cfg.bot_name is None and default_bot_name is not None:
-                print(f"Using level-default bot: {default_bot_name}")
         try:
+            if cfg.headless:
+                default_bot_name = resolve_default_bot(cfg.level_name)
+                if not (cfg.bot_name or default_bot_name):
+                    parser.error("Headless run requires a bot name or a level default bot")
+                if cfg.bot_name is None and default_bot_name is not None:
+                    print(f"Using level-default bot: {default_bot_name}")
             run_once(
                 cfg,
                 seed=cfg.seed,

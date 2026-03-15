@@ -45,7 +45,7 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 
 ## Bot development and evaluation
 - Treat bot build/eval/optimization as first-class (not a side quest).
-- The primary controller is the unified `zem_zev` bot; avoid re-introducing split-phase bot stacks.
+- The primary controller is the unified `pdg` bot; avoid re-introducing split-phase bot stacks.
 - Scenario-first: solve focused selectors/scenarios first, then widen to cross-level coverage.
 - Define measurable outcomes for each tuning objective (success criteria + efficiency + stability), not just end-of-run state.
 - Use meaningful metrics (success rate, landing quality, fuel use, stability, consistency across seeds).
@@ -103,7 +103,7 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - `uv run pytest`
 - `uv run ruff check .`
 - If behavior changed: run a relevant headless eval and compare metrics to a baseline
- - Example focused eval: `uv run python main.py sim setup_flat:far:0 --bot zem_zev`
- - Example quick regression compare: `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot zem_zev`
+ - Example focused eval: `uv run python main.py sim setup_flat:far:0 --bot pdg`
+ - Example quick regression compare: `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot pdg`
 - If CLI/defaults/workflows changed: update `README.md`
 - Don’t check in artifacts (`outputs/` stays local/ignored), including benchmark caches and generated plots.

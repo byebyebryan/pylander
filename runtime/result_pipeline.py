@@ -11,7 +11,7 @@ _SETUP_GATE_RESULT_TO_ATTR: tuple[tuple[str, str], ...] = (
     ("setup_gate_projected_apex_y", "projected_apex_y"),
     ("setup_gate_projected_apex_over_target", "projected_apex_over_target"),
     ("setup_gate_has_target_y_solution", "has_target_y_solution"),
-    ("setup_gate_projected_dx", "projected_impact_dx"),
+    ("setup_gate_projected_dx", "projected_dx"),
     ("setup_gate_projected_impact_angle_deg", "projected_impact_angle_deg"),
     ("setup_gate_burn_duration_s", "burn_duration_s"),
     ("setup_gate_burn_fuel_used", "burn_fuel_used"),
@@ -74,7 +74,10 @@ def _merge_setup_gate_snapshot_into_result(
     if not isinstance(setup_gate, SetupGateMetrics):
         return
     for result_key, attr_name in _SETUP_GATE_RESULT_TO_ATTR:
-        result.setdefault(result_key, getattr(setup_gate, attr_name))
+        value = getattr(setup_gate, attr_name)
+        if result_key == "setup_gate_projected_dx" and value is None:
+            value = setup_gate.projected_impact_dx
+        result.setdefault(result_key, value)
 
 
 def _copy_setup_gate_result_to_setup_goal(result: dict[str, Any]) -> None:

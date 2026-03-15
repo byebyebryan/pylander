@@ -103,7 +103,7 @@ uv run python main.py bench \
   --bot pdg
 
 # Multi-level benchmark + reports (one selector per level/scenario spec)
-  uv run python main.py bench \
+uv run python main.py bench \
   plunge \
   flare_normal \
   flare_error \

@@ -20,11 +20,17 @@ from app.config import RunSettings
 from app.reporting import print_headless_results
 
 
-def resolve_default_bot(level_name: str) -> str | None:
+def create_level_checked(level_name: str):
     try:
-        level = create_level(level_name)
-    except Exception:
-        return None
+        return create_level(level_name)
+    except ImportError as exc:
+        raise ValueError(f"Failed to load level '{level_name}': {exc}") from exc
+    except ValueError as exc:
+        raise ValueError(f"Level '{level_name}' failed to initialize: {exc}") from exc
+
+
+def resolve_default_bot(level_name: str) -> str | None:
+    level = create_level_checked(level_name)
     return resolve_default_bot_name(level)
 
 
@@ -106,7 +112,7 @@ def run_once(
     benchmark_mode: str | None = None,
 ) -> dict[str, Any]:
     run_name = level_name or settings.level_name
-    level = create_level(run_name)
+    level = create_level_checked(run_name)
     setattr(level, "_level_name", run_name)
 
     chosen_scenario = eval_scenario_name if eval_scenario_name is not None else settings.scenario_name

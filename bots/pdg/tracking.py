@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from bots._ballistics import BallisticProjection
+from bots._ballistics import BallisticProjection, ballistic_apex_from_state
 from bots.pdg.setup import projected_impact_angle_deg as _projected_impact_angle_deg
 from core.bot import Sensors, SetupGateMetrics
 from core.config import GRAVITY
@@ -11,11 +11,14 @@ _GRAVITY_MAG = abs(float(GRAVITY))
 
 
 def _projected_apex(y: float, vy_up: float, target_y: float) -> tuple[float, float]:
-    vy_pos = max(0.0, float(vy_up))
-    if _GRAVITY_MAG <= 1e-6:
-        apex_y = float(y)
-    else:
-        apex_y = float(y) + ((vy_pos * vy_pos) / (2.0 * _GRAVITY_MAG))
+    apex = ballistic_apex_from_state(
+        x=None,
+        y=float(y),
+        vx=None,
+        vy_up=max(0.0, float(vy_up)),
+        gravity_mag=_GRAVITY_MAG,
+    )
+    apex_y = float(apex.y_apex)
     return apex_y, (apex_y - float(target_y))
 
 
@@ -108,8 +111,12 @@ def apply_setup_gate_metrics(
     bot._setup_gate_projected_apex_y = setup_gate.projected_apex_y
     bot._setup_gate_projected_apex_over_target = setup_gate.projected_apex_over_target
     bot._setup_gate_has_target_y_solution = setup_gate.has_target_y_solution
+    bot._setup_gate_projected_dx = (
+        setup_gate.projected_dx
+        if setup_gate.projected_dx is not None
+        else setup_gate.projected_impact_dx
+    )
     bot._setup_gate_projected_impact_dx = setup_gate.projected_impact_dx
-    bot._setup_gate_projected_dx = setup_gate.projected_impact_dx
     bot._setup_gate_projected_impact_angle_deg = setup_gate.projected_impact_angle_deg
     bot._setup_gate_burn_duration_s = setup_gate.burn_duration_s
     bot._setup_gate_burn_fuel_used = setup_gate.burn_fuel_used

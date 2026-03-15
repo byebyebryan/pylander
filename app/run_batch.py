@@ -17,11 +17,10 @@ from core.level_capabilities import (
     set_eval_goal_checked,
     set_eval_scenario_checked,
 )
-from levels import create_level
-
 from app.config import BenchSettings, BenchTarget, RunSettings
 from app.reporting import print_batch_summary
 from app.run_single import (
+    create_level_checked,
     resolve_default_bot,
     run_once_record,
 )
@@ -48,20 +47,14 @@ class ResolvedBenchRun:
 
 
 def resolve_level_scenarios(level_name: str) -> list[str]:
-    try:
-        level = create_level(level_name)
-    except Exception:
-        return []
+    level = create_level_checked(level_name)
     return list_batch_scenarios_safe(level)
 
 
 def _scenario_has_randomized_fields(level_name: str, scenario_name: str | None) -> bool:
-    try:
-        level = create_level(level_name)
-        set_eval_scenario_checked(level, scenario_name)
-        return scenario_has_randomized_fields_safe(level, scenario_name)
-    except Exception:
-        return False
+    level = create_level_checked(level_name)
+    set_eval_scenario_checked(level, scenario_name)
+    return scenario_has_randomized_fields_safe(level, scenario_name)
 
 
 def resolve_selector_plan(
@@ -86,7 +79,7 @@ def resolve_selector_plan(
         listed = resolver(target.level_name)
         scenarios = listed if listed else [None]
 
-    level = create_level(target.level_name)
+    level = create_level_checked(target.level_name)
     resolved_goal = set_eval_goal_checked(level, target.eval_goal)
 
     run_plan: list[ResolvedBenchRun] = []

@@ -100,6 +100,7 @@ class SetupGateMetrics:
     projected_apex_y: float | None = None
     projected_apex_over_target: float | None = None
     has_target_y_solution: bool | None = None
+    projected_dx: float | None = None
     projected_impact_dx: float | None = None
     projected_impact_angle_deg: float | None = None
     burn_duration_s: float | None = None

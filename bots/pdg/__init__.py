@@ -97,8 +97,7 @@ class PDGBot(Bot):
         super().__init__()
         self._bot_name = "pdg"
         self._cfg = PDGConfig()
-        self._optimizer_setup = self._build_setup_optimizer(uphill=False)
-        self._optimizer_setup_uphill = self._build_setup_optimizer(uphill=True)
+        self._optimizer_setup = self._build_setup_optimizer()
         self._optimizer_flare = self._build_flare_optimizer()
 
         self._behavior = "pdg"
@@ -139,8 +138,7 @@ class PDGBot(Bot):
 
         self.set_behavior(behavior)
 
-    def _build_setup_optimizer(self, *, uphill: bool) -> PDGOptimizer:
-        _ = uphill
+    def _build_setup_optimizer(self) -> PDGOptimizer:
         return PDGOptimizer(
             PDGOptimizerConfig(
                 horizon_steps=36,
@@ -260,8 +258,7 @@ class PDGBot(Bot):
                     f"pdg config key '{key}' has unsupported type for override"
                 )
         self._cfg = replace(self._cfg, **patch)
-        self._optimizer_setup = self._build_setup_optimizer(uphill=False)
-        self._optimizer_setup_uphill = self._build_setup_optimizer(uphill=True)
+        self._optimizer_setup = self._build_setup_optimizer()
         self._optimizer_flare = self._build_flare_optimizer()
 
     def _reset_state(self) -> None:
@@ -678,8 +675,6 @@ class PDGBot(Bot):
         dy: float = 0.0,
     ) -> PDGOptimizer:
         if phase == "setup":
-            if float(dy) >= float(self._cfg.uphill_setup_dy_min):
-                return self._optimizer_setup_uphill
             return self._optimizer_setup
         if phase in ("flare", "touchdown"):
             return self._optimizer_flare
@@ -1536,6 +1531,7 @@ class PDGBot(Bot):
                 projected_apex_y=self._setup_gate_projected_apex_y,
                 projected_apex_over_target=self._setup_gate_projected_apex_over_target,
                 has_target_y_solution=self._setup_gate_has_target_y_solution,
+                projected_dx=self._setup_gate_projected_dx,
                 projected_impact_dx=self._setup_gate_projected_impact_dx,
                 projected_impact_angle_deg=self._setup_gate_projected_impact_angle_deg,
                 burn_duration_s=self._setup_gate_burn_duration_s,

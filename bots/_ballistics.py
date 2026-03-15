@@ -49,7 +49,7 @@ def ballistic_apex_from_state(
     return BallisticApex(t_apex=t_apex, x_apex=x_apex, y_apex=y_apex)
 
 
-def _time_to_target_y_crossing(
+def time_to_target_y_crossing(
     *,
     dy: float,
     vy_up: float,
@@ -135,7 +135,7 @@ def estimate_target_y_projection(
             has_target_y_solution=False,
         )
 
-    t_cross, has_solution = _time_to_target_y_crossing(
+    t_cross, has_solution = time_to_target_y_crossing(
         dy=safe_dy,
         vy_up=safe_vy,
         gravity_mag=gravity_mag,
