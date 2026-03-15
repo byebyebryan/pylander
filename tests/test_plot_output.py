@@ -16,6 +16,9 @@ from utils.plot import (
     _curve_apex_point,
     _combined_spatial_arrangement,
     _compute_figure_size,
+    _idealized_reference_apex_y,
+    _idealized_reference_curve,
+    _idealized_reference_impact_angle_deg,
     _projected_apex_point,
     _projected_intercept_from_state,
     _spatial_limits_with_target,
@@ -249,6 +252,97 @@ def test_projected_intercept_falls_back_to_apex_when_target_y_is_unreachable() -
 
     assert intercept.has_target_y_solution is False
     assert intercept.end_y < 80.0
+
+
+def test_idealized_reference_apex_y_raises_uphill_peak_above_target_and_meets_angle_floor() -> None:
+    apex_y = _idealized_reference_apex_y(
+        start_x=0.0,
+        start_y=0.0,
+        target_x=400.0,
+        target_y=200.0,
+    )
+
+    impact_angle_deg = _idealized_reference_impact_angle_deg(
+        start_x=0.0,
+        start_y=0.0,
+        target_x=400.0,
+        target_y=200.0,
+        apex_y=apex_y,
+    )
+
+    assert apex_y > 200.0
+    assert impact_angle_deg is not None
+    assert impact_angle_deg >= 45.0
+
+
+def test_idealized_reference_apex_y_raises_peak_for_long_shallow_transfer() -> None:
+    apex_y = _idealized_reference_apex_y(
+        start_x=0.0,
+        start_y=0.0,
+        target_x=400.0,
+        target_y=0.0,
+    )
+
+    impact_angle_deg = _idealized_reference_impact_angle_deg(
+        start_x=0.0,
+        start_y=0.0,
+        target_x=400.0,
+        target_y=0.0,
+        apex_y=apex_y,
+    )
+
+    assert apex_y > 0.0
+    assert impact_angle_deg is not None
+    assert impact_angle_deg >= 45.0
+
+
+def test_idealized_reference_apex_y_keeps_downhill_peak_at_start_height_when_entry_is_already_steep() -> None:
+    apex_y = _idealized_reference_apex_y(
+        start_x=0.0,
+        start_y=120.0,
+        target_x=20.0,
+        target_y=0.0,
+    )
+
+    assert apex_y == pytest.approx(120.0)
+
+
+def test_idealized_reference_apex_y_handles_near_vertical_transfer() -> None:
+    apex_y = _idealized_reference_apex_y(
+        start_x=0.0,
+        start_y=0.0,
+        target_x=0.0,
+        target_y=200.0,
+    )
+    curve = _idealized_reference_curve(
+        start_x=0.0,
+        start_y=0.0,
+        target_x=0.0,
+        target_y=200.0,
+        apex_y=apex_y,
+    )
+
+    assert apex_y == pytest.approx(201.0)
+    assert curve is not None
+
+
+def test_idealized_reference_curve_exists_when_actual_samples_peak_below_target() -> None:
+    apex_y = _idealized_reference_apex_y(
+        start_x=0.0,
+        start_y=0.0,
+        target_x=300.0,
+        target_y=400.0,
+    )
+    curve = _idealized_reference_curve(
+        start_x=0.0,
+        start_y=0.0,
+        target_x=300.0,
+        target_y=400.0,
+        apex_y=apex_y,
+    )
+
+    assert apex_y > 400.0
+    assert curve is not None
 
 
 def test_ballistic_projection_series_uses_apex_while_climbing_and_current_height_while_descending() -> None:
