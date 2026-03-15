@@ -82,6 +82,13 @@ class _ProjectedIntercept:
     has_target_y_solution: bool
 
 
+@dataclass(frozen=True)
+class _IdealizedReferenceKinematics:
+    flight_t: float
+    vx: float
+    vy_up: float
+
+
 def _sanitize_filename_token(token: str) -> str:
     out_chars: list[str] = []
     prev_underscore = False
@@ -733,6 +740,40 @@ def _idealized_reference_curve(
     import numpy as np
 
     g = max(1e-6, abs(float(gravity_mag)))
+    solution = _idealized_reference_kinematics(
+        start_x=start_x,
+        start_y=start_y,
+        target_x=target_x,
+        target_y=target_y,
+        apex_y=apex_y,
+        gravity_mag=gravity_mag,
+    )
+    if solution is None:
+        return None
+
+    point_count = max(24, min(80, int(16 + (solution.flight_t * 10.0))))
+    t_vals = np.linspace(0.0, solution.flight_t, point_count)
+    xs = [float(start_x + (solution.vx * t_val)) for t_val in t_vals]
+    ys = [
+        float(start_y + (solution.vy_up * t_val) - (0.5 * g * t_val * t_val))
+        for t_val in t_vals
+    ]
+    if xs:
+        xs[-1] = float(target_x)
+        ys[-1] = float(target_y)
+    return xs, ys
+
+
+def _idealized_reference_kinematics(
+    *,
+    start_x: float,
+    start_y: float,
+    target_x: float,
+    target_y: float,
+    apex_y: float,
+    gravity_mag: float = 9.8,
+) -> _IdealizedReferenceKinematics | None:
+    g = max(1e-6, abs(float(gravity_mag)))
     peak_y = max(float(start_y), float(apex_y))
     peak_over_start = peak_y - float(start_y)
     vy_up = math.sqrt(max(0.0, 2.0 * g * peak_over_start))
@@ -746,15 +787,95 @@ def _idealized_reference_curve(
     if not positive:
         return None
     flight_t = positive[-1]
+    if flight_t <= 0.0:
+        return None
     vx = (float(target_x) - float(start_x)) / flight_t
-    point_count = max(24, min(80, int(16 + (flight_t * 10.0))))
-    t_vals = np.linspace(0.0, flight_t, point_count)
-    xs = [float(start_x + (vx * t_val)) for t_val in t_vals]
-    ys = [float(start_y + (vy_up * t_val) - (0.5 * g * t_val * t_val)) for t_val in t_vals]
-    if xs:
-        xs[-1] = float(target_x)
-        ys[-1] = float(target_y)
-    return xs, ys
+    return _IdealizedReferenceKinematics(flight_t=flight_t, vx=vx, vy_up=vy_up)
+
+
+def _idealized_reference_impact_angle_deg(
+    *,
+    start_x: float,
+    start_y: float,
+    target_x: float,
+    target_y: float,
+    apex_y: float,
+    gravity_mag: float = 9.8,
+) -> float | None:
+    solution = _idealized_reference_kinematics(
+        start_x=start_x,
+        start_y=start_y,
+        target_x=target_x,
+        target_y=target_y,
+        apex_y=apex_y,
+        gravity_mag=gravity_mag,
+    )
+    if solution is None:
+        return None
+    g = max(1e-6, abs(float(gravity_mag)))
+    vy_target = float(solution.vy_up) - (g * float(solution.flight_t))
+    descent_speed = max(0.0, -vy_target)
+    return math.degrees(math.atan2(descent_speed, abs(float(solution.vx))))
+
+
+def _idealized_reference_apex_y(
+    *,
+    start_x: float,
+    start_y: float,
+    target_x: float,
+    target_y: float,
+    min_descent_angle_deg: float = 45.0,
+    gravity_mag: float = 9.8,
+) -> float:
+    start_x = float(start_x)
+    start_y = float(start_y)
+    target_x = float(target_x)
+    target_y = float(target_y)
+    min_descent_angle_deg = float(min_descent_angle_deg)
+    dx = target_x - start_x
+    dy = target_y - start_y
+    if target_y > start_y:
+        base_peak = max(start_y, target_y + 1.0)
+    else:
+        base_peak = start_y
+    if abs(dx) <= 1e-6:
+        return base_peak
+
+    def meets_angle_floor(peak_y: float) -> bool:
+        impact_angle_deg = _idealized_reference_impact_angle_deg(
+            start_x=start_x,
+            start_y=start_y,
+            target_x=target_x,
+            target_y=target_y,
+            apex_y=peak_y,
+            gravity_mag=gravity_mag,
+        )
+        return impact_angle_deg is not None and impact_angle_deg >= min_descent_angle_deg
+
+    if meets_angle_floor(base_peak):
+        return base_peak
+
+    low_peak = base_peak
+    growth = max(16.0, 0.25 * max(abs(dx), abs(dy), 1.0))
+    high_peak: float | None = None
+    candidate_peak = base_peak
+    for _ in range(16):
+        candidate_peak = candidate_peak + growth
+        if meets_angle_floor(candidate_peak):
+            high_peak = candidate_peak
+            break
+        low_peak = candidate_peak
+        growth *= 2.0
+    if high_peak is None:
+        return candidate_peak
+
+    for _ in range(32):
+        mid_peak = 0.5 * (low_peak + high_peak)
+        if meets_angle_floor(mid_peak):
+            high_peak = mid_peak
+        else:
+            low_peak = mid_peak
+    return high_peak
 
 
 def _find_event(events, *, name: str) -> dict[str, float | str | None] | None:
@@ -1032,13 +1153,18 @@ def _draw_trajectory_comparison_spatial_panel(
         overlay_points.append(projected_apex)
     _draw_apex_marker(ax, point=projected_apex, label="projected apex", color="#cc0000")
 
-    actual_apex_y = max(float(ctx.ys[0]), max(float(y) for y in ctx.ys))
+    reference_apex_y = _idealized_reference_apex_y(
+        start_x=float(ctx.xs[0]),
+        start_y=float(ctx.ys[0]),
+        target_x=target_x,
+        target_y=target_y,
+    )
     reference_curve = _idealized_reference_curve(
         start_x=float(ctx.xs[0]),
         start_y=float(ctx.ys[0]),
         target_x=target_x,
         target_y=target_y,
-        apex_y=actual_apex_y,
+        apex_y=reference_apex_y,
     )
     if reference_curve is not None:
         ref_xs, ref_ys = reference_curve
