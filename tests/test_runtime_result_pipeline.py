@@ -63,6 +63,7 @@ def test_merge_bot_snapshots_into_result_prefixes_fields_and_preserves_existing(
                     altitude=90.0,
                     projected_apex_over_target=25.0,
                     has_target_y_solution=True,
+                    projected_dx=9.0,
                     projected_impact_dx=7.5,
                     projected_impact_angle_deg=61.0,
                     burn_duration_s=4.0,
@@ -81,7 +82,7 @@ def test_merge_bot_snapshots_into_result_prefixes_fields_and_preserves_existing(
     assert result["bot_pdg_ignored"] == 1
     assert result["setup_gate_done"] == "existing"
     assert result["setup_gate_time"] == 4.0
-    assert result["setup_gate_projected_dx"] == 7.5
+    assert result["setup_gate_projected_dx"] == 9.0
     assert result["setup_gate_projected_impact_angle_deg"] == 61.0
     assert result["setup_gate_burn_avg_thrust_level"] == 0.82
     assert result["bot_pdg_value"] == "existing"

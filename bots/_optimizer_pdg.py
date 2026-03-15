@@ -9,10 +9,17 @@ from __future__ import annotations
 
 import math
 import time
+import warnings
 from dataclasses import dataclass
 
 import cvxpy as cp
 import numpy as np
+
+
+_CVXPY_WARNING_MESSAGES: tuple[str, ...] = (
+    "You are solving a parameterized problem that is not DPP.",
+    "Solution may be inaccurate.",
+)
 
 
 @dataclass(frozen=True)
@@ -93,6 +100,13 @@ class PDGPlan:
             vx=_shift_state(self.vx),
             vy=_shift_state(self.vy),
         )
+
+
+def _solve_problem_quietly(problem, **kwargs) -> None:
+    with warnings.catch_warnings():
+        for message in _CVXPY_WARNING_MESSAGES:
+            warnings.filterwarnings("ignore", message=message, category=UserWarning)
+        problem.solve(**kwargs)
 
 
 class PDGOptimizer:
@@ -478,7 +492,8 @@ class PDGOptimizer:
         t0 = time.perf_counter()
         status = "error"
         try:
-            self._problem.solve(
+            _solve_problem_quietly(
+                self._problem,
                 solver=self._cfg.solver,
                 warm_start=True,
                 verbose=False,
@@ -487,7 +502,8 @@ class PDGOptimizer:
             status = str(self._problem.status)
         except Exception:
             try:
-                self._problem.solve(
+                _solve_problem_quietly(
+                    self._problem,
                     solver="SCS",
                     warm_start=True,
                     verbose=False,

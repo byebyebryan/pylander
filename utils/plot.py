@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from bots._ballistics import ballistic_apex_from_state, estimate_target_y_projection, time_to_target_y_crossing
 from core.components import Engine, LanderState, PhysicsState, Transform
 from core.ecs import require_component
 
@@ -548,11 +549,6 @@ def _projected_apex_point(
 ) -> tuple[float, float] | None:
     if target is None:
         return None
-    try:
-        target_x = float(target.get("x", 0.0) or 0.0)
-        target_y = float(target.get("y", 0.0) or 0.0)
-    except (TypeError, ValueError):
-        return None
     state_x = float(ctx.xs[-1]) if ctx.xs else 0.0
     state_y = float(ctx.ys[-1]) if ctx.ys else 0.0
     state_vx = float(ctx.vxs[-1]) if ctx.vxs else 0.0
@@ -570,16 +566,16 @@ def _projected_apex_point(
         state_vx = event_vx
         state_vy = event_vy
         break
-    curve_xs, curve_ys, _has_target_y_solution = _ballistic_curve_from_state(
+    apex = ballistic_apex_from_state(
         x=state_x,
         y=state_y,
         vx=state_vx,
         vy_up=state_vy,
-        target_x=target_x,
-        target_y=target_y,
         gravity_mag=gravity_mag,
     )
-    return _curve_apex_point(curve_xs, curve_ys)
+    if apex.t_apex <= 1e-6 or apex.x_apex is None:
+        return None
+    return float(apex.x_apex), float(apex.y_apex)
 
 
 def _draw_apex_marker(
@@ -642,57 +638,43 @@ def _projected_intercept_from_state(
     target_y: float,
     gravity_mag: float = 9.8,
 ) -> _ProjectedIntercept:
-    g = max(1e-6, abs(float(gravity_mag)))
-    dy = float(target_y) - float(y)
-    safe_x = float(x)
-    safe_y = float(y)
-    safe_vx = float(vx)
-    safe_vy = float(vy_up)
-
-    t_apex = max(0.0, safe_vy / g)
-    apex_x = safe_x + (safe_vx * t_apex)
-    apex_y = safe_y + (safe_vy * t_apex) - (0.5 * g * t_apex * t_apex)
-    if dy > 0.0 and (t_apex <= 1e-6 or apex_y <= float(target_y)):
+    projection = estimate_target_y_projection(
+        dx=float(target_x) - float(x),
+        dy=float(target_y) - float(y),
+        vx=float(vx),
+        vy_up=float(vy_up),
+        x=float(x),
+        y=float(y),
+        min_t_fall=0.0,
+        gravity_mag=gravity_mag,
+    )
+    apex = ballistic_apex_from_state(
+        x=float(x),
+        y=float(y),
+        vx=float(vx),
+        vy_up=float(vy_up),
+        gravity_mag=gravity_mag,
+    )
+    apex_x = float(apex.x_apex if apex.x_apex is not None else (float(x) + (float(vx) * float(apex.t_apex))))
+    apex_y = float(apex.y_apex)
+    if not projection.has_target_y_solution:
         return _ProjectedIntercept(
             end_x=apex_x,
             end_y=apex_y,
             miss_dx=float(target_x) - apex_x,
-            t_end=t_apex,
+            t_end=max(0.0, float(apex.t_apex)),
             has_target_y_solution=False,
         )
-
-    disc = (safe_vy * safe_vy) - (2.0 * g * dy)
-    if disc < 0.0:
-        return _ProjectedIntercept(
-            end_x=apex_x,
-            end_y=apex_y,
-            miss_dx=float(target_x) - apex_x,
-            t_end=t_apex,
-            has_target_y_solution=False,
-        )
-
-    sqrt_disc = math.sqrt(max(0.0, disc))
-    roots = sorted(((safe_vy - sqrt_disc) / g, (safe_vy + sqrt_disc) / g))
-    positive = [t for t in roots if t >= 0.0]
-    if not positive:
-        return _ProjectedIntercept(
-            end_x=apex_x,
-            end_y=apex_y,
-            miss_dx=float(target_x) - apex_x,
-            t_end=t_apex,
-            has_target_y_solution=False,
-        )
-    if len(positive) >= 2 and dy >= 0.0:
-        t_cross = positive[-1]
-    else:
-        future = [t for t in positive if t > 1e-4]
-        t_cross = future[0] if future else positive[0]
-    end_x = safe_x + (safe_vx * t_cross)
+    end_x = float(
+        projection.impact_x
+        if projection.impact_x is not None
+        else (float(x) + (float(vx) * float(projection.t_fall)))
+    )
     return _ProjectedIntercept(
         end_x=end_x,
         end_y=float(target_y),
-        miss_dx=float(target_x) - end_x,
-        t_end=t_cross,
+        miss_dx=float(projection.projected_dx),
+        t_end=float(projection.t_fall),
         has_target_y_solution=True,
     )
 
@@ -777,18 +759,15 @@ def _idealized_reference_kinematics(
     peak_y = max(float(start_y), float(apex_y))
     peak_over_start = peak_y - float(start_y)
     vy_up = math.sqrt(max(0.0, 2.0 * g * peak_over_start))
-    dy = float(target_y) - float(start_y)
-    disc = (vy_up * vy_up) - (2.0 * g * dy)
-    if disc < 0.0:
+    t_cross, has_solution = time_to_target_y_crossing(
+        dy=float(target_y) - float(start_y),
+        vy_up=vy_up,
+        gravity_mag=g,
+        prefer_descending=True,
+    )
+    if not has_solution or t_cross is None or t_cross <= 1e-6:
         return None
-    sqrt_disc = math.sqrt(max(0.0, disc))
-    roots = sorted(((vy_up - sqrt_disc) / g, (vy_up + sqrt_disc) / g))
-    positive = [t for t in roots if t > 1e-6]
-    if not positive:
-        return None
-    flight_t = positive[-1]
-    if flight_t <= 0.0:
-        return None
+    flight_t = float(t_cross)
     vx = (float(target_x) - float(start_x)) / flight_t
     return _IdealizedReferenceKinematics(flight_t=flight_t, vx=vx, vy_up=vy_up)
 

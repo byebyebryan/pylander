@@ -50,12 +50,12 @@ Main themes:
 - apex-over-target is now measured directly at setup gate.
 - invalid target-y projection cases are explicitly flagged (`has_target_y_solution=False`) instead of silently collapsing to misleading values.
 
-2. Climb setup quality improved for `slope_mid`/`slope_high`
+2. Climb setup quality improved for `mid`/`high`
 - setup gate now fires with substantially better projected centerline/apex behavior than the initial pass.
 
 ## What did not work
 
-1. `slope_low` is still unstable end-to-end
+1. `low` is still unstable end-to-end
 - setup gate can pass, but downstream still crashes.
 
 2. Setup-focused tuning regresses broad coverage
@@ -66,33 +66,33 @@ Main themes:
 
 ## Measured results
 
-### Climb focused setup-gate check (`--eval-mode focused`, seed `0`)
+### Climb focused setup-gate check (`setup` goal, seed `0`)
 
 Command pattern:
 
 ```bash
-uv run python main.py sim climb:<scenario>:0 --bot pdg --freq 0 --eval-mode focused
+uv run python main.py sim setup_climb:<scenario>:setup:0 --bot pdg --freq 0
 ```
 
 | Scenario | Setup gate time (s) | Setup gate projected dx | Setup gate apex over target |
 |---|---:|---:|---:|
-| `slope_low` | 8.17 | 49.41 | 80.91 |
-| `slope_mid` | 4.83 | 19.35 | 54.36 |
-| `slope_high` | 12.67 | -6.97 | 92.02 |
+| `low` | 8.17 | 49.41 | 80.91 |
+| `mid` | 4.83 | 19.35 | 54.36 |
+| `high` | 12.67 | -6.97 | 92.02 |
 
-### Climb end-to-end check (`--eval-mode full`, seed `0`)
+### Climb end-to-end check (`landing` goal, seed `0`)
 
 Command pattern:
 
 ```bash
-uv run python main.py sim climb:<scenario>:0 --bot pdg --freq 0 --eval-mode full
+uv run python main.py sim setup_climb:<scenario>:0 --bot pdg --freq 0
 ```
 
 | Scenario | Final state | Fuel consumed | Notes |
 |---|---|---:|---|
-| `slope_low` | `crashed` | 32.07 | setup gate reached, flare entry not reached |
-| `slope_mid` | `landed` | 38.97 | flare entry reached |
-| `slope_high` | `landed` | 52.33 | flare entry reached |
+| `low` | `crashed` | 32.07 | setup gate reached, flare entry not reached |
+| `mid` | `landed` | 38.97 | flare entry reached |
+| `high` | `landed` | 52.33 | flare entry reached |
 
 ### Broad regression signal (quick pack)
 
@@ -113,7 +113,7 @@ Candidate output:
 
 Worst quick-pack scenarios in current candidate (0% success in this run):
 
-- `climb:slope_low`
+- `setup_climb:low`
 - `coast:mid_wide`
 - `coast:steep_wide`
 - `flare:shallow`

@@ -80,6 +80,7 @@ def test_pdg_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> Non
     bot._setup_gate_y = 240.0
     bot._setup_gate_vx = 8.0
     bot._setup_gate_vy_up = -12.0
+    bot._setup_gate_projected_dx = 5.0
     bot._setup_gate_projected_apex_y = 260.0
     bot._setup_gate_projected_apex_over_target = 40.0
     bot._setup_gate_has_target_y_solution = True
@@ -110,6 +111,7 @@ def test_pdg_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> Non
             projected_apex_y=260.0,
             projected_apex_over_target=40.0,
             has_target_y_solution=True,
+            projected_dx=5.0,
             projected_impact_dx=5.0,
             projected_impact_angle_deg=63.0,
             burn_duration_s=6.0,
