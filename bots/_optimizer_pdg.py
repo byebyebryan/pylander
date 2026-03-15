@@ -9,17 +9,10 @@ from __future__ import annotations
 
 import math
 import time
-import warnings
 from dataclasses import dataclass
 
 import cvxpy as cp
 import numpy as np
-
-
-_CVXPY_WARNING_MESSAGES: tuple[str, ...] = (
-    "You are solving a parameterized problem that is not DPP.",
-    "Solution may be inaccurate.",
-)
 
 
 @dataclass(frozen=True)
@@ -102,13 +95,6 @@ class PDGPlan:
         )
 
 
-def _solve_problem_quietly(problem, **kwargs) -> None:
-    with warnings.catch_warnings():
-        for message in _CVXPY_WARNING_MESSAGES:
-            warnings.filterwarnings("ignore", message=message, category=UserWarning)
-        problem.solve(**kwargs)
-
-
 class PDGOptimizer:
     """Small convex powered-descent optimizer with reusable problem graph."""
 
@@ -140,14 +126,20 @@ class PDGOptimizer:
         self._vy_floor: cp.Parameter | None = None
         self._g_param: cp.Parameter | None = None
         self._x_tol: cp.Parameter | None = None
-        self._setup_t_cross_ref: cp.Parameter | None = None
-        self._setup_t_angle_ref: cp.Parameter | None = None
         self._setup_pdx_time_ref: cp.Parameter | None = None
-        self._setup_pdx_weight: cp.Parameter | None = None
-        self._setup_cross_drop: cp.Parameter | None = None
-        self._setup_angle_vy_mag: cp.Parameter | None = None
+        self._setup_proj_target: cp.Parameter | None = None
+        self._setup_proj_x_scale: cp.Parameter | None = None
+        self._setup_proj_vx_scale: cp.Parameter | None = None
+        self._setup_cross_y_scale: cp.Parameter | None = None
+        self._setup_cross_vy_scale: cp.Parameter | None = None
+        self._setup_cross_target: cp.Parameter | None = None
+        self._setup_cross_drop_weighted: cp.Parameter | None = None
+        self._setup_angle_vx_scale: cp.Parameter | None = None
+        self._setup_angle_vy_scale: cp.Parameter | None = None
+        self._setup_angle_vy_bias: cp.Parameter | None = None
+        self._setup_descend_vy_scale: cp.Parameter | None = None
+        self._setup_descend_vy_bias: cp.Parameter | None = None
         self._setup_no_away_dir: cp.Parameter | None = None
-        self._setup_angle_active: cp.Parameter | None = None
 
         self._build_problem()
 
@@ -224,16 +216,23 @@ class PDGOptimizer:
         y_ref = cp.Parameter(n + 1)
         vy_floor = cp.Parameter()
         x_tol = cp.Parameter(nonneg=True)
-        setup_t_cross_ref = cp.Parameter(nonneg=True)
-        setup_t_angle_ref = cp.Parameter(nonneg=True)
         setup_pdx_time_ref = cp.Parameter(n + 1, nonneg=True)
-        setup_pdx_weight = cp.Parameter(n + 1, nonneg=True)
-        setup_cross_drop = cp.Parameter(n + 1, nonneg=True)
-        setup_angle_vy_mag = cp.Parameter(n + 1, nonneg=True)
+        setup_proj_target = cp.Parameter(n + 1)
+        setup_proj_x_scale = cp.Parameter(n + 1, nonneg=True)
+        setup_proj_vx_scale = cp.Parameter(n + 1)
+        setup_cross_y_scale = cp.Parameter(n + 1, nonneg=True)
+        setup_cross_vy_scale = cp.Parameter(n + 1)
+        setup_cross_target = cp.Parameter(n + 1)
+        setup_cross_drop_weighted = cp.Parameter(n + 1)
+        setup_angle_vx_scale = cp.Parameter(n + 1, nonneg=True)
+        setup_angle_vy_scale = cp.Parameter(n + 1, nonneg=True)
+        setup_angle_vy_bias = cp.Parameter(n + 1)
+        setup_descend_vy_scale = cp.Parameter(n + 1, nonneg=True)
+        setup_descend_vy_bias = cp.Parameter(n + 1)
         setup_no_away_dir = cp.Parameter()
-        setup_angle_active = cp.Parameter(nonneg=True)
         thrust_norm = cp.Variable(n, nonneg=True)
         od_slack = cp.Variable(n, nonneg=True)
+        setup_projected_dx_proxy = cp.Variable(n + 1)
         late_ramp = np.linspace(0.0, 1.0, n, dtype=float)
 
         constraints: list[cp.Expression] = [
@@ -261,10 +260,13 @@ class PDGOptimizer:
                     setup_no_away_dir * ax[k] >= 0.0,
                 ]
             )
+        constraints.extend(
+            [
+                setup_projected_dx_proxy == target_x - x - cp.multiply(setup_pdx_time_ref, vx),
+            ]
+        )
         for k in range(1, n + 1):
-            constraints.append(
-                setup_no_away_dir * (target_x - x[k] - (setup_pdx_time_ref[k] * vx[k])) >= 0.0
-            )
+            constraints.append(setup_no_away_dir * setup_projected_dx_proxy[k] >= 0.0)
 
         effort = cp.sum_squares(ax) + cp.sum_squares(ay)
         smooth = cp.sum_squares(ax[1:] - ax[:-1]) + cp.sum_squares(ay[1:] - ay[:-1])
@@ -305,35 +307,37 @@ class PDGOptimizer:
             or cfg.w_setup_apex > 0.0
             or cfg.w_setup_angle > 0.0
         ):
-            y_cross_proxy = y + cp.multiply(setup_pdx_time_ref, vy) - setup_cross_drop - target_y
-            projected_dx_proxy = target_x - x - cp.multiply(setup_pdx_time_ref, vx)
-            vy_angle_down_proxy = setup_angle_vy_mag - vy
-            y_cross_shortfall = cp.sum(
-                cp.multiply(setup_pdx_weight, cp.square(cp.pos(-y_cross_proxy)))
+            weighted_projected_dx = (
+                setup_proj_target
+                - cp.multiply(setup_proj_x_scale, x)
+                - cp.multiply(setup_proj_vx_scale, vx)
             )
-            y_cross_excess = cp.sum(
-                cp.multiply(setup_pdx_weight, cp.square(cp.pos(y_cross_proxy)))
+            weighted_y_cross = (
+                cp.multiply(setup_cross_y_scale, y)
+                + cp.multiply(setup_cross_vy_scale, vy)
+                - setup_cross_drop_weighted
+                - setup_cross_target
             )
-            angle_shallow = cp.sum(
-                cp.multiply(
-                    setup_pdx_weight,
-                    cp.square(
-                        cp.pos((cfg.setup_angle_slope_target * cp.abs(vx)) - vy_angle_down_proxy)
-                    ),
-                )
+            weighted_angle_shallow = (
+                cp.multiply(setup_angle_vx_scale, cp.abs(vx))
+                + cp.multiply(setup_angle_vy_scale, vy)
+                - setup_angle_vy_bias
             )
-            descend_guard = cp.sum(
-                cp.multiply(setup_pdx_weight, cp.square(cp.pos(-vy_angle_down_proxy)))
+            weighted_descend_guard = (
+                cp.multiply(setup_descend_vy_scale, vy) - setup_descend_vy_bias
             )
             objective_expr = (
                 objective_expr
+                + (cfg.w_setup_projected_dx * cp.sum_squares(weighted_projected_dx))
+                + (cfg.w_setup_target_y_cross * cp.sum_squares(cp.pos(-weighted_y_cross)))
+                + (cfg.w_setup_apex * cp.sum_squares(cp.pos(weighted_y_cross)))
                 + (
-                    cfg.w_setup_projected_dx
-                    * cp.sum(cp.multiply(setup_pdx_weight, cp.square(projected_dx_proxy)))
+                    cfg.w_setup_angle
+                    * (
+                        cp.sum_squares(cp.pos(weighted_angle_shallow))
+                        + cp.sum_squares(cp.pos(weighted_descend_guard))
+                    )
                 )
-                + (cfg.w_setup_target_y_cross * y_cross_shortfall)
-                + (cfg.w_setup_apex * y_cross_excess)
-                + (cfg.w_setup_angle * ((setup_angle_active * angle_shallow) + descend_guard))
             )
         objective = cp.Minimize(objective_expr)
 
@@ -363,14 +367,20 @@ class PDGOptimizer:
         self._vy_floor = vy_floor
         self._g_param = g_param
         self._x_tol = x_tol
-        self._setup_t_cross_ref = setup_t_cross_ref
-        self._setup_t_angle_ref = setup_t_angle_ref
         self._setup_pdx_time_ref = setup_pdx_time_ref
-        self._setup_pdx_weight = setup_pdx_weight
-        self._setup_cross_drop = setup_cross_drop
-        self._setup_angle_vy_mag = setup_angle_vy_mag
+        self._setup_proj_target = setup_proj_target
+        self._setup_proj_x_scale = setup_proj_x_scale
+        self._setup_proj_vx_scale = setup_proj_vx_scale
+        self._setup_cross_y_scale = setup_cross_y_scale
+        self._setup_cross_vy_scale = setup_cross_vy_scale
+        self._setup_cross_target = setup_cross_target
+        self._setup_cross_drop_weighted = setup_cross_drop_weighted
+        self._setup_angle_vx_scale = setup_angle_vx_scale
+        self._setup_angle_vy_scale = setup_angle_vy_scale
+        self._setup_angle_vy_bias = setup_angle_vy_bias
+        self._setup_descend_vy_scale = setup_descend_vy_scale
+        self._setup_descend_vy_bias = setup_descend_vy_bias
         self._setup_no_away_dir = setup_no_away_dir
-        self._setup_angle_active = setup_angle_active
 
     def solve(
         self,
@@ -435,8 +445,6 @@ class PDGOptimizer:
         self._x_tol.value = max(0.0, x_tol)
         setup_t_cross_ref = max(0.0, float(setup_t_cross_ref))
         setup_t_angle_ref = max(0.0, float(setup_t_angle_ref))
-        self._setup_t_cross_ref.value = setup_t_cross_ref
-        self._setup_t_angle_ref.value = setup_t_angle_ref
         setup_pdx_time_ref = np.maximum(
             setup_t_cross_ref - (np.arange(n + 1, dtype=float) * float(self._cfg.step_dt)),
             0.0,
@@ -451,14 +459,26 @@ class PDGOptimizer:
             active_count = int(np.count_nonzero(active))
             setup_pdx_weight[active] = np.arange(1, active_count + 1, dtype=float)
             setup_pdx_weight = setup_pdx_weight / float(np.sum(setup_pdx_weight))
+        setup_weight_sqrt = np.sqrt(setup_pdx_weight)
+        setup_cross_drop = 0.5 * max(0.0, float(gravity_mag)) * np.square(setup_pdx_time_ref)
+        setup_angle_vy_mag = max(0.0, float(gravity_mag)) * setup_angle_time_ref
+        angle_weight_sqrt = setup_weight_sqrt * math.sqrt(max(0.0, float(setup_angle_active)))
         self._setup_pdx_time_ref.value = setup_pdx_time_ref
-        self._setup_pdx_weight.value = setup_pdx_weight
-        self._setup_cross_drop.value = 0.5 * max(0.0, float(gravity_mag)) * np.square(
-            setup_pdx_time_ref
+        self._setup_proj_target.value = setup_weight_sqrt * float(target_x)
+        self._setup_proj_x_scale.value = setup_weight_sqrt
+        self._setup_proj_vx_scale.value = setup_weight_sqrt * setup_pdx_time_ref
+        self._setup_cross_y_scale.value = setup_weight_sqrt
+        self._setup_cross_vy_scale.value = setup_weight_sqrt * setup_pdx_time_ref
+        self._setup_cross_target.value = setup_weight_sqrt * float(target_y)
+        self._setup_cross_drop_weighted.value = setup_weight_sqrt * setup_cross_drop
+        self._setup_angle_vx_scale.value = angle_weight_sqrt * float(
+            self._cfg.setup_angle_slope_target
         )
-        self._setup_angle_vy_mag.value = max(0.0, float(gravity_mag)) * setup_angle_time_ref
+        self._setup_angle_vy_scale.value = angle_weight_sqrt
+        self._setup_angle_vy_bias.value = angle_weight_sqrt * setup_angle_vy_mag
+        self._setup_descend_vy_scale.value = setup_weight_sqrt
+        self._setup_descend_vy_bias.value = setup_weight_sqrt * setup_angle_vy_mag
         self._setup_no_away_dir.value = float(setup_no_away_dir)
-        self._setup_angle_active.value = max(0.0, float(setup_angle_active))
 
         x_ref, y_ref_default = self._reference_profiles(
             x=float(x),
@@ -492,8 +512,7 @@ class PDGOptimizer:
         t0 = time.perf_counter()
         status = "error"
         try:
-            _solve_problem_quietly(
-                self._problem,
+            self._problem.solve(
                 solver=self._cfg.solver,
                 warm_start=True,
                 verbose=False,
@@ -502,8 +521,7 @@ class PDGOptimizer:
             status = str(self._problem.status)
         except Exception:
             try:
-                _solve_problem_quietly(
-                    self._problem,
+                self._problem.solve(
                     solver="SCS",
                     warm_start=True,
                     verbose=False,
