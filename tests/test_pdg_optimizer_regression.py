@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import warnings
+
 import pytest
 
 from bots import create_bot
@@ -131,6 +133,48 @@ def test_pdg_optimizer_solution_changes_with_runtime_gravity() -> None:
     assert earth_plan is not None and earth_plan.feasible
     # The acceleration profile should change when gravity changes materially.
     assert abs(float(moon_plan.vy[-1]) - float(earth_plan.vy[-1])) > 5.0
+
+
+def test_pdg_optimizer_problem_is_dpp() -> None:
+    optimizer = PDGOptimizer()
+    assert optimizer._problem is not None
+    assert optimizer._problem.is_dpp()
+
+
+def test_pdg_optimizer_problem_is_dpp_and_avoids_non_dpp_warning() -> None:
+    optimizer = PDGOptimizer(PDGOptimizerConfig(horizon_steps=10, step_dt=0.2))
+    assert optimizer._problem is not None
+    assert optimizer._problem.is_dpp()
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        plan = optimizer.solve(
+            x=0.0,
+            y=140.0,
+            vx=25.0,
+            vy=6.0,
+            target_x=120.0,
+            target_y=0.0,
+            y_floor=-8.0,
+            target_vy=-2.0,
+            max_thrust_accel=22.0,
+            min_thrust_accel=2.0,
+            nominal_thrust_accel=12.0,
+            max_tilt_rad=1.0,
+            descent_floor_vy=-8.0,
+            gravity_mag=1.62,
+            pad_half_width=55.0,
+            altitude_hint=140.0,
+            warm_start=None,
+            setup_t_cross_ref=4.0,
+            setup_t_angle_ref=4.0,
+            setup_no_away_dir=1.0,
+            setup_angle_active=1.0,
+        )
+
+    assert plan is not None
+    assert plan.feasible
+    assert not any("not DPP" in str(w.message) for w in caught)
 
 
 def test_pdg_optimizer_uphill_target_is_feasible() -> None:
