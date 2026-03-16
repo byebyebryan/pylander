@@ -21,8 +21,8 @@ def test_smoke_pack_uses_profile_policies() -> None:
     pack = selector_pack.build_selectors(mode="smoke")
     assert all(not item.startswith("flat") for item in pack.selectors)
     assert all(not item.startswith("mountains") for item in pack.selectors)
-    assert "setup_climb" not in pack.observe_only_levels_effective
-    assert pack.effective_level_policy["setup_climb"] == "normal"
+    assert "boost_climb" not in pack.observe_only_levels_effective
+    assert pack.effective_level_policy["boost_climb"] == "normal"
     assert "flat" in pack.excluded_levels_effective
     assert "mountains" in pack.excluded_levels_effective
     assert len(pack.selectors) == 6
@@ -31,27 +31,27 @@ def test_smoke_pack_uses_profile_policies() -> None:
 def test_auto_mode_exclude_override_removes_level() -> None:
     pack = selector_pack.build_selectors(
         mode="quick",
-        exclude_levels=["setup_downhill"],
+        exclude_levels=["boost_downhill"],
     )
-    assert "setup_downhill" in pack.excluded_levels_effective
-    assert all(not item.startswith("setup_downhill:") for item in pack.selectors)
+    assert "boost_downhill" in pack.excluded_levels_effective
+    assert all(not item.startswith("boost_downhill:") for item in pack.selectors)
 
 
 def test_auto_mode_observe_override_marks_level() -> None:
     pack = selector_pack.build_selectors(
         mode="quick",
-        observe_only_levels=["setup_flat"],
+        observe_only_levels=["boost_flat"],
     )
-    assert pack.effective_level_policy["setup_flat"] == "observe_only"
-    assert "setup_flat" in pack.observe_only_levels_effective
+    assert pack.effective_level_policy["boost_flat"] == "observe_only"
+    assert "boost_flat" in pack.observe_only_levels_effective
 
 
 def test_policy_override_conflict_errors() -> None:
     with pytest.raises(ValueError, match="both excluded and observe-only"):
         selector_pack.build_selectors(
             mode="smoke",
-            exclude_levels=["setup_flat"],
-            observe_only_levels=["setup_flat"],
+            exclude_levels=["boost_flat"],
+            observe_only_levels=["boost_flat"],
         )
 
 
@@ -76,34 +76,34 @@ def test_focused_selector_unknown_scenario_errors() -> None:
     with pytest.raises(ValueError, match="Unknown scenario 'not_real'"):
         selector_pack.build_selectors(
             mode="focused",
-            focused_selectors=["setup_flat:not_real:0"],
+            focused_selectors=["boost_flat:not_real:0"],
         )
 
 
 def test_focused_selector_preserves_csv_seed_specs() -> None:
     pack = selector_pack.build_selectors(
         mode="focused",
-        focused_selectors=["setup_flat:mid_half:0,2"],
+        focused_selectors=["boost_flat:mid_half:0,2"],
     )
-    assert pack.selectors == ["setup_flat:mid_half:0,2"]
+    assert pack.selectors == ["boost_flat:mid_half:0,2"]
 
 
 def test_focused_selector_preserves_goal_slot() -> None:
     pack = selector_pack.build_selectors(
         mode="focused",
-        focused_selectors=["setup_flat:mid_half:setup:0-2"],
+        focused_selectors=["boost_flat:mid_half:boost:0-2"],
     )
-    assert pack.selectors == ["setup_flat:mid_half:setup:0-2"]
+    assert pack.selectors == ["boost_flat:mid_half:boost:0-2"]
 
 
 def test_focused_selector_group_flare_excludes_plunge() -> None:
     pack = selector_pack.build_selectors(
         mode="focused",
-        focused_selectors=["@flare"],
+        focused_selectors=["@terminal"],
     )
-    assert pack.included_levels == ["flare_error", "flare_normal"]
+    assert pack.included_levels == ["terminal_error", "terminal_normal"]
     assert all(
-        item.startswith(("flare_error:", "flare_normal:")) for item in pack.selectors
+        item.startswith(("terminal_error:", "terminal_normal:")) for item in pack.selectors
     )
     assert all(not item.startswith("plunge:") for item in pack.selectors)
 
@@ -127,7 +127,7 @@ def test_unknown_focused_selector_group_errors() -> None:
 
 def test_build_bench_command_includes_profile_flags() -> None:
     cmd = selector_pack.build_bench_command(
-        selectors=["setup_flat:mid_half:0-1"],
+        selectors=["boost_flat:mid_half:0-1"],
         bot_profile_enabled=True,
         bot_profile_interval_s=1.25,
         bot_profile_log_lines=False,
@@ -141,7 +141,7 @@ def test_build_bench_command_includes_profile_flags() -> None:
 
 def test_build_bench_command_includes_bot_config_path() -> None:
     cmd = selector_pack.build_bench_command(
-        selectors=["setup_flat:mid_half:0-1"],
+        selectors=["boost_flat:mid_half:0-1"],
         bot_config_path="configs/zem_fast.json",
     )
     assert "--bot-config" in cmd

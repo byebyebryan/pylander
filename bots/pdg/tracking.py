@@ -3,8 +3,8 @@ from __future__ import annotations
 import math
 
 from bots._ballistics import BallisticProjection, ballistic_apex_from_state
-from bots.pdg.setup import projected_impact_angle_deg as _projected_impact_angle_deg
-from core.bot import Sensors, SetupGateMetrics
+from bots.pdg.boost import projected_impact_angle_deg as _projected_impact_angle_deg
+from core.bot import Sensors, BoostCutoffMetrics
 from core.config import GRAVITY
 
 _GRAVITY_MAG = abs(float(GRAVITY))
@@ -22,33 +22,33 @@ def _projected_apex(y: float, vy_up: float, target_y: float) -> tuple[float, flo
     return apex_y, (apex_y - float(target_y))
 
 
-def _capture_setup_gate_state(bot, *, passive: Sensors) -> None:
-    bot._setup_gate_x = float(passive.x)
-    bot._setup_gate_y = float(passive.y)
-    bot._setup_gate_vx = float(passive.vx)
-    bot._setup_gate_vy_up = float(passive.vy_up)
+def _capture_boost_cutoff_state(bot, *, passive: Sensors) -> None:
+    bot._boost_cutoff_x = float(passive.x)
+    bot._boost_cutoff_y = float(passive.y)
+    bot._boost_cutoff_vx = float(passive.vx)
+    bot._boost_cutoff_vy_up = float(passive.vy_up)
 
 
-def _capture_flare_entry_state(bot, *, passive: Sensors) -> None:
-    bot._flare_entry_x = float(passive.x)
-    bot._flare_entry_y = float(passive.y)
+def _capture_terminal_entry_state(bot, *, passive: Sensors) -> None:
+    bot._terminal_entry_x = float(passive.x)
+    bot._terminal_entry_y = float(passive.y)
 
 
-def finalize_flare_entry_metrics(
+def finalize_terminal_entry_metrics(
     bot,
     *,
     passive: Sensors,
     alt: float,
     projected_dx: float,
 ) -> None:
-    bot._flare_entry_done = True
-    bot._flare_entry_time = bot._elapsed_time_s
-    bot._flare_entry_altitude = float(alt)
-    bot._flare_entry_projected_dx = float(projected_dx)
-    _capture_flare_entry_state(bot, passive=passive)
+    bot._terminal_entry_done = True
+    bot._terminal_entry_time = bot._elapsed_time_s
+    bot._terminal_entry_altitude = float(alt)
+    bot._terminal_entry_projected_dx = float(projected_dx)
+    _capture_terminal_entry_state(bot, passive=passive)
 
 
-def finalize_setup_gate_metrics(
+def finalize_boost_cutoff_metrics(
     bot,
     *,
     passive: Sensors,
@@ -71,56 +71,56 @@ def finalize_setup_gate_metrics(
             t_fall=float(projection.t_fall),
         )
 
-    fuel_start = bot._setup_phase_fuel_start
+    fuel_start = bot._boost_phase_fuel_start
     fuel_used = None
     if fuel_start is not None:
         fuel_used = max(0.0, float(fuel_start) - float(passive.fuel))
     burn_duration_s = max(0.0, float(bot._elapsed_time_s))
     burn_avg_thrust_level = None
     if burn_duration_s > 1e-6:
-        burn_avg_thrust_level = bot._setup_phase_thrust_integral / burn_duration_s
+        burn_avg_thrust_level = bot._boost_phase_thrust_integral / burn_duration_s
 
-    bot._setup_gate_done = True
-    bot._setup_gate_time = bot._elapsed_time_s
-    bot._setup_gate_altitude = alt
-    bot._setup_gate_projected_dx = float(projection.projected_dx)
-    bot._setup_gate_projected_apex_y = apex_y
-    bot._setup_gate_projected_apex_over_target = apex_over_target
-    bot._setup_gate_has_target_y_solution = has_target_y_solution
-    bot._setup_gate_projected_impact_dx = projected_impact_dx
-    bot._setup_gate_projected_impact_angle_deg = impact_angle_deg
-    bot._setup_gate_burn_duration_s = burn_duration_s
-    bot._setup_gate_burn_fuel_used = fuel_used
-    bot._setup_gate_burn_avg_thrust_level = burn_avg_thrust_level
-    bot._setup_gate_spawn_primed = False
-    _capture_setup_gate_state(bot, passive=passive)
+    bot._boost_cutoff_done = True
+    bot._boost_cutoff_time = bot._elapsed_time_s
+    bot._boost_cutoff_altitude = alt
+    bot._boost_cutoff_projected_dx = float(projection.projected_dx)
+    bot._boost_cutoff_projected_apex_y = apex_y
+    bot._boost_cutoff_projected_apex_over_target = apex_over_target
+    bot._boost_cutoff_has_target_y_solution = has_target_y_solution
+    bot._boost_cutoff_projected_impact_dx = projected_impact_dx
+    bot._boost_cutoff_projected_impact_angle_deg = impact_angle_deg
+    bot._boost_cutoff_burn_duration_s = burn_duration_s
+    bot._boost_cutoff_burn_fuel_used = fuel_used
+    bot._boost_cutoff_burn_avg_thrust_level = burn_avg_thrust_level
+    bot._boost_cutoff_spawn_primed = False
+    _capture_boost_cutoff_state(bot, passive=passive)
 
 
-def apply_setup_gate_metrics(
+def apply_boost_cutoff_metrics(
     bot,
     *,
-    setup_gate: SetupGateMetrics,
+    boost_cutoff: BoostCutoffMetrics,
 ) -> None:
-    bot._setup_gate_done = True
-    bot._setup_gate_time = setup_gate.time_s
-    bot._setup_gate_altitude = setup_gate.altitude
-    bot._setup_gate_x = setup_gate.x
-    bot._setup_gate_y = setup_gate.y
-    bot._setup_gate_vx = setup_gate.vx
-    bot._setup_gate_vy_up = setup_gate.vy_up
-    bot._setup_gate_projected_apex_y = setup_gate.projected_apex_y
-    bot._setup_gate_projected_apex_over_target = setup_gate.projected_apex_over_target
-    bot._setup_gate_has_target_y_solution = setup_gate.has_target_y_solution
-    bot._setup_gate_projected_dx = (
-        setup_gate.projected_dx
-        if setup_gate.projected_dx is not None
-        else setup_gate.projected_impact_dx
+    bot._boost_cutoff_done = True
+    bot._boost_cutoff_time = boost_cutoff.time_s
+    bot._boost_cutoff_altitude = boost_cutoff.altitude
+    bot._boost_cutoff_x = boost_cutoff.x
+    bot._boost_cutoff_y = boost_cutoff.y
+    bot._boost_cutoff_vx = boost_cutoff.vx
+    bot._boost_cutoff_vy_up = boost_cutoff.vy_up
+    bot._boost_cutoff_projected_apex_y = boost_cutoff.projected_apex_y
+    bot._boost_cutoff_projected_apex_over_target = boost_cutoff.projected_apex_over_target
+    bot._boost_cutoff_has_target_y_solution = boost_cutoff.has_target_y_solution
+    bot._boost_cutoff_projected_dx = (
+        boost_cutoff.projected_dx
+        if boost_cutoff.projected_dx is not None
+        else boost_cutoff.projected_impact_dx
     )
-    bot._setup_gate_projected_impact_dx = setup_gate.projected_impact_dx
-    bot._setup_gate_projected_impact_angle_deg = setup_gate.projected_impact_angle_deg
-    bot._setup_gate_burn_duration_s = setup_gate.burn_duration_s
-    bot._setup_gate_burn_fuel_used = setup_gate.burn_fuel_used
-    bot._setup_gate_burn_avg_thrust_level = setup_gate.burn_avg_thrust_level
+    bot._boost_cutoff_projected_impact_dx = boost_cutoff.projected_impact_dx
+    bot._boost_cutoff_projected_impact_angle_deg = boost_cutoff.projected_impact_angle_deg
+    bot._boost_cutoff_burn_duration_s = boost_cutoff.burn_duration_s
+    bot._boost_cutoff_burn_fuel_used = boost_cutoff.burn_fuel_used
+    bot._boost_cutoff_burn_avg_thrust_level = boost_cutoff.burn_avg_thrust_level
 
 
 def refresh_stage_tracking(
@@ -142,13 +142,13 @@ def refresh_stage_tracking(
 
     thrust_level = float(passive.thrust_level)
     if (
-        bot._debug_setup
-        and bot._active_phase == "setup"
-        and (bot._elapsed_time_s - bot._debug_setup_last_print_t) >= 0.25
+        bot._debug_boost
+        and bot._active_phase == "boost"
+        and (bot._elapsed_time_s - bot._debug_boost_last_print_t) >= 0.25
     ):
-        bot._debug_setup_last_print_t = bot._elapsed_time_s
-        bot._debug_setup_print(
-            "setup_track "
+        bot._debug_boost_last_print_t = bot._elapsed_time_s
+        bot._debug_boost_print(
+            "boost_track "
             f"t={bot._elapsed_time_s:6.2f} "
             f"ph={bot._active_phase:8s} "
             f"dx={dx:8.2f} proj_dx={projected_dx:8.2f} "
@@ -161,8 +161,8 @@ def refresh_stage_tracking(
     in_touchdown_corridor = abs(float(dx)) <= touchdown_dx_limit
     in_touchdown_projected_corridor = abs(projected_dx) <= touchdown_dx_limit
     direct_touchdown_terminal = (
-        (not bot._setup_gate_done)
-        and (not bot._flare_entry_done)
+        (not bot._boost_cutoff_done)
+        and (not bot._terminal_entry_done)
         and (not bot._shape_window_started)
         and has_target_y_solution
         and in_touchdown_corridor
@@ -170,7 +170,7 @@ def refresh_stage_tracking(
         and abs(float(passive.vx)) <= float(cfg.touchdown_phase_speed)
         and t_fall <= float(cfg.touchdown_phase_time_to_go)
     )
-    next_stage = "setup"
+    next_stage = "boost"
     if (
         alt <= cfg.touchdown_phase_altitude
         and speed <= cfg.touchdown_phase_speed
@@ -179,24 +179,24 @@ def refresh_stage_tracking(
         next_stage = "touchdown"
     elif direct_touchdown_terminal:
         next_stage = "touchdown"
-    elif bot._flare_entry_done:
-        next_stage = "flare"
-    elif bot._setup_gate_done:
-        if bot._setup_gate_spawn_primed:
+    elif bot._terminal_entry_done:
+        next_stage = "terminal"
+    elif bot._boost_cutoff_done:
+        if bot._boost_cutoff_spawn_primed:
             next_stage = "coast"
         else:
             next_stage = "coast"
     bot._stage_tracking_next = next_stage
 
     if (
-        bot._debug_setup
-        and bot._setup_gate_done
-        and bot._debug_setup_post_end_time is not None
-        and bot._elapsed_time_s <= bot._debug_setup_post_end_time
-        and (bot._elapsed_time_s - bot._debug_setup_last_print_t) >= 0.25
+        bot._debug_boost
+        and bot._boost_cutoff_done
+        and bot._debug_boost_post_end_time is not None
+        and bot._elapsed_time_s <= bot._debug_boost_post_end_time
+        and (bot._elapsed_time_s - bot._debug_boost_last_print_t) >= 0.25
     ):
-        bot._debug_setup_last_print_t = bot._elapsed_time_s
-        bot._debug_setup_print(
+        bot._debug_boost_last_print_t = bot._elapsed_time_s
+        bot._debug_boost_print(
             "post_gate "
             f"t={bot._elapsed_time_s:6.2f} "
             f"ph={next_stage:8s} "
@@ -215,7 +215,7 @@ def maybe_start_shape_window(
 ) -> None:
     if bot._shape_window_started or bot._shape_window_done:
         return
-    if bot._setup_gate_done:
+    if bot._boost_cutoff_done:
         return
     if bot._active_phase == "takeoff":
         return
@@ -227,7 +227,7 @@ def maybe_start_shape_window(
     bot._shape_start_y = float(passive.y)
     bot._shape_target_x = float(passive.x) + float(dx)
     bot._shape_target_y = float(passive.y) + float(dy)
-    bot._uphill_transfer = float(dy) >= bot._cfg.uphill_setup_dy_min
+    bot._uphill_transfer = float(dy) >= bot._cfg.uphill_boost_dy_min
     bot._shape_anchor_dx_abs = abs(float(dx))
     bot._shape_apex_target_over_target = bot._shape_apex_target(bot._shape_anchor_dx_abs)
     bot._shape_apex_actual_over_target = max(0.0, float(passive.y) - bot._shape_target_y)
@@ -270,7 +270,7 @@ def update_shape_window_metrics(
     bot._shape_curve_count += 1
 
     if (
-        bot._flare_entry_done or bot._active_phase in ("flare", "touchdown")
+        bot._terminal_entry_done or bot._active_phase in ("terminal", "touchdown")
     ) and not bot._shape_window_done:
         bot._shape_window_done = True
         bot._shape_window_end_time = bot._elapsed_time_s

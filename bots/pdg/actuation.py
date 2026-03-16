@@ -98,9 +98,9 @@ def command_from_plan(
             float(passive.vx),
             dy=dy,
             phase=bot._active_phase,
-            vy_up=float(passive.vy_up) if bot._active_phase == "flare" else None,
-            max_thrust_accel=max_thrust_accel if bot._active_phase == "flare" else None,
-            lateral_dx=projected_dx if bot._active_phase == "flare" else None,
+            vy_up=float(passive.vy_up) if bot._active_phase == "terminal" else None,
+            max_thrust_accel=max_thrust_accel if bot._active_phase == "terminal" else None,
+            lateral_dx=projected_dx if bot._active_phase == "terminal" else None,
         )
         tilt_tan = math.tan(max_tilt)
         a_x = clamp(a_x, -tilt_tan * max(0.2, a_y), tilt_tan * max(0.2, a_y))
@@ -111,9 +111,9 @@ def command_from_plan(
         float(passive.vx),
         dy=dy,
         phase=bot._active_phase,
-        vy_up=float(passive.vy_up) if bot._active_phase == "flare" else None,
-        max_thrust_accel=max_thrust_accel if bot._active_phase == "flare" else None,
-        lateral_dx=projected_dx if bot._active_phase == "flare" else None,
+        vy_up=float(passive.vy_up) if bot._active_phase == "terminal" else None,
+        max_thrust_accel=max_thrust_accel if bot._active_phase == "terminal" else None,
+        lateral_dx=projected_dx if bot._active_phase == "terminal" else None,
     )
     angle_target = math.atan2(a_x, max(0.2, a_y))
     angle_target = clamp(angle_target, -max_tilt_now, max_tilt_now)

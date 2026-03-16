@@ -1,4 +1,4 @@
-"""Shared base class for pad-to-pad setup-transfer levels."""
+"""Shared base class for pad-to-pad boost-transfer levels."""
 
 from __future__ import annotations
 
@@ -6,20 +6,20 @@ from dataclasses import dataclass
 
 from core.components import CargoHold, Transform
 from core.ecs import require_component
-from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
+from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_BOOST
 from core.maths import Vector2
 from levels.common import (
     PresetLevel,
     SiteSpec,
-    apply_setup_transfer_result,
+    apply_transfer_result,
     get_mass,
     resolve_landed_site_uid,
 )
 from levels.scenario_common import ScenarioCatalogMixin
 
 SOURCE_PAD_X = 0.0
-SOURCE_SITE_UID = "setup_transfer_source"
-TARGET_SITE_UID = "setup_transfer_target"
+SOURCE_SITE_UID = "transfer_source"
+TARGET_SITE_UID = "transfer_target"
 
 
 @dataclass(frozen=True)
@@ -45,7 +45,7 @@ def build_setup_weight_params(scenario) -> dict[str, float | str]:  # noqa: ANN0
 
 
 class SetupTransferLevel(ScenarioCatalogMixin, PresetLevel):
-    """Base for pad-to-pad setup-transfer levels.
+    """Base for pad-to-pad boost-transfer levels.
 
     Subclasses must override:
     - ``_build_base_terrain(seed)`` — terrain generator
@@ -55,7 +55,7 @@ class SetupTransferLevel(ScenarioCatalogMixin, PresetLevel):
 
     default_bot_name = "pdg"
     dynamic_site_enabled = False
-    _supported_eval_goals = (EVAL_GOAL_LANDING, EVAL_GOAL_SETUP)
+    _supported_eval_goals = (EVAL_GOAL_LANDING, EVAL_GOAL_BOOST)
 
     site_specs = ()
     spawn_x = SOURCE_PAD_X
@@ -86,7 +86,7 @@ class SetupTransferLevel(ScenarioCatalogMixin, PresetLevel):
         """Return the dict stored as ``_scenario_params``."""
         raise NotImplementedError
 
-    # -- shared setup / end ---------------------------------------------------
+    # -- shared world setup / end ---------------------------------------------
 
     def setup(self, game, seed: int) -> None:
         scenario = self._active_scenario()
@@ -144,7 +144,7 @@ class SetupTransferLevel(ScenarioCatalogMixin, PresetLevel):
             actor = self.world.actors[0]
             trans = require_component(actor, Transform)
             landed_uid = self._resolve_landed_site_uid(float(trans.pos.x))
-        return apply_setup_transfer_result(
+        return apply_transfer_result(
             result,
             state=state,
             landed_uid=landed_uid,

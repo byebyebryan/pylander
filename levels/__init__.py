@@ -24,7 +24,7 @@ def _package_path() -> str:
 
 def list_available_levels() -> List[str]:
     """Return available level module names (filenames without extension)."""
-    return list_modules(_package_path(), excluded={"common", "scenario_common", "setup_base", "staged_eval"})
+    return list_modules(_package_path(), excluded={"common", "scenario_common", "boost_base", "staged_eval"})
 
 
 def _find_level_class_in_module(module) -> Type[Level] | None:

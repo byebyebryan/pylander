@@ -16,13 +16,13 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 - Unified optimizer bot: [`pdg.md`](pdg.md)
 - Terminal/plunge benchmark level + bot: [`plunge.md`](plunge.md)
 - Query API + profiling details: [`overview.md`](overview.md)
-- Flare-flight levels:
-  - `flare_normal`: [`flare_normal.md`](flare_normal.md)
-  - `flare_error`: [`flare_error.md`](flare_error.md)
-- Setup levels:
-  - `setup_downhill`: [`setup_downhill.md`](setup_downhill.md)
-  - `setup_flat`: [`setup_flat.md`](setup_flat.md)
-  - `setup_climb`: [`setup_climb.md`](setup_climb.md)
+- Terminal-flight levels:
+  - `terminal_normal`: [`terminal_normal.md`](terminal_normal.md)
+  - `terminal_error`: [`terminal_error.md`](terminal_error.md)
+- Boost levels:
+  - `boost_downhill`: [`boost_downhill.md`](boost_downhill.md)
+  - `boost_flat`: [`boost_flat.md`](boost_flat.md)
+  - `boost_climb`: [`boost_climb.md`](boost_climb.md)
 
 ## Artifacts
 
@@ -31,4 +31,4 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 
 ## Experiment notes
 
-- Climb setup shaping log (March 2026): [`experiments/2026-03-climb-setup-shaping.md`](experiments/2026-03-climb-setup-shaping.md)
+- Legacy climb boost-shaping log (March 2026): [`experiments/2026-03-climb-boost-shaping.md`](experiments/2026-03-climb-boost-shaping.md)

@@ -2,32 +2,32 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.bot import Bot, BotEvalDecision, FlightPhaseSnapshot, SetupGateMetrics
-from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
+from core.bot import Bot, BotEvalDecision, FlightPhaseSnapshot, BoostCutoffMetrics
+from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_BOOST
 
 _SETUP_GATE_RESULT_TO_ATTR: tuple[tuple[str, str], ...] = (
-    ("setup_gate_time", "time_s"),
-    ("setup_gate_altitude", "altitude"),
-    ("setup_gate_projected_apex_y", "projected_apex_y"),
-    ("setup_gate_projected_apex_over_target", "projected_apex_over_target"),
-    ("setup_gate_has_target_y_solution", "has_target_y_solution"),
-    ("setup_gate_projected_dx", "projected_dx"),
-    ("setup_gate_projected_impact_angle_deg", "projected_impact_angle_deg"),
-    ("setup_gate_burn_duration_s", "burn_duration_s"),
-    ("setup_gate_burn_fuel_used", "burn_fuel_used"),
-    ("setup_gate_burn_avg_thrust_level", "burn_avg_thrust_level"),
+    ("boost_cutoff_time", "time_s"),
+    ("boost_cutoff_altitude", "altitude"),
+    ("boost_cutoff_projected_apex_y", "projected_apex_y"),
+    ("boost_cutoff_projected_apex_over_target", "projected_apex_over_target"),
+    ("boost_cutoff_has_target_y_solution", "has_target_y_solution"),
+    ("boost_cutoff_projected_dx", "projected_dx"),
+    ("boost_cutoff_projected_impact_angle_deg", "projected_impact_angle_deg"),
+    ("boost_cutoff_burn_duration_s", "burn_duration_s"),
+    ("boost_cutoff_burn_fuel_used", "burn_fuel_used"),
+    ("boost_cutoff_burn_avg_thrust_level", "burn_avg_thrust_level"),
 )
 
 _SETUP_GATE_TO_SETUP_GOAL_FIELDS: tuple[tuple[str, str], ...] = (
-    ("setup_goal_time", "setup_gate_time"),
-    ("setup_goal_altitude", "setup_gate_altitude"),
-    ("setup_goal_projected_apex_y", "setup_gate_projected_apex_y"),
-    ("setup_goal_projected_apex_over_target", "setup_gate_projected_apex_over_target"),
-    ("setup_goal_has_target_y_solution", "setup_gate_has_target_y_solution"),
-    ("setup_goal_projected_dx", "setup_gate_projected_dx"),
-    ("setup_goal_projected_impact_angle_deg", "setup_gate_projected_impact_angle_deg"),
-    ("setup_goal_fuel_consumed", "setup_gate_burn_fuel_used"),
-    ("setup_goal_burn_avg_thrust_level", "setup_gate_burn_avg_thrust_level"),
+    ("boost_goal_time", "boost_cutoff_time"),
+    ("boost_goal_altitude", "boost_cutoff_altitude"),
+    ("boost_goal_projected_apex_y", "boost_cutoff_projected_apex_y"),
+    ("boost_goal_projected_apex_over_target", "boost_cutoff_projected_apex_over_target"),
+    ("boost_goal_has_target_y_solution", "boost_cutoff_has_target_y_solution"),
+    ("boost_goal_projected_dx", "boost_cutoff_projected_dx"),
+    ("boost_goal_projected_impact_angle_deg", "boost_cutoff_projected_impact_angle_deg"),
+    ("boost_goal_fuel_consumed", "boost_cutoff_burn_fuel_used"),
+    ("boost_goal_burn_avg_thrust_level", "boost_cutoff_burn_avg_thrust_level"),
 )
 
 
@@ -61,31 +61,31 @@ def _safe_phase_snapshot(bot: Any) -> FlightPhaseSnapshot | None:
     return snapshot if isinstance(snapshot, FlightPhaseSnapshot) else None
 
 
-def _merge_setup_gate_snapshot_into_result(
+def _merge_boost_cutoff_snapshot_into_result(
     *,
     result: dict[str, Any],
     phase_snapshot: FlightPhaseSnapshot,
 ) -> None:
-    has_setup_gate = "setup_gate" in phase_snapshot.milestones or phase_snapshot.setup_gate is not None
-    if not has_setup_gate:
+    has_boost_cutoff = "boost_cutoff" in phase_snapshot.milestones or phase_snapshot.boost_cutoff is not None
+    if not has_boost_cutoff:
         return
-    result.setdefault("setup_gate_done", True)
-    setup_gate = phase_snapshot.setup_gate
-    if not isinstance(setup_gate, SetupGateMetrics):
+    result.setdefault("boost_cutoff_done", True)
+    boost_cutoff = phase_snapshot.boost_cutoff
+    if not isinstance(boost_cutoff, BoostCutoffMetrics):
         return
     for result_key, attr_name in _SETUP_GATE_RESULT_TO_ATTR:
-        value = getattr(setup_gate, attr_name)
-        if result_key == "setup_gate_projected_dx" and value is None:
-            value = setup_gate.projected_impact_dx
+        value = getattr(boost_cutoff, attr_name)
+        if result_key == "boost_cutoff_projected_dx" and value is None:
+            value = boost_cutoff.projected_impact_dx
         result.setdefault(result_key, value)
 
 
-def _copy_setup_gate_result_to_setup_goal(result: dict[str, Any]) -> None:
-    if not bool(result.get("setup_gate_done")):
+def _copy_boost_cutoff_result_to_boost_goal(result: dict[str, Any]) -> None:
+    if not bool(result.get("boost_cutoff_done")):
         return
-    result.setdefault("setup_goal_done", True)
-    for setup_goal_key, setup_gate_key in _SETUP_GATE_TO_SETUP_GOAL_FIELDS:
-        result.setdefault(setup_goal_key, result.get(setup_gate_key))
+    result.setdefault("boost_goal_done", True)
+    for boost_goal_key, boost_cutoff_key in _SETUP_GATE_TO_SETUP_GOAL_FIELDS:
+        result.setdefault(boost_goal_key, result.get(boost_cutoff_key))
 
 
 def merge_bot_snapshots_into_result(
@@ -96,7 +96,7 @@ def merge_bot_snapshots_into_result(
     for bot in actor_bots.values():
         phase_snapshot = _safe_phase_snapshot(bot)
         if phase_snapshot is not None:
-            _merge_setup_gate_snapshot_into_result(
+            _merge_boost_cutoff_snapshot_into_result(
                 result=result,
                 phase_snapshot=phase_snapshot,
             )
@@ -142,8 +142,8 @@ def apply_bot_eval_to_result(
             if not isinstance(key, str):
                 continue
             result[str(key)] = value
-    if eval_goal == EVAL_GOAL_SETUP and bool(result.get("setup_gate_done")):
-        _copy_setup_gate_result_to_setup_goal(result)
+    if eval_goal == EVAL_GOAL_BOOST and bool(result.get("boost_cutoff_done")):
+        _copy_boost_cutoff_result_to_boost_goal(result)
 
     if eval_goal != EVAL_GOAL_LANDING:
         if decision is not None and decision.success is True:

@@ -17,33 +17,33 @@ PlotMode = Literal["none", "speed", "thrust", "all"]
 PlotOutputProfile = Literal["combined", "split", "both"]
 _TALL_SPATIAL_RATIO_CUTOFF = 1.35
 _EVENT_DISPLAY_NAMES: dict[str, str] = {
-    "setup_gate": "setup",
-    "flare_gate": "flare",
-    "flare_entry": "flare",
+    "boost_cutoff": "boost",
+    "terminal_gate": "terminal",
+    "terminal_entry": "terminal",
     "success": "landed",
     "crash": "crash",
     "out_of_fuel": "fuel out",
 }
 _EVENT_COLORS: dict[str, str] = {
-    "setup_gate": "#1f77b4",
-    "flare_gate": "#ff7f0e",
-    "flare_entry": "#ff7f0e",
+    "boost_cutoff": "#1f77b4",
+    "terminal_gate": "#ff7f0e",
+    "terminal_entry": "#ff7f0e",
     "success": "#2ecc71",
     "crash": "#d62728",
     "out_of_fuel": "#8c564b",
 }
 _EVENT_MARKERS: dict[str, str] = {
-    "setup_gate": "o",
-    "flare_gate": "D",
-    "flare_entry": "D",
+    "boost_cutoff": "o",
+    "terminal_gate": "D",
+    "terminal_entry": "D",
     "success": "*",
     "crash": "X",
     "out_of_fuel": "X",
 }
 _TIMESERIES_GATE_EVENT_NAMES: tuple[str, ...] = (
-    "setup_gate",
-    "flare_gate",
-    "flare_entry",
+    "boost_cutoff",
+    "terminal_gate",
+    "terminal_entry",
     "out_of_fuel",
 )
 
@@ -1107,7 +1107,7 @@ def _draw_trajectory_comparison_spatial_panel(
         overlay_points.append(actual_apex)
     _draw_apex_marker(ax, point=actual_apex, label="actual apex", color="#1b263b")
 
-    setup_event = _find_event(events, name="setup_gate")
+    boost_cutoff_event = _find_event(events, name="boost_cutoff")
     if target is None:
         if cax is not None:
             cax.axis("off")
@@ -1164,13 +1164,13 @@ def _draw_trajectory_comparison_spatial_panel(
         ref_line.set_path_effects([pe.Stroke(linewidth=4.2, foreground="#111111"), pe.Normal()])
         _draw_apex_marker(ax, point=ref_apex, label="reference apex", color="#00aa00")
 
-    if setup_event is not None:
-        event_x = float(setup_event.get("x", 0.0) or 0.0)
-        event_y = float(setup_event.get("y", 0.0) or 0.0)
-        event_vx = setup_event.get("vx")
-        event_vy_up = setup_event.get("vy_up")
+    if boost_cutoff_event is not None:
+        event_x = float(boost_cutoff_event.get("x", 0.0) or 0.0)
+        event_y = float(boost_cutoff_event.get("y", 0.0) or 0.0)
+        event_vx = boost_cutoff_event.get("vx")
+        event_vy_up = boost_cutoff_event.get("vy_up")
         if event_vx is not None and event_vy_up is not None:
-            setup_curve_xs, setup_curve_ys, has_target_y_solution = _ballistic_curve_from_state(
+            boost_curve_xs, boost_curve_ys, has_target_y_solution = _ballistic_curve_from_state(
                 x=event_x,
                 y=event_y,
                 vx=float(event_vx),
@@ -1179,24 +1179,24 @@ def _draw_trajectory_comparison_spatial_panel(
                 target_y=target_y,
             )
             if has_target_y_solution:
-                setup_apex = _curve_apex_point(setup_curve_xs, setup_curve_ys)
-                if setup_apex is not None:
-                    overlay_points.append(setup_apex)
-                setup_line = ax.plot(
-                    setup_curve_xs,
-                    setup_curve_ys,
+                boost_apex = _curve_apex_point(boost_curve_xs, boost_curve_ys)
+                if boost_apex is not None:
+                    overlay_points.append(boost_apex)
+                boost_line = ax.plot(
+                    boost_curve_xs,
+                    boost_curve_ys,
                     color="#ff0000",
                     linewidth=2.4,
                     linestyle=(0, (2.2, 2.0)),
                     alpha=0.98,
                     zorder=6,
-                    label="setup gate ballistic",
+                    label="boost cutoff ballistic",
                 )[0]
-                setup_line.set_path_effects([pe.Stroke(linewidth=4.4, foreground="#111111"), pe.Normal()])
-                _draw_apex_marker(ax, point=setup_apex, label="setup ballistic apex", color="#cc0000")
+                boost_line.set_path_effects([pe.Stroke(linewidth=4.4, foreground="#111111"), pe.Normal()])
+                _draw_apex_marker(ax, point=boost_apex, label="boost ballistic apex", color="#cc0000")
                 ax.scatter(
-                    [setup_curve_xs[0], setup_curve_xs[-1]],
-                    [setup_curve_ys[0], setup_curve_ys[-1]],
+                    [boost_curve_xs[0], boost_curve_xs[-1]],
+                    [boost_curve_ys[0], boost_curve_ys[-1]],
                     s=22.0,
                     marker="D",
                     facecolors="#ffffff",

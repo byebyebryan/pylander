@@ -28,11 +28,11 @@ At least one source input is required.
 - Compare report JSON from benchmark tooling (preferred for regression truth)
 - Benchmark records JSON for phase/perf outliers
 - Sim log text (`--freq 1`) for per-tick state, profiler lines, and sectioned final-result blocks
-- Optional setup debug traces (`PYLANDER_PDG_DEBUG_SETUP=1`)
+- Optional boost debug traces (`PYLANDER_PDG_DEBUG_BOOST=1`)
 
 Current signal conventions:
 
-- generic setup metrics: `setup_gate_*`, `setup_goal_*`
+- generic boost metrics: `boost_cutoff_*`, `boost_goal_*`
 - bot-owned diagnostics: `bot_<botname>_*` (for example `bot_pdg_*`)
 - profiler fields: `bot_profile_*` covering passive/update/total timing
 

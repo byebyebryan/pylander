@@ -282,7 +282,7 @@ def _to_float(value: Any, default: float = 0.0) -> float:
 
 
 def _run_diag(record: dict[str, Any], *, bot: str) -> dict[str, Any]:
-    terminal_dx_key = _bot_metric_key(bot, "flare_entry_projected_dx")
+    terminal_dx_key = _bot_metric_key(bot, "terminal_entry_projected_dx")
     keys = (
         "state",
         "failure_mode",
@@ -293,15 +293,15 @@ def _run_diag(record: dict[str, Any], *, bot: str) -> dict[str, Any]:
         "distance_flown",
         "avg_speed",
         "score",
-        "setup_gate_projected_dx",
+        "boost_cutoff_projected_dx",
         terminal_dx_key,
     )
     out: dict[str, Any] = {}
     for key in keys:
         if key in record:
             out[key] = record.get(key)
-    out["bot_flare_entry_projected_dx_field"] = terminal_dx_key
-    out["bot_flare_entry_projected_dx"] = record.get(terminal_dx_key)
+    out["bot_terminal_entry_projected_dx_field"] = terminal_dx_key
+    out["bot_terminal_entry_projected_dx"] = record.get(terminal_dx_key)
     return out
 
 
@@ -885,8 +885,8 @@ def _print_compare(
                 "  candidate_metrics: "
                 f"time={_to_float(candidate_metrics.get('time'), 0.0):.2f} "
                 f"fuel={_to_float(candidate_metrics.get('fuel_consumed'), 0.0):.3f} "
-                f"setup_dx={_to_float(candidate_metrics.get('setup_gate_projected_dx'), 0.0):.3f} "
-                f"terminal_dx={_to_float(candidate_metrics.get('bot_flare_entry_projected_dx'), 0.0):.3f}"
+                f"boost_dx={_to_float(candidate_metrics.get('boost_cutoff_projected_dx'), 0.0):.3f} "
+                f"terminal_dx={_to_float(candidate_metrics.get('bot_terminal_entry_projected_dx'), 0.0):.3f}"
             )
             if baseline_metrics:
                 print(
@@ -1056,7 +1056,7 @@ def main() -> None:
         default=[],
         help=(
             "Focused selectors or group aliases "
-            "(@flare, @flare_flight, @plunge, @terminal_plunge)"
+            "(@terminal, @terminal_flight, @plunge, @terminal_plunge)"
         ),
     )
     ap.add_argument(

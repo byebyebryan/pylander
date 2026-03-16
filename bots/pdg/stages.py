@@ -9,9 +9,9 @@ from core.bot import BotAction
 
 class FlightStage(str, Enum):
     TAKEOFF = "takeoff"
-    SETUP = "setup"
+    BOOST = "boost"
     COAST = "coast"
-    FLARE = "flare"
+    TERMINAL = "terminal"
     TOUCHDOWN = "touchdown"
 
 
@@ -51,15 +51,15 @@ class TakeoffBootstrapController(StageController):
             )
             bot._set_display_state(mode="takeoff", phase=self.stage.value, summary=summary)
             return StageTickResult(action=action)
-        return StageTickResult(next_stage=FlightStage.SETUP)
+        return StageTickResult(next_stage=FlightStage.BOOST)
 
 
-class PDGSetupController(StageController):
+class PDGBoostController(StageController):
     def __init__(self) -> None:
-        super().__init__(FlightStage.SETUP)
+        super().__init__(FlightStage.BOOST)
 
     def update(self, bot, ctx) -> StageTickResult:
-        return bot._run_setup_controller(ctx=ctx)
+        return bot._run_boost_controller(ctx=ctx)
 
 
 class BallisticCoastController(StageController):
@@ -69,7 +69,7 @@ class BallisticCoastController(StageController):
     def update(self, bot, ctx) -> StageTickResult:
         if ctx.suggested_stage != self.stage:
             return StageTickResult(next_stage=ctx.suggested_stage)
-        flare_gate = bot._evaluate_flare_gate(
+        terminal_gate = bot._evaluate_terminal_gate(
             dt=ctx.dt,
             passive=ctx.passive,
             dx=ctx.dx,
@@ -81,20 +81,20 @@ class BallisticCoastController(StageController):
             nominal_thrust_accel=ctx.nominal_thrust_accel,
             thrust_ramp_up=ctx.ramp_up,
         )
-        if flare_gate is not None:
-            bot._finalize_flare_entry(
+        if terminal_gate is not None:
+            bot._finalize_terminal_entry(
                 passive=ctx.passive,
                 alt=ctx.alt,
                 projected_dx=float(ctx.projection.projected_dx),
-                mode=flare_gate.mode,
-                horizon_s=flare_gate.burn_time_s,
+                mode=terminal_gate.mode,
+                horizon_s=terminal_gate.burn_time_s,
                 terminal_speed=None,
                 peak_accel_ratio=None,
                 od_excess_s=None,
-                latest_safe_margin_s=flare_gate.latest_safe_margin_s,
-                required_accel_ratio=flare_gate.required_accel_ratio,
+                latest_safe_margin_s=terminal_gate.latest_safe_margin_s,
+                required_accel_ratio=terminal_gate.required_accel_ratio,
             )
-            return StageTickResult(next_stage=FlightStage.FLARE)
+            return StageTickResult(next_stage=FlightStage.TERMINAL)
 
         action = bot._command_passive_coast(
             dt=ctx.dt,
@@ -115,9 +115,9 @@ class BallisticCoastController(StageController):
         return StageTickResult(action=action)
 
 
-class PDGFlareController(StageController):
+class PDGTerminalController(StageController):
     def __init__(self) -> None:
-        super().__init__(FlightStage.FLARE)
+        super().__init__(FlightStage.TERMINAL)
 
     def update(self, bot, ctx) -> StageTickResult:
         if ctx.suggested_stage == FlightStage.TOUCHDOWN:
@@ -136,8 +136,8 @@ class TouchdownBrakeController(StageController):
 __all__ = [
     "BallisticCoastController",
     "FlightStage",
-    "PDGFlareController",
-    "PDGSetupController",
+    "PDGTerminalController",
+    "PDGBoostController",
     "StageController",
     "StageTickResult",
     "TakeoffBootstrapController",

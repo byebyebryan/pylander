@@ -1,10 +1,10 @@
-# Setup Flat level (`setup_flat`)
+# Boost Flat level (`boost_flat`)
 
-`setup_flat` is the flat pad-to-pad transfer scenario handled end-to-end by `pdg`.
+`boost_flat` is the flat pad-to-pad transfer scenario handled end-to-end by `pdg`.
 
 ## Level setup
 
-Defined in [`levels/setup_flat.py`](../levels/setup_flat.py):
+Defined in [`levels/boost_flat.py`](../levels/boost_flat.py):
 
 - Terrain: flat (`y = 0`)
 - Two terrain-bound pads: source at `x=0`, destination sampled by scenario
@@ -30,25 +30,25 @@ Defaults:
 1. destination selection from pad contacts,
 2. upright takeoff + pad clear,
 3. transfer guidance,
-4. flare and touchdown on the destination pad.
+4. terminal descent and touchdown on the destination pad.
 
 Run-end transfer fields:
 
-- `setup_transfer_source_site_uid`
-- `setup_transfer_target_site_uid`
-- `setup_transfer_landed_site_uid`
-- `setup_transfer_arrived`
+- `transfer_source_site_uid`
+- `transfer_target_site_uid`
+- `transfer_landed_site_uid`
+- `transfer_arrived`
 - `failure_mode="wrong_pad"` when landed on the source pad
 - `failure_mode="off_target"` when landed away from both pads
 
-Additional guidance diagnostics from `pdg` are merged into setup-flat results
-through the generic `setup_gate_*` fields plus retained bot-owned
+Additional guidance diagnostics from `pdg` are merged into boost-flat results
+through the generic `boost_cutoff_*` fields plus retained bot-owned
 `bot_pdg_*` telemetry.
 
 ## Commands
 
 ```bash
-uv run python main.py run --interactive setup_flat
-uv run python main.py sim setup_flat:near_half:0 --bot pdg
-uv run python main.py bench setup_flat --bot pdg
+uv run python main.py run --interactive boost_flat
+uv run python main.py sim boost_flat:near_half:0 --bot pdg
+uv run python main.py bench boost_flat --bot pdg
 ```

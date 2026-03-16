@@ -16,7 +16,7 @@ from levels.scenario_common import (
     ScenarioCatalogMixin,
     ScenarioLevel,
     angle_from_velocity,
-    prime_setup_gate_for_primary_bot,
+    prime_boost_cutoff_for_primary_bot,
     has_randomized_values,
     make_flat_scenario_spec,
     scenario_seed,
@@ -111,7 +111,7 @@ class FlareNormalLevel(ScenarioCatalogMixin, ScenarioLevel):
         )
 
     def start(self, game) -> None:
-        prime_setup_gate_for_primary_bot(self, game)
+        prime_boost_cutoff_for_primary_bot(self, game)
 
     @staticmethod
     def _van_der_corput(index: int, base: int) -> float:
@@ -316,7 +316,7 @@ class FlareNormalLevel(ScenarioCatalogMixin, ScenarioLevel):
 
         if selected is None:
             raise ValueError(
-                f"Scenario '{scenario_base.name}' failed flare validity generation "
+                f"Scenario '{scenario_base.name}' failed terminal validity generation "
                 f"(seed={seed}, attempts={_MAX_SETUP_ATTEMPTS})"
             )
 

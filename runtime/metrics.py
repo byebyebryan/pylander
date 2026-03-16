@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from core.config import GRAVITY
 from core.components import Engine, FuelTank, LanderState, PhysicsState, Transform
 from core.ecs import require_component
-from core.eval_goals import EVAL_GOAL_SETUP, normalize_eval_goal
+from core.eval_goals import EVAL_GOAL_BOOST, normalize_eval_goal
 from core.maths import Vector2
 
 _GRAVITY_MAG = abs(float(GRAVITY))
@@ -169,9 +169,9 @@ class RunMetricsTracker:
         result.setdefault("time_to_first_land", self.time_to_first_land)
 
         goal = normalize_eval_goal(eval_goal)
-        if goal == EVAL_GOAL_SETUP:
-            result.setdefault("setup_goal_time", total_t)
-            result.setdefault("setup_goal_fuel_consumed", self.fuel_consumed)
+        if goal == EVAL_GOAL_BOOST:
+            result.setdefault("boost_goal_time", total_t)
+            result.setdefault("boost_goal_fuel_consumed", self.fuel_consumed)
             setup_projected_dx = None
             setup_time_to_target = None
             if self.eval_target_pos is not None:
@@ -183,8 +183,8 @@ class RunMetricsTracker:
                     vx=float(final_phys.vel.x),
                     vy_up=float(final_phys.vel.y),
                 )
-            result.setdefault("setup_goal_projected_dx", setup_projected_dx)
-            result.setdefault("setup_goal_time_to_target", setup_time_to_target)
+            result.setdefault("boost_goal_projected_dx", setup_projected_dx)
+            result.setdefault("boost_goal_time_to_target", setup_time_to_target)
 
 
 @dataclass

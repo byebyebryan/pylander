@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import core.terrain as _terrain
 from core.level import Level
-from levels.setup_base import (
+from levels.boost_base import (
     SOURCE_PAD_X,
     SETUP_WEIGHT_TIERS,
     SetupTransferLevel,
@@ -13,7 +13,7 @@ from levels.setup_base import (
 
 
 @dataclass(frozen=True)
-class _SetupClimbGeometry:
+class _SetupDownhillGeometry:
     key: str
     terrain_kind: str
     target_dx: float
@@ -21,7 +21,7 @@ class _SetupClimbGeometry:
 
 
 @dataclass(frozen=True)
-class SetupClimbScenario:
+class SetupDownhillScenario:
     name: str
     route_tier: str
     weight_tier: str
@@ -32,15 +32,15 @@ class SetupClimbScenario:
     target_dy: float
 
 
-_GEOMETRY_TIERS: tuple[_SetupClimbGeometry, ...] = (
-    _SetupClimbGeometry(
-        key="low", terrain_kind="slope", target_dx=400.0, target_dy=200.0
+_GEOMETRY_TIERS: tuple[_SetupDownhillGeometry, ...] = (
+    _SetupDownhillGeometry(
+        key="low", terrain_kind="slope", target_dx=400.0, target_dy=-200.0
     ),
-    _SetupClimbGeometry(
-        key="mid", terrain_kind="slope", target_dx=400.0, target_dy=400.0
+    _SetupDownhillGeometry(
+        key="mid", terrain_kind="slope", target_dx=400.0, target_dy=-400.0
     ),
-    _SetupClimbGeometry(
-        key="high", terrain_kind="slope", target_dx=400.0, target_dy=800.0
+    _SetupDownhillGeometry(
+        key="high", terrain_kind="slope", target_dx=400.0, target_dy=-800.0
     ),
 )
 
@@ -49,8 +49,8 @@ def _scenario_name(route_tier: str, weight_tier: str) -> str:
     return f"{route_tier}_{weight_tier}"
 
 
-_SCENARIOS: tuple[SetupClimbScenario, ...] = tuple(
-    SetupClimbScenario(
+_SCENARIOS: tuple[SetupDownhillScenario, ...] = tuple(
+    SetupDownhillScenario(
         name=_scenario_name(geometry.key, weight.key),
         route_tier=geometry.key,
         weight_tier=weight.key,
@@ -73,8 +73,8 @@ _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
 )
 
 
-class SetupClimbLevel(SetupTransferLevel):
-    """Pad-to-pad climb transfer with uphill destination profiles and no obstacles."""
+class SetupDownhillLevel(SetupTransferLevel):
+    """Pad-to-pad downhill transfer with descending destination profiles."""
 
     _scenario_by_name = _SCENARIO_BY_NAME
     _default_scenario_name = _DEFAULT_SCENARIO
@@ -85,7 +85,7 @@ class SetupClimbLevel(SetupTransferLevel):
         return False
 
     @staticmethod
-    def _scenario_slope(scenario: SetupClimbScenario) -> float:
+    def _scenario_slope(scenario: SetupDownhillScenario) -> float:
         if scenario.terrain_kind != "slope":
             return 0.0
         return float(scenario.target_dy) / max(1e-6, float(scenario.target_dx))
@@ -114,4 +114,4 @@ class SetupClimbLevel(SetupTransferLevel):
 
 
 def create_level() -> Level:
-    return SetupClimbLevel()
+    return SetupDownhillLevel()

@@ -50,11 +50,11 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - Define measurable outcomes for each tuning objective (success criteria + efficiency + stability), not just end-of-run state.
 - Use meaningful metrics (success rate, landing quality, fuel use, stability, consistency across seeds).
 - Include compute-cost metrics in evaluations (avg plus p90/p99 passive/update/total ms/tick) to catch hot-path regressions.
-- Prefer generic evaluation metrics first (`setup_gate_*`, `setup_goal_*`) and treat bot-owned diagnostics as namespaced telemetry (`bot_<botname>_*`).
+- Prefer generic evaluation metrics first (`boost_cutoff_*`, `boost_goal_*`) and treat bot-owned diagnostics as namespaced telemetry (`bot_<botname>_*`).
 - Require reproducible evals (seed + scenario + bot + config).
 - Use benchmarks/evals to guide decisions and catch regressions.
 - Use metric gates for bot changes: require measurable improvement or document explicit tradeoffs.
-- Validate downstream impact after focused tuning with a cross-level check (`plunge`/`flare_normal`/`flare_error`/`setup_downhill`/`setup_flat`/`setup_climb`) before merge.
+- Validate downstream impact after focused tuning with a cross-level check (`plunge`/`terminal_normal`/`terminal_error`/`boost_downhill`/`boost_flat`/`boost_climb`) before merge.
 
 ## Skill-driven workflow
 - Preferred loop:
@@ -91,7 +91,7 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
   - run/sim/plot: `level[:scenario[:goal[:seed]]]`
   - bench: `level[:scenario[:goal[:seed_spec]]]`
 - Terminology:
-  - `flare levels` means the flare-flight levels `flare_normal` and `flare_error`
+  - `terminal levels` means the terminal-flight levels `terminal_normal` and `terminal_error`
   - `plunge` is a separate terminal/plunge benchmark and should be included only when explicitly named
 - Prefer explicit selectors in evals/benchmarks for reproducibility.
 - Use `--bot-config <path>` for tuned bot overrides; ensure comparisons use like-for-like bot config.
@@ -103,7 +103,7 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - `uv run pytest`
 - `uv run ruff check .`
 - If behavior changed: run a relevant headless eval and compare metrics to a baseline
- - Example focused eval: `uv run python main.py sim setup_flat:far:0 --bot pdg`
+ - Example focused eval: `uv run python main.py sim boost_flat:far_half:0 --bot pdg`
  - Example quick regression compare: `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot pdg`
 - If CLI/defaults/workflows changed: update `README.md`
 - Don’t check in artifacts (`outputs/` stays local/ignored), including benchmark caches and generated plots.
