@@ -168,7 +168,7 @@ def test_boost_cutoff_waits_for_actual_thrust_shutdown() -> None:
     level = create_level_by_name("boost_flat")
     level.set_eval_scenario("mid_half")
     bot = create_bot("pdg")
-    bot.set_eval_goal("boost")
+    bot.set_eval_goal("boost_cutoff")
 
     gate_samples: list[tuple[float, float, str]] = []
     original_update = bot.update
@@ -186,7 +186,7 @@ def test_boost_cutoff_waits_for_actual_thrust_shutdown() -> None:
         return action
 
     bot.update = MethodType(wrapped_update, bot)
-    game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="boost")
+    game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="boost_cutoff")
     result = game.run(print_freq=0, max_time=9.0)
 
     assert gate_samples

@@ -62,7 +62,7 @@ class _Bot:
 
 
 def test_build_evaluation_decision_returns_boost_goal_completion() -> None:
-    decision = build_evaluation_decision(_Bot(eval_goal="boost", boost_done=True))
+    decision = build_evaluation_decision(_Bot(eval_goal="boost_cutoff", boost_done=True))
 
     assert decision is not None
     assert decision.should_end is True
@@ -73,7 +73,7 @@ def test_build_evaluation_decision_returns_boost_goal_completion() -> None:
 
 
 def test_build_evaluation_decision_returns_boost_quality_failure() -> None:
-    bot = _Bot(eval_goal="boost", boost_done=True)
+    bot = _Bot(eval_goal="boost_cutoff", boost_done=True)
     bot._boost_cutoff_projected_dx = 120.0
 
     decision = build_evaluation_decision(bot)
@@ -87,7 +87,7 @@ def test_build_evaluation_decision_returns_boost_quality_failure() -> None:
 
 
 def test_build_evaluation_decision_ignores_apex_mismatch_for_steep_boost_entry() -> None:
-    bot = _Bot(eval_goal="boost", boost_done=True)
+    bot = _Bot(eval_goal="boost_cutoff", boost_done=True)
     bot._boost_cutoff_y = 120.0
     bot._last_target_y = 0.0
     bot._boost_cutoff_projected_apex_over_target = 192.0
@@ -102,11 +102,11 @@ def test_build_evaluation_decision_ignores_apex_mismatch_for_steep_boost_entry()
 
 def test_build_evaluation_decision_ignores_other_goals_or_missing_boost_cutoff() -> None:
     assert build_evaluation_decision(_Bot(eval_goal="landing", boost_done=True)) is None
-    assert build_evaluation_decision(_Bot(eval_goal="boost", boost_done=False)) is None
+    assert build_evaluation_decision(_Bot(eval_goal="boost_cutoff", boost_done=False)) is None
 
 
 def test_reset_evaluation_state_preserves_or_clears_last_snapshot() -> None:
-    bot = _Bot(eval_goal="boost", boost_done=True)
+    bot = _Bot(eval_goal="boost_cutoff", boost_done=True)
 
     reset_evaluation_state(bot)
     assert bot._last_flight_snapshot == {"kind": "pdg"}

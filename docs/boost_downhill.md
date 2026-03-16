@@ -8,7 +8,7 @@
 - Force a sustained boost burn that establishes a downhill ballistic transfer to the destination pad.
 - Measure whether the controller reaches a strong boost cutoff before coast/terminal progression.
 
-Goal-based eval option: run with selector goal `boost` (for example `boost:downhill:mid:half:boost:0`) to stop when `boost_cutoff_done` latches.
+Goal-based eval option: run with selector goal `boost_cutoff` (for example `boost:downhill:mid:half:boost_cutoff:0`) to stop when `boost_cutoff_done` latches.
 
 Trajectory-shape diagnostics are also exported through the retained
 `bot_pdg_shape_*` fields to quantify boost ballistic quality.
@@ -56,6 +56,6 @@ Common `pdg` boost-shape tuning knobs for this level:
 ```bash
 uv run python main.py run --interactive boost:downhill
 uv run python main.py sim boost:downhill:mid:half:0 --bot pdg
-uv run python main.py sim boost:downhill:mid:half:boost:0 --bot pdg
+uv run python main.py sim boost:downhill:mid:half:boost_cutoff:0 --bot pdg
 uv run python main.py bench boost:downhill:*:* --bot pdg
 ```

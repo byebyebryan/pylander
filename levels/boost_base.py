@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from core.components import CargoHold, Transform
 from core.ecs import require_component
-from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_BOOST
+from core.eval_goals import EVAL_GOAL_BOOST_CUTOFF, EVAL_GOAL_LANDING
 from core.maths import Vector2
 from levels.common import (
     PresetLevel,
@@ -55,7 +55,7 @@ class SetupTransferLevel(ScenarioCatalogMixin, PresetLevel):
 
     default_bot_name = "pdg"
     dynamic_site_enabled = False
-    _supported_eval_goals = (EVAL_GOAL_LANDING, EVAL_GOAL_BOOST)
+    _supported_eval_goals = (EVAL_GOAL_LANDING, EVAL_GOAL_BOOST_CUTOFF)
 
     site_specs = ()
     spawn_x = SOURCE_PAD_X

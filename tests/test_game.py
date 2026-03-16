@@ -286,11 +286,11 @@ def test_pdg_boost_goal_ends_headless_run_early() -> None:
     level = create_level_by_name("boost_downhill")
     level.set_eval_scenario("mid_half")
     bot = create_bot("pdg")
-    bot.set_eval_goal("boost")
-    game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="boost")
+    bot.set_eval_goal("boost_cutoff")
+    game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="boost_cutoff")
 
     result = game.run(print_freq=0, max_time=120.0)
-    assert result["eval_goal"] == "boost"
+    assert result["eval_goal"] == "boost_cutoff"
     assert result["eval_early_end"] is True
     assert result["boost_cutoff_done"] is True
     assert result["boost_goal_done"] is True
@@ -312,7 +312,7 @@ def test_non_landing_goal_without_decision_fails_goal_not_reached() -> None:
     class _NoGoalBot(Bot):
         def set_eval_goal(self, goal: str) -> None:
             key = str(goal or "landing").strip().lower()
-            if key not in {"landing", "boost"}:
+            if key not in {"landing", "boost_cutoff"}:
                 raise ValueError("unsupported goal")
             self._eval_goal = key
 
@@ -321,17 +321,17 @@ def test_non_landing_goal_without_decision_fails_goal_not_reached() -> None:
             return BotAction(target_thrust=0.0, target_angle=0.0, refuel=False)
 
     bot = _NoGoalBot()
-    bot.set_eval_goal("boost")
+    bot.set_eval_goal("boost_cutoff")
     game = LanderGame(
         level=create_level_by_name("flat"),
         seed=0,
         bot=bot,
         headless=True,
-        eval_goal="boost",
+        eval_goal="boost_cutoff",
     )
     result = game.run(print_freq=0, max_steps=5, max_time=5.0)
 
-    assert result["eval_goal"] == "boost"
+    assert result["eval_goal"] == "boost_cutoff"
     assert result["eval_early_end"] is False
     assert result["success"] is False
     assert result["failure_mode"] == "goal_not_reached"
@@ -346,7 +346,7 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
         result={
             "state": "flying",
             "success": True,
-            "eval_goal": "boost",
+            "eval_goal": "boost_cutoff",
             "eval_early_end": True,
             "eval_end_reason": "goal_reached",
             "boost_goal_done": True,
@@ -386,7 +386,7 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
         },
     )
     assert record["success"] is True
-    assert record["eval_goal"] == "boost"
+    assert record["eval_goal"] == "boost_cutoff"
     assert record["eval_early_end"] is True
     assert record["eval_end_reason"] == "goal_reached"
     assert record["boost_goal_done"] is True
@@ -437,7 +437,7 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
             result={
                 "state": "flying",
                 "success": True,
-                "eval_goal": "boost",
+                "eval_goal": "boost_cutoff",
                 "eval_early_end": True,
                 "boost_goal_done": True,
                 "boost_goal_time": 6.0,
@@ -449,7 +449,7 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
     assert summary["successes"] == 1
     assert summary["success_rate"] == pytest.approx(1.0)
     assert summary["by_scenario"]["downhill:mid:half"]["success_rate"] == pytest.approx(1.0)
-    assert summary["by_selector"]["boost:downhill:mid:half:boost"][
+    assert summary["by_selector"]["boost:downhill:mid:half:boost_cutoff"][
         "success_rate"
     ] == pytest.approx(1.0)
 
@@ -584,7 +584,7 @@ def test_hud_display_state_prefers_structured_display_state() -> None:
 
 def test_parse_args_accepts_level_goal_selector() -> None:
     _parser, command = parse_command(
-        ["sim", "boost:downhill:mid:half:boost:0", "--bot", "pdg"]
+        ["sim", "boost:downhill:mid:half:boost_cutoff:0", "--bot", "pdg"]
     )
     assert isinstance(command, RunCommand)
     assert command.run.bot_name == "pdg"
@@ -592,7 +592,7 @@ def test_parse_args_accepts_level_goal_selector() -> None:
     assert command.run.scenario_name == "downhill:mid:half"
     assert command.run.runtime_level_name == "boost_downhill"
     assert command.run.runtime_scenario_name == "mid_half"
-    assert command.run.eval_goal == "boost"
+    assert command.run.eval_goal == "boost_cutoff"
 
 
 def test_cli_requires_subcommand() -> None:

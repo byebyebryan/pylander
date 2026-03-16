@@ -68,7 +68,7 @@ from core.bot import (
     BoostCutoffMetrics,
 )
 from core.config import GRAVITY
-from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_BOOST
+from core.eval_goals import EVAL_GOAL_BOOST_CUTOFF, EVAL_GOAL_LANDING
 
 _GRAVITY_MAG = abs(float(GRAVITY))
 
@@ -183,7 +183,7 @@ class PDGBot(Bot):
         self._transition_to(FlightStage.BOOST, None)
 
     def supported_eval_goals(self) -> tuple[str, ...]:
-        return (EVAL_GOAL_LANDING, EVAL_GOAL_BOOST)
+        return (EVAL_GOAL_LANDING, EVAL_GOAL_BOOST_CUTOFF)
 
     def prime_boost_cutoff(self, boost_cutoff: BoostCutoffMetrics) -> None:
         _apply_boost_cutoff_metrics_impl(self, boost_cutoff=boost_cutoff)

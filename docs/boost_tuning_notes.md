@@ -31,20 +31,20 @@ uv run python main.py sim <selector> --bot pdg --freq 0 -t 25
 
 | Selector | Verdict | Notes |
 | --- | --- | --- |
-| `boost_flat:near_half:boost:0` | `pass` | `projected_dx=51.06`, `angle=51.66`, `alt=37.70` |
-| `boost_flat:mid_half:boost:0` | `angle` | `projected_dx=-53.57`, `angle=33.80`, `alt=67.10` |
-| `boost_flat:far_half:boost:0` | `dx` | `projected_dx=-94.01`, `angle=41.13`, `alt=113.90` |
-| `boost_downhill:low_half:boost:0` | `pass` | `projected_dx=50.01`, `angle=64.51`, `alt=41.62` |
-| `boost_downhill:mid_half:boost:0` | `pass` | `projected_dx=47.24`, `angle=71.72`, `alt=30.63` |
-| `boost_downhill:high_half:boost:0` | `pass` | `projected_dx=49.71`, `angle=79.97`, `alt=31.38` |
-| `boost_climb:low_half:boost:0` | `pass` | `projected_dx=51.61`, `angle=52.09`, `alt=113.27` |
-| `boost_climb:mid_half:boost:0` | `pass` | `projected_dx=-7.81`, `angle=45.26`, `alt=155.38` |
-| `boost_climb:high_half:boost:0` | `pass` | `projected_dx=-41.23`, `angle=46.95`, `alt=96.15` |
+| `boost:flat:near:half:boost_cutoff:0` | `pass` | `projected_dx=51.06`, `angle=51.66`, `alt=37.70` |
+| `boost:flat:mid:half:boost_cutoff:0` | `angle` | `projected_dx=-53.57`, `angle=33.80`, `alt=67.10` |
+| `boost:flat:far:half:boost_cutoff:0` | `dx` | `projected_dx=-94.01`, `angle=41.13`, `alt=113.90` |
+| `boost:downhill:low:half:boost_cutoff:0` | `pass` | `projected_dx=50.01`, `angle=64.51`, `alt=41.62` |
+| `boost:downhill:mid:half:boost_cutoff:0` | `pass` | `projected_dx=47.24`, `angle=71.72`, `alt=30.63` |
+| `boost:downhill:high:half:boost_cutoff:0` | `pass` | `projected_dx=49.71`, `angle=79.97`, `alt=31.38` |
+| `boost:climb:low:half:boost_cutoff:0` | `pass` | `projected_dx=51.61`, `angle=52.09`, `alt=113.27` |
+| `boost:climb:mid:half:boost_cutoff:0` | `pass` | `projected_dx=-7.81`, `angle=45.26`, `alt=155.38` |
+| `boost:climb:high:half:boost_cutoff:0` | `pass` | `projected_dx=-41.23`, `angle=46.95`, `alt=96.15` |
 
 Summary:
 
 - Working: `7/9`
-- Remaining failures: `boost_flat:mid_half`, `boost_flat:far_half`
+- Remaining failures: `boost:flat:mid:half`, `boost:flat:far:half`
 
 ## What improved
 
@@ -54,17 +54,17 @@ Summary:
 - Downhill stays solved under the rebuilt objective.
 - Climb-low and climb-high both moved from failure to pass under the geometry-first gate.
 - End-to-end smokes stay healthy:
-  - `boost_flat:near_half:0` landed in `16.60s`, offset `10.74`
-  - `boost_downhill:mid_half:0` landed in `22.80s`, offset `5.51`
-  - `boost_climb:mid_half:0` landed in `27.57s`, offset `0.10`
-  - `terminal_normal:mid:0`, `terminal_error:mid_wide:0`, and `plunge:mid_normal:0` all still land
+  - `boost:flat:near:half:0` landed in `16.60s`, offset `10.74`
+  - `boost:downhill:mid:half:0` landed in `22.80s`, offset `5.51`
+  - `boost:climb:mid:half:0` landed in `27.57s`, offset `0.10`
+  - `terminal:normal:mid:0`, `terminal:error:mid:wide:0`, and `plunge:mid:half:0` all still land
 
 ## What is still not working
 
-- `boost_flat:mid_half` still cuts into a shallow overshoot:
+- `boost:flat:mid:half` still cuts into a shallow overshoot:
   - `projected_dx=-53.57`
   - `angle=33.80`
-- `boost_flat:far_half` still overshoots harder and is also shallow:
+- `boost:flat:far:half` still overshoots harder and is also shallow:
   - `projected_dx=-94.01`
   - `angle=41.13`
 
@@ -77,7 +77,7 @@ These are now clearly the same remaining problem:
 ## Terminal follow-up after the boost-cutoff fix
 
 After the boost-cutoff correction, the remaining bad full-flight behavior on
-`boost_flat:mid_half` / `boost_flat:far_half` was mostly terminal-side, not boost-side:
+`boost:flat:mid:half` / `boost:flat:far:half` was mostly terminal-side, not boost-side:
 
 - boost handoff geometry was imperfect but recoverable
 - terminal was already trying to use as much lateral authority as the old terminal
@@ -116,7 +116,7 @@ What was learned:
 - Uniform boost-horizon weighting also was not enough. The flat failures are not
   mainly caused by tail-weighting alone.
 - A kinematic crossing-time floor that accounts for current targetward `vx`
-  improved the focused `boost_flat:far_half:boost:0` geometry in the right direction:
+  improved the focused `boost:flat:far:half:boost_cutoff:0` geometry in the right direction:
   lower fuel, less time aloft, and steeper entry than the naive zero-velocity
   floor.
 - Increasing angle pressure and excess-loft pressure without a stronger
@@ -149,15 +149,15 @@ Working hypothesis after the reverted pass:
 Focused boost-goal sweep:
 
 ```bash
-uv run python main.py sim boost_flat:near_half:boost:0 --bot pdg --freq 0 -t 25
-uv run python main.py sim boost_flat:mid_half:boost:0 --bot pdg --freq 0 -t 25
-uv run python main.py sim boost_flat:far_half:boost:0 --bot pdg --freq 0 -t 25
-uv run python main.py sim boost_downhill:low_half:boost:0 --bot pdg --freq 0 -t 25
-uv run python main.py sim boost_downhill:mid_half:boost:0 --bot pdg --freq 0 -t 25
-uv run python main.py sim boost_downhill:high_half:boost:0 --bot pdg --freq 0 -t 25
-uv run python main.py sim boost_climb:low_half:boost:0 --bot pdg --freq 0 -t 25
-uv run python main.py sim boost_climb:mid_half:boost:0 --bot pdg --freq 0 -t 25
-uv run python main.py sim boost_climb:high_half:boost:0 --bot pdg --freq 0 -t 25
+uv run python main.py sim boost:flat:near:half:boost_cutoff:0 --bot pdg --freq 0 -t 25
+uv run python main.py sim boost:flat:mid:half:boost_cutoff:0 --bot pdg --freq 0 -t 25
+uv run python main.py sim boost:flat:far:half:boost_cutoff:0 --bot pdg --freq 0 -t 25
+uv run python main.py sim boost:downhill:low:half:boost_cutoff:0 --bot pdg --freq 0 -t 25
+uv run python main.py sim boost:downhill:mid:half:boost_cutoff:0 --bot pdg --freq 0 -t 25
+uv run python main.py sim boost:downhill:high:half:boost_cutoff:0 --bot pdg --freq 0 -t 25
+uv run python main.py sim boost:climb:low:half:boost_cutoff:0 --bot pdg --freq 0 -t 25
+uv run python main.py sim boost:climb:mid:half:boost_cutoff:0 --bot pdg --freq 0 -t 25
+uv run python main.py sim boost:climb:high:half:boost_cutoff:0 --bot pdg --freq 0 -t 25
 ```
 
 Plot pack:

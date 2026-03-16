@@ -76,7 +76,7 @@ Main themes:
 Command pattern:
 
 ```bash
-uv run python main.py sim boost_climb:<scenario>_half:boost:0 --bot pdg --freq 0
+uv run python main.py sim boost:climb:<scenario>:half:boost_cutoff:0 --bot pdg --freq 0
 ```
 
 | Scenario | Boost cutoff time (s) | Boost cutoff projected dx | Boost cutoff apex over target |

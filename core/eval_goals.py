@@ -3,11 +3,12 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 EVAL_GOAL_LANDING = "landing"
-EVAL_GOAL_BOOST = "boost"
+EVAL_GOAL_BOOST_CUTOFF = "boost_cutoff"
+EVAL_GOAL_BOOST = EVAL_GOAL_BOOST_CUTOFF
 
 KNOWN_EVAL_GOALS: tuple[str, ...] = (
     EVAL_GOAL_LANDING,
-    EVAL_GOAL_BOOST,
+    EVAL_GOAL_BOOST_CUTOFF,
 )
 KNOWN_EVAL_GOAL_SET = set(KNOWN_EVAL_GOALS)
 

@@ -45,9 +45,9 @@ def test_resolve_level_eval_goals_defaults_to_landing() -> None:
 
 
 def test_level_eval_goal_support_matches_declared_catalogs() -> None:
-    assert resolve_level_eval_goals(create_level("boost_flat")) == ("landing", "boost")
-    assert resolve_level_eval_goals(create_level("boost_downhill")) == ("landing", "boost")
-    assert resolve_level_eval_goals(create_level("boost_climb")) == ("landing", "boost")
+    assert resolve_level_eval_goals(create_level("boost_flat")) == ("landing", "boost_cutoff")
+    assert resolve_level_eval_goals(create_level("boost_downhill")) == ("landing", "boost_cutoff")
+    assert resolve_level_eval_goals(create_level("boost_climb")) == ("landing", "boost_cutoff")
     assert resolve_level_eval_goals(create_level("terminal_error")) == ("landing",)
     assert resolve_level_eval_goals(create_level("terminal_normal")) == ("landing",)
     assert resolve_level_eval_goals(create_level("plunge")) == ("landing",)
@@ -58,8 +58,8 @@ def test_set_eval_goal_checked_rejects_unsupported_goal() -> None:
         def supported_eval_goals(self) -> tuple[str, ...]:
             return ("landing",)
 
-    with pytest.raises(ValueError, match="does not support eval goal 'boost'"):
-        set_eval_goal_checked(_Level(), "boost")
+    with pytest.raises(ValueError, match="does not support eval goal 'boost_cutoff'"):
+        set_eval_goal_checked(_Level(), "boost_cutoff")
 
 
 def test_set_benchmark_mode_checked_calls_supported_level() -> None:

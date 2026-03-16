@@ -69,7 +69,7 @@ uv run python main.py run --interactive flat --bot pdg
 
 ```bash
 uv run python main.py sim terminal:normal:mid:0 --bot pdg
-uv run python main.py sim boost:downhill:mid:half:boost:0 --bot pdg
+uv run python main.py sim boost:downhill:mid:half:boost_cutoff:0 --bot pdg
 uv run python main.py sim terminal:error:mid:wide:3 --bot pdg
 uv run python main.py sim boost:climb:mid:half:0 --bot pdg
 uv run python main.py sim plunge:mid:half:0 --bot plunge
@@ -85,7 +85,7 @@ Selector format:
 - Use `level:seed` when setting a seed without any explicit selector layers.
 - Omit goal to default to `landing`.
 - Canonical examples: `boost:flat:near:half`, `terminal:error:mid:wide`, `plunge:high:full`.
-- Boost-goal support is exposed through the `boost` selector root.
+- Use eval goal `boost_cutoff` under the `boost` selector root for early-stop boost checks.
 - Bot selector remains bot-only: `--bot <name>`.
 
 ### Plot run (`plot`)

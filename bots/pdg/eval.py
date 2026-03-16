@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from core.bot import BotEvalDecision
-from core.eval_goals import EVAL_GOAL_BOOST
+from core.eval_goals import EVAL_GOAL_BOOST_CUTOFF
 
 from bots._bot_math import clamp
 from bots.pdg.boost import boost_dx_limit
@@ -150,7 +150,7 @@ def resolve_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | Non
 
 
 def build_evaluation_decision(bot) -> BotEvalDecision | None:
-    if bot.get_eval_goal() != EVAL_GOAL_BOOST:
+    if bot.get_eval_goal() != EVAL_GOAL_BOOST_CUTOFF:
         return None
     if not bot._boost_cutoff_done:
         return None
