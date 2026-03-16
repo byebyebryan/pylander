@@ -59,16 +59,16 @@ def test_observation_only_crash_does_not_mark_notable_regression() -> None:
     baseline = {
         "records": [
             _record(
-                level="boost_flat",
-                scenario="mid_half",
+                level="boost",
+                scenario="flat:mid:half",
                 seed=0,
                 state="landed",
                 success=True,
                 fuel=20.0,
             ),
             _record(
-                level="boost_climb",
-                scenario="mid_half",
+                level="terminal",
+                scenario="normal:mid",
                 seed=0,
                 state="landed",
                 success=True,
@@ -79,16 +79,16 @@ def test_observation_only_crash_does_not_mark_notable_regression() -> None:
     candidate = {
         "records": [
             _record(
-                level="boost_flat",
-                scenario="mid_half",
+                level="boost",
+                scenario="flat:mid:half",
                 seed=0,
                 state="landed",
                 success=True,
                 fuel=21.0,
             ),
             _record(
-                level="boost_climb",
-                scenario="mid_half",
+                level="terminal",
+                scenario="normal:mid",
                 seed=0,
                 state="crashed",
                 success=False,
@@ -101,7 +101,7 @@ def test_observation_only_crash_does_not_mark_notable_regression() -> None:
         candidate_commit="cand",
         baseline_payload=baseline,
         candidate_payload=candidate,
-        level_policy={"boost_flat": "normal", "boost_climb": "observe_only"},
+        level_policy={"boost": "normal", "terminal": "observe_only"},
         bot="pdg",
         crash_detail_limit=2,
     )
@@ -115,8 +115,8 @@ def test_normal_crash_marks_notable_regression() -> None:
     baseline = {
         "records": [
             _record(
-                level="boost_flat",
-                scenario="mid_half",
+                level="boost",
+                scenario="flat:mid:half",
                 seed=0,
                 state="landed",
                 success=True,
@@ -127,8 +127,8 @@ def test_normal_crash_marks_notable_regression() -> None:
     candidate = {
         "records": [
             _record(
-                level="boost_flat",
-                scenario="mid_half",
+                level="boost",
+                scenario="flat:mid:half",
                 seed=0,
                 state="crashed",
                 success=False,
@@ -141,7 +141,7 @@ def test_normal_crash_marks_notable_regression() -> None:
         candidate_commit="cand",
         baseline_payload=baseline,
         candidate_payload=candidate,
-        level_policy={"boost_flat": "normal"},
+        level_policy={"boost": "normal"},
         bot="pdg",
         crash_detail_limit=2,
     )
@@ -154,8 +154,8 @@ def test_boost_climb_crash_now_gates_global_regressions() -> None:
     baseline = {
         "records": [
             _record(
-                level="boost_climb",
-                scenario="mid_half",
+                level="terminal",
+                scenario="normal:mid",
                 seed=0,
                 state="landed",
                 success=True,
@@ -166,8 +166,8 @@ def test_boost_climb_crash_now_gates_global_regressions() -> None:
     candidate = {
         "records": [
             _record(
-                level="boost_climb",
-                scenario="mid_half",
+                level="terminal",
+                scenario="normal:mid",
                 seed=0,
                 state="crashed",
                 success=False,
@@ -180,7 +180,7 @@ def test_boost_climb_crash_now_gates_global_regressions() -> None:
         candidate_commit="cand",
         baseline_payload=baseline,
         candidate_payload=candidate,
-        level_policy={"boost_climb": "normal"},
+        level_policy={"terminal": "normal"},
         bot="pdg",
         crash_detail_limit=2,
     )
@@ -194,16 +194,16 @@ def test_scenario_regressions_group_by_level_and_scenario() -> None:
     baseline = {
         "records": [
             _record(
-                level="boost_flat",
-                scenario="mid_half",
+                level="boost",
+                scenario="flat:mid:half",
                 seed=0,
                 state="landed",
                 success=True,
                 fuel=20.0,
             ),
             _record(
-                level="terminal_error",
-                scenario="mid",
+                level="terminal",
+                scenario="error:mid:wide",
                 seed=0,
                 state="landed",
                 success=True,
@@ -214,16 +214,16 @@ def test_scenario_regressions_group_by_level_and_scenario() -> None:
     candidate = {
         "records": [
             _record(
-                level="boost_flat",
-                scenario="mid_half",
+                level="boost",
+                scenario="flat:mid:half",
                 seed=0,
                 state="landed",
                 success=True,
                 fuel=25.0,
             ),
             _record(
-                level="terminal_error",
-                scenario="mid",
+                level="terminal",
+                scenario="error:mid:wide",
                 seed=0,
                 state="landed",
                 success=True,
@@ -234,7 +234,7 @@ def test_scenario_regressions_group_by_level_and_scenario() -> None:
 
     rows = cached_bench._scenario_regressions(baseline, candidate)
     names = {str(item["scenario"]) for item in rows}
-    assert names == {"boost_flat:mid_half", "terminal_error:mid"}
+    assert names == {"boost:flat:mid:half", "terminal:error:mid:wide"}
 
 
 def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
@@ -242,8 +242,8 @@ def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
         "records": [
             {
                 **_record(
-                    level="boost_downhill",
-                    scenario="mid_half",
+                    level="boost",
+                    scenario="downhill:mid:half",
                     seed=0,
                     state="flying",
                     success=True,
@@ -257,8 +257,8 @@ def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
         "records": [
             {
                 **_record(
-                    level="boost_downhill",
-                    scenario="mid_half",
+                    level="boost",
+                    scenario="downhill:mid:half",
                     seed=0,
                     state="flying",
                     success=False,
@@ -270,7 +270,7 @@ def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
     }
 
     rows = cached_bench._scenario_regressions(baseline, candidate)
-    assert [str(item["scenario"]) for item in rows] == ["boost_downhill:mid_half:boost"]
+    assert [str(item["scenario"]) for item in rows] == ["boost:downhill:mid:half:boost"]
 
 
 def test_global_compute_regression_marks_notable_regression() -> None:
@@ -278,8 +278,8 @@ def test_global_compute_regression_marks_notable_regression() -> None:
         "records": [
             _with_profile(
                 _record(
-                    level="boost_flat",
-                    scenario="mid_half",
+                    level="boost",
+                    scenario="flat:mid:half",
                     seed=0,
                     state="landed",
                     success=True,
@@ -292,8 +292,8 @@ def test_global_compute_regression_marks_notable_regression() -> None:
         "records": [
             _with_profile(
                 _record(
-                    level="boost_flat",
-                    scenario="mid_half",
+                    level="boost",
+                    scenario="flat:mid:half",
                     seed=0,
                     state="landed",
                     success=True,
@@ -311,7 +311,7 @@ def test_global_compute_regression_marks_notable_regression() -> None:
         candidate_commit="cand",
         baseline_payload=baseline,
         candidate_payload=candidate,
-        level_policy={"boost_flat": "normal"},
+        level_policy={"boost": "normal"},
         bot="pdg",
         crash_detail_limit=2,
     )
@@ -326,8 +326,8 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
         "records": [
             _with_profile(
                 _record(
-                    level="boost_climb",
-                    scenario="mid_half",
+                    level="terminal",
+                    scenario="normal:mid",
                     seed=0,
                     state="landed",
                     success=True,
@@ -340,8 +340,8 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
         "records": [
             _with_profile(
                 _record(
-                    level="boost_climb",
-                    scenario="mid_half",
+                    level="terminal",
+                    scenario="normal:mid",
                     seed=0,
                     state="landed",
                     success=True,
@@ -359,7 +359,7 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
         candidate_commit="cand",
         baseline_payload=baseline,
         candidate_payload=candidate,
-        level_policy={"boost_climb": "observe_only"},
+        level_policy={"terminal": "observe_only"},
         bot="pdg",
         crash_detail_limit=2,
     )
@@ -372,7 +372,7 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
 def test_selector_pack_stem_changes_with_bot_config_path() -> None:
     common = dict(
         mode="quick",
-        selectors=["boost_flat:mid_half:0-2"],
+        selectors=["boost:flat:mid:half:0-2"],
         bot="pdg",
         bot_profile_enabled=True,
         bot_profile_interval_s=None,

@@ -54,7 +54,7 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - Require reproducible evals (seed + scenario + bot + config).
 - Use benchmarks/evals to guide decisions and catch regressions.
 - Use metric gates for bot changes: require measurable improvement or document explicit tradeoffs.
-- Validate downstream impact after focused tuning with a cross-level check (`plunge`/`terminal_normal`/`terminal_error`/`boost_downhill`/`boost_flat`/`boost_climb`) before merge.
+- Validate downstream impact after focused tuning with a cross-level check (`plunge` / `terminal` / `boost`) before merge.
 
 ## Skill-driven workflow
 - Preferred loop:
@@ -88,10 +88,12 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 ## CLI and benchmark conventions
 - Command model: `uv run python main.py <command> ...` where command is `run`, `sim`, `plot`, or `bench`.
 - Selector model:
-  - run/sim/plot: `level[:scenario[:goal[:seed]]]`
-  - bench: `level[:scenario[:goal[:seed_spec]]]`
+  - run/sim/plot: `level[:layer[:...]][:goal[:seed]]`
+  - bench: `level[:layer[:...]][:goal[:seed_spec]]`
+  - omitted layers resolve through defaults
+  - wildcard expansion uses explicit `*` and is bench-only
 - Terminology:
-  - `terminal levels` means the terminal-flight levels `terminal_normal` and `terminal_error`
+  - `terminal` means the public terminal selector root (`terminal:normal:*` + `terminal:error:*:*`)
   - `plunge` is a separate terminal/plunge benchmark and should be included only when explicitly named
 - Prefer explicit selectors in evals/benchmarks for reproducibility.
 - Use `--bot-config <path>` for tuned bot overrides; ensure comparisons use like-for-like bot config.
@@ -103,7 +105,7 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - `uv run pytest`
 - `uv run ruff check .`
 - If behavior changed: run a relevant headless eval and compare metrics to a baseline
- - Example focused eval: `uv run python main.py sim boost_flat:far_half:0 --bot pdg`
+ - Example focused eval: `uv run python main.py sim boost:flat:far:half:0 --bot pdg`
  - Example quick regression compare: `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot pdg`
 - If CLI/defaults/workflows changed: update `README.md`
 - Don’t check in artifacts (`outputs/` stays local/ignored), including benchmark caches and generated plots.

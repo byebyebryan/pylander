@@ -5,10 +5,14 @@ import os
 
 from bots import list_available_bots
 from landers import list_available_landers
-from levels import list_available_levels
 
 from app.config import BenchCommand, BenchSettings, BenchTarget, Command, RunCommand, RunSettings
 from app.selector import parse_seed_spec, parse_selector, render_selector
+from core.selector_catalog import (
+    expand_selector_bindings,
+    list_public_levels,
+    resolve_selector_binding,
+)
 
 
 def _format_list(title: str, items: list[str]) -> str:
@@ -36,7 +40,7 @@ def _add_common_run_args(
         "selector",
         nargs="?",
         default=None,
-        help="Run selector: level[:scenario[:goal[:seed]]]",
+        help="Run selector: level[:layer[:...]][:goal[:seed]]",
     )
     parser.add_argument(
         "-b",
@@ -114,7 +118,7 @@ def _add_common_run_args(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    levels = list_available_levels()
+    levels = list_public_levels()
     bots = list_available_bots()
     landers = list_available_landers()
 
@@ -156,7 +160,7 @@ def build_parser() -> argparse.ArgumentParser:
     bench.add_argument(
         "selectors",
         nargs="+",
-        help="Benchmark selectors: level[:scenario[:goal[:seed_spec]]]",
+        help="Benchmark selectors: level[:layer[:...]][:goal[:seed_spec]]",
     )
     bench.add_argument("-b", "--bot", dest="bot", default=None)
     bench.add_argument(
@@ -250,6 +254,13 @@ def _build_run_settings(
         )
     except ValueError as exc:
         parser.error(str(exc))
+    try:
+        binding = resolve_selector_binding(
+            selector.level_name,
+            selector.scenario_path,
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
 
     seed_value: int | None = None
     if selector.seed_token is not None:
@@ -265,11 +276,13 @@ def _build_run_settings(
     plot_output = "combined" if args.plot_output is None else str(args.plot_output)
     plot_max_side_px = 1800 if args.plot_max_side_px is None else max(256, int(args.plot_max_side_px))
     return RunSettings(
-        level_name=selector.level_name,
+        level_name=binding.level_name,
+        runtime_level_name=binding.runtime_level_name,
         bot_name=args.bot,
         bot_config_path=args.bot_config,
         seed=seed_value,
-        scenario_name=selector.scenario_name,
+        scenario_name=binding.scenario_name,
+        runtime_scenario_name=binding.runtime_scenario_name,
         eval_goal=selector.goal or "landing",
         lander_name=args.lander,
         print_freq=print_freq,
@@ -292,7 +305,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
     parser = build_parser()
     args = parser.parse_args(argv)
 
-    levels_list = list_available_levels()
+    levels_list = list_public_levels()
     levels = set(levels_list)
     bots = set(list_available_bots())
     landers = set(list_available_landers())
@@ -378,11 +391,20 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
                     )
                 if not seeds:
                     parser.error(f"Invalid selector '{raw_selector}': empty seed spec")
+            try:
+                expand_selector_bindings(
+                    parsed.level_name,
+                    scenario_path=parsed.scenario_path,
+                    allow_wildcards=True,
+                )
+            except ValueError as exc:
+                parser.error(str(exc))
             selectors.append(
                 BenchTarget(
                     level_name=parsed.level_name,
                     scenario_name=parsed.scenario_name,
                     seed_spec=parsed.seed_token,
+                    scenario_path=parsed.scenario_path,
                     eval_goal=parsed.goal or "landing",
                 )
             )

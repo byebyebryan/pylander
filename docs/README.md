@@ -16,13 +16,13 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 - Unified optimizer bot: [`pdg.md`](pdg.md)
 - Terminal/plunge benchmark level + bot: [`plunge.md`](plunge.md)
 - Query API + profiling details: [`overview.md`](overview.md)
-- Terminal-flight levels:
-  - `terminal_normal`: [`terminal_normal.md`](terminal_normal.md)
-  - `terminal_error`: [`terminal_error.md`](terminal_error.md)
-- Boost levels:
-  - `boost_downhill`: [`boost_downhill.md`](boost_downhill.md)
-  - `boost_flat`: [`boost_flat.md`](boost_flat.md)
-  - `boost_climb`: [`boost_climb.md`](boost_climb.md)
+- Terminal selector root:
+  - `terminal:normal:*`: [`terminal_normal.md`](terminal_normal.md)
+  - `terminal:error:*:*`: [`terminal_error.md`](terminal_error.md)
+- Boost selector root:
+  - `boost:downhill:*:*`: [`boost_downhill.md`](boost_downhill.md)
+  - `boost:flat:*:*`: [`boost_flat.md`](boost_flat.md)
+  - `boost:climb:*:*`: [`boost_climb.md`](boost_climb.md)
 
 ## Artifacts
 

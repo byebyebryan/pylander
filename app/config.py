@@ -8,16 +8,19 @@ class BenchTarget:
     level_name: str
     scenario_name: str | None
     seed_spec: str | None
+    scenario_path: tuple[str, ...] = ()
     eval_goal: str = "landing"
 
 
 @dataclass(frozen=True)
 class RunSettings:
     level_name: str
+    runtime_level_name: str
     bot_name: str | None
     bot_config_path: str | None
     seed: int | None
     scenario_name: str | None
+    runtime_scenario_name: str | None
     lander_name: str | None
     print_freq: int
     max_time: float

@@ -340,8 +340,8 @@ def test_non_landing_goal_without_decision_fails_goal_not_reached() -> None:
 def test_normalize_run_result_uses_canonical_eval_fields() -> None:
     record = normalize_run_result(
         bot_name="pdg",
-        level_name="boost_downhill",
-        scenario="mid_half",
+        level_name="boost",
+        scenario="downhill:mid:half",
         seed=3,
         result={
             "state": "flying",
@@ -431,8 +431,8 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
     records = [
         normalize_run_result(
             bot_name="pdg",
-            level_name="boost_downhill",
-            scenario="mid_half",
+            level_name="boost",
+            scenario="downhill:mid:half",
             seed=0,
             result={
                 "state": "flying",
@@ -448,8 +448,8 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
     assert summary["runs"] == 1
     assert summary["successes"] == 1
     assert summary["success_rate"] == pytest.approx(1.0)
-    assert summary["by_scenario"]["mid_half"]["success_rate"] == pytest.approx(1.0)
-    assert summary["by_selector"]["boost_downhill:mid_half:boost"][
+    assert summary["by_scenario"]["downhill:mid:half"]["success_rate"] == pytest.approx(1.0)
+    assert summary["by_selector"]["boost:downhill:mid:half:boost"][
         "success_rate"
     ] == pytest.approx(1.0)
 
@@ -481,7 +481,7 @@ def test_resolve_benchmark_plan_invalid_level_fails_fast() -> None:
         csv_path=None,
     )
 
-    with pytest.raises(ValueError, match="Failed to load level 'missing_level'"):
+    with pytest.raises(ValueError, match="Unknown level 'missing_level'"):
         resolve_benchmark_plan(config)
 
 
@@ -491,48 +491,18 @@ def test_parser_rejects_removed_bot_behavior_flag() -> None:
         parser.parse_args(["run", "plunge", "--bot-behavior", "balanced"])
 
 
-def test_resolve_batch_plan_expands_all_scenarios_without_seed_spec(
+def test_resolve_batch_plan_expands_explicit_wildcards_without_seed_spec(
     monkeypatch,
 ) -> None:
     config = BenchSettings(
         bot_name=None,
         bot_config_path=None,
         selectors=(
-            BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None),
-        ),
-        lander_name=None,
-        workers=1,
-        max_time=300.0,
-        max_steps=None,
-        plot_mode="none",
-        plot_output="combined",
-        plot_max_side_px=1800,
-        json_path=None,
-        csv_path=None,
-    )
-
-    monkeypatch.setattr(
-        run_batch_module,
-        "resolve_level_scenarios",
-        lambda _name: ["low_normal", "mid_normal"],
-    )
-    monkeypatch.setattr(
-        run_batch_module, "_scenario_has_randomized_fields", lambda _l, _s: False
-    )
-    plan = resolve_benchmark_plan(config)
-    assert plan == [
-        ResolvedBenchRun(0, "plunge", "low_normal", "landing"),
-        ResolvedBenchRun(0, "plunge", "mid_normal", "landing"),
-    ]
-
-
-def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
-    config = BenchSettings(
-        bot_name=None,
-        bot_config_path=None,
-        selectors=(
             BenchTarget(
-                level_name="boost_flat", scenario_name="far_half", seed_spec="0-2,2"
+                level_name="plunge",
+                scenario_name="*",
+                scenario_path=("*",),
+                seed_spec=None,
             ),
         ),
         lander_name=None,
@@ -550,9 +520,42 @@ def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
     )
     plan = resolve_benchmark_plan(config)
     assert plan == [
-        ResolvedBenchRun(0, "boost_flat", "far_half", "landing"),
-        ResolvedBenchRun(1, "boost_flat", "far_half", "landing"),
-        ResolvedBenchRun(2, "boost_flat", "far_half", "landing"),
+        ResolvedBenchRun(0, "plunge", "low:half", "plunge", "low_half", "landing"),
+        ResolvedBenchRun(0, "plunge", "mid:half", "plunge", "mid_half", "landing"),
+        ResolvedBenchRun(0, "plunge", "high:half", "plunge", "high_half", "landing"),
+    ]
+
+
+def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
+    config = BenchSettings(
+        bot_name=None,
+        bot_config_path=None,
+        selectors=(
+            BenchTarget(
+                level_name="boost",
+                scenario_name="flat:far:half",
+                scenario_path=("flat", "far", "half"),
+                seed_spec="0-2,2",
+            ),
+        ),
+        lander_name=None,
+        workers=1,
+        max_time=300.0,
+        max_steps=None,
+        plot_mode="none",
+        plot_output="combined",
+        plot_max_side_px=1800,
+        json_path=None,
+        csv_path=None,
+    )
+    monkeypatch.setattr(
+        run_batch_module, "_scenario_has_randomized_fields", lambda _l, _s: False
+    )
+    plan = resolve_benchmark_plan(config)
+    assert plan == [
+        ResolvedBenchRun(0, "boost", "flat:far:half", "boost_flat", "far_half", "landing"),
+        ResolvedBenchRun(1, "boost", "flat:far:half", "boost_flat", "far_half", "landing"),
+        ResolvedBenchRun(2, "boost", "flat:far:half", "boost_flat", "far_half", "landing"),
     ]
 
 
@@ -581,10 +584,14 @@ def test_hud_display_state_prefers_structured_display_state() -> None:
 
 def test_parse_args_accepts_level_goal_selector() -> None:
     _parser, command = parse_command(
-        ["sim", "boost_downhill:mid_half:boost:0", "--bot", "pdg"]
+        ["sim", "boost:downhill:mid:half:boost:0", "--bot", "pdg"]
     )
     assert isinstance(command, RunCommand)
     assert command.run.bot_name == "pdg"
+    assert command.run.level_name == "boost"
+    assert command.run.scenario_name == "downhill:mid:half"
+    assert command.run.runtime_level_name == "boost_downhill"
+    assert command.run.runtime_scenario_name == "mid_half"
     assert command.run.eval_goal == "boost"
 
 
@@ -605,10 +612,12 @@ def test_parse_play_command_uses_interactive_defaults() -> None:
 
 
 def test_parse_play_command_accepts_selector_and_bot() -> None:
-    _parser, command = parse_command(["play", "boost_flat:far_half:3", "--bot", "pdg"])
+    _parser, command = parse_command(["play", "boost:flat:far:half:3", "--bot", "pdg"])
     assert isinstance(command, RunCommand)
-    assert command.run.level_name == "boost_flat"
-    assert command.run.scenario_name == "far_half"
+    assert command.run.level_name == "boost"
+    assert command.run.scenario_name == "flat:far:half"
+    assert command.run.runtime_level_name == "boost_flat"
+    assert command.run.runtime_scenario_name == "far_half"
     assert command.run.seed == 3
     assert command.run.bot_name == "pdg"
     assert command.run.headless is False
@@ -618,7 +627,7 @@ def test_parse_bench_command_uses_expected_defaults() -> None:
     _parser, command = parse_command(["bench", "plunge"])
     assert isinstance(command, BenchCommand)
     assert command.bench.selectors == (
-        BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None),
+        BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None, scenario_path=()),
     )
     assert command.bench.workers == max(1, int(os.cpu_count() or 1) - 2)
     assert command.bench.plot_output == "combined"
@@ -673,7 +682,7 @@ def test_parse_plot_command_output_flags_override_defaults() -> None:
     _parser, command = parse_command(
         [
             "plot",
-            "boost_flat:far_half:3",
+            "boost:flat:far:half:3",
             "--bot",
             "pdg",
             "--plot-output",
@@ -711,8 +720,8 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
         run_batch_module,
         "resolve_benchmark_plan",
         lambda _cfg: [
-            ResolvedBenchRun(0, "boost_flat", "mid_half", "landing"),
-            ResolvedBenchRun(1, "boost_flat", "mid_half", "landing"),
+            ResolvedBenchRun(0, "boost", "flat:mid:half", "boost_flat", "mid_half", "landing"),
+            ResolvedBenchRun(1, "boost", "flat:mid:half", "boost_flat", "mid_half", "landing"),
         ],
     )
 
@@ -721,7 +730,10 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
         bot_config_path=None,
         selectors=(
             BenchTarget(
-                level_name="boost_flat", scenario_name="mid_half", seed_spec="0"
+                level_name="boost",
+                scenario_name="flat:mid:half",
+                scenario_path=("flat", "mid", "half"),
+                seed_spec="0",
             ),
         ),
         lander_name=None,
@@ -736,16 +748,18 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
     )
     with pytest.raises(
         RuntimeError,
-        match="run 1/2 seed=0 level=boost_flat scenario=mid_half failed",
+        match="run 1/2 seed=0 level=boost scenario=flat:mid:half failed",
     ):
         run_batch_module.run_benchmark(cfg)
 
 
 def test_plot_command_enables_plot_mode_by_default() -> None:
-    _parser, command = parse_command(["plot", "boost_flat:far_half:3", "--bot", "pdg"])
+    _parser, command = parse_command(["plot", "boost:flat:far:half:3", "--bot", "pdg"])
     assert isinstance(command, RunCommand)
-    assert command.run.level_name == "boost_flat"
-    assert command.run.scenario_name == "far_half"
+    assert command.run.level_name == "boost"
+    assert command.run.scenario_name == "flat:far:half"
+    assert command.run.runtime_level_name == "boost_flat"
+    assert command.run.runtime_scenario_name == "far_half"
     assert command.run.seed == 3
     assert command.run.plot_mode == "all"
     assert command.run.plot_output == "combined"

@@ -4,20 +4,21 @@ Pylander bot work is now centered on a unified in-flight controller (`pdg`) plus
 
 ## Control model
 
-- `pdg`: optimizer-first coupled 2-axis guidance used by default in `boost_flat`, `boost_downhill`, `terminal_error`, `boost_climb`, and `terminal_normal`.
+- `pdg`: optimizer-first coupled 2-axis guidance used by default under the `boost:*` and `terminal:*` selector roots.
 - `plunge`: dedicated plunge benchmark bot for the separate `plunge` level.
 
-Repo shorthand keeps the terminal-flight levels (`terminal_normal`, `terminal_error`) separate from the plunge benchmark (`plunge`).
+Repo shorthand keeps the terminal selector root (`terminal:normal:*`, `terminal:error:*:*`) separate from the plunge benchmark (`plunge`).
 
 The in-flight path is a single owner with internal stages (`boost -> coast -> terminal -> touchdown`), not inter-bot runtime handoffs. In `pdg`, `coast` remains passive in actuation: zero thrust, retrograde attitude hold, and low-rate terminal-gate probing until terminal ignition.
 
 ## How to iterate
 
 - Prefer headless mode while tuning:
-  - `uv run python main.py sim <level[:scenario[:goal[:seed]]]>`
+  - `uv run python main.py sim <level[:layer[:...]][:goal[:seed]]>`
 - Fix selector seed/scenario while tuning one change.
 - Use selector-based bench packs for fast regressions.
 - In benchmark mode, selectors without seed specs auto-run seeds `0-9` for randomized scenarios.
+- Omitted selector layers use defaults; wildcard expansion is explicit via `*`.
 
 ## What to measure
 
@@ -28,7 +29,7 @@ Core metrics from game + batch aggregation:
 - Timing: `time`, `time_to_first_land`
 - Eval metadata: `eval_goal`, `eval_early_end`, `eval_end_reason`
 - Generic boost/eval telemetry: `boost_cutoff_*`, `boost_goal_*`
-  - on `terminal_normal` / `terminal_error`, `boost_cutoff_*` is the spawn-time coast-entry snapshot
+  - on `terminal:normal:*` / `terminal:error:*:*`, `boost_cutoff_*` is the spawn-time coast-entry snapshot
 - Bot-owned diagnostics: `bot_<botname>_*` (for example `bot_pdg_*`)
 
 ## Where things live

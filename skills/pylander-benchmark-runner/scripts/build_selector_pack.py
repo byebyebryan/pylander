@@ -15,9 +15,8 @@ from core.selector_codec import render_selector  # noqa: E402
 from core.level_capabilities import (  # noqa: E402
     BenchmarkLevelPolicy,
     LevelBenchmarkProfile,
-    resolve_level_benchmark_profile,
 )
-from levels import create_level, list_available_levels  # noqa: E402
+from core.selector_catalog import list_public_levels, resolve_public_level_benchmark_profile  # noqa: E402
 
 
 DEFAULT_SEEDS = {
@@ -28,10 +27,10 @@ DEFAULT_SEEDS = {
 }
 
 FOCUSED_SELECTOR_GROUPS: dict[str, tuple[str, ...]] = {
-    "terminal": ("terminal_normal", "terminal_error"),
-    "terminal_flight": ("terminal_normal", "terminal_error"),
+    "terminal": ("terminal",),
+    "terminal_flight": ("terminal",),
     "plunge": ("plunge",),
-    "terminal_plunge": ("plunge",),
+    "terminal_plunge": ("terminal", "plunge"),
 }
 
 
@@ -94,7 +93,7 @@ def _split_focused_selectors(values: Iterable[str]) -> list[str]:
         if not raw:
             continue
         # Preserve CSV seed specs for level:scenario:seed_csv selectors.
-        # Example: boost_flat:mid_half:0,1 must stay a single selector.
+        # Example: boost:flat:mid:half:0,1 must stay a single selector.
         if raw.count(":") >= 2:
             out.append(raw)
             continue
@@ -134,9 +133,8 @@ def _resolve_focused_selector_group(
 
 def _load_level_profiles() -> dict[str, LevelBenchmarkProfile]:
     out: dict[str, LevelBenchmarkProfile] = {}
-    for level_name in sorted(list_available_levels()):
-        level = create_level(level_name)
-        out[level_name] = resolve_level_benchmark_profile(level, level_name)
+    for level_name in list_public_levels():
+        out[level_name] = resolve_public_level_benchmark_profile(level_name)
     return out
 
 
@@ -292,21 +290,9 @@ def _build_focused_mode(
             included.add(level_name)
             continue
 
-        scenarios = profile.scenarios.full
-        if scenarios:
-            selectors.extend(
-                _selector(
-                    level_name,
-                    scenario,
-                    local_seed,
-                    eval_goal=local_goal,
-                )
-                for scenario in scenarios
-            )
-        else:
-            selectors.append(
-                _selector(level_name, None, local_seed, eval_goal=local_goal)
-            )
+        selectors.append(
+            _selector(level_name, None, local_seed, eval_goal=local_goal)
+        )
         included.add(level_name)
 
     _ = policy_by_level  # Explicit selectors win in focused mode; policy is used for reporting only.
@@ -444,7 +430,7 @@ def main() -> None:
         nargs="*",
         default=[],
         help=(
-            "Focused selectors (level[:scenario[:goal[:seed]]]) or group aliases "
+            "Focused selectors (level[:layer[:...]][:goal[:seed]]) or group aliases "
             "(@terminal, @terminal_flight, @plunge, @terminal_plunge)"
         ),
     )

@@ -11,71 +11,72 @@ from core.selector_codec import (
 def test_render_selector_compact_landing_forms() -> None:
     assert (
         render_selector(
-            level_name="boost_flat",
-            scenario_name="mid_half",
+            level_name="boost",
+            scenario_name="flat:mid:half",
             goal="landing",
             seed_token=0,
         )
-        == "boost_flat:mid_half:0"
+        == "boost:flat:mid:half:0"
     )
     assert (
         render_selector(
-            level_name="boost_flat",
+            level_name="boost",
             scenario_name=None,
             goal="landing",
             seed_token=0,
         )
-        == "boost_flat::0"
+        == "boost:0"
     )
     assert (
         render_selector(
-            level_name="boost_flat",
-            scenario_name="mid_half",
+            level_name="boost",
+            scenario_name="flat:mid:half",
             goal="landing",
             seed_token=None,
         )
-        == "boost_flat:mid_half"
+        == "boost:flat:mid:half"
     )
 
 
 def test_render_selector_explicit_non_landing_forms() -> None:
     assert (
         render_selector(
-            level_name="boost_downhill",
-            scenario_name="mid_half",
+            level_name="boost",
+            scenario_name="downhill:mid:half",
             goal="boost",
             seed_token=0,
         )
-        == "boost_downhill:mid_half:boost:0"
+        == "boost:downhill:mid:half:boost:0"
     )
     assert (
         render_selector_group(
-            level_name="boost_downhill",
-            scenario_name="mid_half",
+            level_name="boost",
+            scenario_name="downhill:mid:half",
             goal="boost",
         )
-        == "boost_downhill:mid_half:boost"
+        == "boost:downhill:mid:half:boost"
     )
 
 
 def test_render_record_selector_omits_redundant_level_scenario() -> None:
     record = {
-        "level": "boost_flat",
-        "scenario": "boost_flat",
+        "level": "boost",
+        "scenario": "boost",
         "eval_goal": "landing",
         "seed": 3,
     }
-    assert render_record_selector(record) == "boost_flat::3"
-    assert render_record_selector(record, include_seed=False) == "boost_flat"
+    assert render_record_selector(record) == "boost:3"
+    assert render_record_selector(record, include_seed=False) == "boost"
 
 
-def test_parse_selector_contract_unchanged() -> None:
+def test_parse_selector_uses_layered_contract() -> None:
     parsed = parse_selector(
-        "boost_climb:high_half:boost:7",
+        "boost:climb:high:half:boost:7",
         default_level=None,
-        known_levels={"boost_climb", "boost_flat"},
+        known_levels={"boost", "flat"},
     )
-    assert parsed.level_name == "boost_climb"
-    assert parsed.scenario_name == "high_half"
+    assert parsed.level_name == "boost"
+    assert parsed.scenario_name == "climb:high:half"
+    assert parsed.scenario_path == ("climb", "high", "half")
     assert parsed.goal == "boost"
     assert parsed.seed_token == "7"

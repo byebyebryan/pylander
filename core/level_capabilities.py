@@ -256,5 +256,5 @@ def level_name_tag(level) -> str:
 
 
 def level_scenario_tag(level) -> str:
-    raw = getattr(level, "scenario_name", "")
+    raw = getattr(level, "_public_scenario_name", getattr(level, "scenario_name", ""))
     return str(raw or "").strip()

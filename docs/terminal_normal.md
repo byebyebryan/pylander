@@ -1,6 +1,6 @@
-# Terminal Normal level (`terminal_normal`)
+# Terminal Normal family (`terminal:normal`)
 
-`terminal_normal` is the coast-to-terminal sandbox for high-energy inbound entries.
+`terminal:normal:*` is the coast-to-terminal sandbox for high-energy inbound entries.
 
 ## Purpose
 
@@ -43,14 +43,14 @@ Defaults:
 ## Commands
 
 ```bash
-uv run python main.py run --interactive terminal_normal
-uv run python main.py sim terminal_normal:mid:0 --bot pdg
+uv run python main.py run --interactive terminal:normal
+uv run python main.py sim terminal:normal:mid:0 --bot pdg
 uv run python main.py bench \
-  terminal_normal:shallower:0-9 \
-  terminal_normal:shallow:0-9 \
-  terminal_normal:mid:0-9 \
-  terminal_normal:steep:0-9 \
-  terminal_normal:steeper:0-9 \
+  terminal:normal:shallower:0-9 \
+  terminal:normal:shallow:0-9 \
+  terminal:normal:mid:0-9 \
+  terminal:normal:steep:0-9 \
+  terminal:normal:steeper:0-9 \
   --bot pdg
 ```
 
