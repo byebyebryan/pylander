@@ -386,6 +386,48 @@ def test_state_transition_takeoff_uses_min_clearance_without_geometry() -> None:
     assert math.isclose(trans.pos.y, 14.0, abs_tol=1e-6)
 
 
+def test_state_transition_does_not_take_off_without_fuel() -> None:
+    entity = Entity()
+    entity.add_component(LanderState(state="landed"))
+    entity.add_component(Engine(target_thrust=0.2))
+    entity.add_component(Transform(pos=Vector2(0.0, 10.0)))
+    entity.add_component(FuelTank(fuel=0.0))
+    entity.add_component(LanderGeometry(width=8.0, height=8.0))
+
+    world = World()
+    world.add_entity(entity)
+    system = StateTransitionSystem()
+    system.world = world
+
+    system.update(1.0 / 60.0)
+
+    ls = entity.get_component(LanderState)
+    trans = entity.get_component(Transform)
+    assert ls is not None
+    assert trans is not None
+    assert ls.state == "landed"
+    assert math.isclose(trans.pos.y, 10.0, abs_tol=1e-6)
+
+
+def test_state_transition_marks_out_of_fuel_even_with_positive_target_thrust() -> None:
+    entity = Entity()
+    entity.add_component(LanderState(state="flying"))
+    entity.add_component(Engine(target_thrust=0.8))
+    entity.add_component(Transform(pos=Vector2(0.0, 10.0)))
+    entity.add_component(FuelTank(fuel=0.0))
+
+    world = World()
+    world.add_entity(entity)
+    system = StateTransitionSystem()
+    system.world = world
+
+    system.update(1.0 / 60.0)
+
+    ls = entity.get_component(LanderState)
+    assert ls is not None
+    assert ls.state == "out_of_fuel"
+
+
 @dataclass
 class _Target:
     x: float

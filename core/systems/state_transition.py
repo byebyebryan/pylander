@@ -22,7 +22,7 @@ class StateTransitionSystem(System):
             if ls is None or eng is None or trans is None or tank is None:
                 continue
 
-            if ls.state == FlightState.LANDED and eng.target_thrust > 0.0:
+            if ls.state == FlightState.LANDED and eng.target_thrust > 0.0 and tank.fuel > 0.0:
                 ls.state = FlightState.FLYING
                 geo = entity.get_component(LanderGeometry)
                 if geo is None:
@@ -34,5 +34,5 @@ class StateTransitionSystem(System):
                     )
                 trans.pos.y += takeoff_clearance
 
-            if ls.state == FlightState.FLYING and tank.fuel <= 0.0 and eng.target_thrust <= 0.0:
+            if ls.state == FlightState.FLYING and tank.fuel <= 0.0:
                 ls.state = FlightState.OUT_OF_FUEL

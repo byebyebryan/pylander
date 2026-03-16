@@ -106,13 +106,17 @@ def should_end_default(
 
 def build_end_result_default(game, *, landing_count: int, crash_count: int, score: float) -> dict:
     actor = _get_focus_actor(game)
+    state = str(require_component(actor, LanderState).state)
+    tank = require_component(actor, FuelTank)
+    if state not in {"landed", "crashed"} and tank.fuel <= 0.0:
+        state = "out_of_fuel"
     return {
         "time": getattr(game, "_elapsed_time", 0.0),
-        "state": require_component(actor, LanderState).state,
+        "state": state,
         "landing_count": landing_count,
         "crash_count": crash_count,
         "credits": require_component(actor, Wallet).credits,
-        "fuel": require_component(actor, FuelTank).fuel,
+        "fuel": tank.fuel,
         "score": score,
     }
 

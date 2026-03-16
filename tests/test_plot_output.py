@@ -6,7 +6,7 @@ from pathlib import Path
 import matplotlib.image as mpimg
 import pytest
 
-from core.components import FlightState, LanderState, Transform
+from core.components import FlightState, FuelTank, LanderState, Transform
 from core.lander import Lander
 from core.maths import Vector2
 from conftest import FlatTerrain
@@ -425,12 +425,14 @@ def test_sorted_gate_events_prefers_short_labels_and_time_order() -> None:
     events = [
         {"name": "flare_entry", "time_s": 3.2, "label": "flare green dx=4.0"},
         {"name": "setup_gate", "time_s": 1.1, "label": "setup gate"},
+        {"name": "out_of_fuel", "time_s": 3.8, "label": "fuel out"},
         {"name": "success", "time_s": 4.0, "label": "landed"},
     ]
 
     assert _sorted_gate_events(events) == [
         ("setup_gate", 1.1, "setup gate"),
         ("flare_entry", 3.2, "flare green dx=4.0"),
+        ("out_of_fuel", 3.8, "fuel out"),
     ]
 
 
@@ -457,3 +459,33 @@ def test_plotter_finalize_appends_landing_outcome_event(tmp_path: Path, monkeypa
     assert success_events[0]["label"] == "landed"
     assert success_events[0]["x"] == 24.0
     assert success_events[0]["y"] == 0.0
+
+
+def test_plotter_finalize_appends_out_of_fuel_event_when_tank_is_empty(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    lander = Lander(start_pos=Vector2(0.0, 40.0))
+    plotter = Plotter(FlatTerrain(), lander, enabled=True, mode="speed", output_profile="combined")
+    plotter.set_selector_tag("fuel_out_case")
+    plotter.seed_initial_sample()
+
+    transform = lander.get_component(Transform)
+    state = lander.get_component(LanderState)
+    tank = lander.get_component(FuelTank)
+    assert transform is not None
+    assert state is not None
+    assert tank is not None
+    transform.pos = Vector2(18.0, 22.0)
+    state.state = FlightState.FLYING
+    tank.fuel = 0.0
+
+    result = plotter.finalize()
+    manifest = Path(result["plot_manifest_path"])
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    fuel_events = [event for event in payload["events"] if event.get("name") == "out_of_fuel"]
+
+    assert len(fuel_events) == 1
+    assert fuel_events[0]["label"] == "fuel out"
+    assert fuel_events[0]["x"] == 18.0
+    assert fuel_events[0]["y"] == 22.0
