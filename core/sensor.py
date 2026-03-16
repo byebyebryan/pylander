@@ -25,6 +25,11 @@ def closest_point_on_terrain(
     def _sample(obj, xx: float, level: int) -> float:
         try:
             return sample_terrain_height(obj, xx, lod=level)
+        except TypeError:
+            try:
+                return float(obj(xx))
+            except Exception:
+                return float("nan")
         except Exception:
             return float("nan")
 
