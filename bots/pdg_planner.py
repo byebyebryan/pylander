@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import math
 
-from bots._ballistics import estimate_target_y_projection
-from bots._bot_math import finite_altitude
-from bots._optimizer_pdg import PDGPlan
-from bots.pdg.boost import (
+from bots.common_ballistics import estimate_target_y_projection
+from bots.common_math import finite_altitude
+from bots.pdg_boost import (
     select_reference_times,
     boost_dx_limit,
     boost_objective_geometry,
 )
+from bots.pdg_optimizer import PDGPlan
 from core.bot import Sensors
 from core.config import GRAVITY
 

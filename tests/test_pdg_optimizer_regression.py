@@ -5,7 +5,7 @@ import warnings
 import pytest
 
 from bots import create_bot
-from bots._optimizer_pdg import PDGOptimizer, PDGOptimizerConfig
+from bots.pdg_optimizer import PDGOptimizer, PDGOptimizerConfig
 from game import LanderGame
 from levels import create_level as create_level_by_name
 

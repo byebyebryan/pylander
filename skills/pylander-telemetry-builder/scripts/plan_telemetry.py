@@ -112,7 +112,7 @@ def _probe_template(
         return {
             "probe_id": f"probe_{idx:02d}_phase_handoff",
             "kind": "metric",
-            "file_target": "bots/pdg/__init__.py",
+            "file_target": "bots/pdg.py",
             "insertion_anchor": "phase transition and projected-dx handoff points",
             "schema": {
                 "metric": "phase_handoff_dx",
@@ -142,7 +142,7 @@ def _probe_template(
         return {
             "probe_id": f"probe_{idx:02d}_debug_counter",
             "kind": "counter",
-            "file_target": "bots/pdg/__init__.py",
+            "file_target": "bots/pdg.py",
             "insertion_anchor": "debug boost trace emission point",
             "schema": {
                 "metric": "boost_debug_event_count",

@@ -8,7 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from bots._ballistics import ballistic_apex_from_state, estimate_target_y_projection, time_to_target_y_crossing
+from bots.common_ballistics import (
+    ballistic_apex_from_state,
+    estimate_target_y_projection,
+    time_to_target_y_crossing,
+)
 from core.components import Engine, FuelTank, LanderState, PhysicsState, Transform
 from core.ecs import require_component
 

@@ -5,7 +5,7 @@ from types import MethodType
 import pytest
 
 from bots import create_bot
-from bots._ballistics import BallisticProjection
+from bots.common_ballistics import BallisticProjection
 from bots.pdg import FlightStage, UpdateContext
 from core.bot import (
     BotAction,

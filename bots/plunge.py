@@ -5,12 +5,12 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from bots._ballistics import (
+from bots.common_ballistics import (
     BallisticProjection,
     estimate_ground_time_to_impact,
     estimate_target_y_projection,
 )
-from bots._bot_math import (
+from bots.common_math import (
     clamp,
     engine_profile,
     finite_altitude,
@@ -19,7 +19,7 @@ from bots._bot_math import (
     stable,
     vehicle_limits,
 )
-from bots._targeting import pick_target
+from bots.common_targeting import pick_target
 from core.bot import Bot, BotAction, BotDisplayState, Sensors
 from core.sensor import RadarContact
 

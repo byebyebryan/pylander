@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 
-from bots._bot_math import clamp, rate_limit_angle_command
+from bots.common_math import clamp, rate_limit_angle_command
 from core.bot import BotAction, Sensors
 from core.config import GRAVITY
 

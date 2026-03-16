@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from bots._ballistics import estimate_ground_time_to_impact
+from bots.common_ballistics import estimate_ground_time_to_impact
 from core.bot import Sensors
 from core.config import GRAVITY
 

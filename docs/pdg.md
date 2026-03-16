@@ -1,6 +1,6 @@
 # Staged PDG Bot (`pdg`)
 
-Implementation: [`bots/pdg/__init__.py`](../bots/pdg/__init__.py), [`bots/pdg/stages.py`](../bots/pdg/stages.py), [`bots/pdg/config.py`](../bots/pdg/config.py), [`bots/pdg/tracking.py`](../bots/pdg/tracking.py), [`bots/pdg/planner.py`](../bots/pdg/planner.py), [`bots/pdg/actuation.py`](../bots/pdg/actuation.py), [`bots/pdg/terminal_gate.py`](../bots/pdg/terminal_gate.py), [`bots/pdg/boost.py`](../bots/pdg/boost.py), [`bots/_optimizer_pdg.py`](../bots/_optimizer_pdg.py)
+Implementation: [`bots/pdg.py`](../bots/pdg.py), [`bots/pdg_stages.py`](../bots/pdg_stages.py), [`bots/pdg_config.py`](../bots/pdg_config.py), [`bots/pdg_tracking.py`](../bots/pdg_tracking.py), [`bots/pdg_planner.py`](../bots/pdg_planner.py), [`bots/pdg_actuation.py`](../bots/pdg_actuation.py), [`bots/pdg_terminal_gate.py`](../bots/pdg_terminal_gate.py), [`bots/pdg_boost.py`](../bots/pdg_boost.py), [`bots/pdg_optimizer.py`](../bots/pdg_optimizer.py)
 
 `pdg` is the unified optimizer-first full-envelope guidance bot used by default in the `boost:*` and `terminal:*` selector roots.
 
@@ -8,7 +8,7 @@ Implementation note:
 
 - `pdg` uses the `Bot.update(dt, sensors)` API.
 - `PDGBot` is a staged router over concrete guidance controllers.
-- Core planning, actuation, tracking, gate logic, and telemetry assembly live under `bots/pdg/`.
+- Core planning, actuation, tracking, gate logic, and telemetry assembly live in the `pdg_*` helper modules next to `bots/pdg.py`.
 - Phase tracking uses analytic ballistic projection against target geometry (target x/y) rather than terrain-impact sensing.
 - Boost now has a dedicated controller with its own burn/cut behavior and ballistic-shape objective.
 

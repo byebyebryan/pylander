@@ -4,14 +4,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from bots._ballistics import estimate_target_y_projection
-from bots.pdg.config import PDGConfig
-from bots.pdg.boost import (
+from bots.common_ballistics import estimate_target_y_projection
+from bots.pdg_boost import (
     evaluate_boost_quality,
     evaluate_boost_quality_after_settle,
     boost_cut_wind_down_s,
     boost_objective_geometry,
 )
+from bots.pdg_config import PDGConfig
 from core.config import GRAVITY
 
 

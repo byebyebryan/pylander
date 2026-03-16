@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import math
 
-from bots._ballistics import BallisticProjection, ballistic_apex_from_state
-from bots.pdg.boost import projected_impact_angle_deg as _projected_impact_angle_deg
+from bots.common_ballistics import BallisticProjection, ballistic_apex_from_state
+from bots.pdg_boost import projected_impact_angle_deg as _projected_impact_angle_deg
 from core.bot import Sensors, BoostCutoffMetrics
 from core.config import GRAVITY
 

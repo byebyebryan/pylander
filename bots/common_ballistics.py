@@ -5,7 +5,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from bots._bot_math import coerce_finite
+from bots.common_math import coerce_finite
 from core.config import GRAVITY
 from core.terrain import ballistic_fall_time
 

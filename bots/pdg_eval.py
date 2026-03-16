@@ -3,8 +3,8 @@ from __future__ import annotations
 from core.bot import BotEvalDecision
 from core.eval_goals import EVAL_GOAL_BOOST_CUTOFF
 
-from bots._bot_math import clamp
-from bots.pdg.boost import boost_dx_limit
+from bots.common_math import clamp
+from bots.pdg_boost import boost_dx_limit
 
 
 def percentile(values: list[float], p: float) -> float:
