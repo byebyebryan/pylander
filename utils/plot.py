@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from bots._ballistics import ballistic_apex_from_state, estimate_target_y_projection, time_to_target_y_crossing
-from core.components import Engine, LanderState, PhysicsState, Transform
+from core.components import Engine, FuelTank, LanderState, PhysicsState, Transform
 from core.ecs import require_component
 
 
@@ -44,6 +44,7 @@ _TIMESERIES_GATE_EVENT_NAMES: tuple[str, ...] = (
     "setup_gate",
     "flare_gate",
     "flare_entry",
+    "out_of_fuel",
 )
 
 
@@ -2090,18 +2091,22 @@ class Plotter:
         if not self._sampling_enabled:
             return None
         state = self.lander.get_component(LanderState)
+        tank = self.lander.get_component(FuelTank)
         trans = self.lander.get_component(Transform)
         if state is None or trans is None:
             return None
+        state_name = str(state.state)
+        if state_name not in {"landed", "crashed"} and tank is not None and tank.fuel <= 0.0:
+            state_name = "out_of_fuel"
         outcome_name: str | None = None
         outcome_label: str | None = None
-        if str(state.state) == "landed":
+        if state_name == "landed":
             outcome_name = "success"
             outcome_label = "landed"
-        elif str(state.state) == "crashed":
+        elif state_name == "crashed":
             outcome_name = "crash"
             outcome_label = "crash"
-        elif str(state.state) == "out_of_fuel":
+        elif state_name == "out_of_fuel":
             outcome_name = "out_of_fuel"
             outcome_label = "fuel out"
         if outcome_name is None:
