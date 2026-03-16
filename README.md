@@ -7,7 +7,7 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 - Start here: [`docs/README.md`](docs/README.md)
 - Bot framework + API: [`docs/overview.md`](docs/overview.md)
 - Bot docs: [`docs/plunge.md`](docs/plunge.md), [`docs/pdg.md`](docs/pdg.md)
-- Scenario docs: [`docs/terminal_normal.md`](docs/terminal_normal.md), [`docs/terminal_error.md`](docs/terminal_error.md), [`docs/boost_downhill.md`](docs/boost_downhill.md), [`docs/boost_flat.md`](docs/boost_flat.md), [`docs/boost_climb.md`](docs/boost_climb.md)
+- Scenario docs: [`docs/terminal.md`](docs/terminal.md), [`docs/boost.md`](docs/boost.md)
 
 ## Features
 

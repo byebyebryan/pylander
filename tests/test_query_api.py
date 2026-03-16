@@ -93,7 +93,7 @@ def test_plunge_and_pdg_are_bots(monkeypatch: pytest.MonkeyPatch) -> None:
     pdg = create_bot("pdg")
     assert isinstance(pdg, Bot)
     pdg_game = LanderGame(
-        level=create_level_by_name("terminal_normal"),
+        level=create_level_by_name("terminal"),
         seed=0,
         bot=pdg,
         headless=True,

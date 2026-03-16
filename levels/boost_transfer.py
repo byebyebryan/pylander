@@ -8,14 +8,14 @@ from core.components import CargoHold, Transform
 from core.ecs import require_component
 from core.eval_goals import EVAL_GOAL_BOOST_CUTOFF, EVAL_GOAL_LANDING
 from core.maths import Vector2
-from levels.common import (
+from levels.common_world import (
     PresetLevel,
     SiteSpec,
     apply_transfer_result,
     get_mass,
     resolve_landed_site_uid,
 )
-from levels.scenario_common import ScenarioCatalogMixin
+from levels.common_scenarios import ScenarioCatalogMixin
 
 SOURCE_PAD_X = 0.0
 SOURCE_SITE_UID = "transfer_source"
@@ -23,20 +23,20 @@ TARGET_SITE_UID = "transfer_target"
 
 
 @dataclass(frozen=True)
-class SetupWeightTier:
+class BoostWeightTier:
     key: str
     cargo_mass: float
     cargo_fraction: float
 
 
-SETUP_WEIGHT_TIERS: tuple[SetupWeightTier, ...] = (
-    SetupWeightTier(key="empty", cargo_mass=0.0, cargo_fraction=0.0),
-    SetupWeightTier(key="half", cargo_mass=3000.0, cargo_fraction=0.5),
-    SetupWeightTier(key="full", cargo_mass=6000.0, cargo_fraction=1.0),
+BOOST_WEIGHT_TIERS: tuple[BoostWeightTier, ...] = (
+    BoostWeightTier(key="empty", cargo_mass=0.0, cargo_fraction=0.0),
+    BoostWeightTier(key="half", cargo_mass=3000.0, cargo_fraction=0.5),
+    BoostWeightTier(key="full", cargo_mass=6000.0, cargo_fraction=1.0),
 )
 
 
-def build_setup_weight_params(scenario) -> dict[str, float | str]:  # noqa: ANN001
+def build_boost_weight_params(scenario) -> dict[str, float | str]:  # noqa: ANN001
     return {
         "weight_tier": str(getattr(scenario, "weight_tier", "") or ""),
         "cargo_mass": float(getattr(scenario, "cargo_mass", 0.0) or 0.0),
@@ -44,7 +44,7 @@ def build_setup_weight_params(scenario) -> dict[str, float | str]:  # noqa: ANN0
     }
 
 
-class SetupTransferLevel(ScenarioCatalogMixin, PresetLevel):
+class BoostTransferLevel(ScenarioCatalogMixin, PresetLevel):
     """Base for pad-to-pad boost-transfer levels.
 
     Subclasses must override:

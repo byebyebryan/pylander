@@ -20,7 +20,7 @@ from core.ecs import require_component
 from core.level import Level
 from core.maths import Range1D, Vector2, clearance_above_terrain
 from core.terrain import estimate_terrain_slope, sample_terrain_height
-from levels.common import get_mass
+from levels.common_world import get_mass
 
 
 def resolve_eval_target_pos(level: Level, sites: Any, start_pos: Vector2) -> Vector2 | None:

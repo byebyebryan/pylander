@@ -45,7 +45,7 @@ Selector rules:
 
 ## Mode behavior
 
-- Source of truth: level-provided `benchmark_profile()` metadata (`policy`, `smoke`, `quick`, `full`).
+- Source of truth: registry-backed public level benchmark metadata (`policy`, `smoke`, `quick`, `full`).
 - Profile validation is strict (fail-fast) for invalid/incomplete scenario sets.
 
 - `smoke`

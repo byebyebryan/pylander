@@ -34,7 +34,7 @@ from core.config import GRAVITY
 from core.eval_goals import EVAL_GOAL_LANDING
 from landers import create_lander
 from core.ecs import require_component
-from levels.common import (
+from levels.common_world import (
     EndResultMixin,
     compute_spawn_pos,
     get_mass,
@@ -334,15 +334,6 @@ def prime_boost_cutoff_for_primary_bot(level, game) -> None:
             target_y=float(target_pos.y),
         )
     )
-
-
-FLARE_ANGLE_PROFILES: tuple[tuple[str, float], ...] = (
-    ("shallower", 15.0),
-    ("shallow", 30.0),
-    ("mid", 45.0),
-    ("steep", 60.0),
-    ("steeper", 75.0),
-)
 
 
 def make_flat_scenario_spec(

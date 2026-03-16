@@ -8,7 +8,7 @@ from landers import list_available_landers
 
 from app.config import BenchCommand, BenchSettings, BenchTarget, Command, RunCommand, RunSettings
 from app.selector import parse_seed_spec, parse_selector, render_selector
-from core.selector_catalog import (
+from levels.registry import (
     expand_selector_bindings,
     list_public_levels,
     resolve_selector_binding,

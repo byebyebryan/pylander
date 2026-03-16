@@ -22,7 +22,7 @@ from core.level_capabilities import (
     level_plot_output,
     level_scenario_tag,
 )
-from levels.common import get_mass
+from levels.common_world import get_mass
 
 
 @dataclass(frozen=True)

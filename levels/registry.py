@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+from typing import Type
 
 from core.eval_goals import KNOWN_EVAL_GOAL_SET
+from core.level import Level
 from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 
 _BENCHMARK_MODES = frozenset({"smoke", "quick", "full"})
-_PUBLIC_ROOT_ORDER: tuple[str, ...] = (
+_PUBLIC_LEVEL_ORDER: tuple[str, ...] = (
     "flat",
     "mountains",
     "boost",
@@ -15,6 +17,13 @@ _PUBLIC_ROOT_ORDER: tuple[str, ...] = (
     "plunge",
 )
 _SEED_TOKEN_RE = re.compile(r"^-?\d+(?:\s*-\s*-?\d+)?(?:\s*,\s*-?\d+(?:\s*-\s*-?\d+)?)*$")
+_LEGACY_LEVEL_REPLACEMENTS: dict[str, str] = {
+    "boost_flat": "boost",
+    "boost_downhill": "boost",
+    "boost_climb": "boost",
+    "terminal_normal": "terminal",
+    "terminal_error": "terminal",
+}
 
 
 @dataclass(frozen=True)
@@ -54,11 +63,33 @@ def split_selector_path(scenario_name: str | None) -> tuple[str, ...]:
 
 
 def list_public_levels() -> list[str]:
-    return list(_PUBLIC_ROOT_ORDER)
+    return list(_PUBLIC_LEVEL_ORDER)
+
+
+def list_available_levels() -> list[str]:
+    return list_public_levels()
 
 
 def is_public_level(level_name: str) -> bool:
     return str(level_name).strip().lower() in _ROOT_TO_LEAVES
+
+
+def load_level_class(name: str) -> Type[Level]:
+    key = str(name or "").strip().lower().replace("-", "_")
+    if key in _LEGACY_LEVEL_REPLACEMENTS:
+        replacement = _LEGACY_LEVEL_REPLACEMENTS[key]
+        raise ValueError(
+            f"Level '{name}' was removed; use '{replacement}' with canonical scenario paths"
+        )
+    factories = _level_classes()
+    if key not in factories:
+        known = ", ".join(_PUBLIC_LEVEL_ORDER)
+        raise ValueError(f"Unknown level '{name}'. Expected one of: {known}")
+    return factories[key]
+
+
+def create_level(name: str) -> Level:
+    return load_level_class(name)()
 
 
 def resolve_public_level_benchmark_profile(level_name: str) -> LevelBenchmarkProfile:
@@ -69,7 +100,6 @@ def resolve_public_level_benchmark_profile(level_name: str) -> LevelBenchmarkPro
             policy="excluded",
             scenarios=BenchmarkScenarioSets(smoke=(), quick=(), full=()),
         )
-
     return LevelBenchmarkProfile(
         policy=policy,
         scenarios=BenchmarkScenarioSets(
@@ -134,10 +164,31 @@ def selector_token_is_reserved(token: str) -> bool:
     return key == "*" or key in KNOWN_EVAL_GOAL_SET or selector_path_looks_like_seed(key)
 
 
+def _level_classes() -> dict[str, Type[Level]]:
+    from levels.boost import BoostLevel
+    from levels.flat import FlatLevel
+    from levels.mountains import MountainsLevel
+    from levels.plunge import PlungeLevel
+    from levels.terminal import TerminalLevel
+
+    return {
+        "flat": FlatLevel,
+        "mountains": MountainsLevel,
+        "boost": BoostLevel,
+        "terminal": TerminalLevel,
+        "plunge": PlungeLevel,
+    }
+
+
 def _normalize_root(level_name: str) -> str:
     root = str(level_name or "").strip().lower()
     if root not in _ROOT_TO_LEAVES:
-        known = ", ".join(_PUBLIC_ROOT_ORDER)
+        if root in _LEGACY_LEVEL_REPLACEMENTS:
+            replacement = _LEGACY_LEVEL_REPLACEMENTS[root]
+            raise ValueError(
+                f"Level '{level_name}' was removed; use '{replacement}' with canonical scenario paths"
+            )
+        known = ", ".join(_PUBLIC_LEVEL_ORDER)
         raise ValueError(f"Unknown level '{level_name}'. Expected one of: {known}")
     return root
 
@@ -273,16 +324,15 @@ def _make_leaf(
     *,
     root: str,
     path: tuple[str, ...],
-    runtime_level_name: str,
-    runtime_scenario_name: str | None,
     policy: str = "normal",
     benchmark_modes: frozenset[str] | None = None,
 ) -> SelectorLeaf:
+    scenario_name = join_selector_path(path)
     return SelectorLeaf(
         root=root,
         path=path,
-        runtime_level_name=runtime_level_name,
-        runtime_scenario_name=runtime_scenario_name,
+        runtime_level_name=root,
+        runtime_scenario_name=scenario_name,
         policy=policy,
         benchmark_modes=frozenset(benchmark_modes or ()),
     )
@@ -290,29 +340,17 @@ def _make_leaf(
 
 def _build_leaves() -> tuple[SelectorLeaf, ...]:
     leaves: list[SelectorLeaf] = [
-        _make_leaf(
-            root="flat",
-            path=(),
-            runtime_level_name="flat",
-            runtime_scenario_name=None,
-            policy="excluded",
-        ),
-        _make_leaf(
-            root="mountains",
-            path=(),
-            runtime_level_name="mountains",
-            runtime_scenario_name=None,
-            policy="excluded",
-        ),
+        _make_leaf(root="flat", path=(), policy="excluded"),
+        _make_leaf(root="mountains", path=(), policy="excluded"),
     ]
 
     boost_families = (
-        ("flat", "boost_flat", ("near", "mid", "far"), {"mid"}, {"mid"}),
-        ("downhill", "boost_downhill", ("low", "mid", "high"), {"low", "mid", "high"}, {"mid"}),
-        ("climb", "boost_climb", ("low", "mid", "high"), {"low", "mid", "high"}, {"mid"}),
+        ("flat", ("near", "mid", "far"), {"mid"}, {"mid"}),
+        ("downhill", ("low", "mid", "high"), {"low", "mid", "high"}, {"mid"}),
+        ("climb", ("low", "mid", "high"), {"low", "mid", "high"}, {"mid"}),
     )
     weight_tiers = ("empty", "half", "full")
-    for family, runtime_level_name, route_tiers, quick_routes, smoke_routes in boost_families:
+    for family, route_tiers, quick_routes, smoke_routes in boost_families:
         for route_tier in route_tiers:
             for weight_tier in weight_tiers:
                 benchmark_modes = {"full"}
@@ -324,8 +362,6 @@ def _build_leaves() -> tuple[SelectorLeaf, ...]:
                     _make_leaf(
                         root="boost",
                         path=(family, route_tier, weight_tier),
-                        runtime_level_name=runtime_level_name,
-                        runtime_scenario_name=f"{route_tier}_{weight_tier}",
                         benchmark_modes=frozenset(benchmark_modes),
                     )
                 )
@@ -340,8 +376,6 @@ def _build_leaves() -> tuple[SelectorLeaf, ...]:
             _make_leaf(
                 root="terminal",
                 path=("normal", profile),
-                runtime_level_name="terminal_normal",
-                runtime_scenario_name=profile,
                 benchmark_modes=frozenset(benchmark_modes),
             )
         )
@@ -357,8 +391,6 @@ def _build_leaves() -> tuple[SelectorLeaf, ...]:
                 _make_leaf(
                     root="terminal",
                     path=("error", profile, tier),
-                    runtime_level_name="terminal_error",
-                    runtime_scenario_name=f"{profile}_{tier}",
                     benchmark_modes=frozenset(benchmark_modes),
                 )
             )
@@ -374,12 +406,9 @@ def _build_leaves() -> tuple[SelectorLeaf, ...]:
                 _make_leaf(
                     root="plunge",
                     path=(altitude, weight_tier),
-                    runtime_level_name="plunge",
-                    runtime_scenario_name=f"{altitude}_{weight_tier}",
                     benchmark_modes=frozenset(benchmark_modes),
                 )
             )
-
     return tuple(leaves)
 
 
@@ -435,7 +464,7 @@ def _validate_catalog() -> None:
             raise ValueError(f"Duplicate selector leaf '{leaf.root}:{join_selector_path(leaf.path) or ''}'")
         seen_leafs.add(key)
 
-    for root in _PUBLIC_ROOT_ORDER:
+    for root in _PUBLIC_LEVEL_ORDER:
         root_leaves = _ROOT_TO_LEAVES.get(root, ())
         if not root_leaves:
             raise ValueError(f"Selector root '{root}' has no leaf bindings")
@@ -464,8 +493,9 @@ def _validate_catalog() -> None:
 _LEAVES = _build_leaves()
 _ROOT_TO_LEAVES: dict[str, tuple[SelectorLeaf, ...]] = {
     root: tuple(leaf for leaf in _LEAVES if leaf.root == root)
-    for root in _PUBLIC_ROOT_ORDER
+    for root in _PUBLIC_LEVEL_ORDER
 }
 _DEFAULT_CHILD_BY_PREFIX = _build_default_child_map()
 
 _validate_catalog()
+

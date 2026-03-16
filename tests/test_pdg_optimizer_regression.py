@@ -36,8 +36,8 @@ def _run_level(
 @pytest.mark.parametrize(
     ("level_name", "scenario", "eval_goal", "max_time", "key", "expected"),
     (
-        ("boost_climb", "mid_half", "boost_cutoff", 10.0, "boost_cutoff_done", True),
-        ("boost_flat", "mid_half", "boost_cutoff", 9.0, "boost_cutoff_done", True),
+        ("boost", "climb:mid:half", "boost_cutoff", 10.0, "boost_cutoff_done", True),
+        ("boost", "flat:mid:half", "boost_cutoff", 9.0, "boost_cutoff_done", True),
     ),
 )
 def test_pdg_smoke_plunge_and_setup_milestones_seed0(
@@ -62,8 +62,8 @@ def test_pdg_smoke_plunge_and_setup_milestones_seed0(
 @pytest.mark.parametrize(
     ("scenario", "max_time"),
     (
-        ("mid_half", 12.0),
-        ("low_empty", 8.5),
+        ("mid:half", 12.0),
+        ("low:empty", 8.5),
     ),
 )
 def test_pdg_smoke_plunge_reaches_touchdown_seed0(
@@ -81,7 +81,7 @@ def test_pdg_smoke_plunge_reaches_touchdown_seed0(
 
 def test_pdg_launch_landing_offset_bound_seed0() -> None:
     result, _bot = _run_level(
-        level_name="boost_flat", scenario="near_half", max_time=25.0
+        level_name="boost", scenario="flat:near:half", max_time=25.0
     )
     assert result.get("state") == "landed"
     landing_offset = result.get("landing_offset")
@@ -93,8 +93,8 @@ def test_pdg_launch_landing_offset_bound_seed0() -> None:
 def test_pdg_passive_coast_suppresses_solver_work_mid_flare() -> None:
     # Early flare run should remain ungated before control solves begin.
     _result, bot = _run_level(
-        level_name="terminal_normal",
-        scenario="mid",
+        level_name="terminal",
+        scenario="normal:mid",
         max_steps=180,
         max_time=20.0,
     )
