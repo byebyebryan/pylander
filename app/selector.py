@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from core.eval_goals import KNOWN_EVAL_GOAL_SET, normalize_eval_goal
+from core.selector_catalog import list_public_levels, selector_path_looks_like_seed
 from core.selector_codec import (
     render_record_selector as _render_record_selector,
     render_selector as _render_selector,
@@ -18,6 +19,7 @@ render_record_selector = _render_record_selector
 class ParsedSelector:
     level_name: str
     scenario_name: str | None
+    scenario_path: tuple[str, ...]
     goal: str | None
     seed_token: str | None
 
@@ -59,54 +61,140 @@ def parse_selector(
         return ParsedSelector(
             level_name=default_level,
             scenario_name=None,
+            scenario_path=(),
             goal=None,
             seed_token=None,
         )
 
-    parts = selector.split(":")
-    if len(parts) > 4:
+    parts = [part.strip().lower() for part in selector.split(":")]
+    if any(not part for part in parts):
         raise ValueError(
-            f"Invalid selector '{selector}'. Expected format 'level[:scenario[:goal[:seed]]]'"
+            f"Invalid selector '{selector}'. Empty selector tokens are not supported"
         )
 
-    level_name = parts[0].strip()
-    if not level_name:
-        raise ValueError(
-            f"Invalid selector '{selector}'. Level is required in 'level[:scenario[:goal[:seed]]]'"
-        )
-    if level_name not in known_levels:
-        known = ", ".join(sorted(known_levels))
-        raise ValueError(f"Unknown level '{level_name}'. Expected one of: {known}")
-
-    scenario_name = None
-    if len(parts) >= 2:
-        scenario = parts[1].strip()
-        scenario_name = scenario if scenario else None
+    tokens = list(parts)
+    if not tokens:
+        raise ValueError(f"Invalid selector '{selector}'. Level is required")
 
     goal = None
     seed_token = None
-    if len(parts) >= 3:
-        third = parts[2].strip()
-        if len(parts) == 4:
-            if not third:
-                raise ValueError(
-                    f"Invalid selector '{selector}'. Goal is required in "
-                    "'level[:scenario[:goal[:seed]]]' when 4 tokens are provided"
-                )
-            goal = normalize_eval_goal(third)
-            seed = parts[3].strip()
-            seed_token = seed if seed else None
-        else:
-            if third:
-                lowered = third.lower()
-                if lowered in KNOWN_EVAL_GOAL_SET:
-                    goal = normalize_eval_goal(lowered)
-                else:
-                    seed_token = third
+    if len(tokens) >= 2 and selector_path_looks_like_seed(tokens[-1]):
+        seed_token = tokens.pop()
+    if len(tokens) >= 2 and tokens[-1] in KNOWN_EVAL_GOAL_SET:
+        goal = normalize_eval_goal(tokens.pop())
+
+    if not tokens:
+        raise ValueError(
+            f"Invalid selector '{selector}'. Level is required before goal/seed tokens"
+        )
+
+    level_name = tokens[0]
+    if level_name not in known_levels:
+        legacy_hint = _legacy_selector_hint(selector, known_levels=known_levels)
+        if legacy_hint is not None:
+            raise ValueError(
+                f"Invalid selector '{selector}'. Old selector forms are no longer supported; "
+                f"use '{legacy_hint}'"
+            )
+        known = ", ".join(sorted(known_levels))
+        raise ValueError(f"Unknown level '{level_name}'. Expected one of: {known}")
+
+    scenario_path = tuple(tokens[1:])
+    scenario_name = ":".join(scenario_path) if scenario_path else None
 
     return ParsedSelector(
         level_name=level_name,
         scenario_name=scenario_name,
+        scenario_path=scenario_path,
         goal=goal,
         seed_token=seed_token,
     )
+
+
+def _legacy_selector_hint(
+    raw_selector: str,
+    *,
+    known_levels: set[str],
+) -> str | None:
+    parts = [part.strip().lower() for part in str(raw_selector or "").split(":") if part.strip()]
+    if not parts:
+        return None
+
+    legacy_level = parts[0]
+    known_public_levels = {level for level in list_public_levels() if level in known_levels}
+    if legacy_level in known_public_levels:
+        return None
+
+    goal = None
+    seed = None
+    tokens = list(parts)
+    if len(tokens) >= 2 and selector_path_looks_like_seed(tokens[-1]):
+        seed = tokens.pop()
+    if len(tokens) >= 2 and tokens[-1] in KNOWN_EVAL_GOAL_SET:
+        goal = tokens.pop()
+    if not tokens:
+        return None
+
+    scenario = tokens[1] if len(tokens) >= 2 else None
+    path_tokens: list[str] | None = None
+
+    if legacy_level == "boost_flat":
+        path_tokens = ["boost", "flat"]
+    elif legacy_level == "boost_downhill":
+        path_tokens = ["boost", "downhill"]
+    elif legacy_level == "boost_climb":
+        path_tokens = ["boost", "climb"]
+    elif legacy_level == "terminal_normal":
+        path_tokens = ["terminal", "normal"]
+    elif legacy_level == "terminal_error":
+        path_tokens = ["terminal", "error"]
+    elif legacy_level == "plunge":
+        path_tokens = ["plunge"]
+    else:
+        return None
+
+    if scenario:
+        path_tokens.extend(_legacy_scenario_tokens(legacy_level, scenario))
+
+    rendered = ":".join(path_tokens)
+    if goal and goal != "landing":
+        rendered = f"{rendered}:{goal}"
+    if seed:
+        rendered = f"{rendered}:{seed}"
+    return rendered
+
+
+def _legacy_scenario_tokens(level_name: str, scenario_name: str) -> list[str]:
+    scenario = str(scenario_name or "").strip().lower()
+    if not scenario:
+        return []
+    if level_name in {"boost_flat", "boost_downhill", "boost_climb"}:
+        left, right = _split_legacy_token_pair(level_name, scenario)
+        return [left, right]
+    if level_name == "terminal_error":
+        left, right = _split_legacy_token_pair(level_name, scenario)
+        return [left, right]
+    if level_name == "terminal_normal":
+        return [scenario]
+    if level_name == "plunge":
+        altitude, weight = _split_legacy_token_pair(level_name, scenario)
+        plunge_weight = {
+            "light": "empty",
+            "normal": "half",
+            "heavy": "full",
+            "empty": "empty",
+            "half": "half",
+            "full": "full",
+        }.get(weight, weight)
+        return [altitude, plunge_weight]
+    return [scenario]
+
+
+def _split_legacy_token_pair(level_name: str, scenario_name: str) -> tuple[str, str]:
+    if "_" not in scenario_name:
+        raise ValueError(
+            f"Legacy selector '{level_name}:{scenario_name}' is ambiguous. "
+            "Expected an underscore-delimited scenario token"
+        )
+    left, right = scenario_name.split("_", 1)
+    return left, right

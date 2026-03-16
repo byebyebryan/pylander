@@ -2,7 +2,7 @@
 
 Implementation: [`bots/pdg/__init__.py`](../bots/pdg/__init__.py), [`bots/pdg/stages.py`](../bots/pdg/stages.py), [`bots/pdg/config.py`](../bots/pdg/config.py), [`bots/pdg/tracking.py`](../bots/pdg/tracking.py), [`bots/pdg/planner.py`](../bots/pdg/planner.py), [`bots/pdg/actuation.py`](../bots/pdg/actuation.py), [`bots/pdg/terminal_gate.py`](../bots/pdg/terminal_gate.py), [`bots/pdg/boost.py`](../bots/pdg/boost.py), [`bots/_optimizer_pdg.py`](../bots/_optimizer_pdg.py)
 
-`pdg` is the unified optimizer-first full-envelope guidance bot used by default in `boost_flat`, `boost_downhill`, `terminal_error`, `boost_climb`, and `terminal_normal`.
+`pdg` is the unified optimizer-first full-envelope guidance bot used by default in the `boost:*` and `terminal:*` selector roots.
 
 Implementation note:
 
@@ -128,7 +128,7 @@ Terminal tilt is now recoverability-based instead of a single fixed cap:
 `pdg` publishes generic and bot-owned telemetry:
 
 - generic boost contract: `boost_cutoff_*`, `boost_goal_*`
-  - on `terminal_normal` / `terminal_error`, `boost_cutoff_*` is primed from the spawn
+  - on `terminal:normal:*` / `terminal:error:*:*`, `boost_cutoff_*` is primed from the spawn
     state to indicate coast entry rather than post-burn boost completion
 - bot-owned terminal handoff: `bot_pdg_terminal_entry_done`, `bot_pdg_terminal_entry_time`, `bot_pdg_terminal_entry_altitude`, `bot_pdg_terminal_entry_projected_dx`
 - bot-owned terminal-gate diagnostics: `bot_pdg_terminal_gate_mode`, `bot_pdg_terminal_gate_horizon_s`, `bot_pdg_terminal_gate_terminal_speed`, `bot_pdg_terminal_gate_peak_accel_ratio`, `bot_pdg_terminal_gate_od_excess_s`, `bot_pdg_terminal_gate_latest_safe_margin_s`, `bot_pdg_terminal_gate_required_accel_ratio`
@@ -140,12 +140,12 @@ Terminal tilt is now recoverability-based instead of a single fixed cap:
 Boost-cutoff debug traces can be enabled with:
 
 ```bash
-PYLANDER_PDG_DEBUG_BOOST=1 uv run python main.py sim boost_flat:near_half:0 --bot pdg
+PYLANDER_PDG_DEBUG_BOOST=1 uv run python main.py sim boost:flat:near:half:0 --bot pdg
 ```
 
 Goal-based eval boundary:
 
-- selector goal `boost` (for example `boost_downhill:mid_half:boost:0 --bot pdg`) -> early stop at boost cutoff
+- selector goal `boost` (for example `boost:downhill:mid:half:boost:0 --bot pdg`) -> early stop at boost cutoff
 - boost-goal success is metric-gated: valid target-y solution, projected dx inside corridor, and impact angle above `boost_descent_angle_deg_min`
 - apex telemetry remains available in `boost_cutoff_*` / `boost_goal_*`, but apex-band matching is no longer part of the boost verdict
 

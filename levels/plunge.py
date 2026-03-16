@@ -31,9 +31,9 @@ _ALTITUDE_TIERS: tuple[tuple[str, float], ...] = (
     ("high", 1600.0),
 )
 _WEIGHT_TIERS: tuple[tuple[str, float], ...] = (
-    ("light", 0.0),
-    ("normal", 2250.0),
-    ("heavy", 4500.0),
+    ("empty", 0.0),
+    ("half", 2250.0),
+    ("full", 4500.0),
 )
 
 
@@ -54,12 +54,12 @@ _SCENARIOS: tuple[PlungeScenario, ...] = (
 )
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = _scenario_name("mid", "normal")
-_SMOKE_BENCHMARK_SCENARIOS: tuple[str, ...] = (_scenario_name("mid", "normal"),)
+_DEFAULT_SCENARIO = _scenario_name("mid", "half")
+_SMOKE_BENCHMARK_SCENARIOS: tuple[str, ...] = (_scenario_name("mid", "half"),)
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    _scenario_name("low", "normal"),
-    _scenario_name("mid", "normal"),
-    _scenario_name("high", "normal"),
+    _scenario_name("low", "half"),
+    _scenario_name("mid", "half"),
+    _scenario_name("high", "half"),
 )
 
 

@@ -13,6 +13,7 @@ from core.level_capabilities import (
     set_eval_goal_checked,
     set_eval_scenario_checked,
 )
+from core.selector_catalog import is_public_level, resolve_selector_binding
 from game import LanderGame
 from levels import create_level
 
@@ -30,7 +31,10 @@ def create_level_checked(level_name: str):
 
 
 def resolve_default_bot(level_name: str) -> str | None:
-    level = create_level_checked(level_name)
+    runtime_level_name = level_name
+    if is_public_level(level_name):
+        runtime_level_name = resolve_selector_binding(level_name).runtime_level_name
+    level = create_level_checked(runtime_level_name)
     return resolve_default_bot_name(level)
 
 
@@ -108,14 +112,24 @@ def run_once(
     level_name: str | None = None,
     eval_scenario_name: str | None = None,
     eval_goal_name: str | None = None,
+    display_level_name: str | None = None,
+    display_scenario_name: str | None = None,
     print_results: bool = True,
     benchmark_mode: str | None = None,
 ) -> dict[str, Any]:
-    run_name = level_name or settings.level_name
-    level = create_level_checked(run_name)
-    setattr(level, "_level_name", run_name)
+    runtime_level_name = level_name or settings.runtime_level_name
+    public_level_name = display_level_name or settings.level_name
+    public_scenario_name = (
+        display_scenario_name if display_scenario_name is not None else settings.scenario_name
+    )
 
-    chosen_scenario = eval_scenario_name if eval_scenario_name is not None else settings.scenario_name
+    level = create_level_checked(runtime_level_name)
+    setattr(level, "_level_name", public_level_name)
+    setattr(level, "_public_scenario_name", public_scenario_name or public_level_name)
+
+    chosen_scenario = (
+        eval_scenario_name if eval_scenario_name is not None else settings.runtime_scenario_name
+    )
     set_eval_scenario(level, chosen_scenario)
     run_goal = resolve_run_goal(settings, eval_goal_name=eval_goal_name)
     run_goal = set_eval_goal(level, run_goal)
@@ -162,8 +176,8 @@ def run_once(
 
     if run_bot_name is not None:
         result["_bot_name"] = run_bot_name
-    result["_level_name"] = run_name
-    result["_scenario_name"] = getattr(level, "scenario_name", run_name)
+    result["_level_name"] = public_level_name
+    result["_scenario_name"] = public_scenario_name or public_level_name
     result["_eval_goal"] = run_goal
 
     if settings.headless and print_results:
@@ -178,6 +192,8 @@ def run_once_record(
     level_name: str,
     eval_scenario_name: str | None = None,
     eval_goal_name: str | None = None,
+    record_level_name: str | None = None,
+    record_scenario_name: str | None = None,
     benchmark_mode: str | None = None,
 ) -> dict[str, Any]:
     result = run_once(
@@ -186,12 +202,16 @@ def run_once_record(
         level_name=level_name,
         eval_scenario_name=eval_scenario_name,
         eval_goal_name=eval_goal_name,
+        display_level_name=record_level_name,
+        display_scenario_name=record_scenario_name,
         print_results=False,
         benchmark_mode=benchmark_mode,
     )
     record_bot_name = str(result.get("_bot_name") or settings.bot_name or "none")
-    record_level_name = str(result.get("_level_name") or level_name)
-    record_scenario_name = str(result.get("_scenario_name") or record_level_name)
+    record_level_name = str(result.get("_level_name") or record_level_name or settings.level_name)
+    record_scenario_name = str(
+        result.get("_scenario_name") or record_scenario_name or record_level_name
+    )
     return normalize_run_result(
         bot_name=record_bot_name,
         level_name=record_level_name,

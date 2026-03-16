@@ -1,6 +1,6 @@
-# Boost Downhill level (`boost_downhill`)
+# Boost Downhill family (`boost:downhill`)
 
-`boost_downhill` is the downhill member of the boost-transfer trio for unified `pdg` guidance.
+`boost:downhill:*:*` is the downhill member of the boost-transfer trio for unified `pdg` guidance.
 
 ## Purpose
 
@@ -8,7 +8,7 @@
 - Force a sustained boost burn that establishes a downhill ballistic transfer to the destination pad.
 - Measure whether the controller reaches a strong boost cutoff before coast/terminal progression.
 
-Goal-based eval option: run with selector goal `boost` (for example `boost_downhill:mid_half:boost:0`) to stop when `boost_cutoff_done` latches.
+Goal-based eval option: run with selector goal `boost` (for example `boost:downhill:mid:half:boost:0`) to stop when `boost_cutoff_done` latches.
 
 Trajectory-shape diagnostics are also exported through the retained
 `bot_pdg_shape_*` fields to quantify boost ballistic quality.
@@ -24,16 +24,16 @@ Defined in [`levels/boost_downhill.py`](../levels/boost_downhill.py):
 - Terrain profile: true downhill ramp where `slope = dy / dx`
 - Initial state: landed upright on the source pad
 
-Scenarios:
+Selector layers:
 
-- `low_empty`, `low_half`, `low_full`
-- `mid_empty`, `mid_half`, `mid_full`
-- `high_empty`, `high_half`, `high_full`
+- `low:empty`, `low:half`, `low:full`
+- `mid:empty`, `mid:half`, `mid:full`
+- `high:empty`, `high:half`, `high:full`
 
 Defaults:
 
-- default scenario: `mid_half`
-- recommended benchmark subset: `low_half`, `mid_half`, `high_half`
+- default scenario: `mid:half`
+- recommended benchmark subset: `low:half`, `mid:half`, `high:half`
 
 ## Metrics
 
@@ -54,8 +54,8 @@ Common `pdg` boost-shape tuning knobs for this level:
 ## Commands
 
 ```bash
-uv run python main.py run --interactive boost_downhill
-uv run python main.py sim boost_downhill:mid_half:0 --bot pdg
-uv run python main.py sim boost_downhill:mid_half:boost:0 --bot pdg
-uv run python main.py bench boost_downhill --bot pdg
+uv run python main.py run --interactive boost:downhill
+uv run python main.py sim boost:downhill:mid:half:0 --bot pdg
+uv run python main.py sim boost:downhill:mid:half:boost:0 --bot pdg
+uv run python main.py bench boost:downhill:*:* --bot pdg
 ```

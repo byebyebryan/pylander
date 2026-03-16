@@ -1,6 +1,6 @@
-# Boost Flat level (`boost_flat`)
+# Boost Flat family (`boost:flat`)
 
-`boost_flat` is the flat pad-to-pad transfer scenario handled end-to-end by `pdg`.
+`boost:flat:*:*` is the flat pad-to-pad transfer scenario family handled end-to-end by `pdg`.
 
 ## Level setup
 
@@ -12,16 +12,16 @@ Defined in [`levels/boost_flat.py`](../levels/boost_flat.py):
 - Spawn: on source pad
 - Cargo tiers: `empty=0`, `half=3000`, `full=6000`
 
-Scenarios:
+Selector layers:
 
-- `near_empty`, `near_half`, `near_full`: `dx in [150, 250]`
-- `mid_empty`, `mid_half`, `mid_full`: `dx in [300, 500]`
-- `far_empty`, `far_half`, `far_full`: `dx in [600, 1000]`
+- `near:empty`, `near:half`, `near:full`: `dx in [150, 250]`
+- `mid:empty`, `mid:half`, `mid:full`: `dx in [300, 500]`
+- `far:empty`, `far:half`, `far:full`: `dx in [600, 1000]`
 
 Defaults:
 
-- default scenario: `mid_half`
-- recommended benchmark subset: `mid_half`
+- default scenario: `mid:half`
+- recommended benchmark subset: `mid:half`
 
 ## Runtime behavior
 
@@ -48,7 +48,7 @@ through the generic `boost_cutoff_*` fields plus retained bot-owned
 ## Commands
 
 ```bash
-uv run python main.py run --interactive boost_flat
-uv run python main.py sim boost_flat:near_half:0 --bot pdg
-uv run python main.py bench boost_flat --bot pdg
+uv run python main.py run --interactive boost:flat
+uv run python main.py sim boost:flat:near:half:0 --bot pdg
+uv run python main.py bench boost:flat:*:* --bot pdg
 ```

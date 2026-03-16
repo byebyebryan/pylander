@@ -16,23 +16,14 @@ def render_selector(
     scenario = str(scenario_name or "").strip() or None
     seed = str(seed_token).strip() if seed_token is not None else None
     goal_token = normalize_eval_goal(goal)
-
-    if goal_token == EVAL_GOAL_LANDING:
-        if scenario and seed:
-            return f"{level}:{scenario}:{seed}"
-        if scenario:
-            return f"{level}:{scenario}"
-        if seed:
-            return f"{level}::{seed}"
-        return level
-
+    parts: list[str] = [level]
     if scenario:
-        base = f"{level}:{scenario}:{goal_token}"
-    else:
-        base = f"{level}::{goal_token}"
+        parts.extend(token for token in scenario.split(":") if token)
+    if goal_token != EVAL_GOAL_LANDING:
+        parts.append(goal_token)
     if seed:
-        return f"{base}:{seed}"
-    return base
+        parts.append(seed)
+    return ":".join(parts)
 
 
 def render_selector_group(

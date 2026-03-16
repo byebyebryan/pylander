@@ -5,6 +5,10 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from app.config import BenchSettings, BenchTarget, RunSettings
+from app.reporting import print_batch_summary
+from app.run_single import create_level_checked, resolve_default_bot, run_once_record
+from app.selector import parse_seed_spec, render_selector_group
 from core.eval import (
     aggregate_eval_records,
     default_artifact_path,
@@ -12,19 +16,11 @@ from core.eval import (
     write_json_report,
 )
 from core.level_capabilities import (
-    list_batch_scenarios_safe,
     scenario_has_randomized_fields_safe,
     set_eval_goal_checked,
     set_eval_scenario_checked,
 )
-from app.config import BenchSettings, BenchTarget, RunSettings
-from app.reporting import print_batch_summary
-from app.run_single import (
-    create_level_checked,
-    resolve_default_bot,
-    run_once_record,
-)
-from app.selector import parse_seed_spec, render_selector_group
+from core.selector_catalog import expand_selector_bindings
 
 _AUTO_RANDOMIZED_BATCH_SEEDS: tuple[int, ...] = tuple(range(10))
 
@@ -34,6 +30,8 @@ class ResolvedBenchRun:
     seed: int
     level_name: str
     scenario_name: str | None
+    runtime_level_name: str
+    runtime_scenario_name: str | None
     eval_goal_name: str
 
     def display_label(self) -> str:
@@ -46,25 +44,25 @@ class ResolvedBenchRun:
         return f"seed={self.seed} level={self.level_name}{goal_label}"
 
 
-def resolve_level_scenarios(level_name: str) -> list[str]:
-    level = create_level_checked(level_name)
-    return list_batch_scenarios_safe(level)
+def _scenario_has_randomized_fields(runtime_level_name: str, runtime_scenario_name: str | None) -> bool:
+    level = create_level_checked(runtime_level_name)
+    set_eval_scenario_checked(level, runtime_scenario_name)
+    return scenario_has_randomized_fields_safe(level, runtime_scenario_name)
 
 
-def _scenario_has_randomized_fields(level_name: str, scenario_name: str | None) -> bool:
-    level = create_level_checked(level_name)
-    set_eval_scenario_checked(level, scenario_name)
-    return scenario_has_randomized_fields_safe(level, scenario_name)
+def _resolve_goal(runtime_level_name: str, eval_goal: str) -> str:
+    level = create_level_checked(runtime_level_name)
+    return set_eval_goal_checked(level, eval_goal)
 
 
 def resolve_selector_plan(
     target: BenchTarget,
     *,
-    scenario_resolver: Callable[[str], list[str]] | None = None,
     randomized_checker: Callable[[str, str | None], bool] | None = None,
+    goal_resolver: Callable[[str, str], str] | None = None,
 ) -> list[ResolvedBenchRun]:
-    resolver = scenario_resolver or resolve_level_scenarios
     checker = randomized_checker or _scenario_has_randomized_fields
+    resolve_goal = goal_resolver or _resolve_goal
     explicit_seeds = parse_seed_spec(target.seed_spec) if target.seed_spec else None
 
     if explicit_seeds is not None and not explicit_seeds:
@@ -72,26 +70,30 @@ def resolve_selector_plan(
             f"Selector '{target.level_name}' resolved an empty seed list from '{target.seed_spec}'"
         )
 
-    scenarios: list[str | None]
-    if target.scenario_name is not None:
-        scenarios = [target.scenario_name]
-    else:
-        listed = resolver(target.level_name)
-        scenarios = listed if listed else [None]
-
-    level = create_level_checked(target.level_name)
-    resolved_goal = set_eval_goal_checked(level, target.eval_goal)
+    bindings = expand_selector_bindings(
+        target.level_name,
+        scenario_path=target.scenario_path,
+        allow_wildcards=True,
+    )
 
     run_plan: list[ResolvedBenchRun] = []
-    for scenario_name in scenarios:
+    for binding in bindings:
+        resolved_goal = resolve_goal(binding.runtime_level_name, target.eval_goal)
         if explicit_seeds is not None:
             seeds = explicit_seeds
-        elif checker(target.level_name, scenario_name):
+        elif checker(binding.runtime_level_name, binding.runtime_scenario_name):
             seeds = list(_AUTO_RANDOMIZED_BATCH_SEEDS)
         else:
             seeds = [0]
         run_plan.extend(
-            ResolvedBenchRun(seed, target.level_name, scenario_name, resolved_goal)
+            ResolvedBenchRun(
+                seed,
+                binding.level_name,
+                binding.scenario_name,
+                binding.runtime_level_name,
+                binding.runtime_scenario_name,
+                resolved_goal,
+            )
             for seed in seeds
         )
     return run_plan
@@ -101,40 +103,50 @@ def resolve_benchmark_plan(cfg: BenchSettings) -> list[ResolvedBenchRun]:
     if not cfg.selectors:
         raise ValueError("Benchmark requires at least one selector")
 
-    level_scenarios_cache: dict[str, list[str]] = {}
     scenario_randomized_cache: dict[tuple[str, str | None], bool] = {}
+    goal_cache: dict[tuple[str, str], str] = {}
 
-    def resolve_level_scenarios_cached(level_name: str) -> list[str]:
-        if level_name not in level_scenarios_cache:
-            level_scenarios_cache[level_name] = resolve_level_scenarios(level_name)
-        return level_scenarios_cache[level_name]
-
-    def scenario_has_randomized_cached(level_name: str, scenario_name: str | None) -> bool:
-        key = (level_name, scenario_name)
+    def scenario_has_randomized_cached(runtime_level_name: str, runtime_scenario_name: str | None) -> bool:
+        key = (runtime_level_name, runtime_scenario_name)
         if key not in scenario_randomized_cache:
-            scenario_randomized_cache[key] = _scenario_has_randomized_fields(level_name, scenario_name)
+            scenario_randomized_cache[key] = _scenario_has_randomized_fields(
+                runtime_level_name,
+                runtime_scenario_name,
+            )
         return scenario_randomized_cache[key]
+
+    def resolve_goal_cached(runtime_level_name: str, eval_goal: str) -> str:
+        key = (runtime_level_name, eval_goal)
+        if key not in goal_cache:
+            goal_cache[key] = _resolve_goal(runtime_level_name, eval_goal)
+        return goal_cache[key]
 
     run_plan: list[ResolvedBenchRun] = []
     for target in cfg.selectors:
         run_plan.extend(
             resolve_selector_plan(
                 target,
-                scenario_resolver=resolve_level_scenarios_cached,
                 randomized_checker=scenario_has_randomized_cached,
+                goal_resolver=resolve_goal_cached,
             )
         )
     return run_plan
 
 
 def _to_run_settings(cfg: BenchSettings) -> RunSettings:
-    first_level = cfg.selectors[0].level_name
+    first_binding = expand_selector_bindings(
+        cfg.selectors[0].level_name,
+        scenario_path=cfg.selectors[0].scenario_path,
+        allow_wildcards=True,
+    )[0]
     return RunSettings(
-        level_name=first_level,
+        level_name=first_binding.level_name,
+        runtime_level_name=first_binding.runtime_level_name,
         bot_name=cfg.bot_name,
         bot_config_path=cfg.bot_config_path,
         seed=None,
-        scenario_name=None,
+        scenario_name=first_binding.scenario_name,
+        runtime_scenario_name=first_binding.runtime_scenario_name,
         eval_goal=cfg.selectors[0].eval_goal,
         lander_name=cfg.lander_name,
         print_freq=0,
@@ -167,9 +179,11 @@ def _run_batch_sequential(
             run_once_record(
                 run_settings,
                 seed=target.seed,
-                level_name=target.level_name,
-                eval_scenario_name=target.scenario_name,
+                level_name=target.runtime_level_name,
+                eval_scenario_name=target.runtime_scenario_name,
                 eval_goal_name=target.eval_goal_name,
+                record_level_name=target.level_name,
+                record_scenario_name=target.scenario_name,
                 benchmark_mode=benchmark_mode,
             )
         )
@@ -215,9 +229,11 @@ def run_benchmark(cfg: BenchSettings) -> int:
                         run_once_record,
                         run_settings,
                         seed=target.seed,
-                        level_name=target.level_name,
-                        eval_scenario_name=target.scenario_name,
+                        level_name=target.runtime_level_name,
+                        eval_scenario_name=target.runtime_scenario_name,
                         eval_goal_name=target.eval_goal_name,
+                        record_level_name=target.level_name,
+                        record_scenario_name=target.scenario_name,
                         benchmark_mode=benchmark_mode,
                     )
                     future_map[fut] = (run_idx, target)

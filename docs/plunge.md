@@ -27,16 +27,16 @@ Defined in [`levels/plunge.py`](../levels/plunge.py):
   - `mid`: `400`
   - `high`: `1600`
 - Weight tiers:
-  - `light`: `0`
-  - `normal`: `2250`
-  - `heavy`: `4500`
+  - `empty`: `0`
+  - `half`: `2250`
+  - `full`: `4500`
 
-Scenario naming: `<alt>_<weight>` (example: `mid_normal`).
+Selector layers: `<alt>:<weight>` (example: `plunge:mid:half`).
 
 Defaults:
 
-- default scenario: `mid_normal`
-- recommended benchmark subset: `low_normal`, `mid_normal`, `high_normal`
+- default scenario: `mid:half`
+- recommended benchmark subset: `low:half`, `mid:half`, `high:half`
 - level default bot: `pdg`
 
 ## Goals and metrics
@@ -57,10 +57,10 @@ Metrics to watch:
 
 ```bash
 uv run python main.py run --interactive plunge
-uv run python main.py sim plunge:mid_normal:0 --bot plunge
+uv run python main.py sim plunge:mid:half:0 --bot plunge
 uv run python main.py bench \
-  plunge:low_normal:0-9 \
-  plunge:mid_normal:0-9 \
-  plunge:high_normal:0-9 \
+  plunge:low:half:0-9 \
+  plunge:mid:half:0-9 \
+  plunge:high:half:0-9 \
   --bot plunge
 ```

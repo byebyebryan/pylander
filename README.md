@@ -68,27 +68,31 @@ uv run python main.py run --interactive flat --bot pdg
 ### Single headless run (`sim`)
 
 ```bash
-uv run python main.py sim terminal_normal:mid:0 --bot pdg
-uv run python main.py sim boost_downhill:mid_half:boost:0 --bot pdg
-uv run python main.py sim terminal_error:mid_wide:3 --bot pdg
-uv run python main.py sim boost_climb:mid_half:0 --bot pdg
-uv run python main.py sim plunge:mid_normal:0 --bot plunge
+uv run python main.py sim terminal:normal:mid:0 --bot pdg
+uv run python main.py sim boost:downhill:mid:half:boost:0 --bot pdg
+uv run python main.py sim terminal:error:mid:wide:3 --bot pdg
+uv run python main.py sim boost:climb:mid:half:0 --bot pdg
+uv run python main.py sim plunge:mid:half:0 --bot plunge
 ```
 
 Selector format:
 
-- play/run/sim/plot selector: `level[:scenario[:goal[:seed]]]`
-- Use `level::seed` when setting a seed without a scenario.
+- play/run/sim/plot selector: `level[:layer[:...]][:goal[:seed]]`
+- bench selector: `level[:layer[:...]][:goal[:seed_spec]]`
+- Omitted selector layers always resolve through defaults.
+- Use `*` to expand exactly one selector layer in `bench` and selector-pack tooling.
+- `sim` / `run` / `plot` reject `*`; use a concrete selector there.
+- Use `level:seed` when setting a seed without any explicit selector layers.
 - Omit goal to default to `landing`.
-- Boost levels use weight-suffixed scenarios like `near_half`, `mid_full`, and `high_empty`.
-- Boost-goal support is currently exposed by levels: `boost_downhill`, `boost_flat`, `boost_climb`.
+- Canonical examples: `boost:flat:near:half`, `terminal:error:mid:wide`, `plunge:high:full`.
+- Boost-goal support is exposed through the `boost` selector root.
 - Bot selector remains bot-only: `--bot <name>`.
 
 ### Plot run (`plot`)
 
 ```bash
-uv run python main.py plot boost_flat:far_half:0 --bot pdg
-uv run python main.py plot boost_flat:far_half:0 --bot pdg --plot all --plot-output both
+uv run python main.py plot boost:flat:far:half:0 --bot pdg
+uv run python main.py plot boost:flat:far:half:0 --bot pdg --plot all --plot-output both
 ```
 
 Plot outputs are written under `outputs/plots/<selector>_<timestamp>/` when plotting is enabled.
@@ -98,19 +102,19 @@ Plot outputs are written under `outputs/plots/<selector>_<timestamp>/` when plot
 ```bash
 # Terminal-error subset over seed range
 uv run python main.py bench \
-  terminal_error:shallow_tight:0-19 \
-  terminal_error:mid_wide:0-19 \
-  terminal_error:steep_wide:0-19 \
+  terminal:error:shallow:tight:0-19 \
+  terminal:error:mid:wide:0-19 \
+  terminal:error:steep:wide:0-19 \
   --bot pdg
 
-# Multi-level benchmark + reports (one selector per level/scenario spec)
+# Mixed explicit + wildcard benchmark
 uv run python main.py bench \
-  plunge \
-  terminal_normal \
-  terminal_error \
-  boost_downhill \
-  boost_flat \
-  boost_climb \
+  plunge:* \
+  terminal:normal:* \
+  terminal:error:*:* \
+  boost:flat:*:* \
+  boost:downhill:*:* \
+  boost:climb:*:* \
   --bot pdg \
   --json auto \
   --csv auto
@@ -118,11 +122,12 @@ uv run python main.py bench \
 
 Bench selector format:
 
-- `level[:scenario[:goal[:seed_spec]]]`
+- `level[:layer[:...]][:goal[:seed_spec]]`
 - `seed_spec` supports comma/range syntax, e.g. `0-9`, `0,2,4`, `3-1`.
 - Omit goal to default to `landing`.
+- Omitted layers use defaults; wildcard expansion is explicit via `*`.
 - If seed spec is omitted, deterministic scenarios run with seed `0`.
-- If seed spec is omitted and the scenario has randomized fields, seeds auto-expand to `0-9`.
+- If seed spec is omitted and the selector resolves to a randomized scenario, seeds auto-expand to `0-9`.
 
 Benchmark pack tooling (`skills/pylander-benchmark-runner/scripts/*.py`) now reads
 level metadata from `benchmark_profile()`:
@@ -133,17 +138,18 @@ level metadata from `benchmark_profile()`:
 Default policy profile:
 
 - `flat`, `mountains`: `excluded`
-- `plunge`, `terminal_normal`, `terminal_error`, `boost_downhill`, `boost_flat`, `boost_climb`: `normal`
+- `plunge`, `terminal`, `boost`: `normal`
 
 Repo shorthand:
 
-- `terminal levels` means `terminal_normal` + `terminal_error`
+- `terminal` means the public terminal selector root (`terminal:normal:*` + `terminal:error:*:*`)
 - `plunge` is a separate plunge benchmark level
 
 Focused benchmark-pack selectors also accept explicit group aliases:
 
-- `@terminal` / `@terminal_flight` -> `terminal_normal`, `terminal_error`
-- `@plunge` / `@terminal_plunge` -> `plunge`
+- `@terminal` / `@terminal_flight` -> `terminal`
+- `@plunge` -> `plunge`
+- `@terminal_plunge` -> `terminal`, `plunge`
 
 Example:
 
@@ -159,7 +165,7 @@ uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py \
 
 ### `play` / `run` / `sim` / `plot`
 
-- selector: `level[:scenario[:goal[:seed]]]`
+- selector: `level[:layer[:...]][:goal[:seed]]`
 - `-b, --bot NAME`
 - `--bot-config PATH` (JSON override config for supported bots)
 - `-l, --lander NAME`
@@ -176,7 +182,7 @@ uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py \
 
 ### `bench`
 
-- selectors: `level[:scenario[:goal[:seed_spec]]]` (one or more)
+- selectors: `level[:layer[:...]][:goal[:seed_spec]]` (one or more)
 - `-b, --bot NAME`
 - `--bot-config PATH` (JSON override config for supported bots)
 - `-l, --lander NAME`
@@ -197,7 +203,7 @@ Benchmark records include bot compute timing metrics (avg plus p90/p99 for
 passive, update, and total ms/tick) when profiling is enabled.
 
 Boost-phase evaluation metrics are reported through generic fields such as
-`boost_cutoff_*` and `boost_goal_*`. For `terminal_normal` and `terminal_error`,
+`boost_cutoff_*` and `boost_goal_*`. For `terminal:normal:*` and `terminal:error:*:*`,
 `boost_cutoff_*` is a spawn-time coast-entry snapshot rather than a post-burn
 boost-cutoff latch. Bot-owned diagnostics stay namespaced under
 `bot_<botname>_*`, for example `bot_pdg_terminal_entry_projected_dx`,
@@ -265,14 +271,14 @@ Telemetry diagnostics executors:
 The game loop now supports lightweight bot-loop profiling in headless mode:
 
 ```bash
-PYLANDER_BOT_PROFILE=1 uv run python main.py sim terminal_normal:mid:0 --bot pdg
+PYLANDER_BOT_PROFILE=1 uv run python main.py sim terminal:normal:mid:0 --bot pdg
 ```
 
 Optional interval override (seconds):
 
 ```bash
   PYLANDER_BOT_PROFILE=1 PYLANDER_BOT_PROFILE_INTERVAL_S=2 \
-  uv run python main.py sim plunge:mid_normal:0 --bot plunge
+  uv run python main.py sim plunge:mid:half:0 --bot plunge
 ```
 
 Profiled timing covers passive pre-update work, bot update time, and total

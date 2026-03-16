@@ -1,6 +1,6 @@
-# Boost Climb level (`boost_climb`)
+# Boost Climb family (`boost:climb`)
 
-`boost_climb` is the uphill member of the boost-transfer trio: a pad-to-pad climb on sloped terrain without obstacles.
+`boost:climb:*:*` is the uphill member of the boost-transfer trio: a pad-to-pad climb on sloped terrain without obstacles.
 
 ## Purpose
 
@@ -11,8 +11,8 @@
 Guidance note:
 
 - `pdg` now routes climb through the same dedicated boost controller used by
-  `boost_flat` and `boost_downhill`.
-- `boost_climb` is a normal benchmark/gating level, not observe-only.
+  `boost:flat` and `boost:downhill`.
+- `boost:climb` is a normal benchmark/gating family, not observe-only.
 
 ## Scenario design
 
@@ -25,16 +25,16 @@ Defined in [`levels/boost_climb.py`](../levels/boost_climb.py):
 - Terrain profile:
   - destination pad is terrain-bound (`flush_flatten`) on a true uphill ramp where `slope = dy / dx`
 
-Scenarios:
+Selector layers:
 
-- `low_empty`, `low_half`, `low_full`
-- `mid_empty`, `mid_half`, `mid_full`
-- `high_empty`, `high_half`, `high_full`
+- `low:empty`, `low:half`, `low:full`
+- `mid:empty`, `mid:half`, `mid:full`
+- `high:empty`, `high:half`, `high:full`
 
 Defaults:
 
-- default scenario: `mid_half`
-- recommended benchmark subset: `low_half`, `mid_half`, `high_half`
+- default scenario: `mid:half`
+- recommended benchmark subset: `low:half`, `mid:half`, `high:half`
 
 ## Metrics
 
@@ -53,7 +53,7 @@ Additional retained `pdg` diagnostics exported for climb tuning:
 ## Commands
 
 ```bash
-uv run python main.py run --interactive boost_climb
-uv run python main.py sim boost_climb:mid_half:0 --bot pdg
-uv run python main.py bench boost_climb --bot pdg
+uv run python main.py run --interactive boost:climb
+uv run python main.py sim boost:climb:mid:half:0 --bot pdg
+uv run python main.py bench boost:climb:*:* --bot pdg
 ```

@@ -62,8 +62,8 @@ def test_pdg_smoke_plunge_and_setup_milestones_seed0(
 @pytest.mark.parametrize(
     ("scenario", "max_time"),
     (
-        ("mid_normal", 12.0),
-        ("low_light", 8.5),
+        ("mid_half", 12.0),
+        ("low_empty", 8.5),
     ),
 )
 def test_pdg_smoke_plunge_reaches_touchdown_seed0(

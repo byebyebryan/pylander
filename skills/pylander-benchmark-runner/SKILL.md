@@ -27,11 +27,21 @@ Benchmark command:
 Selector format:
 
 - `level`
-- `level:scenario`
-- `level:scenario:goal:seed_spec`
+- `level:layer[:... ]`
+- `level:layer[:... ]:goal:seed_spec`
 
 Goal is optional and defaults to `landing`. `seed_spec` supports ranges and CSV:
 `0-9`, `0,2,4`, `3-1`.
+
+Selector rules:
+
+- omitted layers resolve through defaults
+- `*` expands exactly one selector layer
+- wildcard expansion is for `bench` / selector-pack workflows only
+- canonical examples:
+  - `boost:flat:far:half`
+  - `terminal:error:mid:wide`
+  - `plunge:mid:half`
 
 ## Mode behavior
 
@@ -55,10 +65,12 @@ Goal is optional and defaults to `landing`. `seed_spec` supports ranges and CSV:
 
 - `focused`
   - Uses caller-selected scope.
-  - If caller provides only `level`, expand to that level profile's `full` scenarios.
+  - Omitted layers still resolve through defaults.
+  - Use `*` when the caller wants expansion instead of a defaulted selector.
   - Focused selectors also accept group aliases:
-    - `@terminal` / `@terminal_flight` -> `terminal_normal`, `terminal_error`
-    - `@plunge` / `@terminal_plunge` -> `plunge`
+    - `@terminal` / `@terminal_flight` -> `terminal`
+    - `@plunge` -> `plunge`
+    - `@terminal_plunge` -> `terminal`, `plunge`
   - Explicit selectors always run even if a level is marked `excluded`.
   - Default seeds for unseeded selectors: `0-9`.
 
@@ -81,7 +93,7 @@ Policy behavior:
    - compute section (avg + p90/p99 ms/tick): total, passive, update deltas
    - primary fuel deltas using success-only aggregates by default
    - secondary all-runs fuel deltas (for context when crashes/outliers skew results)
-   - worst regressions by `level:scenario`
+- worst regressions by canonical selector group
    - newly introduced crashes split by global vs observation section
 
 ## Local cache model
@@ -138,13 +150,13 @@ Examples:
 
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode smoke`
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode full --seed-spec 0-19`
-- `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode focused --selectors boost_flat:far_half boost_downhill`
+- `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode focused --selectors boost:flat:far:half boost`
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode focused --selectors @terminal`
-- `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode quick --exclude-levels flat,mountains --observe-only-levels boost_climb`
+- `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode quick --exclude-levels flat,mountains --observe-only-levels boost`
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode quick --bot-profile --no-bot-profile-logs`
 - `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main`
 - `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot-profile --no-bot-profile-logs`
 - `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors @terminal --seed-spec 0-9 --baseline-ref main`
-- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors boost_downhill boost_flat:far_half --seed-spec 0-9 --baseline-ref main`
-- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode full --baseline-ref main --exclude-levels flat,mountains --observe-only-levels boost_climb`
-- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors boost_flat:far_half --seed-spec 0-4 --bot-config configs/zem_tuning.json`
+- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors boost:downhill:* boost:flat:far:half --seed-spec 0-9 --baseline-ref main`
+- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode full --baseline-ref main --exclude-levels flat,mountains --observe-only-levels boost`
+- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors boost:flat:far:half --seed-spec 0-4 --bot-config configs/zem_tuning.json`

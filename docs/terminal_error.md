@@ -1,6 +1,6 @@
-# Terminal Error level (`terminal_error`)
+# Terminal Error family (`terminal:error`)
 
-`terminal_error` is the horizontal-error correction benchmark scenario for the unified `pdg` controller.
+`terminal:error:*:*` is the horizontal-error correction benchmark scenario family for the unified `pdg` controller.
 
 ## Purpose
 
@@ -41,7 +41,7 @@ Defaults:
   boost burn on this level.
 - Coast stays passive and points retrograde until terminal entry; all correction is
   deferred to the terminal phase.
-- Terminal entry uses the same analytic readiness check as `terminal_normal`, with a
+- Terminal entry uses the same analytic readiness check as `terminal:normal:*`, with a
   conservative latest-safe fallback so wide-error cases still ignite even when
   ballistic `projected_dx` remains large during coast.
 - Goal metadata: `eval_goal`, `eval_early_end`, `eval_end_reason`
@@ -49,11 +49,11 @@ Defaults:
 ## Commands
 
 ```bash
-uv run python main.py run --interactive terminal_error
-uv run python main.py sim terminal_error:mid_tight:0 --bot pdg
+uv run python main.py run --interactive terminal:error
+uv run python main.py sim terminal:error:mid:tight:0 --bot pdg
 uv run python main.py bench \
-  terminal_error:shallow_tight:0-19 \
-  terminal_error:mid_wide:0-19 \
-  terminal_error:steep_wide:0-19 \
+  terminal:error:shallow:tight:0-19 \
+  terminal:error:mid:wide:0-19 \
+  terminal:error:steep:wide:0-19 \
   --bot pdg
 ```
