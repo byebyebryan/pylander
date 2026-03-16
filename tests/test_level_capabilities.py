@@ -45,11 +45,8 @@ def test_resolve_level_eval_goals_defaults_to_landing() -> None:
 
 
 def test_level_eval_goal_support_matches_declared_catalogs() -> None:
-    assert resolve_level_eval_goals(create_level("boost_flat")) == ("landing", "boost_cutoff")
-    assert resolve_level_eval_goals(create_level("boost_downhill")) == ("landing", "boost_cutoff")
-    assert resolve_level_eval_goals(create_level("boost_climb")) == ("landing", "boost_cutoff")
-    assert resolve_level_eval_goals(create_level("terminal_error")) == ("landing",)
-    assert resolve_level_eval_goals(create_level("terminal_normal")) == ("landing",)
+    assert resolve_level_eval_goals(create_level("boost")) == ("landing", "boost_cutoff")
+    assert resolve_level_eval_goals(create_level("terminal")) == ("landing",)
     assert resolve_level_eval_goals(create_level("plunge")) == ("landing",)
 
 

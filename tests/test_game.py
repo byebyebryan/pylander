@@ -56,106 +56,100 @@ def test_create_bot_applies_pdg_bot_config_override() -> None:
 def test_level_registry_still_includes_phase_levels() -> None:
     levels = list_available_levels()
     assert "flare_plunge" not in levels
-    for name in (
-        "plunge",
+    for name in ("flat", "mountains", "boost", "terminal", "plunge"):
+        assert name in levels
+    for removed in (
         "terminal_normal",
         "terminal_error",
         "boost_downhill",
         "boost_flat",
         "boost_climb",
     ):
-        assert name in levels
+        assert removed not in levels
 
 
-def test_terminal_error_level_scenario_names_are_clean_and_prefixed_removed() -> None:
-    level = create_level_by_name("terminal_error")
+def test_terminal_level_scenario_names_are_canonical() -> None:
+    level = create_level_by_name("terminal")
     assert level.list_batch_scenarios() == [
-        "shallower_tight",
-        "shallower_wide",
-        "shallow_tight",
-        "shallow_wide",
-        "mid_tight",
-        "mid_wide",
-        "steep_tight",
-        "steep_wide",
-        "steeper_tight",
-        "steeper_wide",
+        "normal:shallower",
+        "normal:shallow",
+        "normal:mid",
+        "normal:steep",
+        "normal:steeper",
+        "error:shallower:tight",
+        "error:shallower:wide",
+        "error:shallow:tight",
+        "error:shallow:wide",
+        "error:mid:tight",
+        "error:mid:wide",
+        "error:steep:tight",
+        "error:steep:wide",
+        "error:steeper:tight",
+        "error:steeper:wide",
     ]
     assert level.list_quick_benchmark_scenarios() == [
-        "shallow_tight",
-        "mid_wide",
-        "steep_wide",
+        "normal:shallow",
+        "normal:mid",
+        "normal:steep",
+        "error:shallow:tight",
+        "error:mid:wide",
+        "error:steep:wide",
     ]
 
 
-def test_boost_downhill_level_scenario_names_are_clean_and_prefixed_removed() -> None:
-    level = create_level_by_name("boost_downhill")
+def test_boost_level_scenario_names_are_canonical() -> None:
+    level = create_level_by_name("boost")
     assert level.list_batch_scenarios() == [
-        "low_empty",
-        "low_half",
-        "low_full",
-        "mid_empty",
-        "mid_half",
-        "mid_full",
-        "high_empty",
-        "high_half",
-        "high_full",
+        "flat:near:empty",
+        "flat:near:half",
+        "flat:near:full",
+        "flat:mid:empty",
+        "flat:mid:half",
+        "flat:mid:full",
+        "flat:far:empty",
+        "flat:far:half",
+        "flat:far:full",
+        "downhill:low:empty",
+        "downhill:low:half",
+        "downhill:low:full",
+        "downhill:mid:empty",
+        "downhill:mid:half",
+        "downhill:mid:full",
+        "downhill:high:empty",
+        "downhill:high:half",
+        "downhill:high:full",
+        "climb:low:empty",
+        "climb:low:half",
+        "climb:low:full",
+        "climb:mid:empty",
+        "climb:mid:half",
+        "climb:mid:full",
+        "climb:high:empty",
+        "climb:high:half",
+        "climb:high:full",
     ]
     assert level.list_quick_benchmark_scenarios() == [
-        "low_half",
-        "mid_half",
-        "high_half",
+        "flat:mid:half",
+        "downhill:low:half",
+        "downhill:mid:half",
+        "downhill:high:half",
+        "climb:low:half",
+        "climb:mid:half",
+        "climb:high:half",
     ]
 
 
-def test_boost_climb_level_scenario_names_are_clean_and_prefixed_removed() -> None:
-    level = create_level_by_name("boost_climb")
-    assert level.list_batch_scenarios() == [
-        "low_empty",
-        "low_half",
-        "low_full",
-        "mid_empty",
-        "mid_half",
-        "mid_full",
-        "high_empty",
-        "high_half",
-        "high_full",
-    ]
-    assert level.list_quick_benchmark_scenarios() == [
-        "low_half",
-        "mid_half",
-        "high_half",
-    ]
-
-
-def test_boost_flat_level_scenario_names_are_weighted() -> None:
-    level = create_level_by_name("boost_flat")
-    assert level.list_batch_scenarios() == [
-        "near_empty",
-        "near_half",
-        "near_full",
-        "mid_empty",
-        "mid_half",
-        "mid_full",
-        "far_empty",
-        "far_half",
-        "far_full",
-    ]
-    assert level.list_quick_benchmark_scenarios() == ["mid_half"]
-
-
-def test_boost_climb_rejects_unknown_scenario() -> None:
-    level = create_level_by_name("boost_climb")
-    with pytest.raises(ValueError, match="Unknown setupclimb scenario"):
+def test_boost_rejects_unknown_scenario() -> None:
+    level = create_level_by_name("boost")
+    with pytest.raises(ValueError, match="Unknown boost scenario"):
         level.set_eval_scenario("bad")
 
 
 @pytest.mark.parametrize(
     ("level_name", "legacy_scenario"),
     (
-        ("boost_flat", "mid"),
-        ("boost_downhill", "mid"),
-        ("boost_climb", "mid"),
+        ("boost", "mid"),
+        ("terminal", "mid"),
     ),
 )
 def test_setup_levels_reject_legacy_bare_scenarios(
@@ -166,16 +160,16 @@ def test_setup_levels_reject_legacy_bare_scenarios(
         level.set_eval_scenario(legacy_scenario)
 
 
-@pytest.mark.parametrize("level_name", ["boost_flat", "boost_downhill", "boost_climb"])
-def test_setup_levels_default_to_mid_half(level_name: str) -> None:
+def test_boost_defaults_to_flat_mid_half() -> None:
+    level_name = "boost"
     level = create_level_by_name(level_name)
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
-    assert game.level.scenario_name == "mid_half"
+    assert game.level.scenario_name == "flat:mid:half"
 
 
 def test_boost_climb_target_is_terrain_bound_flush_pad() -> None:
-    level = create_level_by_name("boost_climb")
-    level.set_eval_scenario("mid_half")
+    level = create_level_by_name("boost")
+    level.set_eval_scenario("climb:mid:half")
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     target = next(
         site
@@ -188,10 +182,13 @@ def test_boost_climb_target_is_terrain_bound_flush_pad() -> None:
     assert shape.terrain_bound is True
 
 
-@pytest.mark.parametrize("level_name", ["boost_climb", "boost_flat", "boost_downhill"])
-def test_landed_site_uid_requires_pad_overlap(level_name: str) -> None:
-    level = create_level_by_name(level_name)
-    level.set_eval_scenario("mid_half")
+@pytest.mark.parametrize(
+    "scenario_name",
+    ["climb:mid:half", "flat:mid:half", "downhill:mid:half"],
+)
+def test_landed_site_uid_requires_pad_overlap(scenario_name: str) -> None:
+    level = create_level_by_name("boost")
+    level.set_eval_scenario(scenario_name)
     _game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     target = next(
         spec for spec in level.site_specs if spec.uid == "transfer_target"
@@ -220,27 +217,27 @@ def _spawn_state(
 
 
 def test_setup_and_terminal_error_scenarios_are_seed_deterministic() -> None:
-    setup_a = _spawn_state("boost_downhill", "mid_half", 42)
-    setup_b = _spawn_state("boost_downhill", "mid_half", 42)
+    setup_a = _spawn_state("boost", "downhill:mid:half", 42)
+    setup_b = _spawn_state("boost", "downhill:mid:half", 42)
     assert setup_a == pytest.approx(setup_b)
 
-    coast_a = _spawn_state("terminal_error", "mid_tight", 42)
-    coast_b = _spawn_state("terminal_error", "mid_tight", 42)
+    coast_a = _spawn_state("terminal", "error:mid:tight", 42)
+    coast_b = _spawn_state("terminal", "error:mid:tight", 42)
     assert coast_a == pytest.approx(coast_b)
 
-    climb_a = _spawn_state("boost_climb", "mid_half", 42)
-    climb_b = _spawn_state("boost_climb", "mid_half", 42)
+    climb_a = _spawn_state("boost", "climb:mid:half", 42)
+    climb_b = _spawn_state("boost", "climb:mid:half", 42)
     assert climb_a == pytest.approx(climb_b)
 
 
 @pytest.mark.parametrize(
     ("level_name", "scenario_name", "expected_cargo_mass", "expected_cargo_fraction"),
     (
-        ("boost_flat", "near_empty", 0.0, 0.0),
-        ("boost_flat", "near_half", 3000.0, 0.5),
-        ("boost_flat", "near_full", 6000.0, 1.0),
-        ("boost_downhill", "mid_half", 3000.0, 0.5),
-        ("boost_climb", "high_full", 6000.0, 1.0),
+        ("boost", "flat:near:empty", 0.0, 0.0),
+        ("boost", "flat:near:half", 3000.0, 0.5),
+        ("boost", "flat:near:full", 6000.0, 1.0),
+        ("boost", "downhill:mid:half", 3000.0, 0.5),
+        ("boost", "climb:high:full", 6000.0, 1.0),
     ),
 )
 def test_setup_levels_apply_weight_tier_mass_and_params(
@@ -256,7 +253,7 @@ def test_setup_levels_apply_weight_tier_mass_and_params(
     actor = game.level.world.actors[0]
     cargo = require_component(actor, CargoHold)
     assert cargo.effective_mass == pytest.approx(expected_cargo_mass)
-    assert level._scenario_params["weight_tier"] == scenario_name.rsplit("_", 1)[-1]
+    assert level._scenario_params["weight_tier"] == scenario_name.rsplit(":", 1)[-1]
     assert level._scenario_params["cargo_mass"] == pytest.approx(expected_cargo_mass)
     assert level._scenario_params["cargo_fraction"] == pytest.approx(
         expected_cargo_fraction
@@ -265,8 +262,8 @@ def test_setup_levels_apply_weight_tier_mass_and_params(
 
 def test_boost_flat_weight_tiers_share_same_sampled_route_for_same_seed() -> None:
     target_x_by_weight: dict[str, float] = {}
-    for scenario_name in ("far_empty", "far_half", "far_full"):
-        level = create_level_by_name("boost_flat")
+    for scenario_name in ("flat:far:empty", "flat:far:half", "flat:far:full"):
+        level = create_level_by_name("boost")
         level.set_eval_scenario(scenario_name)
         _game = LanderGame(level=level, seed=19, bot=create_bot("pdg"), headless=True)
         target_site = next(
@@ -274,17 +271,17 @@ def test_boost_flat_weight_tiers_share_same_sampled_route_for_same_seed() -> Non
         )
         target_x_by_weight[scenario_name] = float(target_site.x)
 
-    assert target_x_by_weight["far_empty"] == pytest.approx(
-        target_x_by_weight["far_half"]
+    assert target_x_by_weight["flat:far:empty"] == pytest.approx(
+        target_x_by_weight["flat:far:half"]
     )
-    assert target_x_by_weight["far_half"] == pytest.approx(
-        target_x_by_weight["far_full"]
+    assert target_x_by_weight["flat:far:half"] == pytest.approx(
+        target_x_by_weight["flat:far:full"]
     )
 
 
 def test_pdg_boost_goal_ends_headless_run_early() -> None:
-    level = create_level_by_name("boost_downhill")
-    level.set_eval_scenario("mid_half")
+    level = create_level_by_name("boost")
+    level.set_eval_scenario("downhill:mid:half")
     bot = create_bot("pdg")
     bot.set_eval_goal("boost_cutoff")
     game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="boost_cutoff")
@@ -416,8 +413,8 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
 
 
 def test_boost_flat_run_merges_bot_telemetry_fields_into_result() -> None:
-    level = create_level_by_name("boost_flat")
-    level.set_eval_scenario("near_half")
+    level = create_level_by_name("boost")
+    level.set_eval_scenario("flat:near:half")
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     result = game.run(print_freq=0, max_steps=2, max_time=2.0)
     assert result["scenario_weight_tier"] == "half"
@@ -520,9 +517,9 @@ def test_resolve_batch_plan_expands_explicit_wildcards_without_seed_spec(
     )
     plan = resolve_benchmark_plan(config)
     assert plan == [
-        ResolvedBenchRun(0, "plunge", "low:half", "plunge", "low_half", "landing"),
-        ResolvedBenchRun(0, "plunge", "mid:half", "plunge", "mid_half", "landing"),
-        ResolvedBenchRun(0, "plunge", "high:half", "plunge", "high_half", "landing"),
+        ResolvedBenchRun(0, "plunge", "low:half", "plunge", "low:half", "landing"),
+        ResolvedBenchRun(0, "plunge", "mid:half", "plunge", "mid:half", "landing"),
+        ResolvedBenchRun(0, "plunge", "high:half", "plunge", "high:half", "landing"),
     ]
 
 
@@ -553,9 +550,9 @@ def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
     )
     plan = resolve_benchmark_plan(config)
     assert plan == [
-        ResolvedBenchRun(0, "boost", "flat:far:half", "boost_flat", "far_half", "landing"),
-        ResolvedBenchRun(1, "boost", "flat:far:half", "boost_flat", "far_half", "landing"),
-        ResolvedBenchRun(2, "boost", "flat:far:half", "boost_flat", "far_half", "landing"),
+        ResolvedBenchRun(0, "boost", "flat:far:half", "boost", "flat:far:half", "landing"),
+        ResolvedBenchRun(1, "boost", "flat:far:half", "boost", "flat:far:half", "landing"),
+        ResolvedBenchRun(2, "boost", "flat:far:half", "boost", "flat:far:half", "landing"),
     ]
 
 
@@ -590,8 +587,8 @@ def test_parse_args_accepts_level_goal_selector() -> None:
     assert command.run.bot_name == "pdg"
     assert command.run.level_name == "boost"
     assert command.run.scenario_name == "downhill:mid:half"
-    assert command.run.runtime_level_name == "boost_downhill"
-    assert command.run.runtime_scenario_name == "mid_half"
+    assert command.run.runtime_level_name == "boost"
+    assert command.run.runtime_scenario_name == "downhill:mid:half"
     assert command.run.eval_goal == "boost_cutoff"
 
 
@@ -616,8 +613,8 @@ def test_parse_play_command_accepts_selector_and_bot() -> None:
     assert isinstance(command, RunCommand)
     assert command.run.level_name == "boost"
     assert command.run.scenario_name == "flat:far:half"
-    assert command.run.runtime_level_name == "boost_flat"
-    assert command.run.runtime_scenario_name == "far_half"
+    assert command.run.runtime_level_name == "boost"
+    assert command.run.runtime_scenario_name == "flat:far:half"
     assert command.run.seed == 3
     assert command.run.bot_name == "pdg"
     assert command.run.headless is False
@@ -720,8 +717,8 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
         run_batch_module,
         "resolve_benchmark_plan",
         lambda _cfg: [
-            ResolvedBenchRun(0, "boost", "flat:mid:half", "boost_flat", "mid_half", "landing"),
-            ResolvedBenchRun(1, "boost", "flat:mid:half", "boost_flat", "mid_half", "landing"),
+            ResolvedBenchRun(0, "boost", "flat:mid:half", "boost", "flat:mid:half", "landing"),
+            ResolvedBenchRun(1, "boost", "flat:mid:half", "boost", "flat:mid:half", "landing"),
         ],
     )
 
@@ -758,8 +755,8 @@ def test_plot_command_enables_plot_mode_by_default() -> None:
     assert isinstance(command, RunCommand)
     assert command.run.level_name == "boost"
     assert command.run.scenario_name == "flat:far:half"
-    assert command.run.runtime_level_name == "boost_flat"
-    assert command.run.runtime_scenario_name == "far_half"
+    assert command.run.runtime_level_name == "boost"
+    assert command.run.runtime_scenario_name == "flat:far:half"
     assert command.run.seed == 3
     assert command.run.plot_mode == "all"
     assert command.run.plot_output == "combined"

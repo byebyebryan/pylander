@@ -13,9 +13,9 @@ from core.level_capabilities import (
     set_eval_goal_checked,
     set_eval_scenario_checked,
 )
-from core.selector_catalog import is_public_level, resolve_selector_binding
 from game import LanderGame
 from levels import create_level
+from levels.registry import is_public_level, resolve_selector_binding
 
 from app.config import RunSettings
 from app.reporting import print_headless_results
@@ -27,6 +27,9 @@ def create_level_checked(level_name: str):
     except ImportError as exc:
         raise ValueError(f"Failed to load level '{level_name}': {exc}") from exc
     except ValueError as exc:
+        message = str(exc)
+        if "Unknown level" in message or "was removed" in message:
+            raise ValueError(f"Failed to load level '{level_name}': {exc}") from exc
         raise ValueError(f"Level '{level_name}' failed to initialize: {exc}") from exc
 
 

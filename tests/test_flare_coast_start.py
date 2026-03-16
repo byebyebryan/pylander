@@ -133,8 +133,8 @@ def test_flare_dynamic_tilt_stays_below_overshoot_cap_without_crossing_case() ->
 @pytest.mark.parametrize(
     ("level_name", "scenario_name"),
     (
-        ("terminal_normal", "mid"),
-        ("terminal_error", "mid_tight"),
+        ("terminal", "normal:mid"),
+        ("terminal", "error:mid:tight"),
     ),
 )
 def test_flare_flight_levels_prime_boost_cutoff_and_start_in_coast(
@@ -166,8 +166,8 @@ def test_flare_flight_levels_prime_boost_cutoff_and_start_in_coast(
 
 
 def test_terminal_error_wide_triggers_terminal_gate_before_impact() -> None:
-    level = create_level("terminal_error")
-    level.set_eval_scenario("mid_wide")
+    level = create_level("terminal")
+    level.set_eval_scenario("error:mid:wide")
     bot = create_bot("pdg")
 
     game = LanderGame(level=level, seed=0, bot=bot, headless=True)
@@ -182,8 +182,8 @@ def test_terminal_error_wide_triggers_terminal_gate_before_impact() -> None:
 
 
 def test_flare_flight_levels_can_force_flare_from_spawn() -> None:
-    level = create_level("terminal_normal")
-    level.set_eval_scenario("mid")
+    level = create_level("terminal")
+    level.set_eval_scenario("normal:mid")
     bot = create_bot("pdg")
     bot.apply_config_override({"force_terminal_from_start": True})
 
@@ -201,8 +201,8 @@ def test_flare_flight_levels_can_force_flare_from_spawn() -> None:
 @pytest.mark.parametrize(
     ("level_name", "scenario_name", "max_time"),
     (
-        ("terminal_normal", "mid", 9.0),
-        ("terminal_error", "mid_wide", 7.0),
+        ("terminal", "normal:mid", 9.0),
+        ("terminal", "error:mid:wide", 7.0),
     ),
 )
 def test_terminal_gate_handoff_does_not_execute_probe_pulse(

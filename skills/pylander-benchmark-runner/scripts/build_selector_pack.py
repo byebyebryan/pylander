@@ -16,7 +16,7 @@ from core.level_capabilities import (  # noqa: E402
     BenchmarkLevelPolicy,
     LevelBenchmarkProfile,
 )
-from core.selector_catalog import list_public_levels, resolve_public_level_benchmark_profile  # noqa: E402
+from levels.registry import list_public_levels, resolve_public_level_benchmark_profile  # noqa: E402
 
 
 DEFAULT_SEEDS = {

@@ -63,7 +63,7 @@ def test_pdg_non_flying_status_resets_runtime_state() -> None:
 def test_pdg_snapshot_contains_expected_contract_keys() -> None:
     bot = create_bot("pdg")
     game = LanderGame(
-        level=create_level_by_name("terminal_normal"), seed=0, bot=bot, headless=True
+        level=create_level_by_name("terminal"), seed=0, bot=bot, headless=True
     )
     _ = game.run(print_freq=0, max_steps=60, max_time=20.0)
     snapshot = bot.get_bot_telemetry()
@@ -152,8 +152,8 @@ def test_pdg_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> Non
 
 
 def test_pdg_gate_ordering_invariant_launch_far() -> None:
-    level = create_level_by_name("boost_flat")
-    level.set_eval_scenario("far_half")
+    level = create_level_by_name("boost")
+    level.set_eval_scenario("flat:far:half")
     game = LanderGame(level=level, seed=1, bot=create_bot("pdg"), headless=True)
     result = game.run(print_freq=0, max_time=15.0)
 
@@ -165,8 +165,8 @@ def test_pdg_gate_ordering_invariant_launch_far() -> None:
 
 
 def test_boost_cutoff_waits_for_actual_thrust_shutdown() -> None:
-    level = create_level_by_name("boost_flat")
-    level.set_eval_scenario("mid_half")
+    level = create_level_by_name("boost")
+    level.set_eval_scenario("flat:mid:half")
     bot = create_bot("pdg")
     bot.set_eval_goal("boost_cutoff")
 

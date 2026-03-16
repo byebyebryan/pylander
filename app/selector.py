@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from core.eval_goals import EVAL_GOAL_BOOST_CUTOFF, KNOWN_EVAL_GOAL_SET, normalize_eval_goal
-from core.selector_catalog import list_public_levels, selector_path_looks_like_seed
+from levels.registry import list_public_levels, selector_path_looks_like_seed
 from core.selector_codec import (
     render_record_selector as _render_record_selector,
     render_selector as _render_selector,

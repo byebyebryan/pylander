@@ -20,7 +20,7 @@ from core.level_capabilities import (
     set_eval_goal_checked,
     set_eval_scenario_checked,
 )
-from core.selector_catalog import expand_selector_bindings
+from levels.registry import expand_selector_bindings
 
 _AUTO_RANDOMIZED_BATCH_SEEDS: tuple[int, ...] = tuple(range(10))
 

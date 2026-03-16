@@ -6,7 +6,7 @@ from core.components import PhysicsState, Transform
 from core.level import Level
 from core.maths import Vector2
 from core.ecs import require_component
-from levels.scenario_common import (
+from levels.common_scenarios import (
     ScenarioCatalogMixin,
     ScenarioLevel,
     ScenarioLevelSpec,
@@ -38,7 +38,7 @@ _WEIGHT_TIERS: tuple[tuple[str, float], ...] = (
 
 
 def _scenario_name(alt_tier: str, weight_tier: str) -> str:
-    return f"{alt_tier}_{weight_tier}"
+    return f"{alt_tier}:{weight_tier}"
 
 
 _SCENARIOS: tuple[PlungeScenario, ...] = (
