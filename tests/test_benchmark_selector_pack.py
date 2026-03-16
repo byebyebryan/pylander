@@ -99,9 +99,9 @@ def test_focused_selector_preserves_csv_seed_specs() -> None:
 def test_focused_selector_preserves_goal_slot() -> None:
     pack = selector_pack.build_selectors(
         mode="focused",
-        focused_selectors=["boost:flat:mid:half:boost:0-2"],
+        focused_selectors=["boost:flat:mid:half:boost_cutoff:0-2"],
     )
-    assert pack.selectors == ["boost:flat:mid:half:boost:0-2"]
+    assert pack.selectors == ["boost:flat:mid:half:boost_cutoff:0-2"]
 
 
 def test_focused_selector_group_flare_excludes_plunge() -> None:

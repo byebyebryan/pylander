@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.eval_goals import KNOWN_EVAL_GOAL_SET, normalize_eval_goal
+from core.eval_goals import EVAL_GOAL_BOOST_CUTOFF, KNOWN_EVAL_GOAL_SET, normalize_eval_goal
 from core.selector_catalog import list_public_levels, selector_path_looks_like_seed
 from core.selector_codec import (
     render_record_selector as _render_record_selector,
@@ -99,6 +99,16 @@ def parse_selector(
         known = ", ".join(sorted(known_levels))
         raise ValueError(f"Unknown level '{level_name}'. Expected one of: {known}")
 
+    if goal is None and len(tokens) >= 2 and tokens[-1] == "boost" and level_name == "boost":
+        replacement_tokens = [*tokens[:-1], EVAL_GOAL_BOOST_CUTOFF]
+        if seed_token is not None:
+            replacement_tokens.append(seed_token)
+        replacement = ":".join(replacement_tokens)
+        raise ValueError(
+            f"Invalid selector '{selector}'. Eval goal 'boost' was renamed to "
+            f"'{EVAL_GOAL_BOOST_CUTOFF}'; use '{replacement}'"
+        )
+
     scenario_path = tuple(tokens[1:])
     scenario_name = ":".join(scenario_path) if scenario_path else None
 
@@ -132,6 +142,9 @@ def _legacy_selector_hint(
         seed = tokens.pop()
     if len(tokens) >= 2 and tokens[-1] in KNOWN_EVAL_GOAL_SET:
         goal = tokens.pop()
+    elif len(tokens) >= 2 and tokens[-1] == "boost":
+        goal = EVAL_GOAL_BOOST_CUTOFF
+        tokens.pop()
     if not tokens:
         return None
 

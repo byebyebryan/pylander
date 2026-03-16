@@ -118,11 +118,11 @@ def test_apply_bot_eval_to_result_marks_non_landing_goal_not_reached() -> None:
 
     apply_bot_eval_to_result(
         result=result,
-        eval_goal="boost",
+        eval_goal="boost_cutoff",
         decision=None,
     )
 
-    assert result["eval_goal"] == "boost"
+    assert result["eval_goal"] == "boost_cutoff"
     assert result["eval_early_end"] is False
     assert result["success"] is False
     assert result["failure_mode"] == "goal_not_reached"
@@ -146,7 +146,7 @@ def test_apply_bot_eval_to_result_copies_boost_cutoff_metrics_into_boost_goal() 
 
     apply_bot_eval_to_result(
         result=result,
-        eval_goal="boost",
+        eval_goal="boost_cutoff",
         decision=decision,
     )
 
@@ -176,7 +176,7 @@ def test_apply_bot_eval_to_result_preserves_boost_cutoff_metrics_on_failure() ->
 
     apply_bot_eval_to_result(
         result=result,
-        eval_goal="boost",
+        eval_goal="boost_cutoff",
         decision=decision,
     )
 

@@ -249,7 +249,7 @@ def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
                     success=True,
                     fuel=20.0,
                 ),
-                "eval_goal": "boost",
+                "eval_goal": "boost_cutoff",
             }
         ]
     }
@@ -264,13 +264,13 @@ def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
                     success=False,
                     fuel=24.0,
                 ),
-                "eval_goal": "boost",
+                "eval_goal": "boost_cutoff",
             }
         ]
     }
 
     rows = cached_bench._scenario_regressions(baseline, candidate)
-    assert [str(item["scenario"]) for item in rows] == ["boost:downhill:mid:half:boost"]
+    assert [str(item["scenario"]) for item in rows] == ["boost:downhill:mid:half:boost_cutoff"]
 
 
 def test_global_compute_regression_marks_notable_regression() -> None:

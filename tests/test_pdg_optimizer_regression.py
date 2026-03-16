@@ -36,8 +36,8 @@ def _run_level(
 @pytest.mark.parametrize(
     ("level_name", "scenario", "eval_goal", "max_time", "key", "expected"),
     (
-        ("boost_climb", "mid_half", "boost", 10.0, "boost_cutoff_done", True),
-        ("boost_flat", "mid_half", "boost", 9.0, "boost_cutoff_done", True),
+        ("boost_climb", "mid_half", "boost_cutoff", 10.0, "boost_cutoff_done", True),
+        ("boost_flat", "mid_half", "boost_cutoff", 9.0, "boost_cutoff_done", True),
     ),
 )
 def test_pdg_smoke_plunge_and_setup_milestones_seed0(

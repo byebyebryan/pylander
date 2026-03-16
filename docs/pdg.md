@@ -145,7 +145,7 @@ PYLANDER_PDG_DEBUG_BOOST=1 uv run python main.py sim boost:flat:near:half:0 --bo
 
 Goal-based eval boundary:
 
-- selector goal `boost` (for example `boost:downhill:mid:half:boost:0 --bot pdg`) -> early stop at boost cutoff
+- selector goal `boost_cutoff` (for example `boost:downhill:mid:half:boost_cutoff:0 --bot pdg`) -> early stop at boost cutoff
 - boost-goal success is metric-gated: valid target-y solution, projected dx inside corridor, and impact angle above `boost_descent_angle_deg_min`
 - apex telemetry remains available in `boost_cutoff_*` / `boost_goal_*`, but apex-band matching is no longer part of the boost verdict
 
