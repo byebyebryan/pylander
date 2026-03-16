@@ -67,25 +67,26 @@ def test_flare_dynamic_tilt_relaxes_when_vertical_state_has_recovery_margin() ->
     bot = create_bot("pdg")
 
     base_tilt = bot._resolve_max_tilt(
-        120.0,
         180.0,
+        260.0,
         60.0,
-        dy=-120.0,
+        dy=-180.0,
         phase="flare",
     )
     relaxed_tilt = bot._resolve_max_tilt(
-        120.0,
         180.0,
+        260.0,
         60.0,
-        dy=-120.0,
+        dy=-180.0,
         phase="flare",
-        vy_up=15.0,
+        vy_up=18.0,
         max_thrust_accel=22.0,
-        lateral_dx=-90.0,
+        lateral_dx=-180.0,
     )
 
     assert relaxed_tilt > base_tilt
-    assert relaxed_tilt <= bot._cfg.flare_dynamic_tilt_max + 1e-6
+    assert relaxed_tilt > bot._cfg.flare_dynamic_tilt_max
+    assert relaxed_tilt <= bot._cfg.flare_overshoot_tilt_max + 1e-6
 
 
 def test_flare_dynamic_tilt_stays_near_base_when_vertical_margin_is_tight() -> None:
@@ -110,6 +111,23 @@ def test_flare_dynamic_tilt_stays_near_base_when_vertical_margin_is_tight() -> N
     )
 
     assert tight_tilt == pytest.approx(base_tilt)
+
+
+def test_flare_dynamic_tilt_stays_below_overshoot_cap_without_crossing_case() -> None:
+    bot = create_bot("pdg")
+
+    relaxed_tilt = bot._resolve_max_tilt(
+        180.0,
+        260.0,
+        60.0,
+        dy=-180.0,
+        phase="flare",
+        vy_up=18.0,
+        max_thrust_accel=22.0,
+        lateral_dx=180.0,
+    )
+
+    assert relaxed_tilt <= bot._cfg.flare_dynamic_tilt_max + 1e-6
 
 
 @pytest.mark.parametrize(

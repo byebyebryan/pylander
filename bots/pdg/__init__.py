@@ -519,6 +519,44 @@ class PDGBot(Bot):
         )
         return down_speed_after <= recover_limit
 
+    def _flare_overshoot_tilt_cap(
+        self,
+        *,
+        alt: float,
+        dx: float,
+        lateral_dx: float,
+        vx: float,
+    ) -> float | None:
+        cfg = self._cfg
+        if alt < float(cfg.flare_overshoot_tilt_altitude_min):
+            return None
+        if abs(float(dx)) <= 1e-3 or abs(float(vx)) < float(cfg.flare_overshoot_tilt_vx_min):
+            return None
+        if float(dx) * float(vx) <= 0.0:
+            return None
+        if float(dx) * float(lateral_dx) >= 0.0:
+            return None
+
+        projected_dx_threshold = max(
+            float(cfg.flare_overshoot_tilt_projected_dx_abs),
+            float(cfg.flare_overshoot_tilt_projected_dx_ratio) * float(self._last_target_half),
+        )
+        projected_dx_abs = abs(float(lateral_dx))
+        if projected_dx_abs <= projected_dx_threshold:
+            return None
+
+        base_cap = max(float(cfg.flare_dynamic_tilt_max), 0.0)
+        overshoot_cap = max(base_cap, float(cfg.flare_overshoot_tilt_max))
+        if overshoot_cap <= base_cap + 1e-6:
+            return None
+
+        severity = clamp(
+            (projected_dx_abs - projected_dx_threshold) / max(1e-3, projected_dx_threshold),
+            0.0,
+            1.0,
+        )
+        return base_cap + (severity * (overshoot_cap - base_cap))
+
     def _resolve_safe_flare_max_tilt(
         self,
         alt: float,
@@ -538,10 +576,18 @@ class PDGBot(Bot):
             phase="flare",
         )
         dynamic_cap = max(base_tilt, float(self._cfg.flare_dynamic_tilt_max))
-        if dynamic_cap <= base_tilt + 1e-6:
-            return base_tilt
         height_to_target = max(0.0, -float(dy))
         lateral_miss = float(dx) if lateral_dx is None else float(lateral_dx)
+        overshoot_cap = self._flare_overshoot_tilt_cap(
+            alt=alt,
+            dx=dx,
+            lateral_dx=lateral_miss,
+            vx=vx,
+        )
+        if overshoot_cap is not None:
+            dynamic_cap = max(dynamic_cap, float(overshoot_cap))
+        if dynamic_cap <= base_tilt + 1e-6:
+            return base_tilt
         if not self._flare_tilt_is_recoverable(
             tilt=base_tilt,
             height_to_target=height_to_target,

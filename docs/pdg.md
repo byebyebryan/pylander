@@ -119,6 +119,9 @@ Flare tilt is now recoverability-based instead of a single fixed cap:
 - use the same dynamic flare tilt helper in gate evaluation, flare planning, and
   final actuation clamping so the controller stack does not disagree about what
   is feasible
+- in shallow overshoot cases with strong targetward `vx`, flare may also relax
+  past the normal dynamic cap toward a dedicated overshoot tilt ceiling so the
+  shared controller can spend more thrust laterally instead of lofting upward
 
 ## Telemetry fields
 
@@ -158,6 +161,8 @@ Goal-based eval boundary:
 - setup burn floor / decisiveness: `setup_active_thrust_floor`, `setup_late_thrust_weight`
 - flare-gate strictness: `flare_gate_*`
 - flare lateral-authority ceiling: `flare_dynamic_tilt_max`
+- flare overshoot tilt relaxation:
+  `flare_overshoot_tilt_*`
 
 Centering pressure by phase:
 
