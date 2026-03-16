@@ -12,7 +12,7 @@ from core.bot import (
     FlightPhaseSnapshot,
     PlotMarker,
     Sensors,
-    SetupGateMetrics,
+    BoostCutoffMetrics,
 )
 from game import LanderGame
 from levels import create_level as create_level_by_name
@@ -63,13 +63,13 @@ def test_pdg_non_flying_status_resets_runtime_state() -> None:
 def test_pdg_snapshot_contains_expected_contract_keys() -> None:
     bot = create_bot("pdg")
     game = LanderGame(
-        level=create_level_by_name("flare_normal"), seed=0, bot=bot, headless=True
+        level=create_level_by_name("terminal_normal"), seed=0, bot=bot, headless=True
     )
     _ = game.run(print_freq=0, max_steps=60, max_time=20.0)
     snapshot = bot.get_bot_telemetry()
 
     expected = {
-        "flare_entry_done",
+        "terminal_entry_done",
         "solve_count",
         "solve_ms_mean",
         "fallback_frames",
@@ -80,36 +80,36 @@ def test_pdg_snapshot_contains_expected_contract_keys() -> None:
 
 def test_pdg_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> None:
     bot = create_bot("pdg")
-    bot._active_phase = "flare"
-    bot._setup_gate_done = True
-    bot._setup_gate_time = 6.0
-    bot._setup_gate_altitude = 240.0
-    bot._setup_gate_x = 120.0
-    bot._setup_gate_y = 240.0
-    bot._setup_gate_vx = 8.0
-    bot._setup_gate_vy_up = -12.0
-    bot._setup_gate_projected_dx = 5.0
-    bot._setup_gate_projected_apex_y = 260.0
-    bot._setup_gate_projected_apex_over_target = 40.0
-    bot._setup_gate_has_target_y_solution = True
-    bot._setup_gate_projected_impact_dx = 5.0
-    bot._setup_gate_projected_impact_angle_deg = 63.0
-    bot._setup_gate_burn_duration_s = 6.0
-    bot._setup_gate_burn_fuel_used = 18.0
-    bot._setup_gate_burn_avg_thrust_level = 0.86
-    bot._flare_entry_done = True
-    bot._flare_entry_time = 7.0
-    bot._flare_entry_x = 140.0
-    bot._flare_entry_y = 180.0
-    bot._flare_entry_projected_dx = -4.56
+    bot._active_phase = "terminal"
+    bot._boost_cutoff_done = True
+    bot._boost_cutoff_time = 6.0
+    bot._boost_cutoff_altitude = 240.0
+    bot._boost_cutoff_x = 120.0
+    bot._boost_cutoff_y = 240.0
+    bot._boost_cutoff_vx = 8.0
+    bot._boost_cutoff_vy_up = -12.0
+    bot._boost_cutoff_projected_dx = 5.0
+    bot._boost_cutoff_projected_apex_y = 260.0
+    bot._boost_cutoff_projected_apex_over_target = 40.0
+    bot._boost_cutoff_has_target_y_solution = True
+    bot._boost_cutoff_projected_impact_dx = 5.0
+    bot._boost_cutoff_projected_impact_angle_deg = 63.0
+    bot._boost_cutoff_burn_duration_s = 6.0
+    bot._boost_cutoff_burn_fuel_used = 18.0
+    bot._boost_cutoff_burn_avg_thrust_level = 0.86
+    bot._terminal_entry_done = True
+    bot._terminal_entry_time = 7.0
+    bot._terminal_entry_x = 140.0
+    bot._terminal_entry_y = 180.0
+    bot._terminal_entry_projected_dx = -4.56
 
     phase_snapshot = bot.get_flight_phase_snapshot()
     markers = bot.get_plot_markers()
 
     assert phase_snapshot == FlightPhaseSnapshot(
-        phase="flare",
-        milestones=("setup_gate",),
-        setup_gate=SetupGateMetrics(
+        phase="terminal",
+        milestones=("boost_cutoff",),
+        boost_cutoff=BoostCutoffMetrics(
             time_s=6.0,
             altitude=240.0,
             x=120.0,
@@ -129,9 +129,9 @@ def test_pdg_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> Non
     )
     assert markers == (
         PlotMarker(
-            id="setup_gate",
-            name="setup_gate",
-            label="setup gate",
+            id="boost_cutoff",
+            name="boost_cutoff",
+            label="boost cutoff",
             x=120.0,
             y=240.0,
             metadata={
@@ -141,9 +141,9 @@ def test_pdg_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> Non
             },
         ),
         PlotMarker(
-            id="flare_entry",
-            name="flare_entry",
-            label="flare dx=-4.6",
+            id="terminal_entry",
+            name="terminal_entry",
+            label="terminal dx=-4.6",
             x=140.0,
             y=180.0,
             metadata={"time_s": 7.0},
@@ -152,30 +152,30 @@ def test_pdg_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> Non
 
 
 def test_pdg_gate_ordering_invariant_launch_far() -> None:
-    level = create_level_by_name("setup_flat")
+    level = create_level_by_name("boost_flat")
     level.set_eval_scenario("far_half")
     game = LanderGame(level=level, seed=1, bot=create_bot("pdg"), headless=True)
     result = game.run(print_freq=0, max_time=15.0)
 
-    setup_gate_time = result.get("setup_gate_time")
-    flare_entry_time = result.get("bot_pdg_flare_entry_time")
-    assert isinstance(setup_gate_time, (int, float))
-    assert isinstance(flare_entry_time, (int, float))
-    assert float(setup_gate_time) <= float(flare_entry_time) + 1e-6
+    boost_cutoff_time = result.get("boost_cutoff_time")
+    terminal_entry_time = result.get("bot_pdg_terminal_entry_time")
+    assert isinstance(boost_cutoff_time, (int, float))
+    assert isinstance(terminal_entry_time, (int, float))
+    assert float(boost_cutoff_time) <= float(terminal_entry_time) + 1e-6
 
 
-def test_setup_gate_waits_for_actual_thrust_shutdown() -> None:
-    level = create_level_by_name("setup_flat")
+def test_boost_cutoff_waits_for_actual_thrust_shutdown() -> None:
+    level = create_level_by_name("boost_flat")
     level.set_eval_scenario("mid_half")
     bot = create_bot("pdg")
-    bot.set_eval_goal("setup")
+    bot.set_eval_goal("boost")
 
     gate_samples: list[tuple[float, float, str]] = []
     original_update = bot.update
 
     def wrapped_update(self, dt: float, passive: Sensors) -> BotAction:
         action = original_update(dt, passive)
-        if self._setup_gate_done:
+        if self._boost_cutoff_done:
             gate_samples.append(
                 (
                     float(self._elapsed_time_s),
@@ -186,18 +186,18 @@ def test_setup_gate_waits_for_actual_thrust_shutdown() -> None:
         return action
 
     bot.update = MethodType(wrapped_update, bot)
-    game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="setup")
+    game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="boost")
     result = game.run(print_freq=0, max_time=9.0)
 
     assert gate_samples
-    assert result["setup_gate_done"] is True
-    gate_time = float(result["setup_gate_time"])
+    assert result["boost_cutoff_done"] is True
+    gate_time = float(result["boost_cutoff_time"])
     gate_time_s, gate_thrust, gate_phase = next(
         sample for sample in gate_samples if sample[0] >= (gate_time - 1e-6)
     )
     assert gate_time_s == pytest.approx(gate_time)
-    assert gate_thrust <= float(bot._cfg.setup_gate_idle_thrust_max) + 1e-6
-    assert gate_phase in {"setup", "coast"}
+    assert gate_thrust <= float(bot._cfg.boost_cutoff_idle_thrust_max) + 1e-6
+    assert gate_phase in {"boost", "coast"}
 
 
 def test_direct_descent_terminal_handoff_prefers_touchdown() -> None:
@@ -238,7 +238,7 @@ def test_direct_descent_terminal_handoff_prefers_touchdown() -> None:
     assert stage == FlightStage.TOUCHDOWN
 
 
-def test_setup_controller_honors_touchdown_stage_suggestion_before_setup_gate() -> None:
+def test_boost_controller_honors_touchdown_stage_suggestion_before_boost_cutoff() -> None:
     bot = create_bot("pdg")
     passive = Sensors(
         x=0.0,
@@ -283,7 +283,7 @@ def test_setup_controller_honors_touchdown_stage_suggestion_before_setup_gate() 
         suggested_stage=FlightStage.TOUCHDOWN,
     )
 
-    result = bot._run_setup_controller(ctx=ctx)
+    result = bot._run_boost_controller(ctx=ctx)
 
     assert result.next_stage == FlightStage.TOUCHDOWN
     assert result.action is None

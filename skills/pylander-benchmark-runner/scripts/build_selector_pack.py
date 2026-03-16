@@ -28,8 +28,8 @@ DEFAULT_SEEDS = {
 }
 
 FOCUSED_SELECTOR_GROUPS: dict[str, tuple[str, ...]] = {
-    "flare": ("flare_normal", "flare_error"),
-    "flare_flight": ("flare_normal", "flare_error"),
+    "terminal": ("terminal_normal", "terminal_error"),
+    "terminal_flight": ("terminal_normal", "terminal_error"),
     "plunge": ("plunge",),
     "terminal_plunge": ("plunge",),
 }
@@ -94,7 +94,7 @@ def _split_focused_selectors(values: Iterable[str]) -> list[str]:
         if not raw:
             continue
         # Preserve CSV seed specs for level:scenario:seed_csv selectors.
-        # Example: setup_flat:mid_half:0,1 must stay a single selector.
+        # Example: boost_flat:mid_half:0,1 must stay a single selector.
         if raw.count(":") >= 2:
             out.append(raw)
             continue
@@ -112,7 +112,7 @@ def _resolve_focused_selector_group(
     group_name = token[1:].strip()
     if not group_name:
         raise ValueError(
-            "Empty focused selector group '@'. Expected a token such as @flare"
+            "Empty focused selector group '@'. Expected a token such as @terminal"
         )
 
     levels = FOCUSED_SELECTOR_GROUPS.get(group_name)
@@ -445,7 +445,7 @@ def main() -> None:
         default=[],
         help=(
             "Focused selectors (level[:scenario[:goal[:seed]]]) or group aliases "
-            "(@flare, @flare_flight, @plunge, @terminal_plunge)"
+            "(@terminal, @terminal_flight, @plunge, @terminal_plunge)"
         ),
     )
     ap.add_argument(

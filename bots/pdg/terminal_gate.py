@@ -11,7 +11,7 @@ _GRAVITY_MAG = abs(float(GRAVITY))
 
 
 @dataclass(frozen=True)
-class FlareGateCandidate:
+class TerminalGateCandidate:
     burn_time_s: float
     required_accel_ratio: float
     upward_accel: float
@@ -20,7 +20,7 @@ class FlareGateCandidate:
 
 
 @dataclass(frozen=True)
-class FlareGateDecision:
+class TerminalGateDecision:
     mode: str
     burn_time_s: float
     latest_safe_margin_s: float
@@ -30,7 +30,7 @@ class FlareGateDecision:
 @dataclass(frozen=True)
 class LatestSafeState:
     margin_s: float
-    best_candidate: FlareGateCandidate
+    best_candidate: TerminalGateCandidate
 
 
 def _required_control_accel(
@@ -74,7 +74,7 @@ def _max_tilt(
         float(dx),
         float(vx),
         dy=float(dy),
-        phase="flare",
+        phase="terminal",
         vy_up=float(vy_up),
         max_thrust_accel=float(max_thrust_accel),
         lateral_dx=None if lateral_dx is None else float(lateral_dx),
@@ -103,7 +103,7 @@ def _burn_time_candidates(
         max_thrust_accel=float(tilt_accel),
         lateral_dx=lateral_dx,
     )
-    target_vy_up = float(bot._desired_flare_vy(max(0.0, float(alt)), thrust_accel, max_tilt))
+    target_vy_up = float(bot._desired_terminal_vy(max(0.0, float(alt)), thrust_accel, max_tilt))
     down_speed = max(0.0, -float(passive.vy_up))
     target_down_speed = max(0.0, -target_vy_up)
     vertical_up_accel = max(
@@ -117,26 +117,26 @@ def _burn_time_candidates(
     t_v_nom = max(0.0, down_speed - target_down_speed) / vertical_up_accel
     t_x_nom = abs(float(passive.vx)) / lateral_accel
     burn_time_nom = _clamp(
-        max(t_v_nom, t_x_nom) + float(bot._cfg.flare_gate_nominal_buffer_s),
-        float(bot._cfg.flare_gate_burn_time_min_s),
-        float(bot._cfg.flare_gate_burn_time_max_s),
+        max(t_v_nom, t_x_nom) + float(bot._cfg.terminal_gate_nominal_buffer_s),
+        float(bot._cfg.terminal_gate_burn_time_min_s),
+        float(bot._cfg.terminal_gate_burn_time_max_s),
     )
     candidate_times: list[float] = []
     for raw_time in (
-        burn_time_nom - float(bot._cfg.flare_gate_burn_time_offset_short_s),
+        burn_time_nom - float(bot._cfg.terminal_gate_burn_time_offset_short_s),
         burn_time_nom,
-        burn_time_nom + float(bot._cfg.flare_gate_burn_time_offset_long_s),
+        burn_time_nom + float(bot._cfg.terminal_gate_burn_time_offset_long_s),
     ):
         burn_time = _clamp(
             raw_time,
-            float(bot._cfg.flare_gate_burn_time_min_s),
-            float(bot._cfg.flare_gate_burn_time_max_s),
+            float(bot._cfg.terminal_gate_burn_time_min_s),
+            float(bot._cfg.terminal_gate_burn_time_max_s),
         )
         if any(abs(existing - burn_time) <= 1e-6 for existing in candidate_times):
             continue
         candidate_times.append(burn_time)
     if include_max_time:
-        max_time = float(bot._cfg.flare_gate_burn_time_max_s)
+        max_time = float(bot._cfg.terminal_gate_burn_time_max_s)
         if not any(abs(existing - max_time) <= 1e-6 for existing in candidate_times):
             candidate_times.append(max_time)
     candidate_times.sort()
@@ -154,7 +154,7 @@ def _evaluate_candidate(
     thrust_accel: float,
     ratio_limit: float,
     min_upward_accel: float,
-) -> FlareGateCandidate:
+) -> TerminalGateCandidate:
     ax_req, ay_req = _required_control_accel(
         dx=float(dx),
         dy=float(dy),
@@ -173,7 +173,7 @@ def _evaluate_candidate(
         and tilt_feasible
         and required_ratio <= float(ratio_limit)
     )
-    return FlareGateCandidate(
+    return TerminalGateCandidate(
         burn_time_s=float(burn_time_s),
         required_accel_ratio=float(required_ratio),
         upward_accel=float(ay_req),
@@ -234,7 +234,7 @@ def _latest_safe_state(
         include_max_time=True,
     )
     t_brake_v = down_speed / vertical_up_accel
-    t_brake_x = bot._flare_lateral_correction_time(
+    t_brake_x = bot._terminal_lateral_correction_time(
         dx=lateral_miss,
         vx=float(passive.vx),
         lateral_accel=lateral_accel,
@@ -275,7 +275,7 @@ def _latest_safe_state(
     latest_safe_time = (
         spool_time
         + max(t_brake_v, t_brake_x)
-        + float(bot._cfg.flare_gate_latest_safe_buffer_s)
+        + float(bot._cfg.terminal_gate_latest_safe_buffer_s)
     )
     return LatestSafeState(
         margin_s=float(time_to_impact) - latest_safe_time,
@@ -283,7 +283,7 @@ def _latest_safe_state(
     )
 
 
-def evaluate_flare_gate(
+def evaluate_terminal_gate(
     bot,
     *,
     dt: float,
@@ -296,7 +296,7 @@ def evaluate_flare_gate(
     min_thrust_accel: float,
     nominal_thrust_accel: float,
     thrust_ramp_up: float,
-) -> FlareGateDecision | None:
+) -> TerminalGateDecision | None:
     del dt, min_thrust_accel
 
     latest_safe_state = _latest_safe_state(
@@ -329,30 +329,30 @@ def evaluate_flare_gate(
             target_vy_up=target_vy_up,
             max_tilt=max_tilt,
             thrust_accel=nominal_thrust_accel,
-            ratio_limit=float(bot._cfg.flare_gate_nominal_ratio),
-            min_upward_accel=float(bot._cfg.flare_gate_nominal_min_up_accel),
+            ratio_limit=float(bot._cfg.terminal_gate_nominal_ratio),
+            min_upward_accel=float(bot._cfg.terminal_gate_nominal_min_up_accel),
         )
         for burn_time_s in candidate_times
     ]
     best_nominal = next((candidate for candidate in nominal_candidates if candidate.ready), None)
     if best_nominal is not None:
-        bot._flare_gate_ready_ticks += 1
-        bot._flare_gate_required_accel_ratio = best_nominal.required_accel_ratio
+        bot._terminal_gate_ready_ticks += 1
+        bot._terminal_gate_required_accel_ratio = best_nominal.required_accel_ratio
     else:
-        bot._flare_gate_ready_ticks = 0
-        bot._flare_gate_required_accel_ratio = (
+        bot._terminal_gate_ready_ticks = 0
+        bot._terminal_gate_required_accel_ratio = (
             min(
                 (candidate.required_accel_ratio for candidate in nominal_candidates),
                 default=0.0,
             )
         )
-    bot._flare_gate_latest_safe_margin_s = latest_safe_margin_s
+    bot._terminal_gate_latest_safe_margin_s = latest_safe_margin_s
 
     if (
         best_nominal is not None
-        and bot._flare_gate_ready_ticks >= max(1, int(bot._cfg.flare_gate_hysteresis_ticks))
+        and bot._terminal_gate_ready_ticks >= max(1, int(bot._cfg.terminal_gate_hysteresis_ticks))
     ):
-        return FlareGateDecision(
+        return TerminalGateDecision(
             mode="nominal_ready",
             burn_time_s=best_nominal.burn_time_s,
             latest_safe_margin_s=latest_safe_margin_s,
@@ -360,9 +360,9 @@ def evaluate_flare_gate(
         )
 
     if latest_safe_margin_s <= 0.0:
-        bot._flare_gate_ready_ticks = 0
-        bot._flare_gate_required_accel_ratio = latest_safe_state.best_candidate.required_accel_ratio
-        return FlareGateDecision(
+        bot._terminal_gate_ready_ticks = 0
+        bot._terminal_gate_required_accel_ratio = latest_safe_state.best_candidate.required_accel_ratio
+        return TerminalGateDecision(
             mode="latest_safe",
             burn_time_s=latest_safe_state.best_candidate.burn_time_s,
             latest_safe_margin_s=latest_safe_margin_s,

@@ -130,7 +130,7 @@ def resolve_landed_site_uid(site_specs: tuple[SiteSpec, ...], landed_x: float) -
     return None
 
 
-def apply_setup_transfer_result(
+def apply_transfer_result(
     result: dict[str, Any],
     *,
     state: str,
@@ -139,10 +139,10 @@ def apply_setup_transfer_result(
     target_uid: str,
 ) -> dict[str, Any]:
     arrived = state == "landed" and landed_uid == target_uid
-    result["setup_transfer_source_site_uid"] = source_uid
-    result["setup_transfer_target_site_uid"] = target_uid
-    result["setup_transfer_landed_site_uid"] = landed_uid
-    result["setup_transfer_arrived"] = arrived
+    result["transfer_source_site_uid"] = source_uid
+    result["transfer_target_site_uid"] = target_uid
+    result["transfer_landed_site_uid"] = landed_uid
+    result["transfer_arrived"] = arrived
     result["success"] = arrived
     if arrived:
         result["failure_mode"] = "none"

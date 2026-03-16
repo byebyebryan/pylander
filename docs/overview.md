@@ -4,12 +4,12 @@ Pylander bot work is now centered on a unified in-flight controller (`pdg`) plus
 
 ## Control model
 
-- `pdg`: optimizer-first coupled 2-axis guidance used by default in `setup_flat`, `setup_downhill`, `flare_error`, `setup_climb`, and `flare_normal`.
+- `pdg`: optimizer-first coupled 2-axis guidance used by default in `boost_flat`, `boost_downhill`, `terminal_error`, `boost_climb`, and `terminal_normal`.
 - `plunge`: dedicated plunge benchmark bot for the separate `plunge` level.
 
-Repo shorthand keeps the flare-flight levels (`flare_normal`, `flare_error`) separate from the plunge benchmark (`plunge`).
+Repo shorthand keeps the terminal-flight levels (`terminal_normal`, `terminal_error`) separate from the plunge benchmark (`plunge`).
 
-The in-flight path is a single owner with internal stages (`setup -> coast -> flare -> touchdown`), not inter-bot runtime handoffs. In `pdg`, `coast` remains passive in actuation: zero thrust, retrograde attitude hold, and low-rate flare-gate probing until flare ignition.
+The in-flight path is a single owner with internal stages (`boost -> coast -> terminal -> touchdown`), not inter-bot runtime handoffs. In `pdg`, `coast` remains passive in actuation: zero thrust, retrograde attitude hold, and low-rate terminal-gate probing until terminal ignition.
 
 ## How to iterate
 
@@ -27,8 +27,8 @@ Core metrics from game + batch aggregation:
 - Efficiency: `fuel_consumed`, `fuel_per_distance`, `path_efficiency`
 - Timing: `time`, `time_to_first_land`
 - Eval metadata: `eval_goal`, `eval_early_end`, `eval_end_reason`
-- Generic setup/eval telemetry: `setup_gate_*`, `setup_goal_*`
-  - on `flare_normal` / `flare_error`, `setup_gate_*` is the spawn-time coast-entry snapshot
+- Generic boost/eval telemetry: `boost_cutoff_*`, `boost_goal_*`
+  - on `terminal_normal` / `terminal_error`, `boost_cutoff_*` is the spawn-time coast-entry snapshot
 - Bot-owned diagnostics: `bot_<botname>_*` (for example `bot_pdg_*`)
 
 ## Where things live

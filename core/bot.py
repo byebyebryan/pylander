@@ -88,8 +88,8 @@ class BotEvalDecision:
 
 
 @dataclass(frozen=True)
-class SetupGateMetrics:
-    """Optional shared setup-gate metrics for tuning and evaluation."""
+class BoostCutoffMetrics:
+    """Optional shared boost-cutoff metrics for tuning and evaluation."""
 
     time_s: float | None = None
     altitude: float | None = None
@@ -114,7 +114,7 @@ class FlightPhaseSnapshot:
 
     phase: str | None
     milestones: tuple[str, ...] = ()
-    setup_gate: SetupGateMetrics | None = None
+    boost_cutoff: BoostCutoffMetrics | None = None
 
 
 @dataclass(frozen=True)
@@ -232,9 +232,9 @@ class Bot(ABC):
     def get_eval_goal(self) -> str:
         return self._eval_goal
 
-    def prime_setup_gate(self, setup_gate: SetupGateMetrics) -> None:
-        """Optionally seed a setup-gate milestone before the first update."""
-        _ = setup_gate
+    def prime_boost_cutoff(self, boost_cutoff: BoostCutoffMetrics) -> None:
+        """Optionally seed a boost-cutoff milestone before the first update."""
+        _ = boost_cutoff
 
     def get_evaluation_decision(self) -> BotEvalDecision | None:
         """Return optional evaluation decision for run termination/result shaping."""

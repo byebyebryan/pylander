@@ -40,7 +40,7 @@ class _Plotter:
         self.events.append((name, x, y, label, metadata))
 
 
-def test_track_plot_events_marks_setup_and_flare_entry_once() -> None:
+def test_track_plot_events_marks_setup_and_terminal_entry_once() -> None:
     actor = Entity("lander")
     actor.add_component(Transform(pos=Vector2(10.0, 20.0)))
     world = World()
@@ -51,20 +51,20 @@ def test_track_plot_events_marks_setup_and_flare_entry_once() -> None:
     track_plot_events(
         actor_bots={
             "lander": _Bot(
-                phase_snapshot=FlightPhaseSnapshot(phase="coast", milestones=("setup_gate",)),
+                phase_snapshot=FlightPhaseSnapshot(phase="coast", milestones=("boost_cutoff",)),
                 plot_markers=(
                     PlotMarker(
-                        id="setup_gate",
-                        name="setup_gate",
-                        label="setup gate",
+                        id="boost_cutoff",
+                        name="boost_cutoff",
+                        label="boost cutoff",
                         x=14.0,
                         y=26.0,
                         metadata={"vx": 3.5, "vy_up": -7.0},
                     ),
                     PlotMarker(
-                        id="flare_entry",
-                        name="flare_entry",
-                        label="flare entry pdx=-4.6",
+                        id="terminal_entry",
+                        name="terminal_entry",
+                        label="terminal entry pdx=-4.6",
                     ),
                 ),
             )
@@ -76,20 +76,20 @@ def test_track_plot_events_marks_setup_and_flare_entry_once() -> None:
     track_plot_events(
         actor_bots={
             "lander": _Bot(
-                phase_snapshot=FlightPhaseSnapshot(phase="coast", milestones=("setup_gate",)),
+                phase_snapshot=FlightPhaseSnapshot(phase="coast", milestones=("boost_cutoff",)),
                 plot_markers=(
                     PlotMarker(
-                        id="setup_gate",
-                        name="setup_gate",
-                        label="setup gate",
+                        id="boost_cutoff",
+                        name="boost_cutoff",
+                        label="boost cutoff",
                         x=14.0,
                         y=26.0,
                         metadata={"vx": 3.5, "vy_up": -7.0},
                     ),
                     PlotMarker(
-                        id="flare_entry",
-                        name="flare_entry",
-                        label="flare entry pdx=-4.6",
+                        id="terminal_entry",
+                        name="terminal_entry",
+                        label="terminal entry pdx=-4.6",
                     ),
                 ),
             )
@@ -100,8 +100,8 @@ def test_track_plot_events_marks_setup_and_flare_entry_once() -> None:
     )
 
     assert plotter.events == [
-        ("setup_gate", 14.0, 26.0, "setup gate", {"vx": 3.5, "vy_up": -7.0}),
-        ("flare_entry", 10.0, 20.0, "flare entry pdx=-4.6", {}),
+        ("boost_cutoff", 14.0, 26.0, "boost cutoff", {"vx": 3.5, "vy_up": -7.0}),
+        ("terminal_entry", 10.0, 20.0, "terminal entry pdx=-4.6", {}),
     ]
 
 
@@ -118,7 +118,7 @@ def test_track_plot_events_uses_marker_coordinates_when_provided() -> None:
                 plot_markers=(
                     PlotMarker(
                         id="custom",
-                        name="flare_entry",
+                        name="terminal_entry",
                         label="custom marker",
                         x=42.0,
                         y=84.0,
@@ -131,7 +131,7 @@ def test_track_plot_events_uses_marker_coordinates_when_provided() -> None:
         events_seen=set(),
     )
 
-    assert plotter.events == [("flare_entry", 42.0, 84.0, "custom marker", {})]
+    assert plotter.events == [("terminal_entry", 42.0, 84.0, "custom marker", {})]
 
 
 def test_track_plot_events_ignores_missing_actor_and_empty_markers() -> None:

@@ -78,7 +78,7 @@ Per-case reproduction:
 - crashes
 - low success rate
 - high fuel outliers
-- high setup/coast projected-dx error
+- high boost/coast projected-dx error
 - compute spike risk (`p99` notably above baseline norms for that pack)
 4. Emit top suspect runs and repro commands.
 
@@ -131,9 +131,9 @@ Use these heuristics consistently.
 
 Use available gate and ZEM fields to detect shaping issues:
 
-- high `|setup_gate_projected_dx|` suggests poor setup handoff
-- high `|bot_<botname>_flare_entry_projected_dx|` suggests insufficient passive alignment
-- large gap between setup and flare-entry projected-dx suggests heavy late correction burden
+- high `|boost_cutoff_projected_dx|` suggests poor boost handoff
+- high `|bot_<botname>_terminal_entry_projected_dx|` suggests insufficient passive alignment
+- large gap between boost cutoff and terminal-entry projected-dx suggests heavy late correction burden
 - large `bot_pdg_shape_curve_rmse` / `bot_pdg_shape_apex_error` suggests trajectory shape mismatch
 - gate ordering anomalies (for runs with both timestamps) indicate phase/control bugs
 

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import core.terrain as _terrain
 from core.level import Level
-from levels.setup_base import (
+from levels.boost_base import (
     SOURCE_PAD_X,
     SETUP_WEIGHT_TIERS,
     SetupTransferLevel,
@@ -67,7 +67,7 @@ _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (_DEFAULT_SCENARIO,)
 
 
 class SetupFlatLevel(SetupTransferLevel):
-    """Pad-to-pad flat transfer setup for setup-phase tuning."""
+    """Pad-to-pad flat transfer benchmark for boost-phase tuning."""
 
     _scenario_by_name = _SCENARIO_BY_NAME
     _default_scenario_name = _DEFAULT_SCENARIO

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from core.bot import BotEvalDecision
-from core.eval_goals import EVAL_GOAL_SETUP
+from core.eval_goals import EVAL_GOAL_BOOST
 
 from bots._bot_math import clamp
-from bots.pdg.setup import setup_dx_limit
+from bots.pdg.boost import boost_dx_limit
 
 
 def percentile(values: list[float], p: float) -> float:
@@ -29,53 +29,53 @@ def reset_evaluation_state(
     clear_last_flight_snapshot: bool = False,
 ) -> None:
     bot._elapsed_time_s = 0.0
-    bot._active_phase = "setup"
+    bot._active_phase = "boost"
     bot._active_stage = None
-    bot._setup_gate_done = False
-    bot._setup_gate_time = None
-    bot._setup_gate_altitude = None
-    bot._setup_gate_projected_dx = None
-    bot._setup_gate_projected_apex_y = None
-    bot._setup_gate_projected_apex_over_target = None
-    bot._setup_gate_has_target_y_solution = None
-    bot._setup_gate_projected_impact_dx = None
-    bot._setup_gate_projected_impact_angle_deg = None
-    bot._setup_gate_burn_duration_s = None
-    bot._setup_gate_burn_fuel_used = None
-    bot._setup_gate_burn_avg_thrust_level = None
-    bot._setup_gate_x = None
-    bot._setup_gate_y = None
-    bot._setup_gate_vx = None
-    bot._setup_gate_vy_up = None
-    bot._setup_gate_spawn_primed = False
-    bot._setup_phase_thrust_integral = 0.0
-    bot._setup_phase_fuel_start = None
-    bot._setup_burn_started = False
-    bot._setup_burn_start_time = None
-    bot._setup_burn_idle_since = None
-    bot._setup_cut_latched = False
-    bot._setup_cut_hold_angle = None
-    bot._setup_settle_start_time = None
-    bot._setup_quality_verdict = None
-    bot._setup_gate_quality_pass = None
-    bot._setup_gate_quality_verdict = None
-    bot._flare_entry_done = False
-    bot._flare_entry_time = None
-    bot._flare_entry_altitude = None
-    bot._flare_entry_projected_dx = None
-    bot._flare_entry_x = None
-    bot._flare_entry_y = None
-    bot._flare_gate_ready_ticks = 0
-    bot._flare_probe_count = 0
-    bot._flare_probe_ms_sum = 0.0
-    bot._flare_probe_ms_samples = []
-    bot._flare_gate_mode = None
-    bot._flare_gate_horizon_s = None
-    bot._flare_gate_terminal_speed = None
-    bot._flare_gate_peak_accel_ratio = None
-    bot._flare_gate_od_excess_s = None
-    bot._flare_gate_latest_safe_margin_s = None
-    bot._flare_gate_required_accel_ratio = None
+    bot._boost_cutoff_done = False
+    bot._boost_cutoff_time = None
+    bot._boost_cutoff_altitude = None
+    bot._boost_cutoff_projected_dx = None
+    bot._boost_cutoff_projected_apex_y = None
+    bot._boost_cutoff_projected_apex_over_target = None
+    bot._boost_cutoff_has_target_y_solution = None
+    bot._boost_cutoff_projected_impact_dx = None
+    bot._boost_cutoff_projected_impact_angle_deg = None
+    bot._boost_cutoff_burn_duration_s = None
+    bot._boost_cutoff_burn_fuel_used = None
+    bot._boost_cutoff_burn_avg_thrust_level = None
+    bot._boost_cutoff_x = None
+    bot._boost_cutoff_y = None
+    bot._boost_cutoff_vx = None
+    bot._boost_cutoff_vy_up = None
+    bot._boost_cutoff_spawn_primed = False
+    bot._boost_phase_thrust_integral = 0.0
+    bot._boost_phase_fuel_start = None
+    bot._boost_burn_started = False
+    bot._boost_burn_start_time = None
+    bot._boost_burn_idle_since = None
+    bot._boost_cut_latched = False
+    bot._boost_cut_hold_angle = None
+    bot._boost_settle_start_time = None
+    bot._boost_quality_verdict = None
+    bot._boost_cutoff_quality_pass = None
+    bot._boost_cutoff_quality_verdict = None
+    bot._terminal_entry_done = False
+    bot._terminal_entry_time = None
+    bot._terminal_entry_altitude = None
+    bot._terminal_entry_projected_dx = None
+    bot._terminal_entry_x = None
+    bot._terminal_entry_y = None
+    bot._terminal_gate_ready_ticks = 0
+    bot._terminal_probe_count = 0
+    bot._terminal_probe_ms_sum = 0.0
+    bot._terminal_probe_ms_samples = []
+    bot._terminal_gate_mode = None
+    bot._terminal_gate_horizon_s = None
+    bot._terminal_gate_terminal_speed = None
+    bot._terminal_gate_peak_accel_ratio = None
+    bot._terminal_gate_od_excess_s = None
+    bot._terminal_gate_latest_safe_margin_s = None
+    bot._terminal_gate_required_accel_ratio = None
     bot._last_projection_dx = None
     bot._last_projection_t_fall = None
     bot._last_projection_has_target_y = False
@@ -88,8 +88,8 @@ def reset_evaluation_state(
     bot._clearance_active = False
     bot._uphill_transfer = False
     bot._reset_shape_window_state()
-    bot._debug_setup_last_print_t = -1.0
-    bot._debug_setup_post_end_time = None
+    bot._debug_boost_last_print_t = -1.0
+    bot._debug_boost_post_end_time = None
     if clear_last_flight_snapshot:
         bot._last_flight_snapshot = None
 
@@ -99,8 +99,8 @@ def build_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | None]
     if bot._solve_count > 0:
         solve_ms_mean = bot._solve_ms_sum / max(1, bot._solve_count)
     probe_ms_mean = 0.0
-    if bot._flare_probe_count > 0:
-        probe_ms_mean = bot._flare_probe_ms_sum / max(1, bot._flare_probe_count)
+    if bot._terminal_probe_count > 0:
+        probe_ms_mean = bot._terminal_probe_ms_sum / max(1, bot._terminal_probe_count)
     shape_curve_rmse = bot._shape_curve_rmse()
     shape_projected_dx_abs_mean = bot._shape_projected_dx_abs_mean()
     shape_shortfall_ratio = bot._shape_shortfall_ratio()
@@ -108,25 +108,25 @@ def build_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | None]
         bot._shape_apex_actual_over_target - bot._shape_apex_target_over_target
     )
     return {
-        "flare_entry_done": bot._flare_entry_done,
-        "flare_entry_time": bot._flare_entry_time,
-        "flare_entry_altitude": bot._flare_entry_altitude,
-        "flare_entry_projected_dx": bot._flare_entry_projected_dx,
+        "terminal_entry_done": bot._terminal_entry_done,
+        "terminal_entry_time": bot._terminal_entry_time,
+        "terminal_entry_altitude": bot._terminal_entry_altitude,
+        "terminal_entry_projected_dx": bot._terminal_entry_projected_dx,
         "solve_count": bot._solve_count,
         "solve_ms_mean": solve_ms_mean,
         "solve_ms_p90": percentile(bot._solve_ms_samples, 0.9),
-        "flare_probe_count": bot._flare_probe_count,
-        "flare_probe_ms_mean": probe_ms_mean,
-        "flare_probe_ms_p90": percentile(bot._flare_probe_ms_samples, 0.9),
-        "flare_gate_mode": bot._flare_gate_mode,
-        "flare_gate_horizon_s": bot._flare_gate_horizon_s,
-        "flare_gate_terminal_speed": bot._flare_gate_terminal_speed,
-        "flare_gate_peak_accel_ratio": bot._flare_gate_peak_accel_ratio,
-        "flare_gate_od_excess_s": bot._flare_gate_od_excess_s,
-        "flare_gate_latest_safe_margin_s": bot._flare_gate_latest_safe_margin_s,
-        "flare_gate_required_accel_ratio": bot._flare_gate_required_accel_ratio,
+        "terminal_probe_count": bot._terminal_probe_count,
+        "terminal_probe_ms_mean": probe_ms_mean,
+        "terminal_probe_ms_p90": percentile(bot._terminal_probe_ms_samples, 0.9),
+        "terminal_gate_mode": bot._terminal_gate_mode,
+        "terminal_gate_horizon_s": bot._terminal_gate_horizon_s,
+        "terminal_gate_terminal_speed": bot._terminal_gate_terminal_speed,
+        "terminal_gate_peak_accel_ratio": bot._terminal_gate_peak_accel_ratio,
+        "terminal_gate_od_excess_s": bot._terminal_gate_od_excess_s,
+        "terminal_gate_latest_safe_margin_s": bot._terminal_gate_latest_safe_margin_s,
+        "terminal_gate_required_accel_ratio": bot._terminal_gate_required_accel_ratio,
         "fallback_frames": bot._fallback_frames,
-        "setup_quality_verdict": bot._setup_gate_quality_verdict or bot._setup_quality_verdict,
+        "boost_quality_verdict": bot._boost_cutoff_quality_verdict or bot._boost_quality_verdict,
         "shape_apex_error": shape_apex_error,
         "shape_curve_rmse": shape_curve_rmse,
         "shape_projected_dx_abs_mean": shape_projected_dx_abs_mean,
@@ -139,8 +139,8 @@ def resolve_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | Non
     snapshot = build_evaluation_snapshot(bot)
     has_live_progress = (
         int(snapshot.get("solve_count") or 0) > 0
-        or int(snapshot.get("flare_probe_count") or 0) > 0
-        or bool(snapshot.get("flare_entry_done"))
+        or int(snapshot.get("terminal_probe_count") or 0) > 0
+        or bool(snapshot.get("terminal_entry_done"))
         or snapshot.get("shape_curve_rmse") is not None
         or bot._shape_projected_dx_count > 0
     )
@@ -150,14 +150,14 @@ def resolve_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | Non
 
 
 def build_evaluation_decision(bot) -> BotEvalDecision | None:
-    if bot.get_eval_goal() != EVAL_GOAL_SETUP:
+    if bot.get_eval_goal() != EVAL_GOAL_BOOST:
         return None
-    if not bot._setup_gate_done:
+    if not bot._boost_cutoff_done:
         return None
-    dx_limit = setup_dx_limit(bot)
-    has_target_y = bool(bot._setup_gate_has_target_y_solution)
-    projected_dx = bot._setup_gate_projected_dx
-    impact_angle = bot._setup_gate_projected_impact_angle_deg
+    dx_limit = boost_dx_limit(bot)
+    has_target_y = bool(bot._boost_cutoff_has_target_y_solution)
+    projected_dx = bot._boost_cutoff_projected_dx
+    impact_angle = bot._boost_cutoff_projected_impact_angle_deg
     verdict = "pass"
     success = True
     if not has_target_y:
@@ -169,14 +169,14 @@ def build_evaluation_decision(bot) -> BotEvalDecision | None:
     elif impact_angle is None:
         verdict = "angle"
         success = False
-    elif float(impact_angle) < float(bot._cfg.setup_descent_angle_deg_min):
+    elif float(impact_angle) < float(bot._cfg.boost_descent_angle_deg_min):
         verdict = "angle"
         success = False
-    bot._setup_gate_quality_pass = success
-    bot._setup_gate_quality_verdict = verdict
-    metrics = {"setup_quality_verdict": verdict}
+    bot._boost_cutoff_quality_pass = success
+    bot._boost_cutoff_quality_verdict = verdict
+    metrics = {"boost_quality_verdict": verdict}
     if success:
-        metrics["setup_quality_pass"] = True
+        metrics["boost_quality_pass"] = True
         return BotEvalDecision(
             should_end=True,
             success=True,
@@ -187,7 +187,7 @@ def build_evaluation_decision(bot) -> BotEvalDecision | None:
     return BotEvalDecision(
         should_end=True,
         success=False,
-        failure_mode="setup_quality_failed",
-        end_reason="setup_quality_failed",
+        failure_mode="boost_quality_failed",
+        end_reason="boost_quality_failed",
         metrics=metrics,
     )

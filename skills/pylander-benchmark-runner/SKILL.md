@@ -57,7 +57,7 @@ Goal is optional and defaults to `landing`. `seed_spec` supports ranges and CSV:
   - Uses caller-selected scope.
   - If caller provides only `level`, expand to that level profile's `full` scenarios.
   - Focused selectors also accept group aliases:
-    - `@flare` / `@flare_flight` -> `flare_normal`, `flare_error`
+    - `@terminal` / `@terminal_flight` -> `terminal_normal`, `terminal_error`
     - `@plunge` / `@terminal_plunge` -> `plunge`
   - Explicit selectors always run even if a level is marked `excluded`.
   - Default seeds for unseeded selectors: `0-9`.
@@ -138,13 +138,13 @@ Examples:
 
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode smoke`
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode full --seed-spec 0-19`
-- `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode focused --selectors setup_flat:far_half setup_downhill`
-- `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode focused --selectors @flare`
-- `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode quick --exclude-levels flat,mountains --observe-only-levels setup_climb`
+- `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode focused --selectors boost_flat:far_half boost_downhill`
+- `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode focused --selectors @terminal`
+- `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode quick --exclude-levels flat,mountains --observe-only-levels boost_climb`
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode quick --bot-profile --no-bot-profile-logs`
 - `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main`
 - `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot-profile --no-bot-profile-logs`
-- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors @flare --seed-spec 0-9 --baseline-ref main`
-- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors setup_downhill setup_flat:far_half --seed-spec 0-9 --baseline-ref main`
-- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode full --baseline-ref main --exclude-levels flat,mountains --observe-only-levels setup_climb`
-- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors setup_flat:far_half --seed-spec 0-4 --bot-config configs/zem_tuning.json`
+- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors @terminal --seed-spec 0-9 --baseline-ref main`
+- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors boost_downhill boost_flat:far_half --seed-spec 0-9 --baseline-ref main`
+- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode full --baseline-ref main --exclude-levels flat,mountains --observe-only-levels boost_climb`
+- `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors boost_flat:far_half --seed-spec 0-4 --bot-config configs/zem_tuning.json`

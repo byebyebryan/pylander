@@ -7,7 +7,7 @@ from core.bot import FlightPhaseSnapshot, PlotMarker
 from core.components import Transform
 
 _SHARED_MILESTONE_LABELS: dict[str, tuple[str, str]] = {
-    "setup_gate": ("setup_gate", "setup gate"),
+    "boost_cutoff": ("boost_cutoff", "boost cutoff"),
 }
 
 

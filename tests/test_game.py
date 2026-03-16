@@ -23,8 +23,8 @@ def test_bot_registry_exposes_only_supported_bots() -> None:
     assert "plunge" in bots
     assert "pdg" in bots
     assert "coast" not in bots
-    assert "flare" not in bots
-    assert "setup" not in bots
+    assert "terminal" not in bots
+    assert "boost" not in bots
     assert "launch" not in bots
 
     plunge_bot = create_bot("plunge")
@@ -37,19 +37,19 @@ def test_bot_registry_exposes_only_supported_bots() -> None:
 
 def test_create_bot_rejects_config_override_for_unsupported_bot() -> None:
     with pytest.raises(ValueError, match="does not support --bot-config"):
-        create_bot("plunge", config_override={"setup_gate_projected_dx_abs": 42.0})
+        create_bot("plunge", config_override={"boost_cutoff_projected_dx_abs": 42.0})
 
 
 def test_create_bot_applies_pdg_bot_config_override() -> None:
     bot = create_bot(
         "pdg",
         config_override={
-            "setup_gate_projected_dx_abs": 42.0,
+            "boost_cutoff_projected_dx_abs": 42.0,
             "fallback_hold_steps": 10.0,
         },
     )
     cfg = getattr(bot, "_cfg")
-    assert float(cfg.setup_gate_projected_dx_abs) == pytest.approx(42.0)
+    assert float(cfg.boost_cutoff_projected_dx_abs) == pytest.approx(42.0)
     assert int(cfg.fallback_hold_steps) == 10
 
 
@@ -58,17 +58,17 @@ def test_level_registry_still_includes_phase_levels() -> None:
     assert "flare_plunge" not in levels
     for name in (
         "plunge",
-        "flare_normal",
-        "flare_error",
-        "setup_downhill",
-        "setup_flat",
-        "setup_climb",
+        "terminal_normal",
+        "terminal_error",
+        "boost_downhill",
+        "boost_flat",
+        "boost_climb",
     ):
         assert name in levels
 
 
-def test_flare_error_level_scenario_names_are_clean_and_prefixed_removed() -> None:
-    level = create_level_by_name("flare_error")
+def test_terminal_error_level_scenario_names_are_clean_and_prefixed_removed() -> None:
+    level = create_level_by_name("terminal_error")
     assert level.list_batch_scenarios() == [
         "shallower_tight",
         "shallower_wide",
@@ -88,8 +88,8 @@ def test_flare_error_level_scenario_names_are_clean_and_prefixed_removed() -> No
     ]
 
 
-def test_setup_downhill_level_scenario_names_are_clean_and_prefixed_removed() -> None:
-    level = create_level_by_name("setup_downhill")
+def test_boost_downhill_level_scenario_names_are_clean_and_prefixed_removed() -> None:
+    level = create_level_by_name("boost_downhill")
     assert level.list_batch_scenarios() == [
         "low_empty",
         "low_half",
@@ -108,8 +108,8 @@ def test_setup_downhill_level_scenario_names_are_clean_and_prefixed_removed() ->
     ]
 
 
-def test_setup_climb_level_scenario_names_are_clean_and_prefixed_removed() -> None:
-    level = create_level_by_name("setup_climb")
+def test_boost_climb_level_scenario_names_are_clean_and_prefixed_removed() -> None:
+    level = create_level_by_name("boost_climb")
     assert level.list_batch_scenarios() == [
         "low_empty",
         "low_half",
@@ -128,8 +128,8 @@ def test_setup_climb_level_scenario_names_are_clean_and_prefixed_removed() -> No
     ]
 
 
-def test_setup_flat_level_scenario_names_are_weighted() -> None:
-    level = create_level_by_name("setup_flat")
+def test_boost_flat_level_scenario_names_are_weighted() -> None:
+    level = create_level_by_name("boost_flat")
     assert level.list_batch_scenarios() == [
         "near_empty",
         "near_half",
@@ -144,8 +144,8 @@ def test_setup_flat_level_scenario_names_are_weighted() -> None:
     assert level.list_quick_benchmark_scenarios() == ["mid_half"]
 
 
-def test_setup_climb_rejects_unknown_scenario() -> None:
-    level = create_level_by_name("setup_climb")
+def test_boost_climb_rejects_unknown_scenario() -> None:
+    level = create_level_by_name("boost_climb")
     with pytest.raises(ValueError, match="Unknown setupclimb scenario"):
         level.set_eval_scenario("bad")
 
@@ -153,9 +153,9 @@ def test_setup_climb_rejects_unknown_scenario() -> None:
 @pytest.mark.parametrize(
     ("level_name", "legacy_scenario"),
     (
-        ("setup_flat", "mid"),
-        ("setup_downhill", "mid"),
-        ("setup_climb", "mid"),
+        ("boost_flat", "mid"),
+        ("boost_downhill", "mid"),
+        ("boost_climb", "mid"),
     ),
 )
 def test_setup_levels_reject_legacy_bare_scenarios(
@@ -166,21 +166,21 @@ def test_setup_levels_reject_legacy_bare_scenarios(
         level.set_eval_scenario(legacy_scenario)
 
 
-@pytest.mark.parametrize("level_name", ["setup_flat", "setup_downhill", "setup_climb"])
+@pytest.mark.parametrize("level_name", ["boost_flat", "boost_downhill", "boost_climb"])
 def test_setup_levels_default_to_mid_half(level_name: str) -> None:
     level = create_level_by_name(level_name)
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     assert game.level.scenario_name == "mid_half"
 
 
-def test_setup_climb_target_is_terrain_bound_flush_pad() -> None:
-    level = create_level_by_name("setup_climb")
+def test_boost_climb_target_is_terrain_bound_flush_pad() -> None:
+    level = create_level_by_name("boost_climb")
     level.set_eval_scenario("mid_half")
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     target = next(
         site
         for site in game.level.world.site_entities
-        if site.uid == "setup_transfer_target"
+        if site.uid == "transfer_target"
     )
     shape = target.get_component(LandingSite)
     assert shape is not None
@@ -188,16 +188,16 @@ def test_setup_climb_target_is_terrain_bound_flush_pad() -> None:
     assert shape.terrain_bound is True
 
 
-@pytest.mark.parametrize("level_name", ["setup_climb", "setup_flat", "setup_downhill"])
+@pytest.mark.parametrize("level_name", ["boost_climb", "boost_flat", "boost_downhill"])
 def test_landed_site_uid_requires_pad_overlap(level_name: str) -> None:
     level = create_level_by_name(level_name)
     level.set_eval_scenario("mid_half")
     _game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     target = next(
-        spec for spec in level.site_specs if spec.uid == "setup_transfer_target"
+        spec for spec in level.site_specs if spec.uid == "transfer_target"
     )
     half = 0.5 * float(target.size)
-    assert level._resolve_landed_site_uid(float(target.x)) == "setup_transfer_target"
+    assert level._resolve_landed_site_uid(float(target.x)) == "transfer_target"
     assert level._resolve_landed_site_uid(float(target.x) + half + 2.0) is None
 
 
@@ -219,28 +219,28 @@ def _spawn_state(
     )
 
 
-def test_setup_and_flare_error_scenarios_are_seed_deterministic() -> None:
-    setup_a = _spawn_state("setup_downhill", "mid_half", 42)
-    setup_b = _spawn_state("setup_downhill", "mid_half", 42)
+def test_setup_and_terminal_error_scenarios_are_seed_deterministic() -> None:
+    setup_a = _spawn_state("boost_downhill", "mid_half", 42)
+    setup_b = _spawn_state("boost_downhill", "mid_half", 42)
     assert setup_a == pytest.approx(setup_b)
 
-    coast_a = _spawn_state("flare_error", "mid_tight", 42)
-    coast_b = _spawn_state("flare_error", "mid_tight", 42)
+    coast_a = _spawn_state("terminal_error", "mid_tight", 42)
+    coast_b = _spawn_state("terminal_error", "mid_tight", 42)
     assert coast_a == pytest.approx(coast_b)
 
-    climb_a = _spawn_state("setup_climb", "mid_half", 42)
-    climb_b = _spawn_state("setup_climb", "mid_half", 42)
+    climb_a = _spawn_state("boost_climb", "mid_half", 42)
+    climb_b = _spawn_state("boost_climb", "mid_half", 42)
     assert climb_a == pytest.approx(climb_b)
 
 
 @pytest.mark.parametrize(
     ("level_name", "scenario_name", "expected_cargo_mass", "expected_cargo_fraction"),
     (
-        ("setup_flat", "near_empty", 0.0, 0.0),
-        ("setup_flat", "near_half", 3000.0, 0.5),
-        ("setup_flat", "near_full", 6000.0, 1.0),
-        ("setup_downhill", "mid_half", 3000.0, 0.5),
-        ("setup_climb", "high_full", 6000.0, 1.0),
+        ("boost_flat", "near_empty", 0.0, 0.0),
+        ("boost_flat", "near_half", 3000.0, 0.5),
+        ("boost_flat", "near_full", 6000.0, 1.0),
+        ("boost_downhill", "mid_half", 3000.0, 0.5),
+        ("boost_climb", "high_full", 6000.0, 1.0),
     ),
 )
 def test_setup_levels_apply_weight_tier_mass_and_params(
@@ -263,14 +263,14 @@ def test_setup_levels_apply_weight_tier_mass_and_params(
     )
 
 
-def test_setup_flat_weight_tiers_share_same_sampled_route_for_same_seed() -> None:
+def test_boost_flat_weight_tiers_share_same_sampled_route_for_same_seed() -> None:
     target_x_by_weight: dict[str, float] = {}
     for scenario_name in ("far_empty", "far_half", "far_full"):
-        level = create_level_by_name("setup_flat")
+        level = create_level_by_name("boost_flat")
         level.set_eval_scenario(scenario_name)
         _game = LanderGame(level=level, seed=19, bot=create_bot("pdg"), headless=True)
         target_site = next(
-            spec for spec in level.site_specs if spec.uid == "setup_transfer_target"
+            spec for spec in level.site_specs if spec.uid == "transfer_target"
         )
         target_x_by_weight[scenario_name] = float(target_site.x)
 
@@ -282,26 +282,26 @@ def test_setup_flat_weight_tiers_share_same_sampled_route_for_same_seed() -> Non
     )
 
 
-def test_pdg_setup_goal_ends_headless_run_early() -> None:
-    level = create_level_by_name("setup_downhill")
+def test_pdg_boost_goal_ends_headless_run_early() -> None:
+    level = create_level_by_name("boost_downhill")
     level.set_eval_scenario("mid_half")
     bot = create_bot("pdg")
-    bot.set_eval_goal("setup")
-    game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="setup")
+    bot.set_eval_goal("boost")
+    game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="boost")
 
     result = game.run(print_freq=0, max_time=120.0)
-    assert result["eval_goal"] == "setup"
+    assert result["eval_goal"] == "boost"
     assert result["eval_early_end"] is True
-    assert result["setup_gate_done"] is True
-    assert result["setup_goal_done"] is True
-    assert result["setup_goal_has_target_y_solution"] is True
-    assert result["setup_goal_projected_impact_angle_deg"] is not None
+    assert result["boost_cutoff_done"] is True
+    assert result["boost_goal_done"] is True
+    assert result["boost_goal_has_target_y_solution"] is True
+    assert result["boost_goal_projected_impact_angle_deg"] is not None
     if result["success"]:
         assert result["failure_mode"] == "none"
-        assert result["setup_quality_verdict"] == "pass"
+        assert result["boost_quality_verdict"] == "pass"
     else:
-        assert result["failure_mode"] == "setup_quality_failed"
-        assert result["setup_quality_verdict"] in {
+        assert result["failure_mode"] == "boost_quality_failed"
+        assert result["boost_quality_verdict"] in {
             "dx",
             "angle",
             "no_target_y_solution",
@@ -312,7 +312,7 @@ def test_non_landing_goal_without_decision_fails_goal_not_reached() -> None:
     class _NoGoalBot(Bot):
         def set_eval_goal(self, goal: str) -> None:
             key = str(goal or "landing").strip().lower()
-            if key not in {"landing", "setup"}:
+            if key not in {"landing", "boost"}:
                 raise ValueError("unsupported goal")
             self._eval_goal = key
 
@@ -321,17 +321,17 @@ def test_non_landing_goal_without_decision_fails_goal_not_reached() -> None:
             return BotAction(target_thrust=0.0, target_angle=0.0, refuel=False)
 
     bot = _NoGoalBot()
-    bot.set_eval_goal("setup")
+    bot.set_eval_goal("boost")
     game = LanderGame(
         level=create_level_by_name("flat"),
         seed=0,
         bot=bot,
         headless=True,
-        eval_goal="setup",
+        eval_goal="boost",
     )
     result = game.run(print_freq=0, max_steps=5, max_time=5.0)
 
-    assert result["eval_goal"] == "setup"
+    assert result["eval_goal"] == "boost"
     assert result["eval_early_end"] is False
     assert result["success"] is False
     assert result["failure_mode"] == "goal_not_reached"
@@ -340,40 +340,40 @@ def test_non_landing_goal_without_decision_fails_goal_not_reached() -> None:
 def test_normalize_run_result_uses_canonical_eval_fields() -> None:
     record = normalize_run_result(
         bot_name="pdg",
-        level_name="setup_downhill",
+        level_name="boost_downhill",
         scenario="mid_half",
         seed=3,
         result={
             "state": "flying",
             "success": True,
-            "eval_goal": "setup",
+            "eval_goal": "boost",
             "eval_early_end": True,
             "eval_end_reason": "goal_reached",
-            "setup_goal_done": True,
-            "setup_goal_time": 6.0,
-            "setup_goal_altitude": 120.0,
-            "setup_goal_projected_apex_y": 180.0,
-            "setup_goal_projected_apex_over_target": 60.0,
-            "setup_goal_has_target_y_solution": True,
-            "setup_goal_projected_dx": 8.0,
-            "setup_goal_projected_impact_angle_deg": 57.0,
-            "setup_goal_burn_avg_thrust_level": 0.84,
-            "setup_gate_done": True,
-            "setup_gate_time": 6.0,
-            "setup_gate_altitude": 120.0,
-            "setup_gate_projected_apex_y": 180.0,
-            "setup_gate_projected_apex_over_target": 60.0,
-            "setup_gate_has_target_y_solution": True,
-            "setup_gate_projected_dx": 8.0,
-            "setup_gate_projected_impact_angle_deg": 57.0,
-            "setup_gate_burn_duration_s": 6.0,
-            "setup_gate_burn_fuel_used": 17.0,
-            "setup_gate_burn_avg_thrust_level": 0.84,
-            "setup_transfer_arrived": False,
-            "bot_pdg_flare_entry_done": True,
-            "bot_pdg_flare_entry_time": 8.6,
-            "bot_pdg_flare_entry_altitude": 72.0,
-            "bot_pdg_flare_entry_projected_dx": 4.5,
+            "boost_goal_done": True,
+            "boost_goal_time": 6.0,
+            "boost_goal_altitude": 120.0,
+            "boost_goal_projected_apex_y": 180.0,
+            "boost_goal_projected_apex_over_target": 60.0,
+            "boost_goal_has_target_y_solution": True,
+            "boost_goal_projected_dx": 8.0,
+            "boost_goal_projected_impact_angle_deg": 57.0,
+            "boost_goal_burn_avg_thrust_level": 0.84,
+            "boost_cutoff_done": True,
+            "boost_cutoff_time": 6.0,
+            "boost_cutoff_altitude": 120.0,
+            "boost_cutoff_projected_apex_y": 180.0,
+            "boost_cutoff_projected_apex_over_target": 60.0,
+            "boost_cutoff_has_target_y_solution": True,
+            "boost_cutoff_projected_dx": 8.0,
+            "boost_cutoff_projected_impact_angle_deg": 57.0,
+            "boost_cutoff_burn_duration_s": 6.0,
+            "boost_cutoff_burn_fuel_used": 17.0,
+            "boost_cutoff_burn_avg_thrust_level": 0.84,
+            "transfer_arrived": False,
+            "bot_pdg_terminal_entry_done": True,
+            "bot_pdg_terminal_entry_time": 8.6,
+            "bot_pdg_terminal_entry_altitude": 72.0,
+            "bot_pdg_terminal_entry_projected_dx": 4.5,
             "bot_pdg_solve_count": 32,
             "bot_pdg_solve_ms_mean": 3.2,
             "bot_pdg_solve_ms_p90": 7.4,
@@ -386,24 +386,24 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
         },
     )
     assert record["success"] is True
-    assert record["eval_goal"] == "setup"
+    assert record["eval_goal"] == "boost"
     assert record["eval_early_end"] is True
     assert record["eval_end_reason"] == "goal_reached"
-    assert record["setup_goal_done"] is True
-    assert record["setup_goal_time"] == pytest.approx(6.0)
-    assert record["setup_goal_altitude"] == pytest.approx(120.0)
-    assert record["setup_goal_projected_apex_over_target"] == pytest.approx(60.0)
-    assert record["setup_goal_has_target_y_solution"] is True
-    assert record["setup_goal_projected_dx"] == pytest.approx(8.0)
-    assert record["setup_goal_projected_impact_angle_deg"] == pytest.approx(57.0)
-    assert record["setup_gate_done"] is True
-    assert record["setup_gate_burn_duration_s"] == pytest.approx(6.0)
-    assert record["setup_gate_burn_fuel_used"] == pytest.approx(17.0)
-    assert record["setup_transfer_arrived"] is False
-    assert record["bot_pdg_flare_entry_done"] is True
-    assert record["bot_pdg_flare_entry_time"] == pytest.approx(8.6)
-    assert record["bot_pdg_flare_entry_altitude"] == pytest.approx(72.0)
-    assert record["bot_pdg_flare_entry_projected_dx"] == pytest.approx(4.5)
+    assert record["boost_goal_done"] is True
+    assert record["boost_goal_time"] == pytest.approx(6.0)
+    assert record["boost_goal_altitude"] == pytest.approx(120.0)
+    assert record["boost_goal_projected_apex_over_target"] == pytest.approx(60.0)
+    assert record["boost_goal_has_target_y_solution"] is True
+    assert record["boost_goal_projected_dx"] == pytest.approx(8.0)
+    assert record["boost_goal_projected_impact_angle_deg"] == pytest.approx(57.0)
+    assert record["boost_cutoff_done"] is True
+    assert record["boost_cutoff_burn_duration_s"] == pytest.approx(6.0)
+    assert record["boost_cutoff_burn_fuel_used"] == pytest.approx(17.0)
+    assert record["transfer_arrived"] is False
+    assert record["bot_pdg_terminal_entry_done"] is True
+    assert record["bot_pdg_terminal_entry_time"] == pytest.approx(8.6)
+    assert record["bot_pdg_terminal_entry_altitude"] == pytest.approx(72.0)
+    assert record["bot_pdg_terminal_entry_projected_dx"] == pytest.approx(4.5)
     assert record["bot_pdg_solve_count"] == pytest.approx(32.0)
     assert record["bot_pdg_solve_ms_mean"] == pytest.approx(3.2)
     assert record["bot_pdg_solve_ms_p90"] == pytest.approx(7.4)
@@ -415,8 +415,8 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
     assert record["bot_pdg_shape_shortfall_ratio"] == pytest.approx(0.12)
 
 
-def test_setup_flat_run_merges_bot_telemetry_fields_into_result() -> None:
-    level = create_level_by_name("setup_flat")
+def test_boost_flat_run_merges_bot_telemetry_fields_into_result() -> None:
+    level = create_level_by_name("boost_flat")
     level.set_eval_scenario("near_half")
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     result = game.run(print_freq=0, max_steps=2, max_time=2.0)
@@ -431,16 +431,16 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
     records = [
         normalize_run_result(
             bot_name="pdg",
-            level_name="setup_downhill",
+            level_name="boost_downhill",
             scenario="mid_half",
             seed=0,
             result={
                 "state": "flying",
                 "success": True,
-                "eval_goal": "setup",
+                "eval_goal": "boost",
                 "eval_early_end": True,
-                "setup_goal_done": True,
-                "setup_goal_time": 6.0,
+                "boost_goal_done": True,
+                "boost_goal_time": 6.0,
             },
         )
     ]
@@ -449,7 +449,7 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
     assert summary["successes"] == 1
     assert summary["success_rate"] == pytest.approx(1.0)
     assert summary["by_scenario"]["mid_half"]["success_rate"] == pytest.approx(1.0)
-    assert summary["by_selector"]["setup_downhill:mid_half:setup"][
+    assert summary["by_selector"]["boost_downhill:mid_half:boost"][
         "success_rate"
     ] == pytest.approx(1.0)
 
@@ -532,7 +532,7 @@ def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
         bot_config_path=None,
         selectors=(
             BenchTarget(
-                level_name="setup_flat", scenario_name="far_half", seed_spec="0-2,2"
+                level_name="boost_flat", scenario_name="far_half", seed_spec="0-2,2"
             ),
         ),
         lander_name=None,
@@ -550,9 +550,9 @@ def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
     )
     plan = resolve_benchmark_plan(config)
     assert plan == [
-        ResolvedBenchRun(0, "setup_flat", "far_half", "landing"),
-        ResolvedBenchRun(1, "setup_flat", "far_half", "landing"),
-        ResolvedBenchRun(2, "setup_flat", "far_half", "landing"),
+        ResolvedBenchRun(0, "boost_flat", "far_half", "landing"),
+        ResolvedBenchRun(1, "boost_flat", "far_half", "landing"),
+        ResolvedBenchRun(2, "boost_flat", "far_half", "landing"),
     ]
 
 
@@ -569,23 +569,23 @@ def test_hud_display_state_prefers_structured_display_state() -> None:
             return BotDisplayState(
                 bot_name="pdg",
                 mode="opt",
-                phase="setup",
+                phase="boost",
                 summary="dx=12.3 pdx=-4.0",
             )
 
     display = resolve_bot_display_state(_Bot())
     assert display is not None
     assert display.bot_name == "pdg"
-    assert display.phase == "setup"
+    assert display.phase == "boost"
 
 
 def test_parse_args_accepts_level_goal_selector() -> None:
     _parser, command = parse_command(
-        ["sim", "setup_downhill:mid_half:setup:0", "--bot", "pdg"]
+        ["sim", "boost_downhill:mid_half:boost:0", "--bot", "pdg"]
     )
     assert isinstance(command, RunCommand)
     assert command.run.bot_name == "pdg"
-    assert command.run.eval_goal == "setup"
+    assert command.run.eval_goal == "boost"
 
 
 def test_cli_requires_subcommand() -> None:
@@ -605,9 +605,9 @@ def test_parse_play_command_uses_interactive_defaults() -> None:
 
 
 def test_parse_play_command_accepts_selector_and_bot() -> None:
-    _parser, command = parse_command(["play", "setup_flat:far_half:3", "--bot", "pdg"])
+    _parser, command = parse_command(["play", "boost_flat:far_half:3", "--bot", "pdg"])
     assert isinstance(command, RunCommand)
-    assert command.run.level_name == "setup_flat"
+    assert command.run.level_name == "boost_flat"
     assert command.run.scenario_name == "far_half"
     assert command.run.seed == 3
     assert command.run.bot_name == "pdg"
@@ -673,7 +673,7 @@ def test_parse_plot_command_output_flags_override_defaults() -> None:
     _parser, command = parse_command(
         [
             "plot",
-            "setup_flat:far_half:3",
+            "boost_flat:far_half:3",
             "--bot",
             "pdg",
             "--plot-output",
@@ -711,8 +711,8 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
         run_batch_module,
         "resolve_benchmark_plan",
         lambda _cfg: [
-            ResolvedBenchRun(0, "setup_flat", "mid_half", "landing"),
-            ResolvedBenchRun(1, "setup_flat", "mid_half", "landing"),
+            ResolvedBenchRun(0, "boost_flat", "mid_half", "landing"),
+            ResolvedBenchRun(1, "boost_flat", "mid_half", "landing"),
         ],
     )
 
@@ -721,7 +721,7 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
         bot_config_path=None,
         selectors=(
             BenchTarget(
-                level_name="setup_flat", scenario_name="mid_half", seed_spec="0"
+                level_name="boost_flat", scenario_name="mid_half", seed_spec="0"
             ),
         ),
         lander_name=None,
@@ -736,15 +736,15 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
     )
     with pytest.raises(
         RuntimeError,
-        match="run 1/2 seed=0 level=setup_flat scenario=mid_half failed",
+        match="run 1/2 seed=0 level=boost_flat scenario=mid_half failed",
     ):
         run_batch_module.run_benchmark(cfg)
 
 
 def test_plot_command_enables_plot_mode_by_default() -> None:
-    _parser, command = parse_command(["plot", "setup_flat:far_half:3", "--bot", "pdg"])
+    _parser, command = parse_command(["plot", "boost_flat:far_half:3", "--bot", "pdg"])
     assert isinstance(command, RunCommand)
-    assert command.run.level_name == "setup_flat"
+    assert command.run.level_name == "boost_flat"
     assert command.run.scenario_name == "far_half"
     assert command.run.seed == 3
     assert command.run.plot_mode == "all"

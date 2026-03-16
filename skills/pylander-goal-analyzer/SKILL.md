@@ -24,7 +24,7 @@ Use this skill when the user wants failure analysis and strategy selection for a
 3. Summarize measured signals:
 - crashes/success rate
 - fuel/time deltas
-- setup/coast/flare projected-dx signals
+- boost/coast/terminal projected-dx signals
 - trajectory-shape clues from plots
 - compute hot spots (avg/p90/p99 ms/tick)
 4. Produce 1-3 ranked strategy candidates with explicit tradeoffs and expected impact.

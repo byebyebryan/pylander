@@ -1,6 +1,6 @@
-# Setup Climb level (`setup_climb`)
+# Boost Climb level (`boost_climb`)
 
-`setup_climb` is the uphill member of the setup-transfer trio: a pad-to-pad climb on sloped terrain without obstacles.
+`boost_climb` is the uphill member of the boost-transfer trio: a pad-to-pad climb on sloped terrain without obstacles.
 
 ## Purpose
 
@@ -10,13 +10,13 @@
 
 Guidance note:
 
-- `pdg` now routes climb through the same dedicated setup controller used by
-  `setup_flat` and `setup_downhill`.
-- `setup_climb` is a normal benchmark/gating level, not observe-only.
+- `pdg` now routes climb through the same dedicated boost controller used by
+  `boost_flat` and `boost_downhill`.
+- `boost_climb` is a normal benchmark/gating level, not observe-only.
 
 ## Scenario design
 
-Defined in [`levels/setup_climb.py`](../levels/setup_climb.py):
+Defined in [`levels/boost_climb.py`](../levels/boost_climb.py):
 
 - Source pad: `x=0`, terrain-bound flush pad
 - Destination horizontal offset: `dx=400`
@@ -38,8 +38,8 @@ Defaults:
 
 ## Metrics
 
-- End-to-end objective metrics: `state`, `success`, `setup_transfer_arrived`, `setup_transfer_landed_site_uid`
-- Unified gate telemetry: `setup_gate_*`, `bot_pdg_flare_entry_*`
+- End-to-end objective metrics: `state`, `success`, `transfer_arrived`, `transfer_landed_site_uid`
+- Unified gate telemetry: `boost_cutoff_*`, `bot_pdg_terminal_entry_*`
 - Goal metadata when using goal selectors: `eval_goal`, `eval_early_end`, `eval_end_reason`
 
 Additional retained `pdg` diagnostics exported for climb tuning:
@@ -53,7 +53,7 @@ Additional retained `pdg` diagnostics exported for climb tuning:
 ## Commands
 
 ```bash
-uv run python main.py run --interactive setup_climb
-uv run python main.py sim setup_climb:mid_half:0 --bot pdg
-uv run python main.py bench setup_climb --bot pdg
+uv run python main.py run --interactive boost_climb
+uv run python main.py sim boost_climb:mid_half:0 --bot pdg
+uv run python main.py bench boost_climb --bot pdg
 ```

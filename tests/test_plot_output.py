@@ -213,7 +213,7 @@ def test_projected_apex_point_prefers_latest_gate_event_state() -> None:
         target={"x": 400.0, "y": 400.0},
         events=[
             {
-                "name": "setup_gate",
+                "name": "boost_cutoff",
                 "x": 65.04117237026318,
                 "y": 185.80941328059802,
                 "vx": 31.050384900676764,
@@ -423,15 +423,15 @@ def test_save_trajectory_plots_shallow_split_is_not_extremely_flat(tmp_path: Pat
 
 def test_sorted_gate_events_prefers_short_labels_and_time_order() -> None:
     events = [
-        {"name": "flare_entry", "time_s": 3.2, "label": "flare green dx=4.0"},
-        {"name": "setup_gate", "time_s": 1.1, "label": "setup gate"},
+        {"name": "terminal_entry", "time_s": 3.2, "label": "terminal green dx=4.0"},
+        {"name": "boost_cutoff", "time_s": 1.1, "label": "boost cutoff"},
         {"name": "out_of_fuel", "time_s": 3.8, "label": "fuel out"},
         {"name": "success", "time_s": 4.0, "label": "landed"},
     ]
 
     assert _sorted_gate_events(events) == [
-        ("setup_gate", 1.1, "setup gate"),
-        ("flare_entry", 3.2, "flare green dx=4.0"),
+        ("boost_cutoff", 1.1, "boost cutoff"),
+        ("terminal_entry", 3.2, "terminal green dx=4.0"),
         ("out_of_fuel", 3.8, "fuel out"),
     ]
 

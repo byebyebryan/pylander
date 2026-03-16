@@ -1,6 +1,6 @@
 # Terminal Plunge phase (`plunge` level + `plunge` bot)
 
-`plunge` is the terminal-only benchmark: burn timing, flare, and touchdown without upstream trajectory setup complexity.
+`plunge` is the terminal-only benchmark: burn timing, terminal descent, and touchdown without upstream trajectory boost complexity.
 
 Implementation note:
 

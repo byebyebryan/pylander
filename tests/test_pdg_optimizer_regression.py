@@ -36,8 +36,8 @@ def _run_level(
 @pytest.mark.parametrize(
     ("level_name", "scenario", "eval_goal", "max_time", "key", "expected"),
     (
-        ("setup_climb", "mid_half", "setup", 10.0, "setup_gate_done", True),
-        ("setup_flat", "mid_half", "setup", 9.0, "setup_gate_done", True),
+        ("boost_climb", "mid_half", "boost", 10.0, "boost_cutoff_done", True),
+        ("boost_flat", "mid_half", "boost", 9.0, "boost_cutoff_done", True),
     ),
 )
 def test_pdg_smoke_plunge_and_setup_milestones_seed0(
@@ -48,7 +48,7 @@ def test_pdg_smoke_plunge_and_setup_milestones_seed0(
     key: str,
     expected: object,
 ) -> None:
-    # Keep broad regression coverage, but stop setup scenarios at their setup gate.
+    # Keep broad regression coverage, but stop setup scenarios at their boost cutoff.
     result, _bot = _run_level(
         level_name=level_name,
         scenario=scenario,
@@ -81,7 +81,7 @@ def test_pdg_smoke_plunge_reaches_touchdown_seed0(
 
 def test_pdg_launch_landing_offset_bound_seed0() -> None:
     result, _bot = _run_level(
-        level_name="setup_flat", scenario="near_half", max_time=25.0
+        level_name="boost_flat", scenario="near_half", max_time=25.0
     )
     assert result.get("state") == "landed"
     landing_offset = result.get("landing_offset")
@@ -93,16 +93,16 @@ def test_pdg_launch_landing_offset_bound_seed0() -> None:
 def test_pdg_passive_coast_suppresses_solver_work_mid_flare() -> None:
     # Early flare run should remain ungated before control solves begin.
     _result, bot = _run_level(
-        level_name="flare_normal",
+        level_name="terminal_normal",
         scenario="mid",
         max_steps=180,
         max_time=20.0,
     )
     snapshot = bot.get_bot_telemetry()
     assert int(snapshot.get("solve_count") or 0) == 0
-    assert int(snapshot.get("flare_probe_count") or 0) == 0
-    assert snapshot.get("flare_entry_done") is False
-    assert snapshot.get("flare_gate_mode") is None
+    assert int(snapshot.get("terminal_probe_count") or 0) == 0
+    assert snapshot.get("terminal_entry_done") is False
+    assert snapshot.get("terminal_gate_mode") is None
     assert int(snapshot.get("fallback_frames") or 0) == 0
     assert snapshot.get("shape_curve_rmse") is None
     assert snapshot.get("shape_projected_dx_abs_max") == pytest.approx(0.0)
@@ -168,10 +168,10 @@ def test_pdg_optimizer_problem_is_dpp_and_avoids_non_dpp_warning() -> None:
             pad_half_width=55.0,
             altitude_hint=140.0,
             warm_start=None,
-            setup_t_cross_ref=4.0,
-            setup_t_angle_ref=4.0,
-            setup_no_away_dir=1.0,
-            setup_angle_active=1.0,
+            boost_t_cross_ref=4.0,
+            boost_t_angle_ref=4.0,
+            boost_no_away_dir=1.0,
+            boost_angle_active=1.0,
         )
 
     assert plan is not None
@@ -256,10 +256,10 @@ def test_pdg_optimizer_setup_no_away_constraint_follows_target_direction() -> No
             w_path_x=0.0,
             w_path_y=0.0,
             w_upward_vy=0.0,
-            w_setup_projected_dx=40.0,
-            w_setup_target_y_cross=20.0,
-            w_setup_apex=8.0,
-            w_setup_angle=0.0,
+            w_boost_projected_dx=40.0,
+            w_boost_target_y_cross=20.0,
+            w_boost_apex=8.0,
+            w_boost_angle=0.0,
         )
     )
 
@@ -281,8 +281,8 @@ def test_pdg_optimizer_setup_no_away_constraint_follows_target_direction() -> No
         pad_half_width=55.0,
         altitude_hint=140.0,
         warm_start=None,
-        setup_t_cross_ref=4.0,
-        setup_no_away_dir=1.0,
+        boost_t_cross_ref=4.0,
+        boost_no_away_dir=1.0,
     )
 
     assert plan is not None

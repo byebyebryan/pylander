@@ -41,12 +41,12 @@ class PDGOptimizerConfig:
     w_thrust_linear: float = 0.14
     w_overdrive_linear: float = 1.40
     w_overdrive_quadratic: float = 6.00
-    w_setup_projected_dx: float = 60.0
-    w_setup_target_y_cross: float = 55.0
-    w_setup_apex: float = 26.0
-    w_setup_angle: float = 22.0
+    w_boost_projected_dx: float = 60.0
+    w_boost_target_y_cross: float = 55.0
+    w_boost_apex: float = 26.0
+    w_boost_angle: float = 22.0
     w_late_thrust: float = 0.0
-    setup_angle_slope_target: float = 0.0
+    boost_angle_slope_target: float = 0.0
 
     # Altitude-adaptive reference profile (lateral-first then descend).
     ref_hold_frac_min: float = 0.0
@@ -126,20 +126,20 @@ class PDGOptimizer:
         self._vy_floor: cp.Parameter | None = None
         self._g_param: cp.Parameter | None = None
         self._x_tol: cp.Parameter | None = None
-        self._setup_pdx_time_ref: cp.Parameter | None = None
-        self._setup_proj_target: cp.Parameter | None = None
-        self._setup_proj_x_scale: cp.Parameter | None = None
-        self._setup_proj_vx_scale: cp.Parameter | None = None
-        self._setup_cross_y_scale: cp.Parameter | None = None
-        self._setup_cross_vy_scale: cp.Parameter | None = None
-        self._setup_cross_target: cp.Parameter | None = None
-        self._setup_cross_drop_weighted: cp.Parameter | None = None
-        self._setup_angle_vx_scale: cp.Parameter | None = None
-        self._setup_angle_vy_scale: cp.Parameter | None = None
-        self._setup_angle_vy_bias: cp.Parameter | None = None
-        self._setup_descend_vy_scale: cp.Parameter | None = None
-        self._setup_descend_vy_bias: cp.Parameter | None = None
-        self._setup_no_away_dir: cp.Parameter | None = None
+        self._boost_pdx_time_ref: cp.Parameter | None = None
+        self._boost_proj_target: cp.Parameter | None = None
+        self._boost_proj_x_scale: cp.Parameter | None = None
+        self._boost_proj_vx_scale: cp.Parameter | None = None
+        self._boost_cross_y_scale: cp.Parameter | None = None
+        self._boost_cross_vy_scale: cp.Parameter | None = None
+        self._boost_cross_target: cp.Parameter | None = None
+        self._boost_cross_drop_weighted: cp.Parameter | None = None
+        self._boost_angle_vx_scale: cp.Parameter | None = None
+        self._boost_angle_vy_scale: cp.Parameter | None = None
+        self._boost_angle_vy_bias: cp.Parameter | None = None
+        self._boost_descend_vy_scale: cp.Parameter | None = None
+        self._boost_descend_vy_bias: cp.Parameter | None = None
+        self._boost_no_away_dir: cp.Parameter | None = None
 
         self._build_problem()
 
@@ -216,23 +216,23 @@ class PDGOptimizer:
         y_ref = cp.Parameter(n + 1)
         vy_floor = cp.Parameter()
         x_tol = cp.Parameter(nonneg=True)
-        setup_pdx_time_ref = cp.Parameter(n + 1, nonneg=True)
-        setup_proj_target = cp.Parameter(n + 1)
-        setup_proj_x_scale = cp.Parameter(n + 1, nonneg=True)
-        setup_proj_vx_scale = cp.Parameter(n + 1)
-        setup_cross_y_scale = cp.Parameter(n + 1, nonneg=True)
-        setup_cross_vy_scale = cp.Parameter(n + 1)
-        setup_cross_target = cp.Parameter(n + 1)
-        setup_cross_drop_weighted = cp.Parameter(n + 1)
-        setup_angle_vx_scale = cp.Parameter(n + 1, nonneg=True)
-        setup_angle_vy_scale = cp.Parameter(n + 1, nonneg=True)
-        setup_angle_vy_bias = cp.Parameter(n + 1)
-        setup_descend_vy_scale = cp.Parameter(n + 1, nonneg=True)
-        setup_descend_vy_bias = cp.Parameter(n + 1)
-        setup_no_away_dir = cp.Parameter()
+        boost_pdx_time_ref = cp.Parameter(n + 1, nonneg=True)
+        boost_proj_target = cp.Parameter(n + 1)
+        boost_proj_x_scale = cp.Parameter(n + 1, nonneg=True)
+        boost_proj_vx_scale = cp.Parameter(n + 1)
+        boost_cross_y_scale = cp.Parameter(n + 1, nonneg=True)
+        boost_cross_vy_scale = cp.Parameter(n + 1)
+        boost_cross_target = cp.Parameter(n + 1)
+        boost_cross_drop_weighted = cp.Parameter(n + 1)
+        boost_angle_vx_scale = cp.Parameter(n + 1, nonneg=True)
+        boost_angle_vy_scale = cp.Parameter(n + 1, nonneg=True)
+        boost_angle_vy_bias = cp.Parameter(n + 1)
+        boost_descend_vy_scale = cp.Parameter(n + 1, nonneg=True)
+        boost_descend_vy_bias = cp.Parameter(n + 1)
+        boost_no_away_dir = cp.Parameter()
         thrust_norm = cp.Variable(n, nonneg=True)
         od_slack = cp.Variable(n, nonneg=True)
-        setup_projected_dx_proxy = cp.Variable(n + 1)
+        boost_projected_dx_proxy = cp.Variable(n + 1)
         late_ramp = np.linspace(0.0, 1.0, n, dtype=float)
 
         constraints: list[cp.Expression] = [
@@ -257,16 +257,16 @@ class PDGOptimizer:
                     thrust_norm[k] >= cp.norm(cp.hstack([ax[k], ay[k]]), 2),
                     thrust_norm[k] <= a_nom + od_slack[k],
                     od_slack[k] <= (a_max - a_nom),
-                    setup_no_away_dir * ax[k] >= 0.0,
+                    boost_no_away_dir * ax[k] >= 0.0,
                 ]
             )
         constraints.extend(
             [
-                setup_projected_dx_proxy == target_x - x - cp.multiply(setup_pdx_time_ref, vx),
+                boost_projected_dx_proxy == target_x - x - cp.multiply(boost_pdx_time_ref, vx),
             ]
         )
         for k in range(1, n + 1):
-            constraints.append(setup_no_away_dir * setup_projected_dx_proxy[k] >= 0.0)
+            constraints.append(boost_no_away_dir * boost_projected_dx_proxy[k] >= 0.0)
 
         effort = cp.sum_squares(ax) + cp.sum_squares(ay)
         smooth = cp.sum_squares(ax[1:] - ax[:-1]) + cp.sum_squares(ay[1:] - ay[:-1])
@@ -302,37 +302,37 @@ class PDGOptimizer:
             + (cfg.w_overdrive_quadratic * cp.sum_squares(od_slack))
         )
         if (
-            cfg.w_setup_projected_dx > 0.0
-            or cfg.w_setup_target_y_cross > 0.0
-            or cfg.w_setup_apex > 0.0
-            or cfg.w_setup_angle > 0.0
+            cfg.w_boost_projected_dx > 0.0
+            or cfg.w_boost_target_y_cross > 0.0
+            or cfg.w_boost_apex > 0.0
+            or cfg.w_boost_angle > 0.0
         ):
             weighted_projected_dx = (
-                setup_proj_target
-                - cp.multiply(setup_proj_x_scale, x)
-                - cp.multiply(setup_proj_vx_scale, vx)
+                boost_proj_target
+                - cp.multiply(boost_proj_x_scale, x)
+                - cp.multiply(boost_proj_vx_scale, vx)
             )
             weighted_y_cross = (
-                cp.multiply(setup_cross_y_scale, y)
-                + cp.multiply(setup_cross_vy_scale, vy)
-                - setup_cross_drop_weighted
-                - setup_cross_target
+                cp.multiply(boost_cross_y_scale, y)
+                + cp.multiply(boost_cross_vy_scale, vy)
+                - boost_cross_drop_weighted
+                - boost_cross_target
             )
             weighted_angle_shallow = (
-                cp.multiply(setup_angle_vx_scale, cp.abs(vx))
-                + cp.multiply(setup_angle_vy_scale, vy)
-                - setup_angle_vy_bias
+                cp.multiply(boost_angle_vx_scale, cp.abs(vx))
+                + cp.multiply(boost_angle_vy_scale, vy)
+                - boost_angle_vy_bias
             )
             weighted_descend_guard = (
-                cp.multiply(setup_descend_vy_scale, vy) - setup_descend_vy_bias
+                cp.multiply(boost_descend_vy_scale, vy) - boost_descend_vy_bias
             )
             objective_expr = (
                 objective_expr
-                + (cfg.w_setup_projected_dx * cp.sum_squares(weighted_projected_dx))
-                + (cfg.w_setup_target_y_cross * cp.sum_squares(cp.pos(-weighted_y_cross)))
-                + (cfg.w_setup_apex * cp.sum_squares(cp.pos(weighted_y_cross)))
+                + (cfg.w_boost_projected_dx * cp.sum_squares(weighted_projected_dx))
+                + (cfg.w_boost_target_y_cross * cp.sum_squares(cp.pos(-weighted_y_cross)))
+                + (cfg.w_boost_apex * cp.sum_squares(cp.pos(weighted_y_cross)))
                 + (
-                    cfg.w_setup_angle
+                    cfg.w_boost_angle
                     * (
                         cp.sum_squares(cp.pos(weighted_angle_shallow))
                         + cp.sum_squares(cp.pos(weighted_descend_guard))
@@ -367,20 +367,20 @@ class PDGOptimizer:
         self._vy_floor = vy_floor
         self._g_param = g_param
         self._x_tol = x_tol
-        self._setup_pdx_time_ref = setup_pdx_time_ref
-        self._setup_proj_target = setup_proj_target
-        self._setup_proj_x_scale = setup_proj_x_scale
-        self._setup_proj_vx_scale = setup_proj_vx_scale
-        self._setup_cross_y_scale = setup_cross_y_scale
-        self._setup_cross_vy_scale = setup_cross_vy_scale
-        self._setup_cross_target = setup_cross_target
-        self._setup_cross_drop_weighted = setup_cross_drop_weighted
-        self._setup_angle_vx_scale = setup_angle_vx_scale
-        self._setup_angle_vy_scale = setup_angle_vy_scale
-        self._setup_angle_vy_bias = setup_angle_vy_bias
-        self._setup_descend_vy_scale = setup_descend_vy_scale
-        self._setup_descend_vy_bias = setup_descend_vy_bias
-        self._setup_no_away_dir = setup_no_away_dir
+        self._boost_pdx_time_ref = boost_pdx_time_ref
+        self._boost_proj_target = boost_proj_target
+        self._boost_proj_x_scale = boost_proj_x_scale
+        self._boost_proj_vx_scale = boost_proj_vx_scale
+        self._boost_cross_y_scale = boost_cross_y_scale
+        self._boost_cross_vy_scale = boost_cross_vy_scale
+        self._boost_cross_target = boost_cross_target
+        self._boost_cross_drop_weighted = boost_cross_drop_weighted
+        self._boost_angle_vx_scale = boost_angle_vx_scale
+        self._boost_angle_vy_scale = boost_angle_vy_scale
+        self._boost_angle_vy_bias = boost_angle_vy_bias
+        self._boost_descend_vy_scale = boost_descend_vy_scale
+        self._boost_descend_vy_bias = boost_descend_vy_bias
+        self._boost_no_away_dir = boost_no_away_dir
 
     def solve(
         self,
@@ -404,10 +404,10 @@ class PDGOptimizer:
         warm_start: PDGPlan | None,
         terminal_x_tol: float | None = None,
         y_ref_override: list[float] | tuple[float, ...] | np.ndarray | None = None,
-        setup_t_cross_ref: float = 0.0,
-        setup_t_angle_ref: float = 0.0,
-        setup_no_away_dir: float = 0.0,
-        setup_angle_active: float = 0.0,
+        boost_t_cross_ref: float = 0.0,
+        boost_t_angle_ref: float = 0.0,
+        boost_no_away_dir: float = 0.0,
+        boost_angle_active: float = 0.0,
     ) -> PDGPlan | None:
         if self._problem is None:
             return None
@@ -443,42 +443,42 @@ class PDGOptimizer:
         self._g_param.value = max(0.0, float(gravity_mag))
         x_tol = float(pad_half_width) if terminal_x_tol is None else float(terminal_x_tol)
         self._x_tol.value = max(0.0, x_tol)
-        setup_t_cross_ref = max(0.0, float(setup_t_cross_ref))
-        setup_t_angle_ref = max(0.0, float(setup_t_angle_ref))
-        setup_pdx_time_ref = np.maximum(
-            setup_t_cross_ref - (np.arange(n + 1, dtype=float) * float(self._cfg.step_dt)),
+        boost_t_cross_ref = max(0.0, float(boost_t_cross_ref))
+        boost_t_angle_ref = max(0.0, float(boost_t_angle_ref))
+        boost_pdx_time_ref = np.maximum(
+            boost_t_cross_ref - (np.arange(n + 1, dtype=float) * float(self._cfg.step_dt)),
             0.0,
         )
-        setup_angle_time_ref = np.maximum(
-            setup_t_angle_ref - (np.arange(n + 1, dtype=float) * float(self._cfg.step_dt)),
+        boost_angle_time_ref = np.maximum(
+            boost_t_angle_ref - (np.arange(n + 1, dtype=float) * float(self._cfg.step_dt)),
             0.0,
         )
-        active = setup_pdx_time_ref > 1e-6
-        setup_pdx_weight = np.zeros(n + 1, dtype=float)
+        active = boost_pdx_time_ref > 1e-6
+        boost_pdx_weight = np.zeros(n + 1, dtype=float)
         if np.any(active):
             active_count = int(np.count_nonzero(active))
-            setup_pdx_weight[active] = np.arange(1, active_count + 1, dtype=float)
-            setup_pdx_weight = setup_pdx_weight / float(np.sum(setup_pdx_weight))
-        setup_weight_sqrt = np.sqrt(setup_pdx_weight)
-        setup_cross_drop = 0.5 * max(0.0, float(gravity_mag)) * np.square(setup_pdx_time_ref)
-        setup_angle_vy_mag = max(0.0, float(gravity_mag)) * setup_angle_time_ref
-        angle_weight_sqrt = setup_weight_sqrt * math.sqrt(max(0.0, float(setup_angle_active)))
-        self._setup_pdx_time_ref.value = setup_pdx_time_ref
-        self._setup_proj_target.value = setup_weight_sqrt * float(target_x)
-        self._setup_proj_x_scale.value = setup_weight_sqrt
-        self._setup_proj_vx_scale.value = setup_weight_sqrt * setup_pdx_time_ref
-        self._setup_cross_y_scale.value = setup_weight_sqrt
-        self._setup_cross_vy_scale.value = setup_weight_sqrt * setup_pdx_time_ref
-        self._setup_cross_target.value = setup_weight_sqrt * float(target_y)
-        self._setup_cross_drop_weighted.value = setup_weight_sqrt * setup_cross_drop
-        self._setup_angle_vx_scale.value = angle_weight_sqrt * float(
-            self._cfg.setup_angle_slope_target
+            boost_pdx_weight[active] = np.arange(1, active_count + 1, dtype=float)
+            boost_pdx_weight = boost_pdx_weight / float(np.sum(boost_pdx_weight))
+        boost_weight_sqrt = np.sqrt(boost_pdx_weight)
+        boost_cross_drop = 0.5 * max(0.0, float(gravity_mag)) * np.square(boost_pdx_time_ref)
+        boost_angle_vy_mag = max(0.0, float(gravity_mag)) * boost_angle_time_ref
+        angle_weight_sqrt = boost_weight_sqrt * math.sqrt(max(0.0, float(boost_angle_active)))
+        self._boost_pdx_time_ref.value = boost_pdx_time_ref
+        self._boost_proj_target.value = boost_weight_sqrt * float(target_x)
+        self._boost_proj_x_scale.value = boost_weight_sqrt
+        self._boost_proj_vx_scale.value = boost_weight_sqrt * boost_pdx_time_ref
+        self._boost_cross_y_scale.value = boost_weight_sqrt
+        self._boost_cross_vy_scale.value = boost_weight_sqrt * boost_pdx_time_ref
+        self._boost_cross_target.value = boost_weight_sqrt * float(target_y)
+        self._boost_cross_drop_weighted.value = boost_weight_sqrt * boost_cross_drop
+        self._boost_angle_vx_scale.value = angle_weight_sqrt * float(
+            self._cfg.boost_angle_slope_target
         )
-        self._setup_angle_vy_scale.value = angle_weight_sqrt
-        self._setup_angle_vy_bias.value = angle_weight_sqrt * setup_angle_vy_mag
-        self._setup_descend_vy_scale.value = setup_weight_sqrt
-        self._setup_descend_vy_bias.value = setup_weight_sqrt * setup_angle_vy_mag
-        self._setup_no_away_dir.value = float(setup_no_away_dir)
+        self._boost_angle_vy_scale.value = angle_weight_sqrt
+        self._boost_angle_vy_bias.value = angle_weight_sqrt * boost_angle_vy_mag
+        self._boost_descend_vy_scale.value = boost_weight_sqrt
+        self._boost_descend_vy_bias.value = boost_weight_sqrt * boost_angle_vy_mag
+        self._boost_no_away_dir.value = float(boost_no_away_dir)
 
         x_ref, y_ref_default = self._reference_profiles(
             x=float(x),

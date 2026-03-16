@@ -29,7 +29,7 @@ from core.level import Level, LevelWorld
 from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 from core.maths import Vector2
 from core.physics import PhysicsEngine
-from core.bot import SetupGateMetrics
+from core.bot import BoostCutoffMetrics
 from core.config import GRAVITY
 from core.eval_goals import EVAL_GOAL_LANDING
 from landers import create_lander
@@ -231,7 +231,7 @@ def angle_from_velocity(vx: float, vy_up: float, *, opposite: bool = False) -> f
     return math.atan2(vel_x, vel_y)
 
 
-def build_setup_gate_metrics_from_state(
+def build_boost_cutoff_metrics_from_state(
     *,
     x: float,
     y: float,
@@ -240,7 +240,7 @@ def build_setup_gate_metrics_from_state(
     altitude: float,
     target_x: float,
     target_y: float,
-) -> SetupGateMetrics:
+) -> BoostCutoffMetrics:
     dx = float(target_x) - float(x)
     dy = float(target_y) - float(y)
     vy_pos = max(0.0, float(vy_up))
@@ -288,7 +288,7 @@ def build_setup_gate_metrics_from_state(
         vy_down = abs(float(vy_up) - (_GRAVITY_MAG * max(0.0, float(t_cross))))
         projected_impact_angle_deg = math.degrees(math.atan2(vy_down, abs(float(vx))))
 
-    return SetupGateMetrics(
+    return BoostCutoffMetrics(
         time_s=0.0,
         altitude=max(0.0, float(altitude)),
         x=float(x),
@@ -307,7 +307,7 @@ def build_setup_gate_metrics_from_state(
     )
 
 
-def prime_setup_gate_for_primary_bot(level, game) -> None:
+def prime_boost_cutoff_for_primary_bot(level, game) -> None:
     world = getattr(level, "world", None)
     if world is None or not getattr(world, "actors", None):
         return
@@ -323,8 +323,8 @@ def prime_setup_gate_for_primary_bot(level, game) -> None:
     trans = require_component(actor, Transform)
     phys = require_component(actor, PhysicsState)
     altitude = float(trans.pos.y) - float(level.terrain(float(trans.pos.x), lod=0))
-    bot.prime_setup_gate(
-        build_setup_gate_metrics_from_state(
+    bot.prime_boost_cutoff(
+        build_boost_cutoff_metrics_from_state(
             x=float(trans.pos.x),
             y=float(trans.pos.y),
             vx=float(phys.vel.x),
@@ -352,7 +352,7 @@ def make_flat_scenario_spec(
     start_dy: float,
     cargo_mass: float,
 ) -> ScenarioLevelSpec:
-    """Build a ScenarioLevelSpec for flat-terrain flare/error scenarios."""
+    """Build a ScenarioLevelSpec for flat-terrain terminal-flight scenarios."""
     return ScenarioLevelSpec(
         name=name,
         start_x=start_dx,
@@ -392,7 +392,7 @@ def _build_base_terrain(seed: int, spec: ScenarioLevelSpec):
 
 
 class ScenarioLevel(EndResultMixin, Level):
-    """Single-scenario level with deterministic setup and optional default bot."""
+    """Single-scenario level with deterministic world setup and optional default bot."""
 
     scenario: ScenarioLevelSpec | None = None
     default_bot_name: str | None = None

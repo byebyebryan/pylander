@@ -59,7 +59,7 @@ def test_observation_only_crash_does_not_mark_notable_regression() -> None:
     baseline = {
         "records": [
             _record(
-                level="setup_flat",
+                level="boost_flat",
                 scenario="mid_half",
                 seed=0,
                 state="landed",
@@ -67,7 +67,7 @@ def test_observation_only_crash_does_not_mark_notable_regression() -> None:
                 fuel=20.0,
             ),
             _record(
-                level="setup_climb",
+                level="boost_climb",
                 scenario="mid_half",
                 seed=0,
                 state="landed",
@@ -79,7 +79,7 @@ def test_observation_only_crash_does_not_mark_notable_regression() -> None:
     candidate = {
         "records": [
             _record(
-                level="setup_flat",
+                level="boost_flat",
                 scenario="mid_half",
                 seed=0,
                 state="landed",
@@ -87,7 +87,7 @@ def test_observation_only_crash_does_not_mark_notable_regression() -> None:
                 fuel=21.0,
             ),
             _record(
-                level="setup_climb",
+                level="boost_climb",
                 scenario="mid_half",
                 seed=0,
                 state="crashed",
@@ -101,7 +101,7 @@ def test_observation_only_crash_does_not_mark_notable_regression() -> None:
         candidate_commit="cand",
         baseline_payload=baseline,
         candidate_payload=candidate,
-        level_policy={"setup_flat": "normal", "setup_climb": "observe_only"},
+        level_policy={"boost_flat": "normal", "boost_climb": "observe_only"},
         bot="pdg",
         crash_detail_limit=2,
     )
@@ -115,7 +115,7 @@ def test_normal_crash_marks_notable_regression() -> None:
     baseline = {
         "records": [
             _record(
-                level="setup_flat",
+                level="boost_flat",
                 scenario="mid_half",
                 seed=0,
                 state="landed",
@@ -127,7 +127,7 @@ def test_normal_crash_marks_notable_regression() -> None:
     candidate = {
         "records": [
             _record(
-                level="setup_flat",
+                level="boost_flat",
                 scenario="mid_half",
                 seed=0,
                 state="crashed",
@@ -141,7 +141,7 @@ def test_normal_crash_marks_notable_regression() -> None:
         candidate_commit="cand",
         baseline_payload=baseline,
         candidate_payload=candidate,
-        level_policy={"setup_flat": "normal"},
+        level_policy={"boost_flat": "normal"},
         bot="pdg",
         crash_detail_limit=2,
     )
@@ -150,11 +150,11 @@ def test_normal_crash_marks_notable_regression() -> None:
     assert len(report["global"]["crash"]["new_crashes"]) == 1
 
 
-def test_setup_climb_crash_now_gates_global_regressions() -> None:
+def test_boost_climb_crash_now_gates_global_regressions() -> None:
     baseline = {
         "records": [
             _record(
-                level="setup_climb",
+                level="boost_climb",
                 scenario="mid_half",
                 seed=0,
                 state="landed",
@@ -166,7 +166,7 @@ def test_setup_climb_crash_now_gates_global_regressions() -> None:
     candidate = {
         "records": [
             _record(
-                level="setup_climb",
+                level="boost_climb",
                 scenario="mid_half",
                 seed=0,
                 state="crashed",
@@ -180,7 +180,7 @@ def test_setup_climb_crash_now_gates_global_regressions() -> None:
         candidate_commit="cand",
         baseline_payload=baseline,
         candidate_payload=candidate,
-        level_policy={"setup_climb": "normal"},
+        level_policy={"boost_climb": "normal"},
         bot="pdg",
         crash_detail_limit=2,
     )
@@ -194,7 +194,7 @@ def test_scenario_regressions_group_by_level_and_scenario() -> None:
     baseline = {
         "records": [
             _record(
-                level="setup_flat",
+                level="boost_flat",
                 scenario="mid_half",
                 seed=0,
                 state="landed",
@@ -202,7 +202,7 @@ def test_scenario_regressions_group_by_level_and_scenario() -> None:
                 fuel=20.0,
             ),
             _record(
-                level="flare_error",
+                level="terminal_error",
                 scenario="mid",
                 seed=0,
                 state="landed",
@@ -214,7 +214,7 @@ def test_scenario_regressions_group_by_level_and_scenario() -> None:
     candidate = {
         "records": [
             _record(
-                level="setup_flat",
+                level="boost_flat",
                 scenario="mid_half",
                 seed=0,
                 state="landed",
@@ -222,7 +222,7 @@ def test_scenario_regressions_group_by_level_and_scenario() -> None:
                 fuel=25.0,
             ),
             _record(
-                level="flare_error",
+                level="terminal_error",
                 scenario="mid",
                 seed=0,
                 state="landed",
@@ -234,7 +234,7 @@ def test_scenario_regressions_group_by_level_and_scenario() -> None:
 
     rows = cached_bench._scenario_regressions(baseline, candidate)
     names = {str(item["scenario"]) for item in rows}
-    assert names == {"setup_flat:mid_half", "flare_error:mid"}
+    assert names == {"boost_flat:mid_half", "terminal_error:mid"}
 
 
 def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
@@ -242,14 +242,14 @@ def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
         "records": [
             {
                 **_record(
-                    level="setup_downhill",
+                    level="boost_downhill",
                     scenario="mid_half",
                     seed=0,
                     state="flying",
                     success=True,
                     fuel=20.0,
                 ),
-                "eval_goal": "setup",
+                "eval_goal": "boost",
             }
         ]
     }
@@ -257,20 +257,20 @@ def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
         "records": [
             {
                 **_record(
-                    level="setup_downhill",
+                    level="boost_downhill",
                     scenario="mid_half",
                     seed=0,
                     state="flying",
                     success=False,
                     fuel=24.0,
                 ),
-                "eval_goal": "setup",
+                "eval_goal": "boost",
             }
         ]
     }
 
     rows = cached_bench._scenario_regressions(baseline, candidate)
-    assert [str(item["scenario"]) for item in rows] == ["setup_downhill:mid_half:setup"]
+    assert [str(item["scenario"]) for item in rows] == ["boost_downhill:mid_half:boost"]
 
 
 def test_global_compute_regression_marks_notable_regression() -> None:
@@ -278,7 +278,7 @@ def test_global_compute_regression_marks_notable_regression() -> None:
         "records": [
             _with_profile(
                 _record(
-                    level="setup_flat",
+                    level="boost_flat",
                     scenario="mid_half",
                     seed=0,
                     state="landed",
@@ -292,7 +292,7 @@ def test_global_compute_regression_marks_notable_regression() -> None:
         "records": [
             _with_profile(
                 _record(
-                    level="setup_flat",
+                    level="boost_flat",
                     scenario="mid_half",
                     seed=0,
                     state="landed",
@@ -311,7 +311,7 @@ def test_global_compute_regression_marks_notable_regression() -> None:
         candidate_commit="cand",
         baseline_payload=baseline,
         candidate_payload=candidate,
-        level_policy={"setup_flat": "normal"},
+        level_policy={"boost_flat": "normal"},
         bot="pdg",
         crash_detail_limit=2,
     )
@@ -326,7 +326,7 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
         "records": [
             _with_profile(
                 _record(
-                    level="setup_climb",
+                    level="boost_climb",
                     scenario="mid_half",
                     seed=0,
                     state="landed",
@@ -340,7 +340,7 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
         "records": [
             _with_profile(
                 _record(
-                    level="setup_climb",
+                    level="boost_climb",
                     scenario="mid_half",
                     seed=0,
                     state="landed",
@@ -359,7 +359,7 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
         candidate_commit="cand",
         baseline_payload=baseline,
         candidate_payload=candidate,
-        level_policy={"setup_climb": "observe_only"},
+        level_policy={"boost_climb": "observe_only"},
         bot="pdg",
         crash_detail_limit=2,
     )
@@ -372,7 +372,7 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
 def test_selector_pack_stem_changes_with_bot_config_path() -> None:
     common = dict(
         mode="quick",
-        selectors=["setup_flat:mid_half:0-2"],
+        selectors=["boost_flat:mid_half:0-2"],
         bot="pdg",
         bot_profile_enabled=True,
         bot_profile_interval_s=None,
@@ -393,15 +393,15 @@ def test_run_diag_uses_selected_bot_terminal_metric_namespace() -> None:
     diag = cached_bench._run_diag(
         {
             "state": "landed",
-            "setup_gate_projected_dx": 12.0,
-            "bot_test_bot_flare_entry_projected_dx": 4.5,
+            "boost_cutoff_projected_dx": 12.0,
+            "bot_test_bot_terminal_entry_projected_dx": 4.5,
         },
         bot="test-bot",
     )
 
-    assert diag["setup_gate_projected_dx"] == 12.0
-    assert diag["bot_flare_entry_projected_dx"] == 4.5
+    assert diag["boost_cutoff_projected_dx"] == 12.0
+    assert diag["bot_terminal_entry_projected_dx"] == 4.5
     assert (
-        diag["bot_flare_entry_projected_dx_field"]
-        == "bot_test_bot_flare_entry_projected_dx"
+        diag["bot_terminal_entry_projected_dx_field"]
+        == "bot_test_bot_terminal_entry_projected_dx"
     )

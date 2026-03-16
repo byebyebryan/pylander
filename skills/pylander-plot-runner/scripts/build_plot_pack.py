@@ -72,7 +72,7 @@ def _build_cases_from_records(
     bot: str,
 ) -> list[dict[str, Any]]:
     cases: list[dict[str, Any]] = []
-    terminal_dx_key = _bot_metric_key(bot, "flare_entry_projected_dx")
+    terminal_dx_key = _bot_metric_key(bot, "terminal_entry_projected_dx")
 
     for rec in records:
         if str(rec.get("state") or "") == "crashed":
@@ -91,31 +91,31 @@ def _build_cases_from_records(
     ranked = sorted(
         records,
         key=lambda r: (
-            _abs_float(r.get("setup_gate_projected_dx")),
+            _abs_float(r.get("boost_cutoff_projected_dx")),
             _abs_float(r.get(terminal_dx_key)),
             _abs_float(r.get("fuel_consumed")),
         ),
         reverse=True,
     )
     for rec in ranked:
-        setup_dx = _abs_float(rec.get("setup_gate_projected_dx"))
+        boost_dx = _abs_float(rec.get("boost_cutoff_projected_dx"))
         terminal_dx = _abs_float(rec.get(terminal_dx_key))
         fuel = _abs_float(rec.get("fuel_consumed"))
-        if setup_dx <= 0.0 and terminal_dx <= 0.0 and fuel <= 0.0:
+        if boost_dx <= 0.0 and terminal_dx <= 0.0 and fuel <= 0.0:
             continue
-        reason = "high_setup_dx" if setup_dx >= terminal_dx else "high_terminal_dx"
-        if setup_dx < 1.0 and terminal_dx < 1.0:
+        reason = "high_boost_dx" if boost_dx >= terminal_dx else "high_terminal_dx"
+        if boost_dx < 1.0 and terminal_dx < 1.0:
             reason = "high_fuel"
-        severity = "high" if setup_dx >= 100.0 or terminal_dx >= 50.0 else "medium"
+        severity = "high" if boost_dx >= 100.0 or terminal_dx >= 50.0 else "medium"
         cases.append(
             {
                 "selector": _selector_from_record(rec),
                 "severity": severity,
                 "reason": reason,
                 "evidence": {
-                    "setup_gate_projected_dx": rec.get("setup_gate_projected_dx"),
-                    "bot_flare_entry_projected_dx_field": terminal_dx_key,
-                    "bot_flare_entry_projected_dx": rec.get(terminal_dx_key),
+                    "boost_cutoff_projected_dx": rec.get("boost_cutoff_projected_dx"),
+                    "bot_terminal_entry_projected_dx_field": terminal_dx_key,
+                    "bot_terminal_entry_projected_dx": rec.get(terminal_dx_key),
                     "fuel_consumed": rec.get("fuel_consumed"),
                 },
             }

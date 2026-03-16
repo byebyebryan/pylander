@@ -16,7 +16,7 @@ _SETTLE_STEP_S = 0.05
 
 
 @dataclass(frozen=True)
-class SetupQualityStatus:
+class BoostQualityStatus:
     verdict: str
     passed: bool
     apex_target: float
@@ -30,7 +30,7 @@ class SetupQualityStatus:
 
 
 @dataclass(frozen=True)
-class SetupObjectiveGeometry:
+class BoostObjectiveGeometry:
     has_target_y_solution: bool
     dx_limit: float
     projected_dx: float
@@ -55,20 +55,20 @@ def apex_target_and_tolerance(
     dx_anchor_abs: float,
     dy: float = 0.0,
 ) -> tuple[float, float]:
-    transfer_dy = transfer_dy_for_setup(bot, dy=dy)
+    transfer_dy = transfer_dy_for_boost(bot, dy=dy)
     apex_target = bot._shape_apex_target(float(dx_anchor_abs)) + max(
         0.0,
-        transfer_dy * float(bot._cfg.setup_apex_height_per_uphill_dy),
+        transfer_dy * float(bot._cfg.boost_apex_height_per_uphill_dy),
     ) + max(0.0, -transfer_dy)
     cfg = bot._cfg
     apex_tolerance = max(
-        float(cfg.setup_gate_apex_tol_abs),
-        float(cfg.setup_gate_apex_tol_ratio) * apex_target,
+        float(cfg.boost_cutoff_apex_tol_abs),
+        float(cfg.boost_cutoff_apex_tol_ratio) * apex_target,
     )
     return apex_target, apex_tolerance
 
 
-def transfer_dy_for_setup(bot, *, dy: float) -> float:
+def transfer_dy_for_boost(bot, *, dy: float) -> float:
     transfer_dy = float(dy)
     if bool(getattr(bot, "_shape_window_started", False)):
         transfer_dy = float(getattr(bot, "_shape_target_y", 0.0)) - float(
@@ -77,18 +77,18 @@ def transfer_dy_for_setup(bot, *, dy: float) -> float:
     return transfer_dy
 
 
-def setup_dx_limit(bot) -> float:
+def boost_dx_limit(bot) -> float:
     cfg = bot._cfg
     return max(
-        float(cfg.setup_gate_projected_dx_abs),
-        float(cfg.setup_gate_projected_dx_target_ratio) * float(bot._last_target_half),
+        float(cfg.boost_cutoff_projected_dx_abs),
+        float(cfg.boost_cutoff_projected_dx_target_ratio) * float(bot._last_target_half),
     )
 
 
 def descent_angle_ratio_bounds(bot) -> tuple[float, float]:
     cfg = bot._cfg
-    angle_min = max(1.0, float(cfg.setup_descent_angle_deg_min))
-    angle_max = max(angle_min + 1.0, float(cfg.setup_descent_angle_deg_max))
+    angle_min = max(1.0, float(cfg.boost_descent_angle_deg_min))
+    angle_max = max(angle_min + 1.0, float(cfg.boost_descent_angle_deg_max))
     ratio_min = 2.0 / max(1e-3, math.tan(math.radians(angle_max)))
     ratio_max = 2.0 / max(1e-3, math.tan(math.radians(angle_min)))
     return ratio_min, ratio_max
@@ -96,8 +96,8 @@ def descent_angle_ratio_bounds(bot) -> tuple[float, float]:
 
 def descent_angle_slope_bounds(bot) -> tuple[float, float]:
     cfg = bot._cfg
-    angle_min = max(1.0, float(cfg.setup_descent_angle_deg_min))
-    angle_max = max(angle_min + 1.0, float(cfg.setup_descent_angle_deg_max))
+    angle_min = max(1.0, float(cfg.boost_descent_angle_deg_min))
+    angle_max = max(angle_min + 1.0, float(cfg.boost_descent_angle_deg_max))
     slope_min = math.tan(math.radians(angle_min))
     slope_max = math.tan(math.radians(angle_max))
     return slope_min, slope_max
@@ -162,20 +162,20 @@ def _retrograde_angle_target(*, vx: float, vy_up: float) -> float:
     return math.atan2(-float(vx), -float(vy_up))
 
 
-def setup_objective_geometry(
+def boost_objective_geometry(
     bot,
     *,
     passive: Sensors,
     dx: float,
     projection,
-    setup_t_cross_ref: float,
-) -> SetupObjectiveGeometry:
-    dx_limit = setup_dx_limit(bot)
+    boost_t_cross_ref: float,
+) -> BoostObjectiveGeometry:
+    dx_limit = boost_dx_limit(bot)
     has_solution = bool(getattr(projection, "has_target_y_solution", True))
     if has_solution and getattr(projection, "projected_dx", None) is not None:
         projected_dx = float(projection.projected_dx)
     else:
-        projected_dx = float(dx) - (float(passive.vx) * max(0.0, float(setup_t_cross_ref)))
+        projected_dx = float(dx) - (float(passive.vx) * max(0.0, float(boost_t_cross_ref)))
 
     impact_angle = None
     if has_solution:
@@ -191,9 +191,9 @@ def setup_objective_geometry(
 
     angle_scale = 0.0
     if has_solution and impact_angle is not None:
-        angle_scale = 1.0 if impact_angle < float(bot._cfg.setup_descent_angle_deg_target) else 0.0
+        angle_scale = 1.0 if impact_angle < float(bot._cfg.boost_descent_angle_deg_target) else 0.0
 
-    return SetupObjectiveGeometry(
+    return BoostObjectiveGeometry(
         has_target_y_solution=has_solution,
         dx_limit=dx_limit,
         projected_dx=projected_dx,
@@ -203,7 +203,7 @@ def setup_objective_geometry(
     )
 
 
-def evaluate_setup_quality(
+def evaluate_boost_quality(
     bot,
     *,
     passive: Sensors,
@@ -211,14 +211,14 @@ def evaluate_setup_quality(
     dy: float,
     projection,
     dx_anchor_abs: float,
-) -> SetupQualityStatus:
+) -> BoostQualityStatus:
     cfg = bot._cfg
     apex_target, apex_tolerance = apex_target_and_tolerance(
         bot,
         dx_anchor_abs=dx_anchor_abs,
         dy=dy,
     )
-    dx_limit = setup_dx_limit(bot)
+    dx_limit = boost_dx_limit(bot)
     ratio_min, ratio_max = descent_angle_ratio_bounds(bot)
 
     target_y = float(bot._last_target_y)
@@ -251,11 +251,11 @@ def evaluate_setup_quality(
     elif impact_angle is None:
         verdict = "angle"
         passed = False
-    elif impact_angle < float(cfg.setup_descent_angle_deg_min):
+    elif impact_angle < float(cfg.boost_descent_angle_deg_min):
         verdict = "angle"
         passed = False
 
-    return SetupQualityStatus(
+    return BoostQualityStatus(
         verdict=verdict,
         passed=passed,
         apex_target=apex_target,
@@ -269,7 +269,7 @@ def evaluate_setup_quality(
     )
 
 
-def evaluate_setup_quality_after_settle(
+def evaluate_boost_quality_after_settle(
     bot,
     *,
     passive: Sensors,
@@ -278,7 +278,7 @@ def evaluate_setup_quality_after_settle(
     settle_s: float,
     dx_anchor_abs: float,
     settle_angle_target: float | None = None,
-) -> SetupQualityStatus:
+) -> BoostQualityStatus:
     settle_dt = max(0.0, float(settle_s))
     max_power, _min_throttle, _max_throttle, _ramp_up = engine_profile(getattr(bot, "vehicle_info", None))
     thrust_down_rate = 1.8
@@ -342,7 +342,7 @@ def evaluate_setup_quality_after_settle(
         min_t_fall=0.0,
         gravity_mag=_GRAVITY_MAG,
     )
-    return evaluate_setup_quality(
+    return evaluate_boost_quality(
         bot,
         passive=settled_passive,
         dx=dx_settle,
@@ -352,7 +352,7 @@ def evaluate_setup_quality_after_settle(
     )
 
 
-def setup_cut_wind_down_s(
+def boost_cut_wind_down_s(
     bot,
     *,
     passive: Sensors,
@@ -360,7 +360,7 @@ def setup_cut_wind_down_s(
 ) -> float:
     settle_s = max(0.0, float(minimum_s))
     thrust_start = max(0.0, float(getattr(passive, "thrust_level", 0.0)))
-    idle_thrust_max = max(0.0, float(bot._cfg.setup_gate_idle_thrust_max))
+    idle_thrust_max = max(0.0, float(bot._cfg.boost_cutoff_idle_thrust_max))
     if thrust_start <= idle_thrust_max:
         return settle_s
     thrust_down_rate = 1.8
@@ -374,17 +374,17 @@ def setup_cut_wind_down_s(
 
 
 __all__ = [
-    "SetupObjectiveGeometry",
-    "SetupQualityStatus",
+    "BoostObjectiveGeometry",
+    "BoostQualityStatus",
     "apex_target_and_tolerance",
     "descent_angle_ratio_bounds",
     "descent_angle_slope_bounds",
-    "evaluate_setup_quality",
-    "evaluate_setup_quality_after_settle",
+    "evaluate_boost_quality",
+    "evaluate_boost_quality_after_settle",
     "projected_impact_angle_deg",
     "select_reference_times",
-    "setup_cut_wind_down_s",
-    "setup_dx_limit",
-    "setup_objective_geometry",
-    "transfer_dy_for_setup",
+    "boost_cut_wind_down_s",
+    "boost_dx_limit",
+    "boost_objective_geometry",
+    "transfer_dy_for_boost",
 ]

@@ -7,7 +7,7 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 - Start here: [`docs/README.md`](docs/README.md)
 - Bot framework + API: [`docs/overview.md`](docs/overview.md)
 - Bot docs: [`docs/plunge.md`](docs/plunge.md), [`docs/pdg.md`](docs/pdg.md)
-- Scenario docs: [`docs/flare_normal.md`](docs/flare_normal.md), [`docs/flare_error.md`](docs/flare_error.md), [`docs/setup_downhill.md`](docs/setup_downhill.md), [`docs/setup_flat.md`](docs/setup_flat.md), [`docs/setup_climb.md`](docs/setup_climb.md)
+- Scenario docs: [`docs/terminal_normal.md`](docs/terminal_normal.md), [`docs/terminal_error.md`](docs/terminal_error.md), [`docs/boost_downhill.md`](docs/boost_downhill.md), [`docs/boost_flat.md`](docs/boost_flat.md), [`docs/boost_climb.md`](docs/boost_climb.md)
 
 ## Features
 
@@ -68,10 +68,10 @@ uv run python main.py run --interactive flat --bot pdg
 ### Single headless run (`sim`)
 
 ```bash
-uv run python main.py sim flare_normal:mid:0 --bot pdg
-uv run python main.py sim setup_downhill:mid_half:setup:0 --bot pdg
-uv run python main.py sim flare_error:mid_wide:3 --bot pdg
-uv run python main.py sim setup_climb:mid_half:0 --bot pdg
+uv run python main.py sim terminal_normal:mid:0 --bot pdg
+uv run python main.py sim boost_downhill:mid_half:boost:0 --bot pdg
+uv run python main.py sim terminal_error:mid_wide:3 --bot pdg
+uv run python main.py sim boost_climb:mid_half:0 --bot pdg
 uv run python main.py sim plunge:mid_normal:0 --bot plunge
 ```
 
@@ -80,15 +80,15 @@ Selector format:
 - play/run/sim/plot selector: `level[:scenario[:goal[:seed]]]`
 - Use `level::seed` when setting a seed without a scenario.
 - Omit goal to default to `landing`.
-- Setup levels use weight-suffixed scenarios like `near_half`, `mid_full`, and `high_empty`.
-- Setup-goal support is currently exposed by levels: `setup_downhill`, `setup_flat`, `setup_climb`.
+- Boost levels use weight-suffixed scenarios like `near_half`, `mid_full`, and `high_empty`.
+- Boost-goal support is currently exposed by levels: `boost_downhill`, `boost_flat`, `boost_climb`.
 - Bot selector remains bot-only: `--bot <name>`.
 
 ### Plot run (`plot`)
 
 ```bash
-uv run python main.py plot setup_flat:far_half:0 --bot pdg
-uv run python main.py plot setup_flat:far_half:0 --bot pdg --plot all --plot-output both
+uv run python main.py plot boost_flat:far_half:0 --bot pdg
+uv run python main.py plot boost_flat:far_half:0 --bot pdg --plot all --plot-output both
 ```
 
 Plot outputs are written under `outputs/plots/<selector>_<timestamp>/` when plotting is enabled.
@@ -96,21 +96,21 @@ Plot outputs are written under `outputs/plots/<selector>_<timestamp>/` when plot
 ### Benchmark batch (`bench`)
 
 ```bash
-# Flare-error subset over seed range
+# Terminal-error subset over seed range
 uv run python main.py bench \
-  flare_error:shallow_tight:0-19 \
-  flare_error:mid_wide:0-19 \
-  flare_error:steep_wide:0-19 \
+  terminal_error:shallow_tight:0-19 \
+  terminal_error:mid_wide:0-19 \
+  terminal_error:steep_wide:0-19 \
   --bot pdg
 
 # Multi-level benchmark + reports (one selector per level/scenario spec)
 uv run python main.py bench \
   plunge \
-  flare_normal \
-  flare_error \
-  setup_downhill \
-  setup_flat \
-  setup_climb \
+  terminal_normal \
+  terminal_error \
+  boost_downhill \
+  boost_flat \
+  boost_climb \
   --bot pdg \
   --json auto \
   --csv auto
@@ -133,16 +133,16 @@ level metadata from `benchmark_profile()`:
 Default policy profile:
 
 - `flat`, `mountains`: `excluded`
-- `plunge`, `flare_normal`, `flare_error`, `setup_downhill`, `setup_flat`, `setup_climb`: `normal`
+- `plunge`, `terminal_normal`, `terminal_error`, `boost_downhill`, `boost_flat`, `boost_climb`: `normal`
 
 Repo shorthand:
 
-- `flare levels` means `flare_normal` + `flare_error`
+- `terminal levels` means `terminal_normal` + `terminal_error`
 - `plunge` is a separate plunge benchmark level
 
 Focused benchmark-pack selectors also accept explicit group aliases:
 
-- `@flare` / `@flare_flight` -> `flare_normal`, `flare_error`
+- `@terminal` / `@terminal_flight` -> `terminal_normal`, `terminal_error`
 - `@plunge` / `@terminal_plunge` -> `plunge`
 
 Example:
@@ -150,7 +150,7 @@ Example:
 ```bash
 uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py \
   --mode focused \
-  --selectors @flare \
+  --selectors @terminal \
   --seed-spec 0-9 \
   --baseline-ref main
 ```
@@ -196,12 +196,12 @@ uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py \
 Benchmark records include bot compute timing metrics (avg plus p90/p99 for
 passive, update, and total ms/tick) when profiling is enabled.
 
-Setup-phase evaluation metrics are reported through generic fields such as
-`setup_gate_*` and `setup_goal_*`. For `flare_normal` and `flare_error`,
-`setup_gate_*` is a spawn-time coast-entry snapshot rather than a post-burn
-setup latch. Bot-owned diagnostics stay namespaced under
-`bot_<botname>_*`, for example `bot_pdg_flare_entry_projected_dx`,
-`bot_pdg_flare_gate_mode`, and `bot_pdg_shape_curve_rmse`.
+Boost-phase evaluation metrics are reported through generic fields such as
+`boost_cutoff_*` and `boost_goal_*`. For `terminal_normal` and `terminal_error`,
+`boost_cutoff_*` is a spawn-time coast-entry snapshot rather than a post-burn
+boost-cutoff latch. Bot-owned diagnostics stay namespaced under
+`bot_<botname>_*`, for example `bot_pdg_terminal_entry_projected_dx`,
+`bot_pdg_terminal_gate_mode`, and `bot_pdg_shape_curve_rmse`.
 
 When plotting is enabled, runs now emit `plot_paths` and a plot manifest path for bundle-style outputs.
 
@@ -265,7 +265,7 @@ Telemetry diagnostics executors:
 The game loop now supports lightweight bot-loop profiling in headless mode:
 
 ```bash
-PYLANDER_BOT_PROFILE=1 uv run python main.py sim flare_normal:mid:0 --bot pdg
+PYLANDER_BOT_PROFILE=1 uv run python main.py sim terminal_normal:mid:0 --bot pdg
 ```
 
 Optional interval override (seconds):
@@ -283,7 +283,7 @@ For `bench`, profiling is enabled by default with periodic profile logs disabled
 Headless `sim` output now uses:
 
 - compact per-tick lines: `t=... | ship x=... y=... | bot=... mode=... phase=...`
-- sectioned final results with generic run/setup fields first and bot-owned
+- sectioned final results with generic run/boost fields first and bot-owned
   diagnostics grouped under `Bot Telemetry: <bot>`
 
 See [`docs/overview.md`](docs/overview.md) for the bot API and profiling details.

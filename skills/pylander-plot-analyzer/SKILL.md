@@ -19,8 +19,8 @@ Use this skill to interpret generated plot bundles.
 3. Produce ranked findings with evidence:
 - trajectory undershoot/overshoot patterns
 - late correction burden
-- setup/coast handoff quality hints
-- thrust-vector instability or flare-phase clutter patterns
+- boost/coast handoff quality hints
+- thrust-vector instability or terminal-phase clutter patterns
 4. Return follow-up commands (`sim`, profiled `sim`, focused re-plot) for top issues.
 
 ## Output contract

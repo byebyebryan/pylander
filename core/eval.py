@@ -38,22 +38,22 @@ _OPTIONAL_FLOAT_RESULT_FIELDS: tuple[str, ...] = (
     *tuple(
         field
         for field in SETUP_GOAL_RESULT_FIELDS
-        if field not in {"setup_goal_done", "setup_goal_has_target_y_solution"}
+        if field not in {"boost_goal_done", "boost_goal_has_target_y_solution"}
     ),
     *tuple(
         field
         for field in SETUP_GATE_RESULT_FIELDS
-        if field not in {"setup_gate_done", "setup_gate_has_target_y_solution"}
+        if field not in {"boost_cutoff_done", "boost_cutoff_has_target_y_solution"}
     ),
     *tuple(field for field in BOT_PROFILE_RESULT_FIELDS if field != "bot_profile_enabled"),
 )
 
 _OPTIONAL_BOOL_RESULT_FIELDS: tuple[str, ...] = (
     "eval_early_end",
-    "setup_goal_done",
-    "setup_goal_has_target_y_solution",
-    "setup_gate_done",
-    "setup_gate_has_target_y_solution",
+    "boost_goal_done",
+    "boost_goal_has_target_y_solution",
+    "boost_cutoff_done",
+    "boost_cutoff_has_target_y_solution",
     *tuple(field for field in ARRIVAL_RESULT_FIELDS if field.endswith("_arrived")),
     "bot_profile_enabled",
 )
