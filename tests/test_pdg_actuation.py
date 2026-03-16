@@ -5,12 +5,13 @@ import math
 import pytest
 
 from bots.pdg.actuation import command_passive_coast
-from bots.pdg.config import PDGConfig
 from core.bot import Sensors
 
 
 class _Bot:
     def __init__(self) -> None:
+        from bots.pdg.config import PDGConfig
+
         self._cfg = PDGConfig()
         self._prev_angle_cmd = 0.0
         self._thrust_enabled = True

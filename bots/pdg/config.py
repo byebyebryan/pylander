@@ -99,6 +99,11 @@ class PDGConfig:
     flare_gate_burn_time_offset_long_s: float = 0.8
     flare_gate_hysteresis_ticks: int = 2
     flare_gate_latest_safe_buffer_s: float = 0.6
+    flare_overshoot_tilt_altitude_min: float = 35.0
+    flare_overshoot_tilt_projected_dx_abs: float = 28.0
+    flare_overshoot_tilt_projected_dx_ratio: float = 2.0
+    flare_overshoot_tilt_vx_min: float = 8.0
+    flare_overshoot_tilt_max: float = 1.22
 
     # Phase centering + setup/coast shape objective
     setup_center_tol_ratio: float = 0.20
