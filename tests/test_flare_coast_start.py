@@ -5,7 +5,7 @@ from types import MethodType
 import pytest
 
 from bots import create_bot
-from bots.pdg.terminal_gate import _latest_safe_state
+from bots.pdg_terminal_gate import _latest_safe_state
 from core.bot import Sensors
 from game import LanderGame
 from levels import create_level

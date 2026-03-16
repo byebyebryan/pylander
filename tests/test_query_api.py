@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from bots import create_bot
-from bots._ballistics import (
+from bots.common_ballistics import (
     BallisticProjection,
     estimate_ground_time_to_impact,
     estimate_target_y_projection,

@@ -11,45 +11,45 @@ import os
 from dataclasses import dataclass, fields, replace
 from typing import Any
 
-from bots._ballistics import (
+from bots.common_ballistics import (
     BallisticProjection,
     estimate_target_y_projection,
 )
-from bots._bot_math import clamp, engine_profile, finite_altitude, stable
-from bots._optimizer_pdg import PDGOptimizer, PDGOptimizerConfig, PDGPlan
-from bots._targeting import pick_target, target_half_width
-from bots.pdg.actuation import (
+from bots.common_math import clamp, engine_profile, finite_altitude, stable
+from bots.common_targeting import pick_target, target_half_width
+from bots.pdg_actuation import (
     command_from_plan as _command_from_plan_impl,
     command_passive_coast as _command_passive_coast_impl,
     command_zero_thrust_hold_angle as _command_zero_thrust_hold_angle_impl,
 )
-from bots.pdg.config import PDGConfig
-from bots.pdg.eval import (
+from bots.pdg_boost import (
+    boost_cut_wind_down_s as _boost_cut_wind_down_s_impl,
+    evaluate_boost_quality as _evaluate_boost_quality_impl,
+    evaluate_boost_quality_after_settle as _evaluate_boost_quality_after_settle_impl,
+    transfer_dy_for_boost as _transfer_dy_for_boost_impl,
+)
+from bots.pdg_config import PDGConfig
+from bots.pdg_eval import (
     build_evaluation_decision as _build_evaluation_decision_impl,
     build_evaluation_snapshot as _build_evaluation_snapshot_impl,
     percentile as _percentile_impl,
     reset_evaluation_state as _reset_evaluation_state_impl,
     resolve_evaluation_snapshot as _resolve_evaluation_snapshot_impl,
 )
-from bots.pdg.terminal_gate import evaluate_terminal_gate as _evaluate_terminal_gate_impl
-from bots.pdg.planner import solve_plan as _solve_plan_impl
-from bots.pdg.boost import (
-    evaluate_boost_quality as _evaluate_boost_quality_impl,
-    evaluate_boost_quality_after_settle as _evaluate_boost_quality_after_settle_impl,
-    boost_cut_wind_down_s as _boost_cut_wind_down_s_impl,
-    transfer_dy_for_boost as _transfer_dy_for_boost_impl,
-)
-from bots.pdg.stages import (
+from bots.pdg_optimizer import PDGOptimizer, PDGOptimizerConfig, PDGPlan
+from bots.pdg_planner import solve_plan as _solve_plan_impl
+from bots.pdg_stages import (
     BallisticCoastController,
     FlightStage,
-    PDGTerminalController,
     PDGBoostController,
+    PDGTerminalController,
     StageController,
     StageTickResult,
     TakeoffBootstrapController,
     TouchdownBrakeController,
 )
-from bots.pdg.tracking import (
+from bots.pdg_terminal_gate import evaluate_terminal_gate as _evaluate_terminal_gate_impl
+from bots.pdg_tracking import (
     apply_boost_cutoff_metrics as _apply_boost_cutoff_metrics_impl,
     finalize_boost_cutoff_metrics as _finalize_boost_cutoff_metrics_impl,
     finalize_terminal_entry_metrics as _finalize_terminal_entry_metrics_impl,
@@ -1643,4 +1643,10 @@ def list_behavior_names() -> tuple[str, ...]:
     return ("pdg",)
 
 
-__all__ = ["PDGBot", "create_bot", "list_behavior_names"]
+__all__ = [
+    "FlightStage",
+    "PDGBot",
+    "UpdateContext",
+    "create_bot",
+    "list_behavior_names",
+]

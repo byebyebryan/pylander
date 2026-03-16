@@ -4,8 +4,8 @@ import math
 from dataclasses import dataclass
 from types import SimpleNamespace
 
-from bots._ballistics import ballistic_apex_from_state, estimate_target_y_projection
-from bots._bot_math import engine_profile
+from bots.common_ballistics import ballistic_apex_from_state, estimate_target_y_projection
+from bots.common_math import engine_profile
 from core.bot import Sensors
 from core.config import GRAVITY
 

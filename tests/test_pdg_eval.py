@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from bots.pdg.config import PDGConfig
-from bots.pdg.eval import build_evaluation_decision, reset_evaluation_state
+from bots.pdg_config import PDGConfig
+from bots.pdg_eval import build_evaluation_decision, reset_evaluation_state
 
 
 class _Bot:
