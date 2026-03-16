@@ -4,7 +4,12 @@ from dataclasses import dataclass
 
 import core.terrain as _terrain
 from core.level import Level
-from levels.setup_base import SOURCE_PAD_X, SetupTransferLevel
+from levels.setup_base import (
+    SOURCE_PAD_X,
+    SETUP_WEIGHT_TIERS,
+    SetupTransferLevel,
+    build_setup_weight_params,
+)
 from levels.scenario_common import (
     SampleRange,
     has_randomized_values,
@@ -15,20 +20,50 @@ _SOURCE_PAD_X = SOURCE_PAD_X
 
 
 @dataclass(frozen=True)
-class SetupFlatScenario:
-    name: str
+class _SetupFlatGeometry:
+    key: str
     dx: float | SampleRange
 
 
-_SCENARIOS: tuple[SetupFlatScenario, ...] = (
-    SetupFlatScenario(name="near", dx=SampleRange(150.0, 250.0)),
-    SetupFlatScenario(name="mid", dx=SampleRange(300.0, 500.0)),
-    SetupFlatScenario(name="far", dx=SampleRange(600.0, 1000.0)),
+@dataclass(frozen=True)
+class SetupFlatScenario:
+    name: str
+    route_tier: str
+    weight_tier: str
+    cargo_mass: float
+    cargo_fraction: float
+    sample_key: str
+    dx: float | SampleRange
+
+
+_GEOMETRY_TIERS: tuple[_SetupFlatGeometry, ...] = (
+    _SetupFlatGeometry(key="near", dx=SampleRange(150.0, 250.0)),
+    _SetupFlatGeometry(key="mid", dx=SampleRange(300.0, 500.0)),
+    _SetupFlatGeometry(key="far", dx=SampleRange(600.0, 1000.0)),
+)
+
+
+def _scenario_name(route_tier: str, weight_tier: str) -> str:
+    return f"{route_tier}_{weight_tier}"
+
+
+_SCENARIOS: tuple[SetupFlatScenario, ...] = tuple(
+    SetupFlatScenario(
+        name=_scenario_name(geometry.key, weight.key),
+        route_tier=geometry.key,
+        weight_tier=weight.key,
+        cargo_mass=float(weight.cargo_mass),
+        cargo_fraction=float(weight.cargo_fraction),
+        sample_key=geometry.key,
+        dx=geometry.dx,
+    )
+    for geometry in _GEOMETRY_TIERS
+    for weight in SETUP_WEIGHT_TIERS
 )
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "mid"
-_SMOKE_BENCHMARK_SCENARIOS: tuple[str, ...] = ("mid",)
-_QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = ("mid",)
+_DEFAULT_SCENARIO = _scenario_name("mid", "half")
+_SMOKE_BENCHMARK_SCENARIOS: tuple[str, ...] = (_DEFAULT_SCENARIO,)
+_QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (_DEFAULT_SCENARIO,)
 
 
 class SetupFlatLevel(SetupTransferLevel):
@@ -55,7 +90,11 @@ class SetupFlatLevel(SetupTransferLevel):
         return _SOURCE_PAD_X + dest_dx
 
     def _build_scenario_params(self, scenario, dest_x: float) -> dict:
-        return {"dx": dest_x - _SOURCE_PAD_X}
+        return {
+            "route_tier": scenario.route_tier,
+            "dx": dest_x - _SOURCE_PAD_X,
+            **build_setup_weight_params(scenario),
+        }
 
 
 def create_level() -> Level:

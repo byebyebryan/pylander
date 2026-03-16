@@ -10,13 +10,18 @@ Defined in [`levels/setup_flat.py`](../levels/setup_flat.py):
 - Two terrain-bound pads: source at `x=0`, destination sampled by scenario
 - Pad size: `110`
 - Spawn: on source pad
-- Cargo: forced empty (`cargo_mass = 0`)
+- Cargo tiers: `empty=0`, `half=3000`, `full=6000`
 
 Scenarios:
 
-- `near`: `dx in [150, 250]`
-- `mid`: `dx in [300, 500]`
-- `far`: `dx in [600, 1000]`
+- `near_empty`, `near_half`, `near_full`: `dx in [150, 250]`
+- `mid_empty`, `mid_half`, `mid_full`: `dx in [300, 500]`
+- `far_empty`, `far_half`, `far_full`: `dx in [600, 1000]`
+
+Defaults:
+
+- default scenario: `mid_half`
+- recommended benchmark subset: `mid_half`
 
 ## Runtime behavior
 
@@ -44,6 +49,6 @@ through the generic `setup_gate_*` fields plus retained bot-owned
 
 ```bash
 uv run python main.py run --interactive setup_flat
-uv run python main.py sim setup_flat:near:0 --bot pdg
-uv run python main.py bench setup_flat:near:0-9 setup_flat:mid:0-9 setup_flat:far:0-9 --bot pdg
+uv run python main.py sim setup_flat:near_half:0 --bot pdg
+uv run python main.py bench setup_flat --bot pdg
 ```

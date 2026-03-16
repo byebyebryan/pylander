@@ -83,17 +83,17 @@ def test_focused_selector_unknown_scenario_errors() -> None:
 def test_focused_selector_preserves_csv_seed_specs() -> None:
     pack = selector_pack.build_selectors(
         mode="focused",
-        focused_selectors=["setup_flat:mid:0,2"],
+        focused_selectors=["setup_flat:mid_half:0,2"],
     )
-    assert pack.selectors == ["setup_flat:mid:0,2"]
+    assert pack.selectors == ["setup_flat:mid_half:0,2"]
 
 
 def test_focused_selector_preserves_goal_slot() -> None:
     pack = selector_pack.build_selectors(
         mode="focused",
-        focused_selectors=["setup_flat:mid:setup:0-2"],
+        focused_selectors=["setup_flat:mid_half:setup:0-2"],
     )
-    assert pack.selectors == ["setup_flat:mid:setup:0-2"]
+    assert pack.selectors == ["setup_flat:mid_half:setup:0-2"]
 
 
 def test_focused_selector_group_flare_excludes_plunge() -> None:
@@ -102,7 +102,9 @@ def test_focused_selector_group_flare_excludes_plunge() -> None:
         focused_selectors=["@flare"],
     )
     assert pack.included_levels == ["flare_error", "flare_normal"]
-    assert all(item.startswith(("flare_error:", "flare_normal:")) for item in pack.selectors)
+    assert all(
+        item.startswith(("flare_error:", "flare_normal:")) for item in pack.selectors
+    )
     assert all(not item.startswith("plunge:") for item in pack.selectors)
 
 
@@ -125,7 +127,7 @@ def test_unknown_focused_selector_group_errors() -> None:
 
 def test_build_bench_command_includes_profile_flags() -> None:
     cmd = selector_pack.build_bench_command(
-        selectors=["setup_flat:mid:0-1"],
+        selectors=["setup_flat:mid_half:0-1"],
         bot_profile_enabled=True,
         bot_profile_interval_s=1.25,
         bot_profile_log_lines=False,
@@ -139,7 +141,7 @@ def test_build_bench_command_includes_profile_flags() -> None:
 
 def test_build_bench_command_includes_bot_config_path() -> None:
     cmd = selector_pack.build_bench_command(
-        selectors=["setup_flat:mid:0-1"],
+        selectors=["setup_flat:mid_half:0-1"],
         bot_config_path="configs/zem_fast.json",
     )
     assert "--bot-config" in cmd

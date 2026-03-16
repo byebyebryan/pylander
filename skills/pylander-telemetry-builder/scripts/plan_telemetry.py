@@ -60,7 +60,10 @@ def _select_target_issue(triage: dict[str, Any]) -> tuple[str, list[dict[str, An
     top = findings[0]
     selector = str(top.get("selector") or "").strip()
     selector_suffix = f" ({selector})" if selector else ""
-    return f"{str(top.get('title') or 'top_finding').strip()}{selector_suffix}", findings
+    return (
+        f"{str(top.get('title') or 'top_finding').strip()}{selector_suffix}",
+        findings,
+    )
 
 
 def _probe_template(
@@ -113,7 +116,13 @@ def _probe_template(
             "insertion_anchor": "phase transition and projected-dx handoff points",
             "schema": {
                 "metric": "phase_handoff_dx",
-                "fields": ["phase", "projected_dx", "target_dx", "gate_state", "solve_ms"],
+                "fields": [
+                    "phase",
+                    "projected_dx",
+                    "target_dx",
+                    "gate_state",
+                    "solve_ms",
+                ],
             },
             "sampling_or_gate": {
                 "env_var": "PYLANDER_TELEM_PHASE_TRACE",
@@ -192,14 +201,14 @@ def _validation_commands(
     if not commands:
         commands.extend(
             [
-                "uv run python main.py sim setup_flat:near:0 --bot pdg --freq 1",
-                "PYLANDER_BOT_PROFILE=1 uv run python main.py sim setup_flat:near:0 --bot pdg --freq 1",
+                "uv run python main.py sim setup_flat:near_half:0 --bot pdg --freq 1",
+                "PYLANDER_BOT_PROFILE=1 uv run python main.py sim setup_flat:near_half:0 --bot pdg --freq 1",
             ]
         )
 
     if primary_env_flag:
         commands.append(
-            f"{primary_env_flag}=1 uv run python main.py sim setup_flat:near:0 --bot pdg --freq 1"
+            f"{primary_env_flag}=1 uv run python main.py sim setup_flat:near_half:0 --bot pdg --freq 1"
         )
 
     return commands
@@ -240,7 +249,9 @@ def build_probe_plan(
             )
         )
 
-    first_flag = str(probe_set[0].get("sampling_or_gate", {}).get("env_var") or "").strip()
+    first_flag = str(
+        probe_set[0].get("sampling_or_gate", {}).get("env_var") or ""
+    ).strip()
 
     payload = {
         "contract": "telemetry_probe_plan.v1",
@@ -270,11 +281,15 @@ def build_probe_plan(
 
 def _default_output_path() -> Path:
     stamp = utc_now_iso().replace(":", "").replace("-", "")
-    return (_REPO_ROOT / "outputs" / "diagnostics" / f"telemetry_probe_plan_{stamp}.json").resolve()
+    return (
+        _REPO_ROOT / "outputs" / "diagnostics" / f"telemetry_probe_plan_{stamp}.json"
+    ).resolve()
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build focused Pylander telemetry probe plans")
+    parser = argparse.ArgumentParser(
+        description="Build focused Pylander telemetry probe plans"
+    )
     parser.add_argument("--triage-report", required=True)
     parser.add_argument("--scope", nargs="*", default=[])
     parser.add_argument("--overhead-budget-avg-ms", type=float, default=0.05)
@@ -293,7 +308,9 @@ def main() -> None:
         overhead_budget_p99_ms=max(0.0, to_float(args.overhead_budget_p99_ms, 0.20)),
     )
 
-    output_path = Path(args.output_plan).resolve() if args.output_plan else _default_output_path()
+    output_path = (
+        Path(args.output_plan).resolve() if args.output_plan else _default_output_path()
+    )
     out_path = write_json(output_path, payload)
     print(f"# telemetry_probe_plan\njson={out_path}")
 

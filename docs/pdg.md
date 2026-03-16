@@ -141,12 +141,12 @@ Flare tilt is now recoverability-based instead of a single fixed cap:
 Setup-gate debug traces can be enabled with:
 
 ```bash
-PYLANDER_PDG_DEBUG_SETUP=1 uv run python main.py sim setup_flat:near:0 --bot pdg
+PYLANDER_PDG_DEBUG_SETUP=1 uv run python main.py sim setup_flat:near_half:0 --bot pdg
 ```
 
 Goal-based eval boundary:
 
-- selector goal `setup` (for example `setup_downhill:mid:setup:0 --bot pdg`) -> early stop at setup gate
+- selector goal `setup` (for example `setup_downhill:mid_half:setup:0 --bot pdg`) -> early stop at setup gate
 - setup-goal success is metric-gated: valid target-y solution, projected dx inside corridor, and impact angle above `setup_descent_angle_deg_min`
 - apex telemetry remains available in `setup_gate_*` / `setup_goal_*`, but apex-band matching is no longer part of the setup verdict
 

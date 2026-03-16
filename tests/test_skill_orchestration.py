@@ -27,14 +27,16 @@ def _script(rel: str) -> Path:
 
 contracts = _load_module("skill_contracts", _script("skills/lib/contracts.py"))
 route_mod = _load_module(
-    "route_tuning_script", _script("skills/pylander-tune-routing-planner/scripts/route_tuning.py")
+    "route_tuning_script",
+    _script("skills/pylander-tune-routing-planner/scripts/route_tuning.py"),
 )
 strategy_arena_mod = _load_module(
     "strategy_arena_script",
     _script("skills/pylander-strategy-orchestrator/scripts/run_strategy_arena.py"),
 )
 tune_loop_mod = _load_module(
-    "tune_loop_script", _script("skills/pylander-tune-loop-manager/scripts/run_tune_loop.py")
+    "tune_loop_script",
+    _script("skills/pylander-tune-loop-manager/scripts/run_tune_loop.py"),
 )
 regression_mod = _load_module(
     "regression_gate_script",
@@ -54,7 +56,7 @@ def test_contract_validation_rejects_missing_required() -> None:
 def test_route_auto_selects_arena_on_conflict() -> None:
     payload = {
         "strategy_winner_ref": "branch_a",
-        "focused_selectors": ["setup_flat:mid:0", "flare_error:mid_wide:0"],
+        "focused_selectors": ["setup_flat:mid_half:0", "flare_error:mid_wide:0"],
         "baseline_ref": "main",
         "tuning_route": "auto",
         "recent_metrics": {
@@ -76,7 +78,7 @@ def test_route_auto_selects_arena_on_conflict() -> None:
 def test_route_manual_override_loop() -> None:
     payload = {
         "strategy_winner_ref": "branch_b",
-        "focused_selectors": ["setup_flat:mid:0"],
+        "focused_selectors": ["setup_flat:mid_half:0"],
         "tuning_route": "loop",
     }
     out = route_mod.route_tuning(payload)
@@ -87,7 +89,7 @@ def test_route_manual_override_loop() -> None:
 def test_strategy_arena_selects_top_passing_branch() -> None:
     payload = {
         "arena_id": "arena_demo",
-        "focused_selectors": ["setup_flat:mid:0"],
+        "focused_selectors": ["setup_flat:mid_half:0"],
         "branches": [
             {
                 "inline_report": {
@@ -145,7 +147,7 @@ def test_strategy_arena_selects_top_passing_branch() -> None:
 
 def test_tune_loop_marks_hard_blocker() -> None:
     payload = {
-        "selector_scope": ["setup_flat:mid:0"],
+        "selector_scope": ["setup_flat:mid_half:0"],
         "profile": "light",
         "min_success_rate": 0.8,
         "iterations": [
@@ -171,7 +173,7 @@ def test_regression_gate_uses_compare_report(tmp_path: Path) -> None:
             "summary_delta": {"success_rate": -0.01},
             "crash": {"new_crashes": []},
             "compute": {"notable_regression": True},
-            "worst_scenarios": [{"scenario": "setup_flat:mid"}],
+            "worst_scenarios": [{"scenario": "setup_flat:mid_half"}],
         }
     }
     compare_path = tmp_path / "compare.json"
@@ -194,7 +196,7 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
         json.dumps(
             {
                 "strategy_winner_ref": "demo",
-                "focused_selectors": ["setup_flat:mid:0"],
+                "focused_selectors": ["setup_flat:mid_half:0"],
                 "tuning_route": "auto",
                 "recent_metrics": {"candidate_directions": 1, "viable_directions": 1},
             }
@@ -209,7 +211,13 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
         "--output",
         str(route_output),
     ]
-    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc = subprocess.run(
+        cmd,
+        cwd=str(REPO_ROOT),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
     assert proc.returncode == 0, proc.stdout
     assert route_output.exists()
 
@@ -221,7 +229,7 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
                 "arena_id": "arena_smoke",
                 "arena_type": "strategy",
                 "branch_id": "branch_1",
-                "selectors": ["setup_flat:mid:0"],
+                "selectors": ["setup_flat:mid_half:0"],
                 "measured_metrics": {
                     "success_rate": 1.0,
                     "success_rate_delta": 0.05,
@@ -243,7 +251,13 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
         str(worker_output),
         "--no-execute-validation",
     ]
-    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc = subprocess.run(
+        cmd,
+        cwd=str(REPO_ROOT),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
     assert proc.returncode == 0, proc.stdout
     assert worker_output.exists()
 
@@ -253,7 +267,7 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
         json.dumps(
             {
                 "arena_id": "arena_smoke",
-                "focused_selectors": ["setup_flat:mid:0"],
+                "focused_selectors": ["setup_flat:mid_half:0"],
                 "branches": [{"report_path": str(worker_output)}],
             }
         ),
@@ -261,14 +275,24 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
     )
     cmd = [
         sys.executable,
-        str(_script("skills/pylander-strategy-orchestrator/scripts/run_strategy_arena.py")),
+        str(
+            _script(
+                "skills/pylander-strategy-orchestrator/scripts/run_strategy_arena.py"
+            )
+        ),
         "--input",
         str(strategy_input),
         "--output",
         str(strategy_output),
         "--no-execute-workers",
     ]
-    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc = subprocess.run(
+        cmd,
+        cwd=str(REPO_ROOT),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
     assert proc.returncode == 0, proc.stdout
     assert strategy_output.exists()
 
@@ -277,7 +301,7 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
     tune_input.write_text(
         json.dumps(
             {
-                "selector_scope": ["setup_flat:mid:0"],
+                "selector_scope": ["setup_flat:mid_half:0"],
                 "profile": "light",
                 "iterations": [],
             }
@@ -292,7 +316,13 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
         "--output",
         str(tune_output),
     ]
-    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc = subprocess.run(
+        cmd,
+        cwd=str(REPO_ROOT),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
     assert proc.returncode == 0, proc.stdout
     assert tune_output.exists()
 
@@ -332,7 +362,13 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
         str(reg_output),
         "--no-execute",
     ]
-    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc = subprocess.run(
+        cmd,
+        cwd=str(REPO_ROOT),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
     assert proc.returncode == 0, proc.stdout
     assert reg_output.exists()
 
@@ -352,12 +388,12 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
                                 "candidate_state": "crashed",
                                 "candidate_failure_mode": "impact",
                                 "repro": {
-                                    "plot": "uv run python main.py plot setup_flat:mid:0 --bot pdg",
+                                    "plot": "uv run python main.py plot setup_flat:mid_half:0 --bot pdg",
                                     "sim_trace": (
-                                        "uv run python main.py sim setup_flat:mid:0 --bot pdg --freq 1"
+                                        "uv run python main.py sim setup_flat:mid_half:0 --bot pdg --freq 1"
                                     ),
                                     "sim_profile": (
-                                        "PYLANDER_BOT_PROFILE=1 uv run python main.py sim setup_flat:mid:0 "
+                                        "PYLANDER_BOT_PROFILE=1 uv run python main.py sim setup_flat:mid_half:0 "
                                         "--bot pdg --freq 1"
                                     ),
                                 },
@@ -380,7 +416,13 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
         "--output-report",
         str(doctor_output),
     ]
-    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc = subprocess.run(
+        cmd,
+        cwd=str(REPO_ROOT),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
     assert proc.returncode == 0, proc.stdout
     assert doctor_output.exists()
     telemetry_report = json.loads(doctor_output.read_text(encoding="utf-8"))
@@ -395,7 +437,13 @@ def test_cli_dry_run_smoke(tmp_path: Path) -> None:
         "--output-plan",
         str(builder_output),
     ]
-    proc = subprocess.run(cmd, cwd=str(REPO_ROOT), text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    proc = subprocess.run(
+        cmd,
+        cwd=str(REPO_ROOT),
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
     assert proc.returncode == 0, proc.stdout
     assert builder_output.exists()
     telemetry_plan = json.loads(builder_output.read_text(encoding="utf-8"))

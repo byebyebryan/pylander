@@ -4,29 +4,72 @@ from dataclasses import dataclass
 
 import core.terrain as _terrain
 from core.level import Level
-from levels.setup_base import SOURCE_PAD_X, SetupTransferLevel
+from levels.setup_base import (
+    SOURCE_PAD_X,
+    SETUP_WEIGHT_TIERS,
+    SetupTransferLevel,
+    build_setup_weight_params,
+)
 
 
 @dataclass(frozen=True)
-class SetupDownhillScenario:
-    name: str
+class _SetupDownhillGeometry:
+    key: str
     terrain_kind: str
     target_dx: float
     target_dy: float
 
 
-_SCENARIOS: tuple[SetupDownhillScenario, ...] = (
-    SetupDownhillScenario(name="low", terrain_kind="slope", target_dx=400.0, target_dy=-200.0),
-    SetupDownhillScenario(name="mid", terrain_kind="slope", target_dx=400.0, target_dy=-400.0),
-    SetupDownhillScenario(name="high", terrain_kind="slope", target_dx=400.0, target_dy=-800.0),
+@dataclass(frozen=True)
+class SetupDownhillScenario:
+    name: str
+    route_tier: str
+    weight_tier: str
+    cargo_mass: float
+    cargo_fraction: float
+    terrain_kind: str
+    target_dx: float
+    target_dy: float
+
+
+_GEOMETRY_TIERS: tuple[_SetupDownhillGeometry, ...] = (
+    _SetupDownhillGeometry(
+        key="low", terrain_kind="slope", target_dx=400.0, target_dy=-200.0
+    ),
+    _SetupDownhillGeometry(
+        key="mid", terrain_kind="slope", target_dx=400.0, target_dy=-400.0
+    ),
+    _SetupDownhillGeometry(
+        key="high", terrain_kind="slope", target_dx=400.0, target_dy=-800.0
+    ),
+)
+
+
+def _scenario_name(route_tier: str, weight_tier: str) -> str:
+    return f"{route_tier}_{weight_tier}"
+
+
+_SCENARIOS: tuple[SetupDownhillScenario, ...] = tuple(
+    SetupDownhillScenario(
+        name=_scenario_name(geometry.key, weight.key),
+        route_tier=geometry.key,
+        weight_tier=weight.key,
+        cargo_mass=float(weight.cargo_mass),
+        cargo_fraction=float(weight.cargo_fraction),
+        terrain_kind=geometry.terrain_kind,
+        target_dx=float(geometry.target_dx),
+        target_dy=float(geometry.target_dy),
+    )
+    for geometry in _GEOMETRY_TIERS
+    for weight in SETUP_WEIGHT_TIERS
 )
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
-_DEFAULT_SCENARIO = "mid"
-_SMOKE_BENCHMARK_SCENARIOS: tuple[str, ...] = ("mid",)
+_DEFAULT_SCENARIO = _scenario_name("mid", "half")
+_SMOKE_BENCHMARK_SCENARIOS: tuple[str, ...] = (_DEFAULT_SCENARIO,)
 _QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
-    "low",
-    "mid",
-    "high",
+    _scenario_name("low", "half"),
+    _scenario_name("mid", "half"),
+    _scenario_name("high", "half"),
 )
 
 
@@ -58,10 +101,12 @@ class SetupDownhillLevel(SetupTransferLevel):
     def _build_scenario_params(self, scenario, dest_x: float) -> dict:
         slope = self._scenario_slope(scenario)
         return {
+            "route_tier": scenario.route_tier,
             "terrain_kind": scenario.terrain_kind,
             "slope": slope,
             "dx": scenario.target_dx,
             "dy": scenario.target_dy,
+            **build_setup_weight_params(scenario),
         }
 
     def update(self, game, dt: float) -> None:
