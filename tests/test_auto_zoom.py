@@ -22,3 +22,4 @@ def test_auto_zoom_update_accepts_strict_vector_sensor_path() -> None:
     controller.update(1.0 / 60.0, _height_at, camera, screen_height=720)
 
     assert camera.min_zoom <= camera.zoom <= camera.max_zoom
+    assert camera.zoom > 1.0
