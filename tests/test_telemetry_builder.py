@@ -24,7 +24,9 @@ builder = _load_module(
     "telemetry_builder_script",
     _script("skills/pylander-telemetry-builder/scripts/plan_telemetry.py"),
 )
-contracts = _load_module("skill_contracts_for_builder", _script("skills/lib/contracts.py"))
+contracts = _load_module(
+    "skill_contracts_for_builder", _script("skills/lib/contracts.py")
+)
 
 
 def _triage_payload() -> dict[str, object]:
@@ -48,7 +50,7 @@ def _triage_payload() -> dict[str, object]:
                 "severity": "high",
                 "category": "perf",
                 "title": "Notable global compute regression",
-                "selector": "setup_flat:far:0",
+                "selector": "setup_flat:far_half:0",
                 "measured_evidence": {"p99_total_delta_ms": 2.5},
                 "likely_cause": "Tail latency spike",
                 "confidence": "high",
@@ -56,7 +58,7 @@ def _triage_payload() -> dict[str, object]:
             }
         ],
         "repro_bundle": [
-            "uv run python main.py sim setup_flat:far:0 --bot pdg --freq 1",
+            "uv run python main.py sim setup_flat:far_half:0 --bot pdg --freq 1",
         ],
         "probe_request": {
             "needed": True,

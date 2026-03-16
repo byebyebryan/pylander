@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from core.components import CargoHold, Transform
 from core.ecs import require_component
 from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_SETUP
@@ -18,6 +20,28 @@ from levels.scenario_common import ScenarioCatalogMixin
 SOURCE_PAD_X = 0.0
 SOURCE_SITE_UID = "setup_transfer_source"
 TARGET_SITE_UID = "setup_transfer_target"
+
+
+@dataclass(frozen=True)
+class SetupWeightTier:
+    key: str
+    cargo_mass: float
+    cargo_fraction: float
+
+
+SETUP_WEIGHT_TIERS: tuple[SetupWeightTier, ...] = (
+    SetupWeightTier(key="empty", cargo_mass=0.0, cargo_fraction=0.0),
+    SetupWeightTier(key="half", cargo_mass=3000.0, cargo_fraction=0.5),
+    SetupWeightTier(key="full", cargo_mass=6000.0, cargo_fraction=1.0),
+)
+
+
+def build_setup_weight_params(scenario) -> dict[str, float | str]:  # noqa: ANN001
+    return {
+        "weight_tier": str(getattr(scenario, "weight_tier", "") or ""),
+        "cargo_mass": float(getattr(scenario, "cargo_mass", 0.0) or 0.0),
+        "cargo_fraction": float(getattr(scenario, "cargo_fraction", 0.0) or 0.0),
+    }
 
 
 class SetupTransferLevel(ScenarioCatalogMixin, PresetLevel):
@@ -47,7 +71,9 @@ class SetupTransferLevel(ScenarioCatalogMixin, PresetLevel):
     def set_benchmark_mode(self, mode: str) -> None:
         key = str(mode or "sample").strip().lower()
         if key not in {"median", "sample"}:
-            raise ValueError(f"Unknown benchmark mode '{mode}'. Expected one of: median, sample")
+            raise ValueError(
+                f"Unknown benchmark mode '{mode}'. Expected one of: median, sample"
+            )
         self._benchmark_random_mode = key
 
     # -- hooks for subclasses -------------------------------------------------
@@ -66,7 +92,10 @@ class SetupTransferLevel(ScenarioCatalogMixin, PresetLevel):
         scenario = self._active_scenario()
         import random as _random
 
-        scenario_name_hash = sum(ord(ch) for ch in scenario.name)
+        scenario_seed_key = str(
+            getattr(scenario, "sample_key", scenario.name) or scenario.name
+        )
+        scenario_name_hash = sum(ord(ch) for ch in scenario_seed_key)
         rng = _random.Random(seed ^ (scenario_name_hash << 1))
 
         dest_x = self._resolve_dest_x(scenario, rng)
@@ -91,7 +120,8 @@ class SetupTransferLevel(ScenarioCatalogMixin, PresetLevel):
         actor = self.world.actors[0]
         cargo = actor.get_component(CargoHold)
         if cargo is not None:
-            cargo.cargo_mass = 0.0
+            cargo_mass = max(0.0, float(getattr(scenario, "cargo_mass", 0.0) or 0.0))
+            cargo.cargo_mass = min(cargo_mass, float(cargo.max_cargo_mass))
         engine = getattr(self, "engine", None)
         if engine is not None and hasattr(engine, "set_lander_mass"):
             engine.set_lander_mass(get_mass(actor), uid=actor.uid)

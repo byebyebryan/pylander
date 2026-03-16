@@ -10,7 +10,7 @@ from app.cli import build_parser, parse_command
 from app.config import BenchCommand, BenchSettings, BenchTarget, RunCommand
 from bots import create_bot, list_available_bots
 from core.bot import Bot, BotAction, BotDisplayState, Sensors, resolve_bot_display_state
-from core.components import LandingSite, PhysicsState, Transform
+from core.components import CargoHold, LandingSite, PhysicsState, Transform
 from core.ecs import require_component
 from core.eval import aggregate_eval_records, normalize_run_result
 from game import LanderGame
@@ -90,14 +90,58 @@ def test_flare_error_level_scenario_names_are_clean_and_prefixed_removed() -> No
 
 def test_setup_downhill_level_scenario_names_are_clean_and_prefixed_removed() -> None:
     level = create_level_by_name("setup_downhill")
-    assert level.list_batch_scenarios() == ["low", "mid", "high"]
-    assert level.list_quick_benchmark_scenarios() == ["low", "mid", "high"]
+    assert level.list_batch_scenarios() == [
+        "low_empty",
+        "low_half",
+        "low_full",
+        "mid_empty",
+        "mid_half",
+        "mid_full",
+        "high_empty",
+        "high_half",
+        "high_full",
+    ]
+    assert level.list_quick_benchmark_scenarios() == [
+        "low_half",
+        "mid_half",
+        "high_half",
+    ]
 
 
 def test_setup_climb_level_scenario_names_are_clean_and_prefixed_removed() -> None:
     level = create_level_by_name("setup_climb")
-    assert level.list_batch_scenarios() == ["low", "mid", "high"]
-    assert level.list_quick_benchmark_scenarios() == ["low", "mid", "high"]
+    assert level.list_batch_scenarios() == [
+        "low_empty",
+        "low_half",
+        "low_full",
+        "mid_empty",
+        "mid_half",
+        "mid_full",
+        "high_empty",
+        "high_half",
+        "high_full",
+    ]
+    assert level.list_quick_benchmark_scenarios() == [
+        "low_half",
+        "mid_half",
+        "high_half",
+    ]
+
+
+def test_setup_flat_level_scenario_names_are_weighted() -> None:
+    level = create_level_by_name("setup_flat")
+    assert level.list_batch_scenarios() == [
+        "near_empty",
+        "near_half",
+        "near_full",
+        "mid_empty",
+        "mid_half",
+        "mid_full",
+        "far_empty",
+        "far_half",
+        "far_full",
+    ]
+    assert level.list_quick_benchmark_scenarios() == ["mid_half"]
 
 
 def test_setup_climb_rejects_unknown_scenario() -> None:
@@ -106,9 +150,32 @@ def test_setup_climb_rejects_unknown_scenario() -> None:
         level.set_eval_scenario("bad")
 
 
+@pytest.mark.parametrize(
+    ("level_name", "legacy_scenario"),
+    (
+        ("setup_flat", "mid"),
+        ("setup_downhill", "mid"),
+        ("setup_climb", "mid"),
+    ),
+)
+def test_setup_levels_reject_legacy_bare_scenarios(
+    level_name: str, legacy_scenario: str
+) -> None:
+    level = create_level_by_name(level_name)
+    with pytest.raises(ValueError, match="Unknown"):
+        level.set_eval_scenario(legacy_scenario)
+
+
+@pytest.mark.parametrize("level_name", ["setup_flat", "setup_downhill", "setup_climb"])
+def test_setup_levels_default_to_mid_half(level_name: str) -> None:
+    level = create_level_by_name(level_name)
+    game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
+    assert game.level.scenario_name == "mid_half"
+
+
 def test_setup_climb_target_is_terrain_bound_flush_pad() -> None:
     level = create_level_by_name("setup_climb")
-    level.set_eval_scenario("mid")
+    level.set_eval_scenario("mid_half")
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     target = next(
         site
@@ -124,15 +191,19 @@ def test_setup_climb_target_is_terrain_bound_flush_pad() -> None:
 @pytest.mark.parametrize("level_name", ["setup_climb", "setup_flat", "setup_downhill"])
 def test_landed_site_uid_requires_pad_overlap(level_name: str) -> None:
     level = create_level_by_name(level_name)
-    level.set_eval_scenario("mid")
+    level.set_eval_scenario("mid_half")
     _game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
-    target = next(spec for spec in level.site_specs if spec.uid == "setup_transfer_target")
+    target = next(
+        spec for spec in level.site_specs if spec.uid == "setup_transfer_target"
+    )
     half = 0.5 * float(target.size)
     assert level._resolve_landed_site_uid(float(target.x)) == "setup_transfer_target"
     assert level._resolve_landed_site_uid(float(target.x) + half + 2.0) is None
 
 
-def _spawn_state(level_name: str, scenario: str, seed: int) -> tuple[float, float, float, float, float]:
+def _spawn_state(
+    level_name: str, scenario: str, seed: int
+) -> tuple[float, float, float, float, float]:
     level = create_level_by_name(level_name)
     level.set_eval_scenario(scenario)
     game = LanderGame(level=level, seed=seed, bot=create_bot("pdg"), headless=True)
@@ -149,22 +220,71 @@ def _spawn_state(level_name: str, scenario: str, seed: int) -> tuple[float, floa
 
 
 def test_setup_and_flare_error_scenarios_are_seed_deterministic() -> None:
-    setup_a = _spawn_state("setup_downhill", "mid", 42)
-    setup_b = _spawn_state("setup_downhill", "mid", 42)
+    setup_a = _spawn_state("setup_downhill", "mid_half", 42)
+    setup_b = _spawn_state("setup_downhill", "mid_half", 42)
     assert setup_a == pytest.approx(setup_b)
 
     coast_a = _spawn_state("flare_error", "mid_tight", 42)
     coast_b = _spawn_state("flare_error", "mid_tight", 42)
     assert coast_a == pytest.approx(coast_b)
 
-    climb_a = _spawn_state("setup_climb", "mid", 42)
-    climb_b = _spawn_state("setup_climb", "mid", 42)
+    climb_a = _spawn_state("setup_climb", "mid_half", 42)
+    climb_b = _spawn_state("setup_climb", "mid_half", 42)
     assert climb_a == pytest.approx(climb_b)
+
+
+@pytest.mark.parametrize(
+    ("level_name", "scenario_name", "expected_cargo_mass", "expected_cargo_fraction"),
+    (
+        ("setup_flat", "near_empty", 0.0, 0.0),
+        ("setup_flat", "near_half", 3000.0, 0.5),
+        ("setup_flat", "near_full", 6000.0, 1.0),
+        ("setup_downhill", "mid_half", 3000.0, 0.5),
+        ("setup_climb", "high_full", 6000.0, 1.0),
+    ),
+)
+def test_setup_levels_apply_weight_tier_mass_and_params(
+    level_name: str,
+    scenario_name: str,
+    expected_cargo_mass: float,
+    expected_cargo_fraction: float,
+) -> None:
+    level = create_level_by_name(level_name)
+    level.set_eval_scenario(scenario_name)
+    game = LanderGame(level=level, seed=7, bot=create_bot("pdg"), headless=True)
+
+    actor = game.level.world.actors[0]
+    cargo = require_component(actor, CargoHold)
+    assert cargo.effective_mass == pytest.approx(expected_cargo_mass)
+    assert level._scenario_params["weight_tier"] == scenario_name.rsplit("_", 1)[-1]
+    assert level._scenario_params["cargo_mass"] == pytest.approx(expected_cargo_mass)
+    assert level._scenario_params["cargo_fraction"] == pytest.approx(
+        expected_cargo_fraction
+    )
+
+
+def test_setup_flat_weight_tiers_share_same_sampled_route_for_same_seed() -> None:
+    target_x_by_weight: dict[str, float] = {}
+    for scenario_name in ("far_empty", "far_half", "far_full"):
+        level = create_level_by_name("setup_flat")
+        level.set_eval_scenario(scenario_name)
+        _game = LanderGame(level=level, seed=19, bot=create_bot("pdg"), headless=True)
+        target_site = next(
+            spec for spec in level.site_specs if spec.uid == "setup_transfer_target"
+        )
+        target_x_by_weight[scenario_name] = float(target_site.x)
+
+    assert target_x_by_weight["far_empty"] == pytest.approx(
+        target_x_by_weight["far_half"]
+    )
+    assert target_x_by_weight["far_half"] == pytest.approx(
+        target_x_by_weight["far_full"]
+    )
 
 
 def test_pdg_setup_goal_ends_headless_run_early() -> None:
     level = create_level_by_name("setup_downhill")
-    level.set_eval_scenario("mid")
+    level.set_eval_scenario("mid_half")
     bot = create_bot("pdg")
     bot.set_eval_goal("setup")
     game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="setup")
@@ -181,7 +301,11 @@ def test_pdg_setup_goal_ends_headless_run_early() -> None:
         assert result["setup_quality_verdict"] == "pass"
     else:
         assert result["failure_mode"] == "setup_quality_failed"
-        assert result["setup_quality_verdict"] in {"dx", "angle", "no_target_y_solution"}
+        assert result["setup_quality_verdict"] in {
+            "dx",
+            "angle",
+            "no_target_y_solution",
+        }
 
 
 def test_non_landing_goal_without_decision_fails_goal_not_reached() -> None:
@@ -217,7 +341,7 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
     record = normalize_run_result(
         bot_name="pdg",
         level_name="setup_downhill",
-        scenario="mid",
+        scenario="mid_half",
         seed=3,
         result={
             "state": "flying",
@@ -293,9 +417,12 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
 
 def test_setup_flat_run_merges_bot_telemetry_fields_into_result() -> None:
     level = create_level_by_name("setup_flat")
-    level.set_eval_scenario("near")
+    level.set_eval_scenario("near_half")
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     result = game.run(print_freq=0, max_steps=2, max_time=2.0)
+    assert result["scenario_weight_tier"] == "half"
+    assert result["scenario_cargo_mass"] == pytest.approx(3000.0)
+    assert result["scenario_cargo_fraction"] == pytest.approx(0.5)
     assert "bot_pdg_solve_count" in result
     assert "bot_pdg_shape_curve_rmse" in result
 
@@ -305,7 +432,7 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
         normalize_run_result(
             bot_name="pdg",
             level_name="setup_downhill",
-            scenario="mid",
+            scenario="mid_half",
             seed=0,
             result={
                 "state": "flying",
@@ -321,8 +448,10 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
     assert summary["runs"] == 1
     assert summary["successes"] == 1
     assert summary["success_rate"] == pytest.approx(1.0)
-    assert summary["by_scenario"]["mid"]["success_rate"] == pytest.approx(1.0)
-    assert summary["by_selector"]["setup_downhill:mid:setup"]["success_rate"] == pytest.approx(1.0)
+    assert summary["by_scenario"]["mid_half"]["success_rate"] == pytest.approx(1.0)
+    assert summary["by_selector"]["setup_downhill:mid_half:setup"][
+        "success_rate"
+    ] == pytest.approx(1.0)
 
 
 def test_parse_seed_spec_keeps_order_and_deduplicates() -> None:
@@ -338,7 +467,9 @@ def test_resolve_benchmark_plan_invalid_level_fails_fast() -> None:
     config = BenchSettings(
         bot_name=None,
         bot_config_path=None,
-        selectors=(BenchTarget(level_name="missing_level", scenario_name=None, seed_spec=None),),
+        selectors=(
+            BenchTarget(level_name="missing_level", scenario_name=None, seed_spec=None),
+        ),
         lander_name=None,
         workers=1,
         max_time=300.0,
@@ -360,11 +491,15 @@ def test_parser_rejects_removed_bot_behavior_flag() -> None:
         parser.parse_args(["run", "plunge", "--bot-behavior", "balanced"])
 
 
-def test_resolve_batch_plan_expands_all_scenarios_without_seed_spec(monkeypatch) -> None:
+def test_resolve_batch_plan_expands_all_scenarios_without_seed_spec(
+    monkeypatch,
+) -> None:
     config = BenchSettings(
         bot_name=None,
         bot_config_path=None,
-        selectors=(BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None),),
+        selectors=(
+            BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None),
+        ),
         lander_name=None,
         workers=1,
         max_time=300.0,
@@ -381,7 +516,9 @@ def test_resolve_batch_plan_expands_all_scenarios_without_seed_spec(monkeypatch)
         "resolve_level_scenarios",
         lambda _name: ["low_normal", "mid_normal"],
     )
-    monkeypatch.setattr(run_batch_module, "_scenario_has_randomized_fields", lambda _l, _s: False)
+    monkeypatch.setattr(
+        run_batch_module, "_scenario_has_randomized_fields", lambda _l, _s: False
+    )
     plan = resolve_benchmark_plan(config)
     assert plan == [
         ResolvedBenchRun(0, "plunge", "low_normal", "landing"),
@@ -393,7 +530,11 @@ def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
     config = BenchSettings(
         bot_name=None,
         bot_config_path=None,
-        selectors=(BenchTarget(level_name="setup_flat", scenario_name="far", seed_spec="0-2,2"),),
+        selectors=(
+            BenchTarget(
+                level_name="setup_flat", scenario_name="far_half", seed_spec="0-2,2"
+            ),
+        ),
         lander_name=None,
         workers=1,
         max_time=300.0,
@@ -404,12 +545,14 @@ def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
         json_path=None,
         csv_path=None,
     )
-    monkeypatch.setattr(run_batch_module, "_scenario_has_randomized_fields", lambda _l, _s: False)
+    monkeypatch.setattr(
+        run_batch_module, "_scenario_has_randomized_fields", lambda _l, _s: False
+    )
     plan = resolve_benchmark_plan(config)
     assert plan == [
-        ResolvedBenchRun(0, "setup_flat", "far", "landing"),
-        ResolvedBenchRun(1, "setup_flat", "far", "landing"),
-        ResolvedBenchRun(2, "setup_flat", "far", "landing"),
+        ResolvedBenchRun(0, "setup_flat", "far_half", "landing"),
+        ResolvedBenchRun(1, "setup_flat", "far_half", "landing"),
+        ResolvedBenchRun(2, "setup_flat", "far_half", "landing"),
     ]
 
 
@@ -437,7 +580,9 @@ def test_hud_display_state_prefers_structured_display_state() -> None:
 
 
 def test_parse_args_accepts_level_goal_selector() -> None:
-    _parser, command = parse_command(["sim", "setup_downhill:mid:setup:0", "--bot", "pdg"])
+    _parser, command = parse_command(
+        ["sim", "setup_downhill:mid_half:setup:0", "--bot", "pdg"]
+    )
     assert isinstance(command, RunCommand)
     assert command.run.bot_name == "pdg"
     assert command.run.eval_goal == "setup"
@@ -460,10 +605,10 @@ def test_parse_play_command_uses_interactive_defaults() -> None:
 
 
 def test_parse_play_command_accepts_selector_and_bot() -> None:
-    _parser, command = parse_command(["play", "setup_flat:far:3", "--bot", "pdg"])
+    _parser, command = parse_command(["play", "setup_flat:far_half:3", "--bot", "pdg"])
     assert isinstance(command, RunCommand)
     assert command.run.level_name == "setup_flat"
-    assert command.run.scenario_name == "far"
+    assert command.run.scenario_name == "far_half"
     assert command.run.seed == 3
     assert command.run.bot_name == "pdg"
     assert command.run.headless is False
@@ -528,7 +673,7 @@ def test_parse_plot_command_output_flags_override_defaults() -> None:
     _parser, command = parse_command(
         [
             "plot",
-            "setup_flat:far:3",
+            "setup_flat:far_half:3",
             "--bot",
             "pdg",
             "--plot-output",
@@ -566,15 +711,19 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
         run_batch_module,
         "resolve_benchmark_plan",
         lambda _cfg: [
-            ResolvedBenchRun(0, "setup_flat", "mid", "landing"),
-            ResolvedBenchRun(1, "setup_flat", "mid", "landing"),
+            ResolvedBenchRun(0, "setup_flat", "mid_half", "landing"),
+            ResolvedBenchRun(1, "setup_flat", "mid_half", "landing"),
         ],
     )
 
     cfg = BenchSettings(
         bot_name="pdg",
         bot_config_path=None,
-        selectors=(BenchTarget(level_name="setup_flat", scenario_name="mid", seed_spec="0"),),
+        selectors=(
+            BenchTarget(
+                level_name="setup_flat", scenario_name="mid_half", seed_spec="0"
+            ),
+        ),
         lander_name=None,
         workers=4,
         max_time=300.0,
@@ -587,16 +736,16 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
     )
     with pytest.raises(
         RuntimeError,
-        match="run 1/2 seed=0 level=setup_flat scenario=mid failed",
+        match="run 1/2 seed=0 level=setup_flat scenario=mid_half failed",
     ):
         run_batch_module.run_benchmark(cfg)
 
 
 def test_plot_command_enables_plot_mode_by_default() -> None:
-    _parser, command = parse_command(["plot", "setup_flat:far:3", "--bot", "pdg"])
+    _parser, command = parse_command(["plot", "setup_flat:far_half:3", "--bot", "pdg"])
     assert isinstance(command, RunCommand)
     assert command.run.level_name == "setup_flat"
-    assert command.run.scenario_name == "far"
+    assert command.run.scenario_name == "far_half"
     assert command.run.seed == 3
     assert command.run.plot_mode == "all"
     assert command.run.plot_output == "combined"

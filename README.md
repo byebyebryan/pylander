@@ -69,9 +69,9 @@ uv run python main.py run --interactive flat --bot pdg
 
 ```bash
 uv run python main.py sim flare_normal:mid:0 --bot pdg
-uv run python main.py sim setup_downhill:mid:setup:0 --bot pdg
+uv run python main.py sim setup_downhill:mid_half:setup:0 --bot pdg
 uv run python main.py sim flare_error:mid_wide:3 --bot pdg
-uv run python main.py sim setup_climb:mid:0 --bot pdg
+uv run python main.py sim setup_climb:mid_half:0 --bot pdg
 uv run python main.py sim plunge:mid_normal:0 --bot plunge
 ```
 
@@ -80,14 +80,15 @@ Selector format:
 - play/run/sim/plot selector: `level[:scenario[:goal[:seed]]]`
 - Use `level::seed` when setting a seed without a scenario.
 - Omit goal to default to `landing`.
+- Setup levels use weight-suffixed scenarios like `near_half`, `mid_full`, and `high_empty`.
 - Setup-goal support is currently exposed by levels: `setup_downhill`, `setup_flat`, `setup_climb`.
 - Bot selector remains bot-only: `--bot <name>`.
 
 ### Plot run (`plot`)
 
 ```bash
-uv run python main.py plot setup_flat:far:0 --bot pdg
-uv run python main.py plot setup_flat:far:0 --bot pdg --plot all --plot-output both
+uv run python main.py plot setup_flat:far_half:0 --bot pdg
+uv run python main.py plot setup_flat:far_half:0 --bot pdg --plot all --plot-output both
 ```
 
 Plot outputs are written under `outputs/plots/<selector>_<timestamp>/` when plotting is enabled.

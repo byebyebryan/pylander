@@ -94,7 +94,7 @@ def _split_focused_selectors(values: Iterable[str]) -> list[str]:
         if not raw:
             continue
         # Preserve CSV seed specs for level:scenario:seed_csv selectors.
-        # Example: setup_flat:mid:0,1 must stay a single selector.
+        # Example: setup_flat:mid_half:0,1 must stay a single selector.
         if raw.count(":") >= 2:
             out.append(raw)
             continue
@@ -102,14 +102,18 @@ def _split_focused_selectors(values: Iterable[str]) -> list[str]:
     return out
 
 
-def _resolve_focused_selector_group(raw: str, *, known_levels: set[str]) -> tuple[str, ...] | None:
+def _resolve_focused_selector_group(
+    raw: str, *, known_levels: set[str]
+) -> tuple[str, ...] | None:
     token = str(raw).strip().lower()
     if not token.startswith("@"):
         return None
 
     group_name = token[1:].strip()
     if not group_name:
-        raise ValueError("Empty focused selector group '@'. Expected a token such as @flare")
+        raise ValueError(
+            "Empty focused selector group '@'. Expected a token such as @flare"
+        )
 
     levels = FOCUSED_SELECTOR_GROUPS.get(group_name)
     if levels is None:
@@ -118,7 +122,9 @@ def _resolve_focused_selector_group(raw: str, *, known_levels: set[str]) -> tupl
             f"Unknown focused selector group '@{group_name}'. Expected one of: {known}"
         )
 
-    missing = sorted(level_name for level_name in levels if level_name not in known_levels)
+    missing = sorted(
+        level_name for level_name in levels if level_name not in known_levels
+    )
     if missing:
         raise ValueError(
             f"Focused selector group '@{group_name}' references unknown levels: {', '.join(missing)}"
@@ -250,7 +256,9 @@ def _build_focused_mode(
                         for scenario in scenarios
                     )
                 else:
-                    selectors.append(_selector(level_name, None, seed_spec, eval_goal="landing"))
+                    selectors.append(
+                        _selector(level_name, None, seed_spec, eval_goal="landing")
+                    )
                 included.add(level_name)
             continue
 
@@ -363,10 +371,14 @@ def build_selectors(
 
     included_levels = sorted(included)
     excluded_levels_effective = sorted(
-        level_name for level_name, policy in policy_by_level.items() if policy == "excluded"
+        level_name
+        for level_name, policy in policy_by_level.items()
+        if policy == "excluded"
     )
     observe_only_levels_effective = sorted(
-        level_name for level_name, policy in policy_by_level.items() if policy == "observe_only"
+        level_name
+        for level_name, policy in policy_by_level.items()
+        if policy == "observe_only"
     )
 
     return ResolvedSelectorPack(
@@ -408,16 +420,25 @@ def build_bench_command(
     if bot_profile_enabled is not None:
         cmd += ["--bot-profile" if bot_profile_enabled else "--no-bot-profile"]
     if bot_profile_log_lines is not None:
-        cmd += ["--bot-profile-logs" if bot_profile_log_lines else "--no-bot-profile-logs"]
+        cmd += [
+            "--bot-profile-logs" if bot_profile_log_lines else "--no-bot-profile-logs"
+        ]
     if bot_profile_interval_s is not None:
-        cmd += ["--bot-profile-interval-s", f"{max(0.25, float(bot_profile_interval_s)):.3f}"]
+        cmd += [
+            "--bot-profile-interval-s",
+            f"{max(0.25, float(bot_profile_interval_s)):.3f}",
+        ]
     return cmd
 
 
 def main() -> None:
     ap = argparse.ArgumentParser(description="Build Pylander benchmark selector packs")
-    ap.add_argument("--mode", choices=("smoke", "quick", "full", "focused"), required=True)
-    ap.add_argument("--seed-spec", default=None, help="Override default seed range, e.g. 0-9")
+    ap.add_argument(
+        "--mode", choices=("smoke", "quick", "full", "focused"), required=True
+    )
+    ap.add_argument(
+        "--seed-spec", default=None, help="Override default seed range, e.g. 0-9"
+    )
     ap.add_argument(
         "--selectors",
         nargs="*",
@@ -489,7 +510,9 @@ def main() -> None:
     print("\n# policy")
     print(f"included_levels={','.join(pack.included_levels)}")
     print(f"excluded_levels_effective={','.join(pack.excluded_levels_effective)}")
-    print(f"observe_only_levels_effective={','.join(pack.observe_only_levels_effective)}")
+    print(
+        f"observe_only_levels_effective={','.join(pack.observe_only_levels_effective)}"
+    )
 
     print("\n# command")
     print(" ".join(cmd))

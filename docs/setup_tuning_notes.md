@@ -2,6 +2,9 @@
 
 Checkpoint for the dedicated PDG setup controller after the `pdx`-first shaping rebuild.
 
+> Note: this note predates explicit setup cargo tiers. When rerunning the setup
+> commands below on current code, use the matching `_half` scenario names.
+
 ## Current behavior
 
 - Setup is now geometry-first instead of apex-band-first.

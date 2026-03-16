@@ -58,14 +58,42 @@ def _with_profile(record: dict[str, object], **overrides: float) -> dict[str, ob
 def test_observation_only_crash_does_not_mark_notable_regression() -> None:
     baseline = {
         "records": [
-            _record(level="setup_flat", scenario="mid", seed=0, state="landed", success=True, fuel=20.0),
-            _record(level="setup_climb", scenario="mid", seed=0, state="landed", success=True, fuel=30.0),
+            _record(
+                level="setup_flat",
+                scenario="mid_half",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=20.0,
+            ),
+            _record(
+                level="setup_climb",
+                scenario="mid_half",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=30.0,
+            ),
         ]
     }
     candidate = {
         "records": [
-            _record(level="setup_flat", scenario="mid", seed=0, state="landed", success=True, fuel=21.0),
-            _record(level="setup_climb", scenario="mid", seed=0, state="crashed", success=False, fuel=31.0),
+            _record(
+                level="setup_flat",
+                scenario="mid_half",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=21.0,
+            ),
+            _record(
+                level="setup_climb",
+                scenario="mid_half",
+                seed=0,
+                state="crashed",
+                success=False,
+                fuel=31.0,
+            ),
         ]
     }
     report = cached_bench._print_compare(
@@ -86,12 +114,26 @@ def test_observation_only_crash_does_not_mark_notable_regression() -> None:
 def test_normal_crash_marks_notable_regression() -> None:
     baseline = {
         "records": [
-            _record(level="setup_flat", scenario="mid", seed=0, state="landed", success=True, fuel=20.0),
+            _record(
+                level="setup_flat",
+                scenario="mid_half",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=20.0,
+            ),
         ]
     }
     candidate = {
         "records": [
-            _record(level="setup_flat", scenario="mid", seed=0, state="crashed", success=False, fuel=22.0),
+            _record(
+                level="setup_flat",
+                scenario="mid_half",
+                seed=0,
+                state="crashed",
+                success=False,
+                fuel=22.0,
+            ),
         ]
     }
     report = cached_bench._print_compare(
@@ -111,12 +153,26 @@ def test_normal_crash_marks_notable_regression() -> None:
 def test_setup_climb_crash_now_gates_global_regressions() -> None:
     baseline = {
         "records": [
-            _record(level="setup_climb", scenario="mid", seed=0, state="landed", success=True, fuel=30.0),
+            _record(
+                level="setup_climb",
+                scenario="mid_half",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=30.0,
+            ),
         ]
     }
     candidate = {
         "records": [
-            _record(level="setup_climb", scenario="mid", seed=0, state="crashed", success=False, fuel=31.0),
+            _record(
+                level="setup_climb",
+                scenario="mid_half",
+                seed=0,
+                state="crashed",
+                success=False,
+                fuel=31.0,
+            ),
         ]
     }
     report = cached_bench._print_compare(
@@ -137,27 +193,62 @@ def test_setup_climb_crash_now_gates_global_regressions() -> None:
 def test_scenario_regressions_group_by_level_and_scenario() -> None:
     baseline = {
         "records": [
-            _record(level="setup_flat", scenario="mid", seed=0, state="landed", success=True, fuel=20.0),
-            _record(level="flare_error", scenario="mid", seed=0, state="landed", success=True, fuel=40.0),
+            _record(
+                level="setup_flat",
+                scenario="mid_half",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=20.0,
+            ),
+            _record(
+                level="flare_error",
+                scenario="mid",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=40.0,
+            ),
         ]
     }
     candidate = {
         "records": [
-            _record(level="setup_flat", scenario="mid", seed=0, state="landed", success=True, fuel=25.0),
-            _record(level="flare_error", scenario="mid", seed=0, state="landed", success=True, fuel=35.0),
+            _record(
+                level="setup_flat",
+                scenario="mid_half",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=25.0,
+            ),
+            _record(
+                level="flare_error",
+                scenario="mid",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=35.0,
+            ),
         ]
     }
 
     rows = cached_bench._scenario_regressions(baseline, candidate)
     names = {str(item["scenario"]) for item in rows}
-    assert names == {"setup_flat:mid", "flare_error:mid"}
+    assert names == {"setup_flat:mid_half", "flare_error:mid"}
 
 
 def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
     baseline = {
         "records": [
             {
-                **_record(level="setup_downhill", scenario="mid", seed=0, state="flying", success=True, fuel=20.0),
+                **_record(
+                    level="setup_downhill",
+                    scenario="mid_half",
+                    seed=0,
+                    state="flying",
+                    success=True,
+                    fuel=20.0,
+                ),
                 "eval_goal": "setup",
             }
         ]
@@ -165,28 +256,49 @@ def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
     candidate = {
         "records": [
             {
-                **_record(level="setup_downhill", scenario="mid", seed=0, state="flying", success=False, fuel=24.0),
+                **_record(
+                    level="setup_downhill",
+                    scenario="mid_half",
+                    seed=0,
+                    state="flying",
+                    success=False,
+                    fuel=24.0,
+                ),
                 "eval_goal": "setup",
             }
         ]
     }
 
     rows = cached_bench._scenario_regressions(baseline, candidate)
-    assert [str(item["scenario"]) for item in rows] == ["setup_downhill:mid:setup"]
+    assert [str(item["scenario"]) for item in rows] == ["setup_downhill:mid_half:setup"]
 
 
 def test_global_compute_regression_marks_notable_regression() -> None:
     baseline = {
         "records": [
             _with_profile(
-                _record(level="setup_flat", scenario="mid", seed=0, state="landed", success=True, fuel=20.0),
+                _record(
+                    level="setup_flat",
+                    scenario="mid_half",
+                    seed=0,
+                    state="landed",
+                    success=True,
+                    fuel=20.0,
+                ),
             )
         ]
     }
     candidate = {
         "records": [
             _with_profile(
-                _record(level="setup_flat", scenario="mid", seed=0, state="landed", success=True, fuel=20.0),
+                _record(
+                    level="setup_flat",
+                    scenario="mid_half",
+                    seed=0,
+                    state="landed",
+                    success=True,
+                    fuel=20.0,
+                ),
                 bot_profile_total_ms_per_tick=0.75,
                 bot_profile_total_ms_per_tick_p99=1.10,
                 bot_profile_update_ms_per_tick_p99=0.34,
@@ -213,14 +325,28 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
     baseline = {
         "records": [
             _with_profile(
-                _record(level="setup_climb", scenario="mid", seed=0, state="landed", success=True, fuel=20.0),
+                _record(
+                    level="setup_climb",
+                    scenario="mid_half",
+                    seed=0,
+                    state="landed",
+                    success=True,
+                    fuel=20.0,
+                ),
             )
         ]
     }
     candidate = {
         "records": [
             _with_profile(
-                _record(level="setup_climb", scenario="mid", seed=0, state="landed", success=True, fuel=20.0),
+                _record(
+                    level="setup_climb",
+                    scenario="mid_half",
+                    seed=0,
+                    state="landed",
+                    success=True,
+                    fuel=20.0,
+                ),
                 bot_profile_total_ms_per_tick=0.78,
                 bot_profile_total_ms_per_tick_p99=1.15,
                 bot_profile_update_ms_per_tick_p99=0.36,
@@ -246,7 +372,7 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
 def test_selector_pack_stem_changes_with_bot_config_path() -> None:
     common = dict(
         mode="quick",
-        selectors=["setup_flat:mid:0-2"],
+        selectors=["setup_flat:mid_half:0-2"],
         bot="pdg",
         bot_profile_enabled=True,
         bot_profile_interval_s=None,
@@ -275,4 +401,7 @@ def test_run_diag_uses_selected_bot_terminal_metric_namespace() -> None:
 
     assert diag["setup_gate_projected_dx"] == 12.0
     assert diag["bot_flare_entry_projected_dx"] == 4.5
-    assert diag["bot_flare_entry_projected_dx_field"] == "bot_test_bot_flare_entry_projected_dx"
+    assert (
+        diag["bot_flare_entry_projected_dx_field"]
+        == "bot_test_bot_flare_entry_projected_dx"
+    )

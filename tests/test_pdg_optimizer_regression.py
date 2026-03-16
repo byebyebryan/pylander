@@ -36,8 +36,8 @@ def _run_level(
 @pytest.mark.parametrize(
     ("level_name", "scenario", "eval_goal", "max_time", "key", "expected"),
     (
-        ("setup_climb", "mid", "setup", 10.0, "setup_gate_done", True),
-        ("setup_flat", "mid", "setup", 9.0, "setup_gate_done", True),
+        ("setup_climb", "mid_half", "setup", 10.0, "setup_gate_done", True),
+        ("setup_flat", "mid_half", "setup", 9.0, "setup_gate_done", True),
     ),
 )
 def test_pdg_smoke_plunge_and_setup_milestones_seed0(
@@ -80,7 +80,9 @@ def test_pdg_smoke_plunge_reaches_touchdown_seed0(
 
 
 def test_pdg_launch_landing_offset_bound_seed0() -> None:
-    result, _bot = _run_level(level_name="setup_flat", scenario="near", max_time=25.0)
+    result, _bot = _run_level(
+        level_name="setup_flat", scenario="near_half", max_time=25.0
+    )
     assert result.get("state") == "landed"
     landing_offset = result.get("landing_offset")
     assert isinstance(landing_offset, (int, float))

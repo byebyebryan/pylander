@@ -24,7 +24,9 @@ doctor = _load_module(
     "telemetry_doctor_script",
     _script("skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py"),
 )
-contracts = _load_module("skill_contracts_for_doctor", _script("skills/lib/contracts.py"))
+contracts = _load_module(
+    "skill_contracts_for_doctor", _script("skills/lib/contracts.py")
+)
 
 
 def test_parse_sim_log_extracts_final_results_and_profile(tmp_path: Path) -> None:
@@ -33,7 +35,7 @@ def test_parse_sim_log_extracts_final_results_and_profile(tmp_path: Path) -> Non
         "\n".join(
             [
                 "Mode: headless run",
-                "Selector: setup_flat:near:0",
+                "Selector: setup_flat:near_half:0",
                 "bot_prof: ticks=16 passive=0.012ms/t update=10.364ms/t total=10.387ms/t",
                 "t=  0.02 | ship x=-0.0 alt=0.0 vx=-0.00 vy=0.00 ang=0.0 thr=0% fuel=100.0% | bot=pdg mode=opt phase=setup dx=214.5 pdx=214.5 slv:177.0ms",
                 "",
@@ -55,7 +57,7 @@ def test_parse_sim_log_extracts_final_results_and_profile(tmp_path: Path) -> Non
     )
 
     parsed = doctor._parse_sim_log(log_path)
-    assert parsed["selector"] == "setup_flat:near:0"
+    assert parsed["selector"] == "setup_flat:near_half:0"
     assert parsed["state"] == "crashed"
     assert parsed["crash_count"] == 1
     assert parsed["bot_profile_p99_total_ms"] == 134.26
@@ -70,19 +72,21 @@ def test_analyze_compare_produces_crash_and_perf_findings() -> None:
                 "new_crashes": [
                     {
                         "level": "setup_flat",
-                        "scenario": "mid",
+                        "scenario": "mid_half",
                         "seed": 2,
                         "baseline_state": "landed",
                         "candidate_state": "crashed",
                         "candidate_failure_mode": "impact",
                         "repro": {
-                            "plot": "uv run python main.py plot setup_flat:mid:2 --bot pdg",
-                            "sim_trace": "uv run python main.py sim setup_flat:mid:2 --bot pdg --freq 1",
-                            "sim_profile": "PYLANDER_BOT_PROFILE=1 uv run python main.py sim setup_flat:mid:2 --bot pdg --freq 1",
+                            "plot": "uv run python main.py plot setup_flat:mid_half:2 --bot pdg",
+                            "sim_trace": "uv run python main.py sim setup_flat:mid_half:2 --bot pdg --freq 1",
+                            "sim_profile": "PYLANDER_BOT_PROFILE=1 uv run python main.py sim setup_flat:mid_half:2 --bot pdg --freq 1",
                         },
                     }
                 ],
-                "candidate_crashes": [{"level": "setup_flat", "scenario": "mid", "seed": 2}],
+                "candidate_crashes": [
+                    {"level": "setup_flat", "scenario": "mid_half", "seed": 2}
+                ],
             },
             "compute": {
                 "notable_regression": True,
@@ -99,7 +103,11 @@ def test_analyze_compare_produces_crash_and_perf_findings() -> None:
         benchmark_payload=None,
         compare_payload=compare_payload,
         sim_logs=[],
-        source_paths={"benchmark_json": "", "compare_json": "/tmp/compare.json", "sim_logs": []},
+        source_paths={
+            "benchmark_json": "",
+            "compare_json": "/tmp/compare.json",
+            "sim_logs": [],
+        },
         bot="pdg",
         max_findings=8,
     )
@@ -108,7 +116,7 @@ def test_analyze_compare_produces_crash_and_perf_findings() -> None:
     assert report["summary"]["new_global_crashes"] == 1
     assert report["summary"]["notable_global_compute"] is True
     assert any(item["category"] == "perf" for item in report["top_findings"])
-    assert any("setup_flat:mid:2" in cmd for cmd in report["repro_bundle"])
+    assert any("setup_flat:mid_half:2" in cmd for cmd in report["repro_bundle"])
     contracts.validate_contract_data(report, "telemetry_triage_report.v1")
 
 
@@ -117,7 +125,7 @@ def test_analyze_benchmark_without_compare_requests_probe() -> None:
         "records": [
             {
                 "level": "setup_flat",
-                "scenario": "far",
+                "scenario": "far_half",
                 "seed": 0,
                 "state": "landed",
                 "setup_gate_projected_dx": 140.0,
@@ -133,17 +141,27 @@ def test_analyze_benchmark_without_compare_requests_probe() -> None:
         benchmark_payload=benchmark_payload,
         compare_payload=None,
         sim_logs=[],
-        source_paths={"benchmark_json": "/tmp/bench.json", "compare_json": "", "sim_logs": []},
+        source_paths={
+            "benchmark_json": "/tmp/bench.json",
+            "compare_json": "",
+            "sim_logs": [],
+        },
         bot="test-bot",
         max_findings=8,
     )
 
     assert report["doctor_verdict"] in {"investigate", "watch"}
     assert report["probe_request"]["needed"] is True
-    assert any("baseline-vs-candidate" in q for q in report["probe_request"]["questions"])
-    phase_findings = [item for item in report["top_findings"] if item["category"] == "phase"]
+    assert any(
+        "baseline-vs-candidate" in q for q in report["probe_request"]["questions"]
+    )
+    phase_findings = [
+        item for item in report["top_findings"] if item["category"] == "phase"
+    ]
     assert phase_findings
-    assert phase_findings[0]["measured_evidence"]["bot_flare_entry_projected_dx"] == 82.0
+    assert (
+        phase_findings[0]["measured_evidence"]["bot_flare_entry_projected_dx"] == 82.0
+    )
     assert (
         phase_findings[0]["measured_evidence"]["bot_flare_entry_projected_dx_field"]
         == "bot_test_bot_flare_entry_projected_dx"

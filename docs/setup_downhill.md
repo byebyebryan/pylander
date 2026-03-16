@@ -8,7 +8,7 @@
 - Force a sustained setup burn that establishes a downhill ballistic transfer to the destination pad.
 - Measure whether the controller reaches a strong setup gate before coast/flare progression.
 
-Goal-based eval option: run with selector goal `setup` (for example `setup_downhill:mid:setup:0`) to stop when `setup_gate_done` latches.
+Goal-based eval option: run with selector goal `setup` (for example `setup_downhill:mid_half:setup:0`) to stop when `setup_gate_done` latches.
 
 Trajectory-shape diagnostics are also exported through the retained
 `bot_pdg_shape_*` fields to quantify setup ballistic quality.
@@ -20,17 +20,20 @@ Defined in [`levels/setup_downhill.py`](../levels/setup_downhill.py):
 - Source pad: `x=0`, terrain-bound flush pad
 - Destination horizontal offset: `dx=400`
 - Destination elevation tiers (`dy`): `-200`, `-400`, `-800`
+- Cargo tiers: `empty=0`, `half=3000`, `full=6000`
 - Terrain profile: true downhill ramp where `slope = dy / dx`
 - Initial state: landed upright on the source pad
 
 Scenarios:
 
-- `low`, `mid`, `high`
+- `low_empty`, `low_half`, `low_full`
+- `mid_empty`, `mid_half`, `mid_full`
+- `high_empty`, `high_half`, `high_full`
 
 Defaults:
 
-- default scenario: `mid`
-- recommended benchmark subset: `low`, `mid`, `high`
+- default scenario: `mid_half`
+- recommended benchmark subset: `low_half`, `mid_half`, `high_half`
 
 ## Metrics
 
@@ -52,11 +55,7 @@ Common `pdg` setup-shape tuning knobs for this level:
 
 ```bash
 uv run python main.py run --interactive setup_downhill
-uv run python main.py sim setup_downhill:mid:0 --bot pdg
-uv run python main.py sim setup_downhill:mid:setup:0 --bot pdg
-uv run python main.py bench \
-  setup_downhill:low:0-9 \
-  setup_downhill:mid:0-9 \
-  setup_downhill:high:0-9 \
-  --bot pdg
+uv run python main.py sim setup_downhill:mid_half:0 --bot pdg
+uv run python main.py sim setup_downhill:mid_half:setup:0 --bot pdg
+uv run python main.py bench setup_downhill --bot pdg
 ```

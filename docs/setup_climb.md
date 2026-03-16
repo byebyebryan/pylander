@@ -21,17 +21,20 @@ Defined in [`levels/setup_climb.py`](../levels/setup_climb.py):
 - Source pad: `x=0`, terrain-bound flush pad
 - Destination horizontal offset: `dx=400`
 - Destination elevation tiers (`dy`): `200`, `400`, `800`
+- Cargo tiers: `empty=0`, `half=3000`, `full=6000`
 - Terrain profile:
   - destination pad is terrain-bound (`flush_flatten`) on a true uphill ramp where `slope = dy / dx`
 
 Scenarios:
 
-- `low`, `mid`, `high`
+- `low_empty`, `low_half`, `low_full`
+- `mid_empty`, `mid_half`, `mid_full`
+- `high_empty`, `high_half`, `high_full`
 
 Defaults:
 
-- default scenario: `mid`
-- recommended benchmark subset: `low`, `mid`, `high`
+- default scenario: `mid_half`
+- recommended benchmark subset: `low_half`, `mid_half`, `high_half`
 
 ## Metrics
 
@@ -51,10 +54,6 @@ Additional retained `pdg` diagnostics exported for climb tuning:
 
 ```bash
 uv run python main.py run --interactive setup_climb
-uv run python main.py sim setup_climb:mid:0 --bot pdg
-uv run python main.py bench \
-  setup_climb:low:0-9 \
-  setup_climb:mid:0-9 \
-  setup_climb:high:0-9 \
-  --bot pdg
+uv run python main.py sim setup_climb:mid_half:0 --bot pdg
+uv run python main.py bench setup_climb --bot pdg
 ```
