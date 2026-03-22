@@ -97,6 +97,10 @@ def print_headless_results(result: dict[str, Any]) -> None:
         plot_rows.extend(("path", path) for path in result["plot_paths"])
     elif result.get("plot_path"):
         plot_rows.append(("path", result["plot_path"]))
+    if result.get("plot_manifest_path"):
+        plot_rows.append(("manifest", result["plot_manifest_path"]))
+    if result.get("plot_bundle_dir"):
+        plot_rows.append(("bundle_dir", result["plot_bundle_dir"]))
     if result.get("plot_error"):
         plot_rows.append(("plot_error", result["plot_error"]))
     label_width = _label_width(section_rows, bot_sections, plot_rows)

@@ -7,6 +7,20 @@ description: Run reproducible Pylander benchmark packs using selector syntax (sm
 
 Use this skill when the user asks to run benchmarks, compare a change against a baseline, or check regressions after bot/controller tuning.
 
+If the user asks for plots, a clickable report, or something they can open from
+another machine, prefer the static bundle workflow:
+
+`uv run python skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py ...`
+
+That command wraps the cached benchmark run, generates the HTML report plus plot
+gallery, checks whether the outputs server is already running, starts it in the
+background if not, and prints the stable latest URL.
+
+When the user says "full bench and plots", interpret that as:
+- `--mode full`
+- current full-pack coverage across `plunge`, `boost`, and `terminal`
+- `--plot-scope per-scenario` so the bundle includes one representative plot for each scenario
+
 ## Inputs
 
 - `mode`: `smoke | quick | full | focused`
@@ -94,7 +108,13 @@ Policy behavior:
    - primary fuel deltas using success-only aggregates by default
    - secondary all-runs fuel deltas (for context when crashes/outliers skew results)
 - worst regressions by canonical selector group
-   - newly introduced crashes split by global vs observation section
+- newly introduced crashes split by global vs observation section
+
+Remote-share variant:
+
+5. When the request implies "show me the plots/report", use
+`gen_bench_bundle.py` instead of only `run_cached_benchmark.py`, and return the
+latest reachable URL rather than just filesystem paths.
 
 ## Local cache model
 
@@ -146,6 +166,12 @@ Use `scripts/build_selector_pack.py` to generate selectors and a ready-to-run be
 
 Use `scripts/run_cached_benchmark.py` to execute benchmark packs with cache reuse and optional baseline comparison.
 
+Use `scripts/gen_bench_bundle.py` to run a benchmark and publish the static HTML
+bundle plus latest URL.
+
+Use `scripts/serve_outputs.py` only when you explicitly need to run or debug the
+outputs server directly. `gen_bench_bundle.py` already ensures it is running.
+
 Examples:
 
 - `uv run python skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode smoke`
@@ -160,3 +186,4 @@ Examples:
 - `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors boost:downhill:* boost:flat:far:half --seed-spec 0-9 --baseline-ref main`
 - `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode full --baseline-ref main --exclude-levels flat,mountains --observe-only-levels boost`
 - `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors boost:flat:far:half --seed-spec 0-4 --bot-config configs/zem_tuning.json`
+- `uv run python skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py --mode quick --baseline-ref main --viewer-hostname starship.lan`
