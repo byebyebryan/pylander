@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import json
+import os
 import re
 import subprocess
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -198,7 +201,8 @@ def _build_cases_from_compare(compare: dict[str, Any], *, top_n: int) -> list[di
 
 def _extract_paths(output: str) -> dict[str, Any]:
     png_pattern = re.compile(r"(?:^|\s)(outputs/[^\s]+\.png|/[^\s]+\.png)")
-    manifest_pattern = re.compile(r"Plot manifest:\s+(.+)$", re.MULTILINE)
+    manifest_pattern = re.compile(r"^\s*manifest\s+(.+)$", re.MULTILINE)
+    bundle_dir_pattern = re.compile(r"^\s*bundle_dir\s+(.+)$", re.MULTILINE)
     plots: list[str] = []
     for match in png_pattern.finditer(output):
         candidate = match.group(1).strip()
@@ -206,21 +210,26 @@ def _extract_paths(output: str) -> dict[str, Any]:
             plots.append(candidate)
     manifest_match = manifest_pattern.search(output)
     manifest_path = manifest_match.group(1).strip() if manifest_match else None
+    bundle_dir_match = bundle_dir_pattern.search(output)
+    plot_bundle_dir = bundle_dir_match.group(1).strip() if bundle_dir_match else None
+    if plot_bundle_dir is None and manifest_path:
+        plot_bundle_dir = str(Path(manifest_path).parent)
     return {
         "plot_paths": plots,
         "plot_manifest_path": manifest_path,
+        "plot_bundle_dir": plot_bundle_dir,
     }
 
 
-def _run_plot_command(
+def _plot_command(
     selector: str,
     *,
     bot: str,
     plot_mode: str,
     plot_output: str,
     plot_max_side_px: int,
-) -> dict[str, Any]:
-    cmd = [
+) -> list[str]:
+    return [
         "uv",
         "run",
         "python",
@@ -236,6 +245,34 @@ def _run_plot_command(
         "--plot-max-side-px",
         str(max(256, int(plot_max_side_px))),
     ]
+
+
+def _default_plot_workers() -> int:
+    return max(1, min(16, int(os.cpu_count() or 1)))
+
+
+def _resolve_plot_workers(value: int | None) -> int:
+    if value is None or int(value) <= 0:
+        return _default_plot_workers()
+    return max(1, int(value))
+
+
+def _run_plot_command(
+    selector: str,
+    *,
+    bot: str,
+    plot_mode: str,
+    plot_output: str,
+    plot_max_side_px: int,
+) -> dict[str, Any]:
+    cmd = _plot_command(
+        selector,
+        bot=bot,
+        plot_mode=plot_mode,
+        plot_output=plot_output,
+        plot_max_side_px=plot_max_side_px,
+    )
+    started = time.perf_counter()
     proc = subprocess.run(
         cmd,
         cwd=_REPO_ROOT,
@@ -243,13 +280,64 @@ def _run_plot_command(
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
     )
+    wall_clock_s = time.perf_counter() - started
     output = str(proc.stdout or "")
     extracted = _extract_paths(output)
     return {
         "command": cmd,
         "exit_code": int(proc.returncode),
+        "wall_clock_s": wall_clock_s,
         "output": output,
         **extracted,
+    }
+
+
+def _case_run(
+    case: dict[str, Any],
+    *,
+    index: int,
+    bot: str,
+    plot_mode: str,
+    plot_output: str,
+    plot_max_side_px: int,
+    execute: bool,
+) -> dict[str, Any]:
+    selector = str(case.get("selector") or "").strip()
+    cmd = _plot_command(
+        selector,
+        bot=bot,
+        plot_mode=plot_mode,
+        plot_output=plot_output,
+        plot_max_side_px=plot_max_side_px,
+    )
+    if not execute:
+        return {
+            **case,
+            "index": index,
+            "command": cmd,
+            "exit_code": None,
+            "wall_clock_s": None,
+            "plot_paths": [],
+            "plot_manifest_path": None,
+            "plot_bundle_dir": None,
+        }
+
+    run = _run_plot_command(
+        selector,
+        bot=bot,
+        plot_mode=plot_mode,
+        plot_output=plot_output,
+        plot_max_side_px=plot_max_side_px,
+    )
+    return {
+        **case,
+        "index": index,
+        "command": run["command"],
+        "exit_code": run["exit_code"],
+        "wall_clock_s": run.get("wall_clock_s"),
+        "plot_paths": run["plot_paths"],
+        "plot_manifest_path": run.get("plot_manifest_path"),
+        "plot_bundle_dir": run.get("plot_bundle_dir"),
     }
 
 
@@ -269,6 +357,7 @@ def main() -> None:
     ap.add_argument("--plot-mode", default="all", choices=("speed", "thrust", "all"))
     ap.add_argument("--plot-output", default="both", choices=("combined", "split", "both"))
     ap.add_argument("--plot-max-side-px", type=int, default=1800)
+    ap.add_argument("--plot-workers", type=int, default=0)
     ap.add_argument("--execute", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--output-manifest", type=str, default=None)
     args = ap.parse_args()
@@ -312,56 +401,50 @@ def main() -> None:
     if not cases:
         raise SystemExit("No plot cases resolved")
 
+    plot_workers = 1 if not args.execute else _resolve_plot_workers(args.plot_workers)
+    started_at_utc = datetime.now(timezone.utc).isoformat()
+    started = time.perf_counter()
     case_runs: list[dict[str, Any]] = []
-    for idx, case in enumerate(cases, start=1):
-        selector = str(case.get("selector") or "").strip()
-        if not selector:
-            continue
-        if not args.execute:
+    filtered_cases = [
+        (idx, case)
+        for idx, case in enumerate(cases, start=1)
+        if str(case.get("selector") or "").strip()
+    ]
+    if plot_workers <= 1 or len(filtered_cases) <= 1:
+        for idx, case in filtered_cases:
             case_runs.append(
-                {
-                    **case,
-                    "index": idx,
-                    "command": [
-                        "uv",
-                        "run",
-                        "python",
-                        "main.py",
-                        "plot",
-                        selector,
-                        "--bot",
-                        args.bot,
-                        "--plot",
-                        args.plot_mode,
-                        "--plot-output",
-                        args.plot_output,
-                        "--plot-max-side-px",
-                        str(max(256, int(args.plot_max_side_px))),
-                    ],
-                    "exit_code": None,
-                    "plot_paths": [],
-                    "plot_manifest_path": None,
-                }
+                _case_run(
+                    case,
+                    index=idx,
+                    bot=args.bot,
+                    plot_mode=args.plot_mode,
+                    plot_output=args.plot_output,
+                    plot_max_side_px=max(256, int(args.plot_max_side_px)),
+                    execute=bool(args.execute),
+                )
             )
-            continue
-
-        run = _run_plot_command(
-            selector,
-            bot=args.bot,
-            plot_mode=args.plot_mode,
-            plot_output=args.plot_output,
-            plot_max_side_px=max(256, int(args.plot_max_side_px)),
-        )
-        case_runs.append(
-            {
-                **case,
-                "index": idx,
-                "command": run["command"],
-                "exit_code": run["exit_code"],
-                "plot_paths": run["plot_paths"],
-                "plot_manifest_path": run.get("plot_manifest_path"),
+    else:
+        indexed_runs: dict[int, dict[str, Any]] = {}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(plot_workers, len(filtered_cases))) as executor:
+            future_map = {
+                executor.submit(
+                    _case_run,
+                    case,
+                    index=idx,
+                    bot=args.bot,
+                    plot_mode=args.plot_mode,
+                    plot_output=args.plot_output,
+                    plot_max_side_px=max(256, int(args.plot_max_side_px)),
+                    execute=bool(args.execute),
+                ): idx
+                for idx, case in filtered_cases
             }
-        )
+            for future in concurrent.futures.as_completed(future_map):
+                run = future.result()
+                indexed_runs[int(run["index"])] = run
+        case_runs = [indexed_runs[idx] for idx, _case in filtered_cases]
+
+    wall_clock_s = time.perf_counter() - started
 
     manifest_path = Path(args.output_manifest).resolve() if args.output_manifest else _default_pack_path()
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -372,13 +455,22 @@ def main() -> None:
         "plot_output": args.plot_output,
         "plot_max_side_px": max(256, int(args.plot_max_side_px)),
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "started_at_utc": started_at_utc,
+        "wall_clock_s": wall_clock_s,
+        "plot_workers": plot_workers,
         "benchmark_json": args.benchmark_json,
         "compare_json": args.compare_json,
         "cases": case_runs,
     }
     manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
-    print(f"# plot_pack\nmanifest={manifest_path}\ncases={len(case_runs)}")
+    print(
+        "# plot_pack\n"
+        f"manifest={manifest_path}\n"
+        f"cases={len(case_runs)}\n"
+        f"plot_workers={plot_workers}\n"
+        f"wall_clock_s={wall_clock_s:.3f}"
+    )
 
 
 if __name__ == "__main__":

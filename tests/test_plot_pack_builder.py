@@ -48,3 +48,30 @@ def test_build_cases_from_records_uses_selected_bot_terminal_metric_namespace() 
     assert evidence["boost_cutoff_projected_dx"] == 12.0
     assert evidence["bot_terminal_entry_projected_dx"] == 4.5
     assert evidence["bot_terminal_entry_projected_dx_field"] == "bot_test_bot_terminal_entry_projected_dx"
+
+
+def test_extract_paths_reads_plot_table_metadata() -> None:
+    payload = plot_pack._extract_paths(
+        """
+[Plot Files]
+path                  outputs/plots/overview/case_a.png
+path                  outputs/plots/case_a/spatial_speed.png
+manifest              outputs/plots/case_a/manifest.json
+bundle_dir            outputs/plots/case_a
+"""
+    )
+
+    assert payload["plot_paths"] == [
+        "outputs/plots/overview/case_a.png",
+        "outputs/plots/case_a/spatial_speed.png",
+    ]
+    assert payload["plot_manifest_path"] == "outputs/plots/case_a/manifest.json"
+    assert payload["plot_bundle_dir"] == "outputs/plots/case_a"
+
+
+def test_resolve_plot_workers_uses_auto_default(monkeypatch) -> None:
+    monkeypatch.setattr(plot_pack.os, "cpu_count", lambda: 24)
+
+    assert plot_pack._resolve_plot_workers(0) == 16
+    assert plot_pack._resolve_plot_workers(None) == 16
+    assert plot_pack._resolve_plot_workers(3) == 3

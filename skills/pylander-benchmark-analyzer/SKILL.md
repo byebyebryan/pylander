@@ -7,6 +7,19 @@ description: Diagnose Pylander benchmark outcomes (health and regressions), rank
 
 Use this skill when the user wants diagnosis, not just benchmark execution.
 
+If the user asks for plots or a report they can open remotely, prefer the
+static bundle workflow and return the latest URL:
+
+`uv run python skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py ...`
+
+When the user says "full bench and plots", interpret that as:
+- `--mode full`
+- current full-pack coverage across `plunge`, `boost`, and `terminal`
+- `--plot-scope per-scenario` so the bundle includes one representative plot for each scenario
+
+Use raw `main.py plot` commands only for narrow manual repros or when the user
+explicitly asks for individual plot files.
+
 This skill is for:
 
 - single-pack health checks (no baseline required)
@@ -65,6 +78,10 @@ Per-case reproduction:
 - `uv run python main.py sim <level[:layer[:...]][:goal[:seed]]> --bot <bot> --freq 1`
 - `PYLANDER_BOT_PROFILE=1 uv run python main.py sim <selector> --bot <bot> --freq 1`
 
+Remote-share report:
+
+- `uv run python skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py --mode <pack_mode> [--baseline-ref <baseline_ref>] --bot <bot>`
+
 ## Mode Workflow
 
 ### `health`
@@ -81,6 +98,8 @@ Per-case reproduction:
 - high boost/coast projected-dx error
 - compute spike risk (`p99` notably above baseline norms for that pack)
 4. Emit top suspect runs and repro commands.
+5. If the user asked to "give me the plots", emit the latest HTML bundle URL
+instead of raw image paths.
 
 ### `compare`
 

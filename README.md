@@ -161,6 +161,43 @@ uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py \
   --baseline-ref main
 ```
 
+For remote dev, you can also generate a static HTML bundle that wraps the
+benchmark artifacts and diagnostic plots:
+
+```bash
+# Serve outputs/ once per tmux session
+uv run python skills/pylander-benchmark-runner/scripts/serve_outputs.py --port 8765
+
+# Generate the latest static bundle
+uv run python skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py \
+  --mode full \
+  --plot-scope per-scenario \
+  --viewer-base-url http://myhost:8765
+```
+
+Static bundles are written under `outputs/viewer/bundles/<bundle-id>/`, and the
+stable latest page is `outputs/viewer/latest/index.html`. With the example
+server above, the browser URL is `http://myhost:8765/viewer/latest/index.html`.
+
+`gen_bench_bundle.py` can also manage the server for you. By default it checks
+whether the outputs server is already running on port `8765`, starts it in the
+background if needed, and prints the latest report URL. If `--viewer-base-url`
+is omitted, it prefers the machine's `.lan` hostname when available (for
+example `http://starship.lan:8765/viewer/latest/index.html`).
+
+Plot selection scopes:
+
+- `--plot-scope top` keeps the cheaper ranked gallery controlled by `--top-plots`.
+- `--plot-scope per-scenario` generates one representative plot for each
+  benchmark scenario in the pack. For `full` mode, this means one plot per
+  `plunge`, `boost`, and `terminal` scenario in that benchmark.
+- `--plot-scope per-run` generates a plot bundle for every benchmark run
+  (every scenario/seed selector in the pack). For `full` mode, this means all
+  seeds across `plunge`, `boost`, and `terminal`.
+- `--plot-workers 0` uses an automatic worker count for plot generation
+  (currently up to `16`). Increase or decrease this when per-run plot bundles
+  need to trade throughput against machine load.
+
 ## Key options
 
 ### `play` / `run` / `sim` / `plot`
@@ -209,7 +246,8 @@ boost-cutoff latch. Bot-owned diagnostics stay namespaced under
 `bot_<botname>_*`, for example `bot_pdg_terminal_entry_projected_dx`,
 `bot_pdg_terminal_gate_mode`, and `bot_pdg_shape_curve_rmse`.
 
-When plotting is enabled, runs now emit `plot_paths` and a plot manifest path for bundle-style outputs.
+When plotting is enabled, runs now emit `plot_paths`, `plot_manifest_path`, and
+`plot_bundle_dir` for bundle-style outputs.
 
 ## Project skills
 
