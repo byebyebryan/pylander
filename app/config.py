@@ -27,6 +27,7 @@ class RunSettings:
     max_steps: int | None
     trace_enabled: bool
     trace_sample_period_s: float
+    trace_detail: str
     trace_root_dir: str | None
     stop_on_crash: bool
     stop_on_out_of_fuel: bool
@@ -49,6 +50,7 @@ class BenchSettings:
     max_steps: int | None
     trace_enabled: bool
     trace_sample_period_s: float
+    trace_detail: str
     json_path: str | None
     bot_profile_enabled: bool = True
     bot_profile_interval_s: float | None = None

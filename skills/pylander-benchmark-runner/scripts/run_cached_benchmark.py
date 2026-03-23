@@ -124,6 +124,7 @@ def _selector_pack_stem(
     mode: str,
     selectors: list[str],
     bot: str,
+    trace_detail: str,
     bot_config_path: str | None,
     bot_profile_enabled: bool,
     bot_profile_interval_s: float | None,
@@ -138,6 +139,7 @@ def _selector_pack_stem(
             "mode": mode,
             "selectors": selectors,
             "bot": bot,
+            "trace_detail": trace_detail,
             "bot_config_path": (None if not bot_config_path else str(bot_config_path)),
             "bot_profile_enabled": bool(bot_profile_enabled),
             "bot_profile_interval_s": (
@@ -757,6 +759,7 @@ def _load_or_run(
     mode: str,
     selectors: list[str],
     bot: str,
+    trace_detail: str,
     bot_config_path: str | None,
     bot_profile_enabled: bool,
     bot_profile_interval_s: float | None,
@@ -775,6 +778,7 @@ def _load_or_run(
         "mode": mode,
         "selectors": selectors,
         "bot": bot,
+        "trace_detail": trace_detail,
         "bot_config_path": (None if not bot_config_path else str(bot_config_path)),
         "worker_mode": "default",
         "bot_profile_enabled": bool(bot_profile_enabled),
@@ -815,6 +819,7 @@ def _load_or_run(
         bot=bot,
         bot_config_path=bot_config_path,
         json_path=str(json_path),
+        trace_detail=trace_detail,
         bot_profile_enabled=bool(bot_profile_enabled),
         bot_profile_interval_s=bot_profile_interval_s,
         bot_profile_log_lines=bool(bot_profile_log_lines),
@@ -1158,6 +1163,7 @@ def main() -> None:
         help="Levels to keep as observation-only (csv or repeated)",
     )
     ap.add_argument("--bot", default="pdg")
+    ap.add_argument("--trace-detail", choices=("report", "replay", "debug"), default="report")
     ap.add_argument("--bot-config", default=None)
     ap.add_argument(
         "--bot-profile",
@@ -1200,6 +1206,7 @@ def main() -> None:
         mode=args.mode,
         selectors=pack.selectors,
         bot=args.bot,
+        trace_detail=args.trace_detail,
         bot_config_path=args.bot_config,
         bot_profile_enabled=bool(args.bot_profile),
         bot_profile_interval_s=(
@@ -1215,6 +1222,7 @@ def main() -> None:
         mode=args.mode,
         selectors=pack.selectors,
         bot=args.bot,
+        trace_detail=args.trace_detail,
         bot_config_path=args.bot_config,
         bot_profile_enabled=bool(args.bot_profile),
         bot_profile_interval_s=(
@@ -1242,6 +1250,7 @@ def main() -> None:
         mode=args.mode,
         selectors=pack.selectors,
         bot=args.bot,
+        trace_detail=args.trace_detail,
         bot_config_path=args.bot_config,
         bot_profile_enabled=bool(args.bot_profile),
         bot_profile_interval_s=(

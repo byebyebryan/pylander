@@ -154,3 +154,14 @@ def test_build_bench_command_includes_bot_config_path() -> None:
     assert "--bot-config" in cmd
     idx = cmd.index("--bot-config")
     assert cmd[idx + 1] == "configs/zem_fast.json"
+
+
+def test_build_bench_command_includes_trace_detail() -> None:
+    cmd = selector_pack.build_bench_command(
+        selectors=["boost:flat:mid:half:0-1"],
+        trace_detail="replay",
+    )
+
+    assert "--trace-detail" in cmd
+    idx = cmd.index("--trace-detail")
+    assert cmd[idx + 1] == "replay"

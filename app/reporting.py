@@ -93,6 +93,8 @@ def print_headless_results(result: dict[str, Any]) -> None:
     ]
     bot_sections = _collect_bot_sections(result)
     trace_rows: list[tuple[str, Any]] = []
+    if result.get("trace_detail"):
+        trace_rows.append(("trace_detail", result["trace_detail"]))
     if result.get("trace_path"):
         trace_rows.append(("trace_path", result["trace_path"]))
     if result.get("trace_rel_path"):

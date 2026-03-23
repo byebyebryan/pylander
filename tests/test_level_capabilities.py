@@ -6,6 +6,7 @@ from core.level_capabilities import (
     BenchmarkScenarioSets,
     LevelBenchmarkProfile,
     level_name_tag,
+    level_trace_detail,
     level_trace_enabled,
     level_trace_sample_period_s,
     level_scenario_tag,
@@ -98,6 +99,7 @@ def test_level_tag_helpers_apply_defaults() -> None:
     level = _Level()
     assert level_trace_enabled(level) is False
     assert level_trace_sample_period_s(level) == 0.25
+    assert level_trace_detail(level) == "report"
     assert level_name_tag(level) == type(level).__module__.split(".")[-1]
     assert level_scenario_tag(level) == ""
 

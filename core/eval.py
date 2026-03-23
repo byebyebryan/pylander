@@ -69,6 +69,7 @@ _PASSTHROUGH_RESULT_FIELDS: tuple[str, ...] = (
     "trace_snapshot_count",
     "trace_event_count",
     "trace_control_log_count",
+    "trace_detail",
     "run_key",
     "run_instance_id",
 )

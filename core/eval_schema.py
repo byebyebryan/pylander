@@ -107,6 +107,7 @@ TRACE_RESULT_FIELDS: tuple[str, ...] = (
     "trace_preview_rel_path",
     "trace_schema_version",
     "trace_sample_period_s",
+    "trace_detail",
     "trace_snapshot_count",
     "trace_event_count",
     "trace_control_log_count",

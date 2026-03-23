@@ -105,3 +105,15 @@ def test_resolve_plot_workers_uses_auto_default(monkeypatch) -> None:
     assert plot_pack._resolve_plot_workers(0) == 16
     assert plot_pack._resolve_plot_workers(None) == 16
     assert plot_pack._resolve_plot_workers(3) == 3
+
+
+def test_plot_command_includes_trace_detail() -> None:
+    cmd = plot_pack._plot_command(
+        "plunge:low:half:0",
+        bot="pdg",
+        trace_sample_period_s=0.25,
+        trace_detail="debug",
+    )
+
+    assert "--trace-detail" in cmd
+    assert cmd[cmd.index("--trace-detail") + 1] == "debug"

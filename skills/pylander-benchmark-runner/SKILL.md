@@ -26,6 +26,7 @@ When the user says "full bench and plots", interpret that as:
 
 - `mode`: `smoke | quick | full | focused`
 - `bot` (default: `pdg`)
+- `trace_detail` (default: `report`)
 - `bot_config_path` (optional JSON override path; forwarded as `--bot-config`)
 - `seed_spec` (optional override, e.g. `0-9`)
 - `selectors` (focused mode)
@@ -37,7 +38,7 @@ When the user says "full bench and plots", interpret that as:
 
 Benchmark command:
 
-`uv run python main.py bench <selector ...> --bot <bot>`
+`uv run python main.py bench <selector ...> --bot <bot> --trace-detail report`
 
 Selector format:
 
@@ -116,6 +117,12 @@ Remote-share variant:
 5. When the request implies "show me the plots/report", use
 `gen_bench_bundle.py` instead of only `run_cached_benchmark.py`, and return the
 latest reachable URL rather than just filesystem paths.
+
+Trace detail guidance:
+
+- Default benchmark mode is `report`: snapshots + events + derived plot data + final results.
+- Use `--trace-detail replay` when the user explicitly wants replay-grade control logs.
+- Use `--trace-detail debug` only for focused debugging; it is much larger.
 
 ## Local cache model
 

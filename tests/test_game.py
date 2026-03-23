@@ -475,6 +475,7 @@ def test_resolve_benchmark_plan_invalid_level_fails_fast() -> None:
         max_steps=None,
         trace_enabled=True,
         trace_sample_period_s=0.25,
+        trace_detail="report",
         json_path=None,
     )
 
@@ -508,6 +509,7 @@ def test_resolve_batch_plan_expands_explicit_wildcards_without_seed_spec(
         max_steps=None,
         trace_enabled=True,
         trace_sample_period_s=0.25,
+        trace_detail="report",
         json_path=None,
     )
     monkeypatch.setattr(
@@ -563,6 +565,7 @@ def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
         max_steps=None,
         trace_enabled=True,
         trace_sample_period_s=0.25,
+        trace_detail="report",
         json_path=None,
     )
     monkeypatch.setattr(
@@ -624,6 +627,7 @@ def test_resolve_batch_plan_assigns_unique_run_keys_for_duplicate_selectors(monk
         max_steps=None,
         trace_enabled=True,
         trace_sample_period_s=0.25,
+        trace_detail="report",
         json_path=None,
     )
     monkeypatch.setattr(
@@ -688,6 +692,7 @@ def test_parse_play_command_uses_interactive_defaults() -> None:
     assert command.run.headless is False
     assert command.run.trace_enabled is False
     assert command.run.trace_sample_period_s == 0.25
+    assert command.run.trace_detail == "report"
 
 
 def test_parse_play_command_accepts_selector_and_bot() -> None:
@@ -711,6 +716,7 @@ def test_parse_bench_command_uses_expected_defaults() -> None:
     assert command.bench.workers == max(1, int(os.cpu_count() or 1) - 2)
     assert command.bench.trace_enabled is True
     assert command.bench.trace_sample_period_s == 0.25
+    assert command.bench.trace_detail == "report"
     assert command.bench.json_path == "auto"
     assert command.bench.bot_profile_enabled is True
     assert command.bench.bot_profile_log_lines is False
@@ -756,6 +762,7 @@ def test_parse_bench_command_trace_flags_override_defaults() -> None:
     assert isinstance(command, BenchCommand)
     assert command.bench.trace_enabled is True
     assert command.bench.trace_sample_period_s == 0.5
+    assert command.bench.trace_detail == "report"
 
 
 def test_parse_plot_command_trace_flags_override_defaults() -> None:
@@ -772,6 +779,7 @@ def test_parse_plot_command_trace_flags_override_defaults() -> None:
     assert isinstance(command, RunCommand)
     assert command.run.trace_enabled is True
     assert command.run.trace_sample_period_s == 0.1
+    assert command.run.trace_detail == "debug"
 
 
 def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> None:
@@ -820,6 +828,7 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
         max_steps=None,
         trace_enabled=True,
         trace_sample_period_s=0.25,
+        trace_detail="report",
         json_path=None,
     )
     with pytest.raises(
@@ -891,6 +900,7 @@ def test_run_benchmark_writes_absolute_trace_paths_for_explicit_tracepack_outsid
                 "trace_rel_path": None,
                 "trace_preview_path": str(preview_path),
                 "trace_preview_rel_path": None,
+                "trace_detail": "report",
                 "run_key": "plunge:low:half:0",
                 "run_instance_id": 1,
             }
@@ -932,6 +942,7 @@ def test_run_benchmark_writes_absolute_trace_paths_for_explicit_tracepack_outsid
         max_steps=1,
         trace_enabled=True,
         trace_sample_period_s=0.25,
+        trace_detail="report",
         json_path=str(tracepack_path),
     )
 
@@ -945,6 +956,7 @@ def test_run_benchmark_writes_absolute_trace_paths_for_explicit_tracepack_outsid
     assert payload["records"][0]["trace_rel_path"] is None
     assert payload["run_index"][0]["trace_path"] == str(trace_path)
     assert payload["run_index"][0]["trace_preview_path"] == str(preview_path)
+    assert payload["trace_detail"] == "report"
     assert payload["run_index"][0]["run_key"] == "plunge:low:half:0"
 
 
@@ -995,6 +1007,7 @@ def test_run_benchmark_auto_tracepack_uses_absolute_root_and_outputs_relative_ro
                 "trace_rel_path": trace_path.relative_to(outputs_root).as_posix(),
                 "trace_preview_path": str(preview_path),
                 "trace_preview_rel_path": preview_path.relative_to(outputs_root).as_posix(),
+                "trace_detail": "report",
                 "run_key": "plunge:low:half:0",
                 "run_instance_id": 1,
             }
@@ -1037,6 +1050,7 @@ def test_run_benchmark_auto_tracepack_uses_absolute_root_and_outputs_relative_ro
         max_steps=1,
         trace_enabled=True,
         trace_sample_period_s=0.25,
+        trace_detail="report",
         json_path="auto",
     )
 
@@ -1048,6 +1062,7 @@ def test_run_benchmark_auto_tracepack_uses_absolute_root_and_outputs_relative_ro
     assert exit_code == 0
     assert payload["trace_root_path"] == str(trace_root.resolve())
     assert payload["trace_root_rel"] == trace_root.resolve().relative_to(outputs_root).as_posix()
+    assert payload["trace_detail"] == "report"
     assert payload["records"][0]["trace_rel_path"] == (
         trace_root.resolve().relative_to(outputs_root).as_posix()
         + "/traces/plunge_low_half_0.trace.json"
@@ -1064,3 +1079,4 @@ def test_plot_command_enables_trace_by_default() -> None:
     assert command.run.seed == 3
     assert command.run.trace_enabled is True
     assert command.run.trace_sample_period_s == 0.25
+    assert command.run.trace_detail == "debug"

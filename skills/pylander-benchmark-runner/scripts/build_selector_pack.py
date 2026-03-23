@@ -381,6 +381,7 @@ def build_bench_command(
     selectors: list[str],
     bot: str = "pdg",
     json_path: str = "auto",
+    trace_detail: str | None = None,
     bot_config_path: str | None = None,
     bot_profile_enabled: bool | None = None,
     bot_profile_interval_s: float | None = None,
@@ -398,6 +399,8 @@ def build_bench_command(
             json_path,
         ]
     )
+    if trace_detail:
+        cmd += ["--trace-detail", str(trace_detail)]
     if bot_config_path:
         cmd += ["--bot-config", str(bot_config_path)]
     if bot_profile_enabled is not None:
@@ -444,6 +447,7 @@ def main() -> None:
         help="Levels to keep as observation-only (csv or repeated)",
     )
     ap.add_argument("--bot", default="pdg")
+    ap.add_argument("--trace-detail", choices=("report", "replay", "debug"), default="report")
     ap.add_argument("--bot-config", default=None)
     ap.add_argument(
         "--bot-profile",
@@ -477,6 +481,7 @@ def main() -> None:
             selectors=pack.selectors,
             bot=args.bot,
             json_path="auto",
+            trace_detail=args.trace_detail,
             bot_config_path=args.bot_config,
             bot_profile_enabled=bool(args.bot_profile),
             bot_profile_interval_s=args.bot_profile_interval_s,

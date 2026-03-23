@@ -218,6 +218,7 @@ def _to_run_settings(cfg: BenchSettings, *, trace_root_dir: Path | None = None) 
         max_steps=cfg.max_steps,
         trace_enabled=cfg.trace_enabled,
         trace_sample_period_s=cfg.trace_sample_period_s,
+        trace_detail=cfg.trace_detail,
         trace_root_dir=(str(trace_root_dir) if trace_root_dir is not None else None),
         stop_on_crash=True,
         stop_on_out_of_fuel=True,
@@ -391,6 +392,7 @@ def run_benchmark(cfg: BenchSettings) -> int:
             "benchmark_wall_clock_s": benchmark_wall_clock_s,
             "trace_enabled": bool(cfg.trace_enabled),
             "trace_sample_period_s": float(cfg.trace_sample_period_s),
+            "trace_detail": str(cfg.trace_detail),
             "trace_root_path": (str(trace_root_dir) if trace_root_dir is not None else None),
             "trace_root_rel": (
                 trace_root_dir.relative_to(outputs_root).as_posix()
