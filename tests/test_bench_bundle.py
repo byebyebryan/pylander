@@ -401,8 +401,12 @@ def test_write_bundle_files_renders_relative_links_and_latest_redirect(tmp_path:
     assert "Bot Tick P90" in html_payload
     assert "Show commands" in html_payload
     assert "scenario-table" in html_payload
+    assert "Expand All" in html_payload
+    assert "Collapse All" in html_payload
     assert "scenario-row" in html_payload
     assert "seed-row" in html_payload
+    assert "boost:climb" in html_payload
+    assert "boost:climb:high" in html_payload
     assert "boost:climb:high:full" in html_payload
     assert "runs/boost_climb_high_full_0.html" in html_payload
     assert "../../../plots/case_a/spatial_trajectory_comparison.png" in html_payload
