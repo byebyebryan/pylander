@@ -15,10 +15,10 @@ static bundle workflow and return the latest URL:
 When the user says "full bench and plots", interpret that as:
 - `--mode full`
 - current full-pack coverage across `plunge`, `boost`, and `terminal`
-- `--plot-scope per-scenario` so the bundle includes one representative plot for each scenario
+- interactive detail pages for every run in the pack
 
 Use raw `main.py plot` commands only for narrow manual repros or when the user
-explicitly asks for individual plot files.
+explicitly asks for individual trace captures.
 
 This skill is for:
 
@@ -74,7 +74,7 @@ Focused run:
 
 Per-case reproduction:
 
-- `uv run python main.py plot <level[:layer[:...]][:goal[:seed]]> --bot <bot> --plot all`
+- `uv run python main.py plot <level[:layer[:...]][:goal[:seed]]> --bot <bot>`
 - `uv run python main.py sim <level[:layer[:...]][:goal[:seed]]> --bot <bot> --freq 1`
 - `PYLANDER_BOT_PROFILE=1 uv run python main.py sim <selector> --bot <bot> --freq 1`
 

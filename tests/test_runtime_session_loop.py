@@ -105,9 +105,18 @@ def test_run_session_loop_stops_on_bot_eval_before_level_end() -> None:
         def update_state_counters(self, _actor, *, elapsed_time: float) -> None:
             calls.append(f"metrics_state:{elapsed_time:.3f}")
 
-    class _Plotter:
-        def update(self, _dt: float) -> None:
-            calls.append("plotter")
+    class _TraceRecorder:
+        def update(self, _dt: float, *, elapsed_time_s: float) -> None:
+            _ = elapsed_time_s
+            calls.append("trace_recorder")
+
+        def record_controls_map(self, *, elapsed_time_s: float, controls_by_uid) -> None:
+            _ = elapsed_time_s, controls_by_uid
+            calls.append("record_controls")
+
+        def record_eval_decision(self, *, elapsed_time_s: float, decision) -> None:
+            _ = elapsed_time_s, decision
+            calls.append("record_eval_decision")
 
     context = SessionLoopContext(
         headless=True,
@@ -117,7 +126,7 @@ def test_run_session_loop_stops_on_bot_eval_before_level_end() -> None:
         refuel_system=_System("refuel"),
         state_transition_system=_System("state_transition"),
         sensor_update_system=_System("sensor_update"),
-        plotter=_Plotter(),
+        trace_recorder=_TraceRecorder(),
         bot_profiler=BotLoopProfiler(enabled=False),
         metrics=_Metrics(),  # type: ignore[arg-type]
         bot_override_delay=1.0,
@@ -155,13 +164,15 @@ def test_run_session_loop_stops_on_bot_eval_before_level_end() -> None:
         end_reason="goal_reached",
     )
     assert "level_should_end" not in calls
-    assert calls[:8] == [
+    assert calls[:9] == [
         "set_elapsed",
         "physics",
         "set_controls",
+        "record_controls",
         "control_routing",
         "refuel",
         "state_transition",
         "sensor_update",
         "level_update",
     ]
+    assert "record_eval_decision" in calls

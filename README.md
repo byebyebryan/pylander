@@ -92,10 +92,12 @@ Selector format:
 
 ```bash
 uv run python main.py plot boost:flat:far:half:0 --bot pdg
-uv run python main.py plot boost:flat:far:half:0 --bot pdg --plot all --plot-output both
+uv run python main.py plot boost:flat:far:half:0 --bot pdg --trace-sample-period-s 0.10
 ```
 
-Plot outputs are written under `outputs/plots/<selector>_<timestamp>/` when plotting is enabled.
+Single-run trace capture writes a trace JSON plus a small preview PNG under
+`outputs/traces/<selector>/...`. The `plot` command no longer emits split or
+combined PNG galleries; it enables structured trace capture for a single run.
 
 ### Benchmark batch (`bench`)
 
@@ -116,8 +118,7 @@ uv run python main.py bench \
   boost:downhill:*:* \
   boost:climb:*:* \
   --bot pdg \
-  --json auto \
-  --csv auto
+  --json auto
 ```
 
 Bench selector format:
@@ -162,7 +163,7 @@ uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py \
 ```
 
 For remote dev, you can also generate a static HTML bundle that wraps the
-benchmark artifacts and diagnostic plots:
+benchmark tracepack and interactive run-detail pages:
 
 ```bash
 # Serve outputs/ once per tmux session
@@ -171,7 +172,6 @@ uv run python skills/pylander-benchmark-runner/scripts/serve_outputs.py --port 8
 # Generate the latest static bundle
 uv run python skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py \
   --mode full \
-  --plot-scope per-scenario \
   --viewer-base-url http://myhost:8765
 ```
 
@@ -187,23 +187,8 @@ background if needed, and prints the latest report URL. If `--viewer-base-url`
 is omitted, it prefers the machine's `.lan` hostname when available (for
 example `http://starship.lan:8765/viewer/latest/index.html`).
 
-Bundle detail pages render the split plot images directly in a single scrollable
-column. `gen_bench_bundle.py` now defaults to `--plot-output split`, so it does
-not spend time generating the combined overview image unless you opt back into
-`--plot-output both` or `--plot-output combined`.
-
-Plot selection scopes:
-
-- `--plot-scope top` keeps the cheaper ranked gallery controlled by `--top-plots`.
-- `--plot-scope per-scenario` generates one representative plot for each
-  benchmark scenario in the pack. For `full` mode, this means one plot per
-  `plunge`, `boost`, and `terminal` scenario in that benchmark.
-- `--plot-scope per-run` generates a plot bundle for every benchmark run
-  (every scenario/seed selector in the pack). For `full` mode, this means all
-  seeds across `plunge`, `boost`, and `terminal`.
-- `--plot-workers 0` uses an automatic worker count for plot generation
-  (currently up to `16`). Increase or decrease this when per-run plot bundles
-  need to trade throughput against machine load.
+Bundle tables use pre-rendered preview PNGs for responsiveness, while run detail
+pages render interactive Plotly charts directly from per-run trace JSON.
 
 ## Key options
 
@@ -216,13 +201,15 @@ Plot selection scopes:
 - `-n, --steps N`
 - `-t, --time S`
 - `-f, --freq N` (headless print cadence)
-- `-p, --plot none|speed|thrust|all`
-- `-o, --plot-output combined|split|both`
-- `--plot-max-side-px N` (default: 1800)
+- `--trace, --no-trace` (`run` / `sim`; default off)
+- `--trace-sample-period-s S` (default: 0.25 when tracing is enabled)
 - `--stop-on-crash`
 - `--stop-on-out-of-fuel`
 - `--stop-on-first-land`
 - `-i, --interactive` (`run` only; compatibility alias for `play`)
+
+`plot` is now the trace-first single-run variant of `sim`; it defaults to
+`--trace`.
 
 ### `bench`
 
@@ -232,11 +219,8 @@ Plot selection scopes:
 - `-l, --lander NAME`
 - `-n, --steps N`
 - `-t, --time S`
-- `-p, --plot none|speed|thrust|all`
-- `-o, --plot-output combined|split|both`
-- `--plot-max-side-px N` (default: 1800)
+- `--trace-sample-period-s S` (default: 0.25)
 - `-j, --json PATH|auto`
-- `-c, --csv PATH|auto`
 - `--bot-profile, --no-bot-profile` (default: on)
 - `--bot-profile-interval-s S` (optional profiler log interval)
 - `--bot-profile-logs, --no-bot-profile-logs` (default: off)
@@ -246,6 +230,12 @@ Plot selection scopes:
 Benchmark records include bot compute timing metrics (avg plus p90/p99 for
 passive, update, and total ms/tick) when profiling is enabled.
 
+Benchmark JSON output is now a canonical tracepack manifest (`*.tracepack.json`)
+with top-level `summary` and `records` plus per-run trace JSON files and preview
+PNGs under the sibling tracepack directory. Plain `bench` runs write it by
+default; explicit `--json` paths overwrite exactly, while `--json auto` uses
+collision-safe names.
+
 Boost-phase evaluation metrics are reported through generic fields such as
 `boost_cutoff_*` and `boost_goal_*`. For `terminal:normal:*` and `terminal:error:*:*`,
 `boost_cutoff_*` is a spawn-time coast-entry snapshot rather than a post-burn
@@ -253,8 +243,10 @@ boost-cutoff latch. Bot-owned diagnostics stay namespaced under
 `bot_<botname>_*`, for example `bot_pdg_terminal_entry_projected_dx`,
 `bot_pdg_terminal_gate_mode`, and `bot_pdg_shape_curve_rmse`.
 
-When plotting is enabled, runs now emit `plot_paths`, `plot_manifest_path`, and
-`plot_bundle_dir` for bundle-style outputs.
+Trace-enabled runs emit trace metadata such as `trace_path`,
+`trace_preview_path`, optional outputs-relative `trace_rel_path` and
+`trace_preview_rel_path`, `run_key`, `run_instance_id`,
+`trace_sample_period_s`, and trace event/snapshot counts.
 
 ## Project skills
 

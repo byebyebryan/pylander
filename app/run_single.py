@@ -100,9 +100,9 @@ def configure_level(level, settings: RunSettings, *, benchmark_mode: str | None 
 
     set_benchmark_mode_checked(level, benchmark_mode)
 
-    level.plot_mode = settings.plot_mode
-    level.plot_output = settings.plot_output
-    level.plot_max_side_px = settings.plot_max_side_px
+    level.trace_enabled = settings.trace_enabled
+    level.trace_sample_period_s = settings.trace_sample_period_s
+    level.trace_root_dir = settings.trace_root_dir
     level.max_time = settings.max_time
     if settings.lander_name:
         setattr(level, "lander_name", settings.lander_name)
@@ -119,6 +119,9 @@ def run_once(
     display_scenario_name: str | None = None,
     print_results: bool = True,
     benchmark_mode: str | None = None,
+    trace_selector_tag: str | None = None,
+    run_key: str | None = None,
+    run_instance_id: int | None = None,
 ) -> dict[str, Any]:
     runtime_level_name = level_name or settings.runtime_level_name
     public_level_name = display_level_name or settings.level_name
@@ -137,6 +140,8 @@ def run_once(
     run_goal = resolve_run_goal(settings, eval_goal_name=eval_goal_name)
     run_goal = set_eval_goal(level, run_goal)
     configure_level(level, settings, benchmark_mode=benchmark_mode)
+    if trace_selector_tag:
+        setattr(level, "trace_selector_tag", str(trace_selector_tag))
 
     run_bot_name = resolve_run_bot_name(settings, level)
     bot_config = _load_bot_config(settings.bot_config_path)
@@ -182,6 +187,10 @@ def run_once(
     result["_level_name"] = public_level_name
     result["_scenario_name"] = public_scenario_name or public_level_name
     result["_eval_goal"] = run_goal
+    if run_key is not None:
+        result["run_key"] = str(run_key)
+    if run_instance_id is not None:
+        result["run_instance_id"] = int(run_instance_id)
 
     if settings.headless and print_results:
         print_headless_results(result)
@@ -198,6 +207,9 @@ def run_once_record(
     record_level_name: str | None = None,
     record_scenario_name: str | None = None,
     benchmark_mode: str | None = None,
+    trace_selector_tag: str | None = None,
+    run_key: str | None = None,
+    run_instance_id: int | None = None,
 ) -> dict[str, Any]:
     result = run_once(
         settings,
@@ -209,6 +221,9 @@ def run_once_record(
         display_scenario_name=record_scenario_name,
         print_results=False,
         benchmark_mode=benchmark_mode,
+        trace_selector_tag=trace_selector_tag,
+        run_key=run_key,
+        run_instance_id=run_instance_id,
     )
     record_bot_name = str(result.get("_bot_name") or settings.bot_name or "none")
     record_level_name = str(result.get("_level_name") or record_level_name or settings.level_name)

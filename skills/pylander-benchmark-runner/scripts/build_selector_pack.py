@@ -381,7 +381,6 @@ def build_bench_command(
     selectors: list[str],
     bot: str = "pdg",
     json_path: str = "auto",
-    csv_path: str = "auto",
     bot_config_path: str | None = None,
     bot_profile_enabled: bool | None = None,
     bot_profile_interval_s: float | None = None,
@@ -397,8 +396,6 @@ def build_bench_command(
             bot,
             "--json",
             json_path,
-            "--csv",
-            csv_path,
         ]
     )
     if bot_config_path:
@@ -480,7 +477,6 @@ def main() -> None:
             selectors=pack.selectors,
             bot=args.bot,
             json_path="auto",
-            csv_path="auto",
             bot_config_path=args.bot_config,
             bot_profile_enabled=bool(args.bot_profile),
             bot_profile_interval_s=args.bot_profile_interval_s,

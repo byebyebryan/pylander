@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import csv
 import hashlib
 import json
 from pathlib import Path
@@ -35,6 +34,7 @@ _OPTIONAL_FLOAT_RESULT_FIELDS: tuple[str, ...] = (
     "path_efficiency",
     "time_to_first_land",
     "spawn_to_target_distance",
+    "trace_sample_period_s",
     *tuple(
         field
         for field in SETUP_GOAL_RESULT_FIELDS
@@ -61,6 +61,16 @@ _OPTIONAL_BOOL_RESULT_FIELDS: tuple[str, ...] = (
 _PASSTHROUGH_RESULT_FIELDS: tuple[str, ...] = (
     "eval_end_reason",
     *tuple(field for field in ARRIVAL_RESULT_FIELDS if not field.endswith("_arrived")),
+    "trace_path",
+    "trace_rel_path",
+    "trace_preview_path",
+    "trace_preview_rel_path",
+    "trace_schema_version",
+    "trace_snapshot_count",
+    "trace_event_count",
+    "trace_control_log_count",
+    "run_key",
+    "run_instance_id",
 )
 
 
@@ -204,14 +214,6 @@ def normalize_run_result(
                 continue
         if isinstance(value, (int, float, str, bool)) or value is None:
             record[key] = value
-    if "plot_path" in result:
-        record["plot_path"] = result.get("plot_path")
-    if "plot_paths" in result:
-        record["plot_paths"] = result.get("plot_paths")
-    if "plot_manifest_path" in result:
-        record["plot_manifest_path"] = result.get("plot_manifest_path")
-    if "plot_bundle_dir" in result:
-        record["plot_bundle_dir"] = result.get("plot_bundle_dir")
     return record
 
 
@@ -335,19 +337,4 @@ def write_json_report(path: str | Path, payload: dict[str, Any]) -> Path:
     out = collision_safe_path(path)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
-    return out
-
-
-def write_csv_records(path: str | Path, records: list[dict[str, Any]]) -> Path:
-    out = collision_safe_path(path)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames_set: set[str] = set()
-    for record in records:
-        fieldnames_set.update(record.keys())
-    fieldnames = sorted(fieldnames_set)
-    with out.open("w", newline="", encoding="utf-8") as fh:
-        writer = csv.DictWriter(fh, fieldnames=fieldnames)
-        writer.writeheader()
-        for record in records:
-            writer.writerow(record)
     return out

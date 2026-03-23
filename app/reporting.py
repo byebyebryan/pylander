@@ -20,14 +20,14 @@ def _format_value(value: Any) -> str:
 def _label_width(
     section_rows: list[list[tuple[str, Any]]],
     bot_sections: list[tuple[str, list[tuple[str, Any]]]],
-    plot_rows: list[tuple[str, Any]],
+    trace_rows: list[tuple[str, Any]],
 ) -> int:
     labels: list[str] = []
     for rows in section_rows:
         labels.extend(field for field, _value in rows)
     for _bot_name, rows in bot_sections:
         labels.extend(field for field, _value in rows)
-    labels.extend(field for field, _value in plot_rows)
+    labels.extend(field for field, _value in trace_rows)
     if not labels:
         return 0
     raw_width = max(len(label) for label in labels)
@@ -92,18 +92,16 @@ def print_headless_results(result: dict[str, Any]) -> None:
         _collect_section_rows(result, fields) for _title, fields in FINAL_RESULT_SECTIONS
     ]
     bot_sections = _collect_bot_sections(result)
-    plot_rows: list[tuple[str, Any]] = []
-    if result.get("plot_paths"):
-        plot_rows.extend(("path", path) for path in result["plot_paths"])
-    elif result.get("plot_path"):
-        plot_rows.append(("path", result["plot_path"]))
-    if result.get("plot_manifest_path"):
-        plot_rows.append(("manifest", result["plot_manifest_path"]))
-    if result.get("plot_bundle_dir"):
-        plot_rows.append(("bundle_dir", result["plot_bundle_dir"]))
-    if result.get("plot_error"):
-        plot_rows.append(("plot_error", result["plot_error"]))
-    label_width = _label_width(section_rows, bot_sections, plot_rows)
+    trace_rows: list[tuple[str, Any]] = []
+    if result.get("trace_path"):
+        trace_rows.append(("trace_path", result["trace_path"]))
+    if result.get("trace_rel_path"):
+        trace_rows.append(("trace_rel_path", result["trace_rel_path"]))
+    if result.get("trace_preview_path"):
+        trace_rows.append(("preview_path", result["trace_preview_path"]))
+    if result.get("trace_preview_rel_path"):
+        trace_rows.append(("preview_rel_path", result["trace_preview_rel_path"]))
+    label_width = _label_width(section_rows, bot_sections, trace_rows)
     printed = 0
     for (title, _fields), rows in zip(FINAL_RESULT_SECTIONS, section_rows, strict=False):
         printed += _print_section(title, rows, label_width=label_width)
@@ -112,10 +110,10 @@ def print_headless_results(result: dict[str, Any]) -> None:
             continue
         print(f"\n[Bot Telemetry: {bot_name}]")
         printed += _print_rows(rows, label_width=label_width)
-    if plot_rows:
-        print("\n[Plot Files]")
-        _print_rows(plot_rows, label_width=label_width)
-    if printed == 0 and not result.get("plot_path") and not result.get("plot_paths"):
+    if trace_rows:
+        print("\n[Trace Files]")
+        _print_rows(trace_rows, label_width=label_width)
+    if printed == 0 and not result.get("trace_path") and not result.get("trace_rel_path"):
         print("(no result fields)")
     print("=" * _FINAL_RESULTS_BAR_WIDTH)
 
@@ -148,7 +146,6 @@ def print_batch_summary(
     summary: dict[str, Any],
     failures: list[dict[str, Any]],
     json_path,
-    csv_path,
 ) -> None:
     print("\n" + "=" * 60)
     print("BATCH RESULTS")
@@ -196,7 +193,5 @@ def print_batch_summary(
 
     if json_path is not None:
         print(f"\nJSON report:       {json_path}")
-    if csv_path is not None:
-        print(f"CSV report:        {csv_path}")
 
     print("=" * 60)

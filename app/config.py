@@ -25,9 +25,9 @@ class RunSettings:
     print_freq: int
     max_time: float
     max_steps: int | None
-    plot_mode: str
-    plot_output: str
-    plot_max_side_px: int
+    trace_enabled: bool
+    trace_sample_period_s: float
+    trace_root_dir: str | None
     stop_on_crash: bool
     stop_on_out_of_fuel: bool
     stop_on_first_land: bool
@@ -47,11 +47,9 @@ class BenchSettings:
     workers: int
     max_time: float
     max_steps: int | None
-    plot_mode: str
-    plot_output: str
-    plot_max_side_px: int
+    trace_enabled: bool
+    trace_sample_period_s: float
     json_path: str | None
-    csv_path: str | None
     bot_profile_enabled: bool = True
     bot_profile_interval_s: float | None = None
     bot_profile_log_lines: bool = False

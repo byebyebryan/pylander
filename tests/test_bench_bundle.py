@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 
@@ -31,19 +32,14 @@ def test_parse_section_reads_key_value_block() -> None:
     output = """
 # candidate
 commit=8b2f6cd
-json=/tmp/candidate.json
-csv=/tmp/candidate.csv
+json=/tmp/candidate.tracepack.json
 meta=/tmp/candidate.meta.json
 cached=False
-
-# policy
-included_levels=boost,plunge,terminal
 """
     section = bench_bundle._parse_section(output, "candidate")
     assert section == {
         "commit": "8b2f6cd",
-        "json": "/tmp/candidate.json",
-        "csv": "/tmp/candidate.csv",
+        "json": "/tmp/candidate.tracepack.json",
         "meta": "/tmp/candidate.meta.json",
         "cached": "False",
     }
@@ -64,190 +60,52 @@ def test_discover_viewer_hostname_prefers_lan(monkeypatch) -> None:
     assert bench_bundle._discover_viewer_hostname() == "starship.lan"
 
 
-def test_scenario_plot_selectors_prefers_failed_seed_then_lowest_seed() -> None:
-    selectors = bench_bundle._scenario_plot_selectors(
-        {
-            "records": [
-                {
-                    "level": "boost",
-                    "scenario": "climb:high:full",
-                    "seed": 3,
-                    "success": True,
-                    "state": "landed",
-                },
-                {
-                    "level": "boost",
-                    "scenario": "climb:high:full",
-                    "seed": 1,
-                    "success": False,
-                    "state": "crashed",
-                },
-                {
-                    "level": "terminal",
-                    "scenario": "normal:mid",
-                    "seed": 2,
-                    "success": True,
-                    "state": "landed",
-                },
-                {
-                    "level": "terminal",
-                    "scenario": "normal:mid",
-                    "seed": 0,
-                    "success": True,
-                    "state": "landed",
-                },
-            ]
-        }
-    )
-
-    assert selectors == [
-        "boost:climb:high:full:1",
-        "terminal:normal:mid:0",
-    ]
-
-
-def test_plot_pack_command_uses_focus_mode_for_per_scenario_scope(tmp_path: Path) -> None:
-    args = bench_bundle.argparse.Namespace(
-        bot="pdg",
-        top_plots=8,
-        plot_scope="per-scenario",
-        plot_mode="all",
-        plot_output="both",
-        plot_max_side_px=1800,
-        plot_workers=0,
-    )
-    cmd = bench_bundle._plot_pack_command(
-        benchmark_json=tmp_path / "candidate.json",
-        candidate_payload={
-            "records": [
-                {
-                    "level": "plunge",
-                    "scenario": "high:full",
-                    "seed": 0,
-                    "success": True,
-                    "state": "landed",
-                },
-                {
-                    "level": "terminal",
-                    "scenario": "normal:mid",
-                    "seed": 0,
-                    "success": True,
-                    "state": "landed",
-                },
-            ]
-        },
-        compare_json=None,
-        bundle_plot_manifest=tmp_path / "plot_pack.json",
-        args=args,
-    )
-
-    assert cmd[cmd.index("--mode") + 1] == "focus"
-    assert cmd[cmd.index("--top-n") + 1] == "2"
-    selectors_idx = cmd.index("--selectors") + 1
-    assert cmd[selectors_idx:] == [
-        "plunge:high:full:0",
-        "terminal:normal:mid:0",
-    ]
-
-
-def test_all_run_plot_selectors_order_by_scenario_then_seed() -> None:
-    selectors = bench_bundle._all_run_plot_selectors(
-        {
-            "records": [
-                {
-                    "level": "terminal",
-                    "scenario": "normal:mid",
-                    "seed": 2,
-                    "success": True,
-                    "state": "landed",
-                },
-                {
-                    "level": "boost",
-                    "scenario": "climb:high:full",
-                    "seed": 1,
-                    "success": False,
-                    "state": "crashed",
-                },
-                {
-                    "level": "terminal",
-                    "scenario": "normal:mid",
-                    "seed": 0,
-                    "success": True,
-                    "state": "landed",
-                },
-            ]
-        }
-    )
-
-    assert selectors == [
-        "boost:climb:high:full:1",
-        "terminal:normal:mid:0",
-        "terminal:normal:mid:2",
-    ]
-
-
-def test_plot_pack_command_uses_focus_mode_for_per_run_scope(tmp_path: Path) -> None:
-    args = bench_bundle.argparse.Namespace(
-        bot="pdg",
-        top_plots=8,
-        plot_scope="per-run",
-        plot_mode="all",
-        plot_output="split",
-        plot_max_side_px=1800,
-        plot_workers=0,
-    )
-    cmd = bench_bundle._plot_pack_command(
-        benchmark_json=tmp_path / "candidate.json",
-        candidate_payload={
-            "records": [
-                {
-                    "level": "plunge",
-                    "scenario": "high:full",
-                    "seed": 1,
-                    "success": True,
-                    "state": "landed",
-                },
-                {
-                    "level": "plunge",
-                    "scenario": "high:full",
-                    "seed": 0,
-                    "success": True,
-                    "state": "landed",
-                },
-            ]
-        },
-        compare_json=None,
-        bundle_plot_manifest=tmp_path / "plot_pack.json",
-        args=args,
-    )
-
-    assert cmd[cmd.index("--mode") + 1] == "focus"
-    assert cmd[cmd.index("--top-n") + 1] == "2"
-    assert cmd[cmd.index("--plot-output") + 1] == "split"
-    selectors_idx = cmd.index("--selectors") + 1
-    assert cmd[selectors_idx:] == [
-        "plunge:high:full:0",
-        "plunge:high:full:1",
-    ]
-
-
-def test_write_bundle_files_renders_relative_links_and_latest_redirect(tmp_path: Path) -> None:
+def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     outputs_root = tmp_path / "outputs"
-    (outputs_root / "benchmarks" / "head").mkdir(parents=True)
-    (outputs_root / "plots" / "overview").mkdir(parents=True)
-    (outputs_root / "plots" / "case_a").mkdir(parents=True)
+    trace_root = outputs_root / "benchmarks" / "head" / "full_pack.tracepack"
+    trace_dir = trace_root / "traces"
+    preview_dir = trace_root / "previews"
+    trace_dir.mkdir(parents=True)
+    preview_dir.mkdir(parents=True)
+    (outputs_root / "benchmarks" / "head").mkdir(parents=True, exist_ok=True)
 
-    candidate_json = outputs_root / "benchmarks" / "head" / "full_pack.json"
-    candidate_csv = outputs_root / "benchmarks" / "head" / "full_pack.csv"
+    candidate_json = outputs_root / "benchmarks" / "head" / "full_pack.tracepack.json"
     candidate_meta = outputs_root / "benchmarks" / "head" / "full_pack.meta.json"
     compare_json = outputs_root / "benchmarks" / "head" / "full_pack.compare.json"
-    plot_pack_manifest = outputs_root / "viewer" / "bundles" / "bundle_x" / "plot_pack.json"
-    overview_png = outputs_root / "plots" / "overview" / "case_a.png"
-    bundle_manifest = outputs_root / "plots" / "case_a" / "manifest.json"
-    spatial_traj = outputs_root / "plots" / "case_a" / "spatial_trajectory_comparison.png"
-    spatial_speed = outputs_root / "plots" / "case_a" / "spatial_speed.png"
+    trace_path = trace_dir / "boost_climb_high_full_0.trace.json"
+    preview_path = preview_dir / "boost_climb_high_full_0.png"
+
+    trace_payload = {
+        "schema": "pylander.run_trace.v1",
+        "schema_version": 1,
+        "plot": {
+            "terrain": {"xs": [-40.0, 0.0, 40.0], "ys": [0.0, 0.0, 0.0]},
+            "target": {"x": 0.0, "y": 0.0, "label": "landing target", "size": 110.0},
+            "events": [{"name": "crash", "label": "crashed", "time_s": 12.1, "x": 4.0, "y": 1.5}],
+            "bounds": {"min_x": -40.0, "max_x": 40.0, "lower_y": -5.0, "upper_y": 60.0},
+            "samples": {
+                "time_s": [0.0, 1.0, 2.0],
+                "x": [-20.0, -5.0, 4.0],
+                "y": [48.0, 22.0, 1.5],
+                "speed": [14.0, 18.0, 35.0],
+                "thrust": [0.8, 0.7, 0.2],
+                "angle": [0.0, -8.0, -12.0],
+                "vx": [6.0, 8.0, 12.0],
+                "vy": [-20.0, -18.0, -32.0],
+            },
+            "ballistic_curve": {"xs": [4.0, 6.0, 8.0], "ys": [1.5, 0.8, 0.0]},
+            "reference_curve": {"xs": [-20.0, -8.0, 0.0], "ys": [48.0, 30.0, 0.0], "apex_y": 52.0},
+        },
+    }
+    trace_path.write_text(json.dumps(trace_payload), encoding="utf-8")
+    preview_path.write_bytes(b"png")
 
     candidate_payload = {
+        "schema": "pylander.tracepack.v1",
+        "schema_version": 2,
+        "trace_sample_period_s": 0.25,
+        "trace_root_path": str(trace_root),
+        "trace_root_rel": "benchmarks/head/full_pack.tracepack",
         "summary": {
             "runs": 10,
             "successes": 9,
@@ -283,6 +141,7 @@ def test_write_bundle_files_renders_relative_links_and_latest_redirect(tmp_path:
         },
         "records": [
             {
+                "bot": "pdg",
                 "level": "boost",
                 "scenario": "climb:high:full",
                 "seed": 0,
@@ -291,6 +150,12 @@ def test_write_bundle_files_renders_relative_links_and_latest_redirect(tmp_path:
                 "failure_mode": "crashed",
                 "fuel_consumed": 10.0,
                 "time": 12.1,
+                "run_key": "boost:climb:high:full:0",
+                "run_instance_id": 1,
+                "trace_path": str(trace_path),
+                "trace_rel_path": "benchmarks/head/full_pack.tracepack/traces/boost_climb_high_full_0.trace.json",
+                "trace_preview_path": str(preview_path),
+                "trace_preview_rel_path": "benchmarks/head/full_pack.tracepack/previews/boost_climb_high_full_0.png",
             }
         ],
     }
@@ -319,44 +184,10 @@ def test_write_bundle_files_renders_relative_links_and_latest_redirect(tmp_path:
             "compute": {},
         },
     }
-    plot_pack_payload = {
-        "cases": [
-            {
-                "selector": "boost:climb:high:full:0",
-                "severity": "critical",
-                "reason": "crash",
-                "command": ["uv", "run", "python", "main.py", "plot", "boost:climb:high:full:0"],
-                "plot_paths": [
-                    "outputs/plots/overview/case_a.png",
-                    "outputs/plots/case_a/spatial_speed.png",
-                ],
-                "plot_manifest_path": "outputs/plots/case_a/manifest.json",
-                "plot_bundle_dir": "outputs/plots/case_a",
-            }
-        ]
-    }
 
     candidate_json.write_text(json.dumps(candidate_payload), encoding="utf-8")
-    candidate_csv.write_text("selector\nboost:climb:high:full\n", encoding="utf-8")
     candidate_meta.write_text("{}", encoding="utf-8")
     compare_json.write_text(json.dumps(compare_payload), encoding="utf-8")
-    overview_png.write_bytes(b"png")
-    spatial_traj.write_bytes(b"png")
-    spatial_speed.write_bytes(b"png")
-    bundle_manifest.write_text(
-        json.dumps(
-            {
-                "events": [{"name": "success", "label": "landed", "time_s": 12.1, "x": 0.0, "y": 4.0}],
-                "plots": [
-                    {"filename": "case_a.png", "path": "outputs/plots/overview/case_a.png"},
-                    {"filename": "spatial_trajectory_comparison.png", "path": "outputs/plots/case_a/spatial_trajectory_comparison.png"},
-                    {"filename": "spatial_speed.png", "path": "outputs/plots/case_a/spatial_speed.png"},
-                ],
-                "target": {"x": 0.0, "y": 0.0, "label": "landing target", "size": 110.0},
-            }
-        ),
-        encoding="utf-8",
-    )
 
     bundle = bench_bundle._bundle_payload(
         bundle_id="bundle_x",
@@ -365,19 +196,13 @@ def test_write_bundle_files_renders_relative_links_and_latest_redirect(tmp_path:
         benchmark_exit_code=1,
         benchmark_wall_clock_s=12.5,
         candidate_json_path=candidate_json,
-        candidate_csv_path=candidate_csv,
         candidate_meta_path=candidate_meta,
         candidate_payload=candidate_payload,
         candidate_cached="False",
         compare_path=compare_json,
         compare_payload=compare_payload,
-        plot_pack_cmd=["uv", "run", "python", "skills/pylander-plot-runner/scripts/build_plot_pack.py"],
-        plot_pack_exit_code=0,
-        plot_pack_wall_clock_s=23.75,
-        plot_pack_path=plot_pack_manifest,
-        plot_pack_payload=plot_pack_payload,
-        plot_scope="per-scenario",
         outputs_root=outputs_root,
+        viewer_assets={"plotly_rel": "viewer/assets/plotly-basic-2.35.2.min.js"},
     )
 
     html_path, bundle_json_path, latest_path = bench_bundle._write_bundle_files(
@@ -392,49 +217,43 @@ def test_write_bundle_files_renders_relative_links_and_latest_redirect(tmp_path:
         outputs_root / "viewer" / "bundles" / "bundle_x" / "runs" / "boost_climb_high_full_0.html"
     ).read_text(encoding="utf-8")
 
-    assert "Quick Summary" not in html_payload
     assert "Bench Id" in html_payload
     assert "Wall Clock Total" in html_payload
-    assert "Wall Clock Breakdown" in html_payload
     assert "Fuel Mean Success" in html_payload
-    assert "Time Mean Success" in html_payload
-    assert "Bot Tick P90" in html_payload
     assert "Show commands" in html_payload
-    assert "scenario-table" in html_payload
     assert "Expand All" in html_payload
     assert "Collapse All" in html_payload
-    assert "scenario-row" in html_payload
-    assert "seed-row" in html_payload
-    assert "boost:climb" in html_payload
-    assert "boost:climb:high" in html_payload
-    assert "boost:climb:high:full" in html_payload
-    assert "runs/boost_climb_high_full_0.html" in html_payload
-    assert "../../../plots/case_a/spatial_trajectory_comparison.png" in html_payload
-    assert "../../../benchmarks/head/full_pack.json" in html_payload
-    assert "notable_regression=True" in html_payload
-    assert "benchmark_exit_code=1 cached=False" not in html_payload
-    assert "9/10 successful across 1 scenarios." not in html_payload
-    assert "1 run detail page(s) include split-image plot galleries." not in html_payload
-    assert "Wall clock:" not in html_payload
-    assert "Plot workers:" not in html_payload
-    assert "<th>Link</th>" not in html_payload
     assert "<th>Details</th>" in html_payload
-    assert ">9/10<" in html_payload
-    assert ">crashed<" in html_payload
-    assert html_payload.index("<h2>Failures</h2>") < html_payload.index("<h2>Boost</h2>")
+    assert "boost:climb:high:full" in html_payload
+    assert "../../../benchmarks/head/full_pack.tracepack/previews/boost_climb_high_full_0.png" in html_payload
+    assert "plot pack" not in html_payload.lower()
     assert "Bench Id" in latest_payload
     assert "latest page" in latest_payload
     assert "../bundles/bundle_x/runs/boost_climb_high_full_0.html" in latest_payload
-    assert "../../benchmarks/head/full_pack.json" in latest_payload
-    assert bundle_json_payload["plot_pack"]["manifest_path"] == "viewer/bundles/bundle_x/plot_pack.json"
-    assert bundle_json_payload["plot_pack"]["selection_scope"] == "per-scenario"
+    assert bundle_json_payload["benchmark"]["candidate"]["schema"] == "pylander.tracepack.v1"
+    assert bundle_json_payload["benchmark"]["candidate"]["trace_root_path"] == str(trace_root)
+    assert bundle_json_payload["viewer_assets"]["plotly_rel"] == "viewer/assets/plotly-basic-2.35.2.min.js"
     assert bundle_json_payload["timing"]["benchmark_wall_clock_s"] == 12.5
-    assert bundle_json_payload["timing"]["plot_pack_wall_clock_s"] == 23.75
     assert bundle_json_payload["timing"]["bundle_render_wall_clock_s"] is not None
     assert bundle_json_payload["timing"]["total_wall_clock_s"] is not None
-    assert "Pylander Run Detail" in detail_html
-    assert "plot-stack" in detail_html
-    assert "plot-frame" in detail_html
-    assert "../../../../plots/case_a/spatial_trajectory_comparison.png" in detail_html
-    assert "../../../../plots/case_a/spatial_speed.png" in detail_html
-    assert "../../../../plots/overview/case_a.png" not in detail_html
+    assert "Interactive Detail" in detail_html
+    assert "chart-spatial" in detail_html
+    assert "chart-metrics" in detail_html
+    assert "chart-angle" not in detail_html
+    assert 'name: "velocity"' in detail_html
+    assert 'name: "vx"' in detail_html
+    assert 'visible: "legendonly"' in detail_html
+    assert 'return {symbol: "star", color: "#2f9e44"};' in detail_html
+    assert 'return {symbol: "circle", color: "#5b73c6"};' in detail_html
+    assert 'return eventName === "success" || eventName === "crash" ? 16.5 : 15;' in detail_html
+    assert "trace json" in detail_html
+    assert "plot manifest" not in detail_html
+    assert "plotly-basic-2.35.2.min.js" in detail_html
+    match = re.search(
+        r'<script id="trace-plot-json" type="application/json">(.*?)</script>',
+        detail_html,
+        re.S,
+    )
+    assert match is not None
+    detail_payload = json.loads(match.group(1))
+    assert detail_payload["samples"]["x"] == [-20.0, -5.0, 4.0]

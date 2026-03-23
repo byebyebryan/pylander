@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
+
+import pytest
 
 _SCRIPT_DIR = (
     Path(__file__).resolve().parents[1]
@@ -53,6 +56,82 @@ def _with_profile(record: dict[str, object], **overrides: float) -> dict[str, ob
     )
     out.update(overrides)
     return out
+
+
+def _expected_cache_meta() -> dict[str, object]:
+    return {
+        "mode": "quick",
+        "selectors": ["boost:flat:mid:half:0-1"],
+        "bot": "pdg",
+        "bot_config_path": None,
+        "worker_mode": "default",
+        "bot_profile_enabled": True,
+        "bot_profile_interval_s": None,
+        "bot_profile_log_lines": False,
+    }
+
+
+def _write_cached_tracepack(
+    tmp_path: Path,
+    *,
+    commit: str = "cand",
+    stem: str = "quick_boost_n1_deadbeef00",
+    with_trace: bool = True,
+    with_preview: bool = True,
+) -> tuple[Path, Path, Path, Path, Path]:
+    outputs_root = (tmp_path / "outputs").resolve()
+    results_root = outputs_root / "benchmarks"
+    out_dir = results_root / commit
+    out_dir.mkdir(parents=True, exist_ok=True)
+    json_path = (out_dir / f"{stem}.tracepack.json").resolve()
+    meta_path = (out_dir / f"{stem}.meta.json").resolve()
+    trace_root = json_path.with_suffix("")
+    trace_path = (trace_root / "traces" / "boost_flat_mid_half_0.trace.json").resolve()
+    preview_path = (trace_root / "previews" / "boost_flat_mid_half_0.png").resolve()
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    preview_path.parent.mkdir(parents=True, exist_ok=True)
+    if with_trace:
+        trace_path.write_text("{}", encoding="utf-8")
+    if with_preview:
+        preview_path.write_bytes(b"png")
+    payload = {
+        "schema": "pylander.tracepack.v1",
+        "schema_version": 2,
+        "trace_root_path": str(trace_root),
+        "trace_root_rel": trace_root.relative_to(outputs_root).as_posix(),
+        "run_index": [
+            {
+                "selector": "boost:flat:mid:half:0",
+                "run_key": "boost:flat:mid:half:0",
+                "run_instance_id": 1,
+                "trace_path": str(trace_path),
+                "trace_rel_path": trace_path.relative_to(outputs_root).as_posix(),
+                "trace_preview_path": str(preview_path),
+                "trace_preview_rel_path": preview_path.relative_to(outputs_root).as_posix(),
+            }
+        ],
+        "records": [
+            {
+                "level": "boost",
+                "scenario": "flat:mid:half",
+                "seed": 0,
+                "trace_path": str(trace_path),
+                "trace_rel_path": trace_path.relative_to(outputs_root).as_posix(),
+                "trace_preview_path": str(preview_path),
+                "trace_preview_rel_path": preview_path.relative_to(outputs_root).as_posix(),
+            }
+        ],
+    }
+    json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    meta_payload = {
+        **_expected_cache_meta(),
+        "commit": commit,
+        "created_at_utc": "2026-03-23T00:00:00+00:00",
+        "json_path": str(json_path),
+        "bench_exit_code": 0,
+    }
+    meta_path.write_text(json.dumps(meta_payload, indent=2, sort_keys=True), encoding="utf-8")
+    return results_root, json_path, meta_path, trace_path, preview_path
 
 
 def test_observation_only_crash_does_not_mark_notable_regression() -> None:
@@ -405,3 +484,117 @@ def test_run_diag_uses_selected_bot_terminal_metric_namespace() -> None:
         diag["bot_terminal_entry_projected_dx_field"]
         == "bot_test_bot_terminal_entry_projected_dx"
     )
+
+
+def test_validate_cached_tracepack_assets_accepts_complete_pack(tmp_path: Path) -> None:
+    results_root, json_path, _meta_path, _trace_path, _preview_path = _write_cached_tracepack(tmp_path)
+
+    issue = cached_bench._validate_cached_tracepack_assets(
+        json_path,
+        outputs_root=results_root.parent.resolve(),
+    )
+
+    assert issue is None
+
+
+def test_validate_cached_tracepack_assets_rejects_missing_preview(tmp_path: Path) -> None:
+    results_root, json_path, _meta_path, _trace_path, preview_path = _write_cached_tracepack(
+        tmp_path,
+        with_preview=False,
+    )
+
+    issue = cached_bench._validate_cached_tracepack_assets(
+        json_path,
+        outputs_root=results_root.parent.resolve(),
+    )
+
+    assert issue == f"missing preview png for boost:flat:mid:half:0: {preview_path}"
+
+
+def test_load_or_run_reuses_complete_cache(tmp_path: Path) -> None:
+    results_root, json_path, meta_path, _trace_path, _preview_path = _write_cached_tracepack(tmp_path)
+
+    loaded_json, loaded_meta, cached = cached_bench._load_or_run(
+        commit="cand",
+        stem="quick_boost_n1_deadbeef00",
+        mode="quick",
+        selectors=["boost:flat:mid:half:0-1"],
+        bot="pdg",
+        bot_config_path=None,
+        bot_profile_enabled=True,
+        bot_profile_interval_s=None,
+        bot_profile_log_lines=False,
+        results_root=results_root,
+        reuse=True,
+        allow_run=True,
+    )
+
+    assert cached is True
+    assert loaded_json == json_path
+    assert loaded_meta == meta_path
+
+
+def test_load_or_run_rejects_incomplete_cache_when_rerun_is_disallowed(tmp_path: Path) -> None:
+    results_root, _json_path, _meta_path, trace_path, _preview_path = _write_cached_tracepack(
+        tmp_path,
+        with_trace=False,
+    )
+
+    with pytest.raises(SystemExit, match="Incomplete cache for commit cand: missing trace json"):
+        cached_bench._load_or_run(
+            commit="cand",
+            stem="quick_boost_n1_deadbeef00",
+            mode="quick",
+            selectors=["boost:flat:mid:half:0-1"],
+            bot="pdg",
+            bot_config_path=None,
+            bot_profile_enabled=True,
+            bot_profile_interval_s=None,
+            bot_profile_log_lines=False,
+            results_root=results_root,
+            reuse=True,
+            allow_run=False,
+        )
+
+    assert not trace_path.exists()
+
+
+def test_load_or_run_reruns_when_cached_trace_assets_are_missing(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    results_root, json_path, meta_path, trace_path, preview_path = _write_cached_tracepack(
+        tmp_path,
+        with_trace=False,
+        with_preview=False,
+    )
+
+    monkeypatch.setattr(cached_bench, "build_bench_command", lambda **_kwargs: ["bench"])
+
+    def _fake_run_command(_cmd: list[str]) -> tuple[int, str]:
+        trace_path.write_text("{}", encoding="utf-8")
+        preview_path.write_bytes(b"png")
+        return 0, ""
+
+    monkeypatch.setattr(cached_bench, "_run_command", _fake_run_command)
+
+    loaded_json, loaded_meta, cached = cached_bench._load_or_run(
+        commit="cand",
+        stem="quick_boost_n1_deadbeef00",
+        mode="quick",
+        selectors=["boost:flat:mid:half:0-1"],
+        bot="pdg",
+        bot_config_path=None,
+        bot_profile_enabled=True,
+        bot_profile_interval_s=None,
+        bot_profile_log_lines=False,
+        results_root=results_root,
+        reuse=True,
+        allow_run=True,
+    )
+
+    assert cached is False
+    assert loaded_json == json_path
+    assert loaded_meta == meta_path
+    assert trace_path.exists()
+    assert preview_path.exists()

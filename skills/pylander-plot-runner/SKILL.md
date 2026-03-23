@@ -1,6 +1,6 @@
 ---
 name: pylander-plot-runner
-description: Select and generate Pylander plot bundles (combined and split panels) from benchmark outputs or focused selectors, then write a manifest for downstream analysis.
+description: Select and generate Pylander trace-first focused galleries from benchmark outputs or manual selectors, then write a manifest for downstream analysis.
 ---
 
 # Pylander Plot Runner
@@ -14,16 +14,16 @@ For benchmark-backed requests, prefer:
 `uv run python skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py ...`
 
 That wrapper:
-- generates the benchmark summary page plus a plot gallery
+- generates the benchmark summary page plus interactive trace-backed detail pages
 - checks whether the outputs web server is already running
 - starts it in the background if needed
 - returns a reachable latest URL (preferring the machine's `.lan` hostname when available)
-- defaults to split images so detail pages can show the plots inline in a single scrollable column
+- uses pre-rendered preview thumbnails in tables and interactive charts on the detail pages
 
 When the user says "full bench and plots", interpret that as:
 - `--mode full`
 - benchmark coverage across the current full auto-pack levels (`plunge`, `boost`, `terminal`)
-- `--plot-scope per-scenario` so the bundle includes one representative plot for each scenario
+- interactive detail pages for every run in the pack
 
 Use raw `build_plot_pack.py` directly only when the caller explicitly wants a
 plot-pack manifest or a focused manual selector gallery without benchmark
@@ -37,9 +37,7 @@ summary context.
 - `selectors` (for `focus`)
 - `bot` (default: `pdg`)
 - `top_n` (default: `8`)
-- `plot_mode` (default: `all`)
-- `plot_output` (default: `both`)
-- `plot_max_side_px` (default: `1800`)
+- `trace_sample_period_s` (default: `0.25` for `main.py plot`)
 - `execute` (default: true)
 
 ## Core command
@@ -57,11 +55,11 @@ Preferred remote-sharing command for benchmark-backed requests:
 - fallback to benchmark records with large generic boost-cutoff miss, bot-owned terminal-entry miss, or fuel signals
 - `focus`: use explicit selectors only
 2. Generate plot command(s) per case:
-- `main.py plot <selector> --plot <plot_mode> --plot-output <plot_output> --plot-max-side-px <px>`
-3. Write pack manifest under `outputs/plots/pack_<ts>.json` with:
+- `main.py plot <selector> --trace-sample-period-s <seconds>`
+3. Write pack manifest under `outputs/viewer/plot-packs/pack_<ts>/manifest.json` with:
 - case reasons/severity
 - executed commands
-- generated plot paths and bundle metadata
+- trace paths, preview paths, and HTML detail/gallery metadata
 
 Remote-share default:
 
@@ -70,8 +68,6 @@ return the stable latest URL instead of only listing files.
 
 ## Notes
 
-- Prefer `--plot-output both` for mixed human+AI workflows.
-- Use `--plot-output split` when image complexity is the main concern.
-- Keep `plot_max_side_px` around 1800 for robust ingestion quality.
+- The benchmark/report workflow is trace-first; PNGs remain only as small preview thumbnails.
 - Current triage ranking uses `boost_cutoff_projected_dx` and the selected bot's
   `bot_<botname>_terminal_entry_projected_dx` when available.
