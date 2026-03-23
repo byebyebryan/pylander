@@ -162,6 +162,81 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def _resolve_cached_artifact_path(path_value: str | None, *, outputs_root: Path) -> Path | None:
+    if not path_value:
+        return None
+    path = Path(str(path_value).strip())
+    if path.is_absolute():
+        return path.resolve()
+    if path.parts and path.parts[0] == "outputs":
+        return (_REPO_ROOT / path).resolve()
+    return (outputs_root / path).resolve()
+
+
+def _trace_entry_label(entry: dict[str, Any], *, index: int) -> str:
+    selector = str(entry.get("run_key") or entry.get("selector") or "").strip()
+    if selector:
+        return selector
+    level = str(entry.get("level") or "").strip()
+    scenario = str(entry.get("scenario") or "").strip()
+    seed = entry.get("seed")
+    if level:
+        scenario_part = f":{scenario}" if scenario else ""
+        seed_part = f":{seed}" if seed is not None else ""
+        return f"{level}{scenario_part}{seed_part}"
+    return f"run_index[{index}]"
+
+
+def _validate_cached_tracepack_assets(json_path: Path, *, outputs_root: Path) -> str | None:
+    try:
+        payload = _load_json(json_path)
+    except Exception as exc:
+        return f"invalid tracepack json ({type(exc).__name__}: {exc})"
+
+    trace_root = _resolve_cached_artifact_path(
+        str(payload.get("trace_root_path") or payload.get("trace_root_rel") or ""),
+        outputs_root=outputs_root,
+    )
+    if trace_root is None:
+        return "missing trace root metadata"
+    if not trace_root.exists():
+        return f"missing trace root directory: {trace_root}"
+
+    entries = payload.get("run_index")
+    if not isinstance(entries, list) or not entries:
+        records = payload.get("records")
+        if isinstance(records, list) and records:
+            entries = records
+        else:
+            return "missing run trace index"
+
+    for index, item in enumerate(entries):
+        if not isinstance(item, dict):
+            return f"invalid run trace entry at index {index}"
+        label = _trace_entry_label(item, index=index)
+        trace_path = _resolve_cached_artifact_path(
+            str(item.get("trace_path") or item.get("trace_rel_path") or ""),
+            outputs_root=outputs_root,
+        )
+        if trace_path is None:
+            return f"missing trace path for {label}"
+        if not trace_path.exists():
+            return f"missing trace json for {label}: {trace_path}"
+
+        preview_path_value = str(
+            item.get("trace_preview_path") or item.get("trace_preview_rel_path") or ""
+        ).strip()
+        if preview_path_value:
+            preview_path = _resolve_cached_artifact_path(
+                preview_path_value,
+                outputs_root=outputs_root,
+            )
+            if preview_path is None or not preview_path.exists():
+                return f"missing preview png for {label}: {preview_path_value}"
+
+    return None
+
+
 def _extract_summary_metrics(payload: dict[str, Any]) -> dict[str, float]:
     summary = dict(payload.get("summary") or {})
     efficiency_all = dict(summary.get("efficiency_all") or {})
@@ -330,10 +405,7 @@ def _make_repro_commands(
 ) -> dict[str, str]:
     selector = render_record_selector(record)
     return {
-        "plot": (
-            f"uv run python main.py plot {selector} --bot {bot} "
-            "--plot all --plot-output both --plot-max-side-px 1800"
-        ),
+        "plot": f"uv run python main.py plot {selector} --bot {bot}",
         "sim_trace": f"uv run python main.py sim {selector} --bot {bot} --freq 1",
         "sim_profile": (
             f"PYLANDER_BOT_PROFILE=1 uv run python main.py sim {selector} "
@@ -692,12 +764,12 @@ def _load_or_run(
     results_root: Path,
     reuse: bool,
     allow_run: bool,
-) -> tuple[Path, Path, Path, bool]:
+) -> tuple[Path, Path, bool]:
     out_dir = results_root / commit
     out_dir.mkdir(parents=True, exist_ok=True)
-    json_path = out_dir / f"{stem}.json"
-    csv_path = out_dir / f"{stem}.csv"
+    json_path = out_dir / f"{stem}.tracepack.json"
     meta_path = out_dir / f"{stem}.meta.json"
+    outputs_root = results_root.parent.resolve()
 
     expected_meta = {
         "mode": mode,
@@ -711,16 +783,28 @@ def _load_or_run(
         ),
         "bot_profile_log_lines": bool(bot_profile_log_lines),
     }
-    if reuse and json_path.exists() and csv_path.exists() and meta_path.exists():
+    cache_issue: str | None = None
+    if reuse and json_path.exists() and meta_path.exists():
         try:
             existing = _load_json(meta_path)
             if all(existing.get(k) == v for k, v in expected_meta.items()):
-                print(f"# cache hit: {json_path}")
-                return json_path, csv_path, meta_path, True
+                cache_issue = _validate_cached_tracepack_assets(
+                    json_path,
+                    outputs_root=outputs_root,
+                )
+                if cache_issue is None:
+                    print(f"# cache hit: {json_path}")
+                    return json_path, meta_path, True
+                print(f"# cache stale: {cache_issue}")
         except Exception:
             pass
 
     if not allow_run:
+        if cache_issue is not None:
+            raise SystemExit(
+                f"Incomplete cache for commit {commit}: {cache_issue}. "
+                "Run this pack from that commit once to seed cache."
+            )
         raise SystemExit(
             f"Missing cache for commit {commit}: {json_path.name}. "
             "Run this pack from that commit once to seed cache."
@@ -731,7 +815,6 @@ def _load_or_run(
         bot=bot,
         bot_config_path=bot_config_path,
         json_path=str(json_path),
-        csv_path=str(csv_path),
         bot_profile_enabled=bool(bot_profile_enabled),
         bot_profile_interval_s=bot_profile_interval_s,
         bot_profile_log_lines=bool(bot_profile_log_lines),
@@ -750,19 +833,22 @@ def _load_or_run(
         raise SystemExit(f"Benchmark command failed with exit code {code}")
     if not json_path.exists():
         raise SystemExit(f"Expected benchmark JSON not found: {json_path}")
-    if not csv_path.exists():
-        raise SystemExit(f"Expected benchmark CSV not found: {csv_path}")
+    cache_issue = _validate_cached_tracepack_assets(
+        json_path,
+        outputs_root=outputs_root,
+    )
+    if cache_issue is not None:
+        raise SystemExit(f"Benchmark produced incomplete tracepack: {cache_issue}")
 
     payload = {
         **expected_meta,
         "commit": commit,
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "json_path": str(json_path),
-        "csv_path": str(csv_path),
         "bench_exit_code": int(code),
     }
     _write_json(meta_path, payload)
-    return json_path, csv_path, meta_path, False
+    return json_path, meta_path, False
 
 
 def _print_compare(
@@ -1123,7 +1209,7 @@ def main() -> None:
     )
     results_root = (_REPO_ROOT / args.results_dir).resolve()
 
-    cand_json, cand_csv, cand_meta, cand_cached = _load_or_run(
+    cand_json, cand_meta, cand_cached = _load_or_run(
         commit=current_commit,
         stem=stem,
         mode=args.mode,
@@ -1139,7 +1225,7 @@ def main() -> None:
         reuse=not args.no_reuse,
         allow_run=True,
     )
-    print(f"\n# candidate\ncommit={current_commit}\njson={cand_json}\ncsv={cand_csv}\nmeta={cand_meta}\ncached={cand_cached}")
+    print(f"\n# candidate\ncommit={current_commit}\njson={cand_json}\nmeta={cand_meta}\ncached={cand_cached}")
     print(
         "\n# policy\n"
         f"included_levels={','.join(pack.included_levels)}\n"
@@ -1150,7 +1236,7 @@ def main() -> None:
     if not baseline_commit:
         return
 
-    base_json, base_csv, base_meta, base_cached = _load_or_run(
+    base_json, base_meta, base_cached = _load_or_run(
         commit=baseline_commit,
         stem=stem,
         mode=args.mode,
@@ -1166,7 +1252,7 @@ def main() -> None:
         reuse=True,
         allow_run=(baseline_commit == current_commit),
     )
-    print(f"\n# baseline\ncommit={baseline_commit}\njson={base_json}\ncsv={base_csv}\nmeta={base_meta}\ncached={base_cached}")
+    print(f"\n# baseline\ncommit={baseline_commit}\njson={base_json}\nmeta={base_meta}\ncached={base_cached}")
 
     candidate_payload = _load_json(cand_json)
     baseline_payload = _load_json(base_json)

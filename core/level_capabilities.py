@@ -226,27 +226,18 @@ def resolve_level_benchmark_profile(level, level_name: str | None = None) -> Lev
     )
 
 
-def level_plot_mode(level, *, default: str = "none") -> str:
-    raw = getattr(level, "plot_mode", default)
-    mode = str(raw or "").strip()
-    return mode if mode else default
+def level_trace_enabled(level, *, default: bool = False) -> bool:
+    raw = getattr(level, "trace_enabled", default)
+    return bool(raw)
 
 
-def level_plot_output(level, *, default: str = "combined") -> str:
-    raw = getattr(level, "plot_output", default)
-    mode = str(raw or "").strip().lower()
-    if mode in {"combined", "split", "both"}:
-        return mode
-    return default
-
-
-def level_plot_max_side_px(level, *, default: int = 1800) -> int:
-    raw = getattr(level, "plot_max_side_px", default)
+def level_trace_sample_period_s(level, *, default: float = 0.25) -> float:
+    raw = getattr(level, "trace_sample_period_s", default)
     try:
-        value = int(raw)
+        value = float(raw)
     except (TypeError, ValueError):
-        value = int(default)
-    return max(256, value)
+        value = float(default)
+    return max(0.05, value)
 
 
 def level_name_tag(level) -> str:

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 
 import pytest
 
@@ -471,11 +473,9 @@ def test_resolve_benchmark_plan_invalid_level_fails_fast() -> None:
         workers=1,
         max_time=300.0,
         max_steps=None,
-        plot_mode="none",
-        plot_output="combined",
-        plot_max_side_px=1800,
+        trace_enabled=True,
+        trace_sample_period_s=0.25,
         json_path=None,
-        csv_path=None,
     )
 
     with pytest.raises(ValueError, match="Unknown level 'missing_level'"):
@@ -506,20 +506,42 @@ def test_resolve_batch_plan_expands_explicit_wildcards_without_seed_spec(
         workers=1,
         max_time=300.0,
         max_steps=None,
-        plot_mode="none",
-        plot_output="combined",
-        plot_max_side_px=1800,
+        trace_enabled=True,
+        trace_sample_period_s=0.25,
         json_path=None,
-        csv_path=None,
     )
     monkeypatch.setattr(
         run_batch_module, "_scenario_has_randomized_fields", lambda _l, _s: False
     )
     plan = resolve_benchmark_plan(config)
     assert plan == [
-        ResolvedBenchRun(0, "plunge", "low:half", "plunge", "low:half", "landing"),
-        ResolvedBenchRun(0, "plunge", "mid:half", "plunge", "mid:half", "landing"),
-        ResolvedBenchRun(0, "plunge", "high:half", "plunge", "high:half", "landing"),
+        ResolvedBenchRun(
+            0,
+            "plunge",
+            "low:half",
+            "plunge",
+            "low:half",
+            "landing",
+            run_key="plunge:low:half:0",
+        ),
+        ResolvedBenchRun(
+            0,
+            "plunge",
+            "mid:half",
+            "plunge",
+            "mid:half",
+            "landing",
+            run_key="plunge:mid:half:0",
+        ),
+        ResolvedBenchRun(
+            0,
+            "plunge",
+            "high:half",
+            "plunge",
+            "high:half",
+            "landing",
+            run_key="plunge:high:half:0",
+        ),
     ]
 
 
@@ -539,21 +561,82 @@ def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
         workers=1,
         max_time=300.0,
         max_steps=None,
-        plot_mode="none",
-        plot_output="combined",
-        plot_max_side_px=1800,
+        trace_enabled=True,
+        trace_sample_period_s=0.25,
         json_path=None,
-        csv_path=None,
     )
     monkeypatch.setattr(
         run_batch_module, "_scenario_has_randomized_fields", lambda _l, _s: False
     )
     plan = resolve_benchmark_plan(config)
     assert plan == [
-        ResolvedBenchRun(0, "boost", "flat:far:half", "boost", "flat:far:half", "landing"),
-        ResolvedBenchRun(1, "boost", "flat:far:half", "boost", "flat:far:half", "landing"),
-        ResolvedBenchRun(2, "boost", "flat:far:half", "boost", "flat:far:half", "landing"),
+        ResolvedBenchRun(
+            0,
+            "boost",
+            "flat:far:half",
+            "boost",
+            "flat:far:half",
+            "landing",
+            run_key="boost:flat:far:half:0",
+        ),
+        ResolvedBenchRun(
+            1,
+            "boost",
+            "flat:far:half",
+            "boost",
+            "flat:far:half",
+            "landing",
+            run_key="boost:flat:far:half:1",
+        ),
+        ResolvedBenchRun(
+            2,
+            "boost",
+            "flat:far:half",
+            "boost",
+            "flat:far:half",
+            "landing",
+            run_key="boost:flat:far:half:2",
+        ),
     ]
+
+
+def test_resolve_batch_plan_assigns_unique_run_keys_for_duplicate_selectors(monkeypatch) -> None:
+    config = BenchSettings(
+        bot_name=None,
+        bot_config_path=None,
+        selectors=(
+            BenchTarget(
+                level_name="plunge",
+                scenario_name="low:half",
+                scenario_path=("low", "half"),
+                seed_spec="0",
+            ),
+            BenchTarget(
+                level_name="plunge",
+                scenario_name="low:half",
+                scenario_path=("low", "half"),
+                seed_spec="0",
+            ),
+        ),
+        lander_name=None,
+        workers=1,
+        max_time=300.0,
+        max_steps=None,
+        trace_enabled=True,
+        trace_sample_period_s=0.25,
+        json_path=None,
+    )
+    monkeypatch.setattr(
+        run_batch_module, "_scenario_has_randomized_fields", lambda _l, _s: False
+    )
+
+    plan = resolve_benchmark_plan(config)
+
+    assert [target.run_key for target in plan] == [
+        "plunge:low:half:0#1",
+        "plunge:low:half:0#2",
+    ]
+    assert [target.run_instance_id for target in plan] == [1, 2]
 
 
 def test_hud_display_state_returns_none_when_display_state_is_missing() -> None:
@@ -603,9 +686,8 @@ def test_parse_play_command_uses_interactive_defaults() -> None:
     assert isinstance(command, RunCommand)
     assert command.run.level_name == "flat"
     assert command.run.headless is False
-    assert command.run.plot_mode == "none"
-    assert command.run.plot_output == "combined"
-    assert command.run.plot_max_side_px == 1800
+    assert command.run.trace_enabled is False
+    assert command.run.trace_sample_period_s == 0.25
 
 
 def test_parse_play_command_accepts_selector_and_bot() -> None:
@@ -627,8 +709,9 @@ def test_parse_bench_command_uses_expected_defaults() -> None:
         BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None, scenario_path=()),
     )
     assert command.bench.workers == max(1, int(os.cpu_count() or 1) - 2)
-    assert command.bench.plot_output == "combined"
-    assert command.bench.plot_max_side_px == 1800
+    assert command.bench.trace_enabled is True
+    assert command.bench.trace_sample_period_s == 0.25
+    assert command.bench.json_path == "auto"
     assert command.bench.bot_profile_enabled is True
     assert command.bench.bot_profile_log_lines is False
     assert command.bench.bot_profile_interval_s is None
@@ -637,6 +720,11 @@ def test_parse_bench_command_uses_expected_defaults() -> None:
 def test_parse_bench_command_rejects_workers_override() -> None:
     with pytest.raises(SystemExit):
         parse_command(["bench", "plunge", "--workers", "1"])
+
+
+def test_parse_bench_command_rejects_removed_csv_flag() -> None:
+    with pytest.raises(SystemExit):
+        parse_command(["bench", "plunge", "--csv", "auto"])
 
 
 def test_parse_bench_command_profile_flags_override_defaults() -> None:
@@ -656,41 +744,34 @@ def test_parse_bench_command_profile_flags_override_defaults() -> None:
     assert command.bench.bot_profile_interval_s == 1.5
 
 
-def test_parse_bench_command_plot_flags_override_defaults() -> None:
+def test_parse_bench_command_trace_flags_override_defaults() -> None:
     _parser, command = parse_command(
         [
             "bench",
             "plunge",
-            "--plot",
-            "all",
-            "--plot-output",
-            "split",
-            "--plot-max-side-px",
-            "1400",
+            "--trace-sample-period-s",
+            "0.5",
         ]
     )
     assert isinstance(command, BenchCommand)
-    assert command.bench.plot_mode == "all"
-    assert command.bench.plot_output == "split"
-    assert command.bench.plot_max_side_px == 1400
+    assert command.bench.trace_enabled is True
+    assert command.bench.trace_sample_period_s == 0.5
 
 
-def test_parse_plot_command_output_flags_override_defaults() -> None:
+def test_parse_plot_command_trace_flags_override_defaults() -> None:
     _parser, command = parse_command(
         [
             "plot",
             "boost:flat:far:half:3",
             "--bot",
             "pdg",
-            "--plot-output",
-            "both",
-            "--plot-max-side-px",
-            "1400",
+            "--trace-sample-period-s",
+            "0.1",
         ]
     )
     assert isinstance(command, RunCommand)
-    assert command.run.plot_output == "both"
-    assert command.run.plot_max_side_px == 1400
+    assert command.run.trace_enabled is True
+    assert command.run.trace_sample_period_s == 0.1
 
 
 def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> None:
@@ -737,11 +818,9 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
         workers=4,
         max_time=300.0,
         max_steps=None,
-        plot_mode="none",
-        plot_output="combined",
-        plot_max_side_px=1800,
+        trace_enabled=True,
+        trace_sample_period_s=0.25,
         json_path=None,
-        csv_path=None,
     )
     with pytest.raises(
         RuntimeError,
@@ -750,7 +829,232 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
         run_batch_module.run_benchmark(cfg)
 
 
-def test_plot_command_enables_plot_mode_by_default() -> None:
+def test_resolve_output_path_keeps_explicit_path_even_when_file_exists(tmp_path) -> None:
+    explicit = tmp_path / "report.tracepack.json"
+    explicit.write_text("old", encoding="utf-8")
+
+    resolved = run_batch_module._resolve_output_path(
+        str(explicit),
+        kind="tracepack.json",
+        level_name="boost",
+        bot_name="pdg",
+        seeds=[0],
+        scenarios=["boost:flat:mid:half"],
+    )
+
+    assert resolved == explicit
+
+
+def test_run_benchmark_writes_absolute_trace_paths_for_explicit_tracepack_outside_outputs(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    tracepack_path = (tmp_path / "explicit.tracepack.json").resolve()
+    trace_root = tracepack_path.with_suffix("")
+    trace_path = (trace_root / "traces" / "plunge_low_half_0.trace.json").resolve()
+    preview_path = (trace_root / "previews" / "plunge_low_half_0.png").resolve()
+    trace_path.parent.mkdir(parents=True, exist_ok=True)
+    preview_path.parent.mkdir(parents=True, exist_ok=True)
+    trace_path.write_text("{}", encoding="utf-8")
+    preview_path.write_bytes(b"png")
+
+    monkeypatch.setattr(
+        run_batch_module,
+        "resolve_benchmark_plan",
+        lambda _cfg: [
+            ResolvedBenchRun(
+                0,
+                "plunge",
+                "low:half",
+                "plunge",
+                "low:half",
+                "landing",
+                run_key="plunge:low:half:0",
+            )
+        ],
+    )
+    monkeypatch.setattr(run_batch_module, "print_batch_summary", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        run_batch_module,
+        "_run_batch_sequential",
+        lambda *_args, **_kwargs: [
+            {
+                "bot": "pdg",
+                "level": "plunge",
+                "scenario": "low:half",
+                "eval_goal": "landing",
+                "seed": 0,
+                "success": True,
+                "state": "landed",
+                "failure_mode": "none",
+                "trace_path": str(trace_path),
+                "trace_rel_path": None,
+                "trace_preview_path": str(preview_path),
+                "trace_preview_rel_path": None,
+                "run_key": "plunge:low:half:0",
+                "run_instance_id": 1,
+            }
+        ],
+    )
+    monkeypatch.setattr(
+        run_batch_module,
+        "aggregate_eval_records",
+        lambda _records: {
+            "runs": 1,
+            "successes": 1,
+            "landed": 1,
+            "crashed": 0,
+            "out_of_fuel": 0,
+            "flying": 0,
+            "other": 0,
+            "success_rate": 1.0,
+            "efficiency_success": {},
+            "efficiency_all": {},
+            "by_scenario": {},
+            "by_selector": {},
+        },
+    )
+
+    cfg = BenchSettings(
+        bot_name="pdg",
+        bot_config_path=None,
+        selectors=(
+            BenchTarget(
+                level_name="plunge",
+                scenario_name="low:half",
+                scenario_path=("low", "half"),
+                seed_spec="0",
+            ),
+        ),
+        lander_name=None,
+        workers=1,
+        max_time=300.0,
+        max_steps=1,
+        trace_enabled=True,
+        trace_sample_period_s=0.25,
+        json_path=str(tracepack_path),
+    )
+
+    exit_code = run_batch_module.run_benchmark(cfg)
+    payload = json.loads(tracepack_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert payload["trace_root_path"] == str(trace_root)
+    assert payload["trace_root_rel"] is None
+    assert payload["records"][0]["trace_path"] == str(trace_path)
+    assert payload["records"][0]["trace_rel_path"] is None
+    assert payload["run_index"][0]["trace_path"] == str(trace_path)
+    assert payload["run_index"][0]["trace_preview_path"] == str(preview_path)
+    assert payload["run_index"][0]["run_key"] == "plunge:low:half:0"
+
+
+def test_run_benchmark_auto_tracepack_uses_absolute_root_and_outputs_relative_root(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    outputs_root = (tmp_path / "outputs").resolve()
+    outputs_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        run_batch_module,
+        "resolve_benchmark_plan",
+        lambda _cfg: [
+            ResolvedBenchRun(
+                0,
+                "plunge",
+                "low:half",
+                "plunge",
+                "low:half",
+                "landing",
+                run_key="plunge:low:half:0",
+            )
+        ],
+    )
+    monkeypatch.setattr(run_batch_module, "print_batch_summary", lambda *_args, **_kwargs: None)
+
+    def _fake_run_batch_sequential(run_settings, _run_plan, *, benchmark_mode):  # type: ignore[no-untyped-def]
+        _ = benchmark_mode
+        trace_root = Path(str(run_settings.trace_root_dir)).resolve()
+        trace_path = (trace_root / "traces" / "plunge_low_half_0.trace.json").resolve()
+        preview_path = (trace_root / "previews" / "plunge_low_half_0.png").resolve()
+        trace_path.parent.mkdir(parents=True, exist_ok=True)
+        preview_path.parent.mkdir(parents=True, exist_ok=True)
+        trace_path.write_text("{}", encoding="utf-8")
+        preview_path.write_bytes(b"png")
+        return [
+            {
+                "bot": "pdg",
+                "level": "plunge",
+                "scenario": "low:half",
+                "eval_goal": "landing",
+                "seed": 0,
+                "success": True,
+                "state": "landed",
+                "failure_mode": "none",
+                "trace_path": str(trace_path),
+                "trace_rel_path": trace_path.relative_to(outputs_root).as_posix(),
+                "trace_preview_path": str(preview_path),
+                "trace_preview_rel_path": preview_path.relative_to(outputs_root).as_posix(),
+                "run_key": "plunge:low:half:0",
+                "run_instance_id": 1,
+            }
+        ]
+
+    monkeypatch.setattr(run_batch_module, "_run_batch_sequential", _fake_run_batch_sequential)
+    monkeypatch.setattr(
+        run_batch_module,
+        "aggregate_eval_records",
+        lambda _records: {
+            "runs": 1,
+            "successes": 1,
+            "landed": 1,
+            "crashed": 0,
+            "out_of_fuel": 0,
+            "flying": 0,
+            "other": 0,
+            "success_rate": 1.0,
+            "efficiency_success": {},
+            "efficiency_all": {},
+            "by_scenario": {},
+            "by_selector": {},
+        },
+    )
+
+    cfg = BenchSettings(
+        bot_name="pdg",
+        bot_config_path=None,
+        selectors=(
+            BenchTarget(
+                level_name="plunge",
+                scenario_name="low:half",
+                scenario_path=("low", "half"),
+                seed_spec="0",
+            ),
+        ),
+        lander_name=None,
+        workers=1,
+        max_time=300.0,
+        max_steps=1,
+        trace_enabled=True,
+        trace_sample_period_s=0.25,
+        json_path="auto",
+    )
+
+    exit_code = run_batch_module.run_benchmark(cfg)
+    generated = max(outputs_root.glob("*.tracepack.json"), key=lambda path: path.stat().st_mtime)
+    payload = json.loads(generated.read_text(encoding="utf-8"))
+    trace_root = generated.with_suffix("")
+
+    assert exit_code == 0
+    assert payload["trace_root_path"] == str(trace_root.resolve())
+    assert payload["trace_root_rel"] == trace_root.resolve().relative_to(outputs_root).as_posix()
+    assert payload["records"][0]["trace_rel_path"] == (
+        trace_root.resolve().relative_to(outputs_root).as_posix()
+        + "/traces/plunge_low_half_0.trace.json"
+    )
+
+
+def test_plot_command_enables_trace_by_default() -> None:
     _parser, command = parse_command(["plot", "boost:flat:far:half:3", "--bot", "pdg"])
     assert isinstance(command, RunCommand)
     assert command.run.level_name == "boost"
@@ -758,6 +1062,5 @@ def test_plot_command_enables_plot_mode_by_default() -> None:
     assert command.run.runtime_level_name == "boost"
     assert command.run.runtime_scenario_name == "flat:far:half"
     assert command.run.seed == 3
-    assert command.run.plot_mode == "all"
-    assert command.run.plot_output == "combined"
-    assert command.run.plot_max_side_px == 1800
+    assert command.run.trace_enabled is True
+    assert command.run.trace_sample_period_s == 0.25

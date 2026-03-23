@@ -88,18 +88,24 @@ Headless output is split into:
 - a sectioned final-results report with generic metrics first and bot-owned
   telemetry grouped separately
 
-## Plot bundles
+## Trace capture
 
-Headless plotting supports:
+Headless tracing supports:
 
-- `--plot-output combined` (single overview image)
-- `--plot-output split` (multiple focused panels)
-- `--plot-output both` (overview + split panels)
+- `--trace` / `--no-trace` for single-run `run` / `sim`
+- `plot` command defaults to trace capture
+- `--trace-sample-period-s <seconds>` to control sampled snapshot cadence
 
-Image size can be capped with `--plot-max-side-px` (default `1800`) to improve reliability for automated image analysis.
+Benchmark runs write canonical tracepack manifests plus per-run trace files and
+preview PNGs by default. Trace-enabled run results may include:
 
-When plotting is enabled, run results may include:
-
-- `plot_paths`
-- `plot_manifest_path`
-- `plot_bundle_dir`
+- `trace_path`
+- `trace_rel_path`
+- `trace_preview_path`
+- `trace_preview_rel_path`
+- `run_key`
+- `run_instance_id`
+- `trace_sample_period_s`
+- `trace_snapshot_count`
+- `trace_event_count`
+- `trace_control_log_count`

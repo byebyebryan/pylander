@@ -83,7 +83,7 @@ class SessionLoopContext:
     refuel_system: Any
     state_transition_system: Any
     sensor_update_system: Any
-    plotter: Any
+    trace_recorder: Any
     bot_profiler: BotLoopProfiler
     metrics: RunMetricsTracker
     bot_override_delay: float
@@ -158,6 +158,12 @@ def run_session_loop(
         state_before = capture_actor_states(context.actors)
 
         context.control_routing_system.set_controls_map(controls_by_uid)
+        record_controls_map = getattr(context.trace_recorder, "record_controls_map", None)
+        if callable(record_controls_map):
+            record_controls_map(
+                elapsed_time_s=timers.elapsed_time,
+                controls_by_uid=controls_by_uid,
+            )
         context.control_routing_system.update(frame_dt)
         context.refuel_system.update(frame_dt)
         context.state_transition_system.update(frame_dt)
@@ -170,7 +176,7 @@ def run_session_loop(
         context.sensor_update_system.update(frame_dt)
         context.level_update(frame_dt)
         context.track_plot_events()
-        context.plotter.update(frame_dt)
+        context.trace_recorder.update(frame_dt, elapsed_time_s=timers.elapsed_time)
         frame_dt = context.render(frame_dt)
         step_count += 1
 
@@ -183,6 +189,12 @@ def run_session_loop(
 
         decision = context.resolve_headless_bot_eval_decision()
         if decision is not None and decision.should_end:
+            record_eval_decision = getattr(context.trace_recorder, "record_eval_decision", None)
+            if callable(record_eval_decision):
+                record_eval_decision(
+                    elapsed_time_s=timers.elapsed_time,
+                    decision=decision,
+                )
             bot_eval_decision = decision
             break
 

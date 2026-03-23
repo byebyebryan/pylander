@@ -9,6 +9,7 @@ from core.components import Transform
 from core.ecs import Entity, require_component
 from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal
 from core.level import Level
+from core.level_capabilities import level_name_tag, level_scenario_tag
 from core.maths import Range1D, Vector2
 from runtime.actor_session import (
     active_actor_bot,
@@ -23,7 +24,7 @@ from runtime.game_bootstrap import (
     bootstrap_bot_runtime,
     bootstrap_core_runtime,
     bootstrap_interactive_runtime,
-    bootstrap_plot_runtime,
+    bootstrap_trace_runtime,
 )
 from runtime.headless_stats import print_headless_stats
 from runtime.loop_timing import LoopTimers
@@ -145,15 +146,26 @@ class LanderGame:
             )
 
         self.level.start(self)
-        plot_runtime = bootstrap_plot_runtime(
+        trace_runtime = bootstrap_trace_runtime(
             terrain=self.terrain,
-            lander=self.lander,
+            ecs_world=self.ecs_world,
+            actor_bots=self.actor_bots,
+            active_uid_getter=lambda: self.active_player_actor_uid,
             headless=self.headless,
             level=self.level,
             seed=self.seed,
         )
-        self.plotter = plot_runtime.plotter
-        self._plot_events_seen = plot_runtime.events_seen
+        self.trace_recorder = trace_runtime.trace_recorder
+        self.trace_recorder.set_identity(
+            level_name=level_name_tag(self.level),
+            scenario_name=level_scenario_tag(self.level) or None,
+            seed=self.seed,
+            bot_name=getattr(self.bot, "_bot_name", None),
+            eval_goal=self.eval_goal,
+        )
+        self.trace_recorder.set_trace_root_dir(getattr(self.level, "trace_root_dir", None))
+        self._bot_loop_context.trace_recorder = self.trace_recorder
+        self._plot_events_seen = trace_runtime.events_seen
         self._bot_eval_decision: BotEvalDecision | None = None
 
     def get_active_actor(self) -> Entity:
@@ -200,8 +212,7 @@ class LanderGame:
         timers = LoopTimers(physics_dt=physics_dt, bot_dt=bot_dt, frame_dt=frame_dt)
 
         reset_proximity_cache()
-        self.plotter.set_sampling_from_print_freq(print_freq, TARGET_RENDERING_FPS)
-        self.plotter.seed_initial_sample()
+        self.trace_recorder.seed_initial_sample()
         self._plot_events_seen.clear()
         self._bot_eval_decision = None
         self._elapsed_time = 0.0
@@ -224,7 +235,7 @@ class LanderGame:
                         + (float(site.y) - float(eval_target_pos.y)) ** 2,
                     )
                     target_size = float(getattr(nearest_site, "size", 0.0) or 0.0)
-            self.plotter.set_target(
+            self.trace_recorder.set_target(
                 x=float(eval_target_pos.x),
                 y=float(eval_target_pos.y),
                 label="landing target",
@@ -267,7 +278,7 @@ class LanderGame:
                 refuel_system=self.refuel_system,
                 state_transition_system=self.state_transition_system,
                 sensor_update_system=self.sensor_update_system,
-                plotter=self.plotter,
+                trace_recorder=self.trace_recorder,
                 bot_profiler=self._bot_profiler,
                 metrics=metrics,
                 bot_override_delay=self.bot_override_delay,
@@ -289,7 +300,7 @@ class LanderGame:
                 track_plot_events=lambda: track_plot_events(
                     actor_bots=self.actor_bots,
                     ecs_world=self.ecs_world,
-                    plotter=self.plotter,
+                    plotter=self.trace_recorder,
                     events_seen=self._plot_events_seen,
                 ),
                 render=lambda frame_dt: render_frame(
@@ -354,9 +365,12 @@ class LanderGame:
             eval_goal=self.eval_goal,
         )
         self._bot_profiler.apply_to_result(result)
-        plot_extras = self.plotter.finalize()
-        if plot_extras:
-            result.update(plot_extras)
+        trace_extras = self.trace_recorder.finalize(
+            result=result,
+            elapsed_time_s=timers.elapsed_time,
+        )
+        if trace_extras:
+            result.update(trace_extras)
         return result
 
     @property

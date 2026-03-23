@@ -100,9 +100,18 @@ BOT_PDG_RESULT_FIELDS: tuple[str, ...] = (
     "bot_pdg_shape_shortfall_ratio",
 )
 
-PLOT_RESULT_FIELDS: tuple[str, ...] = (
-    "plot_bundle_dir",
-    "plot_manifest_path",
+TRACE_RESULT_FIELDS: tuple[str, ...] = (
+    "trace_path",
+    "trace_rel_path",
+    "trace_preview_path",
+    "trace_preview_rel_path",
+    "trace_schema_version",
+    "trace_sample_period_s",
+    "trace_snapshot_count",
+    "trace_event_count",
+    "trace_control_log_count",
+    "run_key",
+    "run_instance_id",
 )
 
 FINAL_RESULT_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
@@ -113,7 +122,7 @@ FINAL_RESULT_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Boost Cutoff", SETUP_GATE_RESULT_FIELDS),
     ("Arrivals", ARRIVAL_RESULT_FIELDS),
     ("Profiler", BOT_PROFILE_RESULT_FIELDS),
-    ("Plots", PLOT_RESULT_FIELDS),
+    ("Trace", TRACE_RESULT_FIELDS),
 )
 
 HEADLESS_RESULT_FIELDS: tuple[str, ...] = (
@@ -125,7 +134,7 @@ HEADLESS_RESULT_FIELDS: tuple[str, ...] = (
     *SETUP_GATE_RESULT_FIELDS,
     *BOT_PROFILE_RESULT_FIELDS,
     *BOT_PDG_RESULT_FIELDS,
-    *PLOT_RESULT_FIELDS,
+    *TRACE_RESULT_FIELDS,
 )
 
 EFFICIENCY_METRIC_FIELDS: tuple[str, ...] = (

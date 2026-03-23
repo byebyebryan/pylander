@@ -24,6 +24,7 @@ class BotLoopContext:
     sensor_update_system: SensorUpdateSystem
     profiler: BotLoopProfiler
     terrain: Terrain
+    trace_recorder: object | None = None
 
 
 def update_bot_steps(
@@ -68,6 +69,19 @@ def update_bot_steps(
                         passive_s=passive_s,
                         update_s=update_s,
                     )
+                if context.trace_recorder is not None:
+                    record_bot_action = getattr(context.trace_recorder, "record_bot_action", None)
+                    if callable(record_bot_action):
+                        record_bot_action(
+                            uid=uid,
+                            elapsed_time_s=timers.elapsed_time,
+                            bot_dt_s=bot_dt,
+                            sensors=sensors,
+                            action=action,
+                            passive_s=passive_s,
+                            update_s=update_s,
+                            bot=current_bot,
+                        )
                 bot_controls_by_uid[uid] = (
                     action.target_thrust,
                     action.target_angle,

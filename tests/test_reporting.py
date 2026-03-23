@@ -3,18 +3,16 @@ from __future__ import annotations
 from app.reporting import print_headless_results
 
 
-def test_print_headless_results_includes_plot_bundle_metadata(capsys) -> None:
+def test_print_headless_results_includes_trace_metadata(capsys) -> None:
     print_headless_results(
         {
             "state": "landed",
             "success": True,
-            "plot_paths": ["outputs/plots/overview/case_a.png"],
-            "plot_manifest_path": "outputs/plots/case_a/manifest.json",
-            "plot_bundle_dir": "outputs/plots/case_a",
+            "trace_path": "outputs/benchmarks/head/pack.traces/case_a.trace.json",
+            "trace_preview_path": "outputs/benchmarks/head/pack.traces/case_a.png",
         }
     )
 
     output = capsys.readouterr().out
-    assert "outputs/plots/overview/case_a.png" in output
-    assert "outputs/plots/case_a/manifest.json" in output
-    assert "outputs/plots/case_a" in output
+    assert "outputs/benchmarks/head/pack.traces/case_a.trace.json" in output
+    assert "outputs/benchmarks/head/pack.traces/case_a.png" in output

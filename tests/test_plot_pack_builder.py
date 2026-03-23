@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -50,23 +52,51 @@ def test_build_cases_from_records_uses_selected_bot_terminal_metric_namespace() 
     assert evidence["bot_terminal_entry_projected_dx_field"] == "bot_test_bot_terminal_entry_projected_dx"
 
 
-def test_extract_paths_reads_plot_table_metadata() -> None:
-    payload = plot_pack._extract_paths(
+def test_extract_trace_assets_reads_trace_file_metadata() -> None:
+    payload = plot_pack._extract_trace_assets(
         """
-[Plot Files]
-path                  outputs/plots/overview/case_a.png
-path                  outputs/plots/case_a/spatial_speed.png
-manifest              outputs/plots/case_a/manifest.json
-bundle_dir            outputs/plots/case_a
+[Trace Files]
+trace_path            outputs/traces/case_a/traces/case_a.trace.json
+trace_rel_path        traces/case_a/traces/case_a.trace.json
+preview_path          outputs/traces/case_a/previews/case_a.png
+preview_rel_path      traces/case_a/previews/case_a.png
 """
     )
 
-    assert payload["plot_paths"] == [
-        "outputs/plots/overview/case_a.png",
-        "outputs/plots/case_a/spatial_speed.png",
+    assert payload == {
+        "trace_path": "outputs/traces/case_a/traces/case_a.trace.json",
+        "trace_rel_path": "traces/case_a/traces/case_a.trace.json",
+        "trace_preview_path": "outputs/traces/case_a/previews/case_a.png",
+        "trace_preview_rel_path": "traces/case_a/previews/case_a.png",
+    }
+
+
+def test_assign_case_keys_preserves_unique_selector_instances() -> None:
+    assigned = plot_pack._assign_case_keys(
+        [
+            {"selector": "plunge:low:half:0"},
+            {"selector": "plunge:low:half:0"},
+            {"selector": "plunge:mid:half:0"},
+        ]
+    )
+
+    assert [case["run_key"] for case in assigned] == [
+        "plunge:low:half:0#1",
+        "plunge:low:half:0#2",
+        "plunge:mid:half:0",
     ]
-    assert payload["plot_manifest_path"] == "outputs/plots/case_a/manifest.json"
-    assert payload["plot_bundle_dir"] == "outputs/plots/case_a"
+    assert [case["run_instance_id"] for case in assigned] == [1, 2, 1]
+
+
+def test_main_compare_mode_requires_compare_json(monkeypatch) -> None:
+    monkeypatch.setattr(
+        plot_pack.sys,
+        "argv",
+        ["build_plot_pack.py", "--mode", "compare"],
+    )
+
+    with pytest.raises(SystemExit, match="compare mode requires --compare-json"):
+        plot_pack.main()
 
 
 def test_resolve_plot_workers_uses_auto_default(monkeypatch) -> None:

@@ -12,16 +12,15 @@ another machine, prefer the static bundle workflow:
 
 `uv run python skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py ...`
 
-That command wraps the cached benchmark run, generates the HTML report plus plot
-gallery, checks whether the outputs server is already running, starts it in the
-background if not, and prints the stable latest URL. It defaults to split plot
-images so the report pages can embed the panels directly without also spending
-time on combined overview renders.
+That command wraps the cached benchmark run, generates the HTML report plus
+interactive run-detail pages from trace JSON, checks whether the outputs server
+is already running, starts it in the background if not, and prints the stable
+latest URL.
 
 When the user says "full bench and plots", interpret that as:
 - `--mode full`
 - current full-pack coverage across `plunge`, `boost`, and `terminal`
-- `--plot-scope per-scenario` so the bundle includes one representative plot for each scenario
+- interactive detail pages for every run in the pack
 
 ## Inputs
 
@@ -38,7 +37,7 @@ When the user says "full bench and plots", interpret that as:
 
 Benchmark command:
 
-`uv run python main.py bench <selector ...> --bot <bot> --json auto --csv auto`
+`uv run python main.py bench <selector ...> --bot <bot>`
 
 Selector format:
 
@@ -124,9 +123,10 @@ latest reachable URL rather than just filesystem paths.
 - Dirty workspaces use `outputs/benchmarks/<head>-dirty-<fingerprint>/`
 - One selector-pack stem per benchmark config.
 - Files per run:
-  - `<stem>.json` (bench summary+records)
-  - `<stem>.csv` (normalized row records)
+  - `<stem>.tracepack.json` (canonical tracepack manifest with summary+records)
   - `<stem>.meta.json` (mode/selectors/options)
+  - `<stem>.tracepack/traces/*.trace.json` (per-run traces)
+  - `<stem>.tracepack/previews/*.png` (table thumbnails)
 
 This cache is local-machine only and should not be committed.
 
@@ -158,7 +158,7 @@ Always include:
 - per-scenario notable regressions (`level:scenario`)
 - crash regression details:
   - selector(s), failure mode, key telemetry snapshot
-  - repro commands for `plot` (`--plot-output split`) and `sim`/profiled `sim`
+  - repro commands for `plot` and `sim`/profiled `sim`
 - explicit policy context (`excluded` / `observe_only` / `normal`)
 - recommendation (`keep`, `investigate`, `revert`)
 

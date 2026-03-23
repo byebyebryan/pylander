@@ -14,12 +14,11 @@ from runtime.metrics import BotLoopProfiler
 from runtime.physics_steps import PhysicsStepContext
 from ui.renderer import Renderer
 from utils.input import InputHandler
-from utils.plot import Plotter
+from utils.tracepack import TraceRecorder
 from core.level_capabilities import (
     level_name_tag,
-    level_plot_max_side_px,
-    level_plot_mode,
-    level_plot_output,
+    level_trace_enabled,
+    level_trace_sample_period_s,
     level_scenario_tag,
 )
 from levels.common_world import get_mass
@@ -155,6 +154,7 @@ def bootstrap_bot_runtime(
             sensor_update_system=sensor_update_system,
             profiler=profiler,
             terrain=terrain,
+            trace_recorder=None,
         ),
         physics_step_context=PhysicsStepContext(
             actors=actors,
@@ -172,35 +172,41 @@ def bootstrap_bot_runtime(
 
 
 @dataclass(frozen=True)
-class PlotRuntimeBootstrap:
-    plotter: Plotter
+class TraceRuntimeBootstrap:
+    trace_recorder: TraceRecorder
     events_seen: set[tuple[str, str]]
 
 
-def bootstrap_plot_runtime(
+def bootstrap_trace_runtime(
     *,
     terrain: Any,
-    lander: Any,
+    ecs_world: World,
+    actor_bots: dict[str, Bot],
+    active_uid_getter: Any,
     headless: bool,
     level: Any,
     seed: int,
-) -> PlotRuntimeBootstrap:
-    plotter = Plotter(
+) -> TraceRuntimeBootstrap:
+    trace_recorder = TraceRecorder(
         terrain,
-        lander,
-        enabled=headless,
-        mode=level_plot_mode(level),
-        output_profile=level_plot_output(level),
-        max_side_px=level_plot_max_side_px(level),
+        ecs_world,
+        actor_bots,
+        active_uid_getter,
+        enabled=(headless and level_trace_enabled(level)),
+        sample_period_s=level_trace_sample_period_s(level),
     )
-    level_name = level_name_tag(level)
-    scenario_name = level_scenario_tag(level)
-    tag_parts = [level_name] if level_name else ["level"]
-    if scenario_name and scenario_name != level_name:
-        tag_parts.append(scenario_name)
-    tag_parts.append(str(seed))
-    plotter.set_selector_tag("_".join(tag_parts))
-    return PlotRuntimeBootstrap(
-        plotter=plotter,
+    explicit_tag = getattr(level, "trace_selector_tag", None)
+    if isinstance(explicit_tag, str) and explicit_tag.strip():
+        trace_recorder.set_selector_tag(explicit_tag)
+    else:
+        level_name = level_name_tag(level)
+        scenario_name = level_scenario_tag(level)
+        tag_parts = [level_name] if level_name else ["level"]
+        if scenario_name and scenario_name != level_name:
+            tag_parts.append(scenario_name)
+        tag_parts.append(str(seed))
+        trace_recorder.set_selector_tag("_".join(tag_parts))
+    return TraceRuntimeBootstrap(
+        trace_recorder=trace_recorder,
         events_seen=set(),
     )

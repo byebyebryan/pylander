@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import html
 import json
 import os
 import re
@@ -17,6 +18,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from core.selector_codec import render_record_selector, render_selector  # noqa: E402
+from skills.lib.trace_report import ensure_viewer_assets, render_trace_detail_html  # noqa: E402
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -199,25 +201,17 @@ def _build_cases_from_compare(compare: dict[str, Any], *, top_n: int) -> list[di
     return deduped
 
 
-def _extract_paths(output: str) -> dict[str, Any]:
-    png_pattern = re.compile(r"(?:^|\s)(outputs/[^\s]+\.png|/[^\s]+\.png)")
-    manifest_pattern = re.compile(r"^\s*manifest\s+(.+)$", re.MULTILINE)
-    bundle_dir_pattern = re.compile(r"^\s*bundle_dir\s+(.+)$", re.MULTILINE)
-    plots: list[str] = []
-    for match in png_pattern.finditer(output):
-        candidate = match.group(1).strip()
-        if candidate not in plots:
-            plots.append(candidate)
-    manifest_match = manifest_pattern.search(output)
-    manifest_path = manifest_match.group(1).strip() if manifest_match else None
-    bundle_dir_match = bundle_dir_pattern.search(output)
-    plot_bundle_dir = bundle_dir_match.group(1).strip() if bundle_dir_match else None
-    if plot_bundle_dir is None and manifest_path:
-        plot_bundle_dir = str(Path(manifest_path).parent)
+def _extract_trace_assets(output: str) -> dict[str, str | None]:
+    def _match(label: str) -> str | None:
+        pattern = re.compile(rf"^\s*{re.escape(label)}\s+(.+)$", re.MULTILINE)
+        found = pattern.search(output)
+        return found.group(1).strip() if found else None
+
     return {
-        "plot_paths": plots,
-        "plot_manifest_path": manifest_path,
-        "plot_bundle_dir": plot_bundle_dir,
+        "trace_path": _match("trace_path"),
+        "trace_rel_path": _match("trace_rel_path"),
+        "trace_preview_path": _match("preview_path"),
+        "trace_preview_rel_path": _match("preview_rel_path"),
     }
 
 
@@ -225,9 +219,7 @@ def _plot_command(
     selector: str,
     *,
     bot: str,
-    plot_mode: str,
-    plot_output: str,
-    plot_max_side_px: int,
+    trace_sample_period_s: float,
 ) -> list[str]:
     return [
         "uv",
@@ -238,12 +230,8 @@ def _plot_command(
         selector,
         "--bot",
         bot,
-        "--plot",
-        plot_mode,
-        "--plot-output",
-        plot_output,
-        "--plot-max-side-px",
-        str(max(256, int(plot_max_side_px))),
+        "--trace-sample-period-s",
+        f"{max(0.05, float(trace_sample_period_s)):.3f}",
     ]
 
 
@@ -261,16 +249,12 @@ def _run_plot_command(
     selector: str,
     *,
     bot: str,
-    plot_mode: str,
-    plot_output: str,
-    plot_max_side_px: int,
+    trace_sample_period_s: float,
 ) -> dict[str, Any]:
     cmd = _plot_command(
         selector,
         bot=bot,
-        plot_mode=plot_mode,
-        plot_output=plot_output,
-        plot_max_side_px=plot_max_side_px,
+        trace_sample_period_s=trace_sample_period_s,
     )
     started = time.perf_counter()
     proc = subprocess.run(
@@ -282,7 +266,7 @@ def _run_plot_command(
     )
     wall_clock_s = time.perf_counter() - started
     output = str(proc.stdout or "")
-    extracted = _extract_paths(output)
+    extracted = _extract_trace_assets(output)
     return {
         "command": cmd,
         "exit_code": int(proc.returncode),
@@ -297,18 +281,14 @@ def _case_run(
     *,
     index: int,
     bot: str,
-    plot_mode: str,
-    plot_output: str,
-    plot_max_side_px: int,
+    trace_sample_period_s: float,
     execute: bool,
 ) -> dict[str, Any]:
     selector = str(case.get("selector") or "").strip()
     cmd = _plot_command(
         selector,
         bot=bot,
-        plot_mode=plot_mode,
-        plot_output=plot_output,
-        plot_max_side_px=plot_max_side_px,
+        trace_sample_period_s=trace_sample_period_s,
     )
     if not execute:
         return {
@@ -317,17 +297,16 @@ def _case_run(
             "command": cmd,
             "exit_code": None,
             "wall_clock_s": None,
-            "plot_paths": [],
-            "plot_manifest_path": None,
-            "plot_bundle_dir": None,
+            "trace_path": None,
+            "trace_rel_path": None,
+            "trace_preview_path": None,
+            "trace_preview_rel_path": None,
         }
 
     run = _run_plot_command(
         selector,
         bot=bot,
-        plot_mode=plot_mode,
-        plot_output=plot_output,
-        plot_max_side_px=plot_max_side_px,
+        trace_sample_period_s=trace_sample_period_s,
     )
     return {
         **case,
@@ -335,28 +314,248 @@ def _case_run(
         "command": run["command"],
         "exit_code": run["exit_code"],
         "wall_clock_s": run.get("wall_clock_s"),
-        "plot_paths": run["plot_paths"],
-        "plot_manifest_path": run.get("plot_manifest_path"),
-        "plot_bundle_dir": run.get("plot_bundle_dir"),
+        "trace_path": run.get("trace_path"),
+        "trace_rel_path": run.get("trace_rel_path"),
+        "trace_preview_path": run.get("trace_preview_path"),
+        "trace_preview_rel_path": run.get("trace_preview_rel_path"),
     }
 
 
-def _default_pack_path() -> Path:
+def _assign_case_keys(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    totals: dict[str, int] = {}
+    for case in cases:
+        selector = str(case.get("selector") or "").strip()
+        if selector:
+            totals[selector] = totals.get(selector, 0) + 1
+    seen: dict[str, int] = {}
+    assigned: list[dict[str, Any]] = []
+    for case in cases:
+        selector = str(case.get("selector") or "").strip()
+        if not selector:
+            assigned.append(dict(case))
+            continue
+        instance_id = seen.get(selector, 0) + 1
+        seen[selector] = instance_id
+        run_key = selector if totals.get(selector, 0) <= 1 else f"{selector}#{instance_id}"
+        assigned.append(
+            {
+                **case,
+                "run_instance_id": instance_id,
+                "run_key": run_key,
+            }
+        )
+    return assigned
+
+
+def _default_pack_dir() -> Path:
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    return (_REPO_ROOT / "outputs" / "plots" / f"pack_{ts}.json").resolve()
+    return (_REPO_ROOT / "outputs" / "viewer" / "plot-packs" / f"pack_{ts}").resolve()
+
+
+def _rel_to_outputs(path: Path | None, *, outputs_root: Path) -> str | None:
+    if path is None:
+        return None
+    try:
+        return path.resolve().relative_to(outputs_root).as_posix()
+    except ValueError:
+        return None
+
+
+def _output_path(path_value: str | None) -> Path | None:
+    if not path_value:
+        return None
+    path = Path(str(path_value).strip())
+    if not path.is_absolute():
+        path = (_REPO_ROOT / path).resolve()
+    return path
+
+
+def _href_from(base_dir: Path, target: Path | None) -> str | None:
+    if target is None:
+        return None
+    return os.path.relpath(target, base_dir).replace(os.sep, "/")
+
+
+def _scenario_selector(selector: str) -> str:
+    parts = [part for part in str(selector).split(":") if part]
+    if len(parts) >= 2 and re.fullmatch(r"-?\d+", parts[-1]):
+        return ":".join(parts[:-1])
+    return str(selector)
+
+
+def _validate_case_runs(case_runs: list[dict[str, Any]]) -> None:
+    failures: list[str] = []
+    for run in case_runs:
+        exit_code = run.get("exit_code")
+        if exit_code is None:
+            continue
+        trace_path = _output_path(run.get("trace_path"))
+        if int(exit_code) > 1:
+            failures.append(f"{run.get('selector')}: exit {exit_code}")
+            continue
+        if trace_path is None or not trace_path.exists():
+            failures.append(f"{run.get('selector')}: missing trace json")
+    if failures:
+        raise SystemExit("Trace plot-pack generation failed:\n" + "\n".join(f"- {item}" for item in failures))
+
+
+def _build_case_detail_payload(
+    run: dict[str, Any],
+    *,
+    pack_dir: Path,
+    outputs_root: Path,
+    plotly_rel: str,
+) -> tuple[dict[str, Any], str]:
+    selector = str(run.get("selector") or "unknown")
+    run_key = str(run.get("run_key") or selector).strip() or selector
+    trace_path = _output_path(run.get("trace_path"))
+    trace_payload = _load_json(trace_path) if trace_path is not None and trace_path.exists() else {}
+    final_result = dict(trace_payload.get("final_result") or {})
+    record = {
+        "bot": final_result.get("bot", "pdg"),
+        "state": final_result.get("state"),
+        "failure_mode": final_result.get("failure_mode"),
+        "success": final_result.get("success"),
+        "fuel_consumed": final_result.get("fuel_consumed"),
+        "time": final_result.get("time"),
+        "landing_offset": final_result.get("landing_offset"),
+        "avg_speed": final_result.get("avg_speed"),
+        "bot_profile_total_ms_per_tick": final_result.get("bot_profile_total_ms_per_tick"),
+    }
+    detail_path = (
+        pack_dir
+        / "runs"
+        / f"{re.sub(r'[^a-z0-9_.-]+', '_', run_key.lower()).strip('._') or 'run'}.html"
+    ).resolve()
+    detail_path.parent.mkdir(parents=True, exist_ok=True)
+    plotly_href = _href_from(detail_path.parent, outputs_root / plotly_rel) or "../../assets/plotly-basic.min.js"
+    trace_href = _href_from(detail_path.parent, trace_path)
+    detail_html = render_trace_detail_html(
+        title=f"{selector} • Pylander Plot Detail",
+        selector=selector,
+        scenario_selector=_scenario_selector(selector),
+        record=record,
+        trace_payload=trace_payload,
+        plotly_href=plotly_href,
+        top_links=[("plot pack", _href_from(detail_path.parent, pack_dir / "index.html"))],
+        raw_links=[("trace json", trace_href)],
+        repro_commands=[" ".join(str(part) for part in (run.get("command") or []))],
+    )
+    detail_path.write_text(detail_html, encoding="utf-8")
+    detail_rel = _rel_to_outputs(detail_path, outputs_root=outputs_root)
+    return (
+        {
+            **record,
+            "run_key": run_key,
+            "run_instance_id": int(run.get("run_instance_id", 1) or 1),
+            "detail_path": str(detail_path),
+            "detail_rel_path": detail_rel,
+        },
+        detail_html,
+    )
+
+
+def _render_index_html(
+    *,
+    pack_id: str,
+    cases: list[dict[str, Any]],
+    pack_dir: Path,
+    outputs_root: Path,
+) -> str:
+    cards: list[str] = []
+    for case in cases:
+        selector_value = str(case.get("selector") or "unknown")
+        selector = html.escape(selector_value)
+        reason = html.escape(str(case.get("reason") or ""))
+        severity = html.escape(str(case.get("severity") or ""))
+        duplicate_count = sum(1 for item in cases if str(item.get("selector") or "") == selector_value)
+        instance_id = int(case.get("run_instance_id", 1) or 1)
+        display_selector = selector
+        if duplicate_count > 1:
+            display_selector = f"{selector} #{instance_id}"
+        detail_path = _output_path(case.get("detail_path"))
+        detail_href = _href_from(pack_dir, detail_path)
+        preview_path = _output_path(case.get("trace_preview_path"))
+        preview_href = _href_from(pack_dir, preview_path)
+        trace_path = _output_path(case.get("trace_path"))
+        trace_href = _href_from(pack_dir, trace_path)
+        state = html.escape(str(case.get("state") or "-"))
+        cards.append(
+            "<article class=\"card\">"
+            f"<h3>{display_selector}</h3>"
+            f"<p class=\"meta\">severity={severity} reason={reason} state={state}</p>"
+            + (
+                f'<a class="preview" href="{html.escape(detail_href or "#")}"><img src="{html.escape(preview_href)}" alt="{selector}"></a>'
+                if preview_href and detail_href
+                else '<p class="muted">No preview image</p>'
+            )
+            + "<p class=\"links\">"
+            + " | ".join(
+                link
+                for link in [
+                    f'<a href="{html.escape(detail_href)}">detail</a>' if detail_href else "",
+                    f'<a href="{html.escape(trace_href)}">trace json</a>' if trace_href else "",
+                ]
+                if link
+            )
+            + "</p>"
+            + "</article>"
+        )
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pylander Plot Pack {html.escape(pack_id)}</title>
+  <style>
+    :root {{
+      color-scheme: light;
+      --bg: #f4f1e8;
+      --panel: #fffaf0;
+      --ink: #1d1f24;
+      --muted: #575f66;
+      --accent: #0e6b60;
+      --line: #d8cfbf;
+      --shadow: rgba(29, 31, 36, 0.08);
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin: 0; font-family: Georgia, "Times New Roman", serif; color: var(--ink); background: linear-gradient(180deg, #f7f4ec 0%, var(--bg) 100%); }}
+    main {{ max-width: 1280px; margin: 0 auto; padding: 24px 20px 48px; }}
+    header, .card {{ background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 8px 24px var(--shadow); }}
+    header {{ padding: 18px 20px; margin-bottom: 18px; }}
+    h1, h2, h3 {{ margin: 0 0 10px; font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif; }}
+    .grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }}
+    .card {{ padding: 16px; }}
+    .meta, .muted, .links {{ color: var(--muted); }}
+    .preview img {{ width: 100%; height: auto; display: block; border-radius: 12px; border: 1px solid var(--line); background: #fbf8f1; }}
+    a {{ color: var(--accent); text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Pylander Plot Pack</h1>
+      <p class="meta">pack={html.escape(pack_id)} cases={len(cases)}</p>
+    </header>
+    <section class="grid">
+      {''.join(cards) if cards else '<p class="muted">No cases.</p>'}
+    </section>
+  </main>
+</body>
+</html>
+"""
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Build and optionally execute Pylander plot packs")
+    ap = argparse.ArgumentParser(description="Build and optionally execute Pylander trace-first plot packs")
     ap.add_argument("--mode", choices=("health", "compare", "focus", "triage"), required=True)
     ap.add_argument("--benchmark-json", type=str, default=None)
     ap.add_argument("--compare-json", type=str, default=None)
     ap.add_argument("--selectors", nargs="*", default=[])
     ap.add_argument("--bot", default="pdg")
     ap.add_argument("--top-n", type=int, default=8)
-    ap.add_argument("--plot-mode", default="all", choices=("speed", "thrust", "all"))
-    ap.add_argument("--plot-output", default="both", choices=("combined", "split", "both"))
-    ap.add_argument("--plot-max-side-px", type=int, default=1800)
+    ap.add_argument("--trace-sample-period-s", type=float, default=0.25)
     ap.add_argument("--plot-workers", type=int, default=0)
     ap.add_argument("--execute", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--output-manifest", type=str, default=None)
@@ -364,6 +563,8 @@ def main() -> None:
 
     benchmark_payload = _load_json(Path(args.benchmark_json)) if args.benchmark_json else None
     compare_payload = _load_json(Path(args.compare_json)) if args.compare_json else None
+    if args.mode == "compare" and compare_payload is None:
+        raise SystemExit("compare mode requires --compare-json")
 
     top_n = max(1, int(args.top_n))
     cases: list[dict[str, Any]] = []
@@ -400,6 +601,7 @@ def main() -> None:
 
     if not cases:
         raise SystemExit("No plot cases resolved")
+    cases = _assign_case_keys(cases)
 
     plot_workers = 1 if not args.execute else _resolve_plot_workers(args.plot_workers)
     started_at_utc = datetime.now(timezone.utc).isoformat()
@@ -417,9 +619,7 @@ def main() -> None:
                     case,
                     index=idx,
                     bot=args.bot,
-                    plot_mode=args.plot_mode,
-                    plot_output=args.plot_output,
-                    plot_max_side_px=max(256, int(args.plot_max_side_px)),
+                    trace_sample_period_s=max(0.05, float(args.trace_sample_period_s)),
                     execute=bool(args.execute),
                 )
             )
@@ -432,9 +632,7 @@ def main() -> None:
                     case,
                     index=idx,
                     bot=args.bot,
-                    plot_mode=args.plot_mode,
-                    plot_output=args.plot_output,
-                    plot_max_side_px=max(256, int(args.plot_max_side_px)),
+                    trace_sample_period_s=max(0.05, float(args.trace_sample_period_s)),
                     execute=bool(args.execute),
                 ): idx
                 for idx, case in filtered_cases
@@ -444,30 +642,62 @@ def main() -> None:
                 indexed_runs[int(run["index"])] = run
         case_runs = [indexed_runs[idx] for idx, _case in filtered_cases]
 
-    wall_clock_s = time.perf_counter() - started
+    if args.execute:
+        _validate_case_runs(case_runs)
 
-    manifest_path = Path(args.output_manifest).resolve() if args.output_manifest else _default_pack_path()
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    wall_clock_s = time.perf_counter() - started
+    outputs_root = (_REPO_ROOT / "outputs").resolve()
+    manifest_path = Path(args.output_manifest).resolve() if args.output_manifest else (_default_pack_dir() / "manifest.json")
+    pack_dir = manifest_path.parent
+    pack_dir.mkdir(parents=True, exist_ok=True)
+    index_path = (pack_dir / "index.html").resolve()
+    pack_id = pack_dir.name
+    viewer_assets = ensure_viewer_assets(outputs_root)
+
+    enriched_runs: list[dict[str, Any]] = []
+    for run in case_runs:
+        case_payload = dict(run)
+        trace_path = _output_path(case_payload.get("trace_path"))
+        if trace_path is not None and trace_path.exists():
+            detail_meta, _detail_html = _build_case_detail_payload(
+                case_payload,
+                pack_dir=pack_dir,
+                outputs_root=outputs_root,
+                plotly_rel=str(viewer_assets.get("plotly_rel") or ""),
+            )
+            case_payload.update(detail_meta)
+        enriched_runs.append(case_payload)
+
+    index_html = _render_index_html(
+        pack_id=pack_id,
+        cases=enriched_runs,
+        pack_dir=pack_dir,
+        outputs_root=outputs_root,
+    )
+    index_path.write_text(index_html, encoding="utf-8")
+
     payload = {
         "mode": args.mode,
         "bot": args.bot,
-        "plot_mode": args.plot_mode,
-        "plot_output": args.plot_output,
-        "plot_max_side_px": max(256, int(args.plot_max_side_px)),
+        "trace_sample_period_s": max(0.05, float(args.trace_sample_period_s)),
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "started_at_utc": started_at_utc,
         "wall_clock_s": wall_clock_s,
         "plot_workers": plot_workers,
         "benchmark_json": args.benchmark_json,
         "compare_json": args.compare_json,
-        "cases": case_runs,
+        "index_path": str(index_path),
+        "index_rel_path": _rel_to_outputs(index_path, outputs_root=outputs_root),
+        "viewer_assets": dict(viewer_assets),
+        "cases": enriched_runs,
     }
     manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
     print(
         "# plot_pack\n"
         f"manifest={manifest_path}\n"
-        f"cases={len(case_runs)}\n"
+        f"index={index_path}\n"
+        f"cases={len(enriched_runs)}\n"
         f"plot_workers={plot_workers}\n"
         f"wall_clock_s={wall_clock_s:.3f}"
     )

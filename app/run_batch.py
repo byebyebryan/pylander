@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import json
 import os
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import datetime, timezone
+from pathlib import Path
+from time import perf_counter
 from typing import Any, Callable
 
 from app.config import BenchSettings, BenchTarget, RunSettings
@@ -11,9 +15,8 @@ from app.run_single import create_level_checked, resolve_default_bot, run_once_r
 from app.selector import parse_seed_spec, render_selector_group
 from core.eval import (
     aggregate_eval_records,
+    collision_safe_path,
     default_artifact_path,
-    write_csv_records,
-    write_json_report,
 )
 from core.level_capabilities import (
     scenario_has_randomized_fields_safe,
@@ -21,6 +24,7 @@ from core.level_capabilities import (
     set_eval_scenario_checked,
 )
 from levels.registry import expand_selector_bindings
+from utils.tracepack import TRACEPACK_SCHEMA, TRACEPACK_SCHEMA_VERSION
 
 _AUTO_RANDOMIZED_BATCH_SEEDS: tuple[int, ...] = tuple(range(10))
 
@@ -33,6 +37,8 @@ class ResolvedBenchRun:
     runtime_level_name: str
     runtime_scenario_name: str | None
     eval_goal_name: str
+    run_instance_id: int = 1
+    run_key: str | None = None
 
     def display_label(self) -> str:
         goal_label = "" if self.eval_goal_name == "landing" else f" goal={self.eval_goal_name}"
@@ -42,6 +48,64 @@ class ResolvedBenchRun:
                 f"scenario={self.scenario_name}{goal_label}"
             )
         return f"seed={self.seed} level={self.level_name}{goal_label}"
+
+
+def _run_selector(target: ResolvedBenchRun) -> str:
+    selector = render_selector_group(
+        level_name=target.level_name,
+        scenario_name=target.scenario_name,
+        goal=target.eval_goal_name,
+    )
+    return f"{selector}:{int(target.seed)}"
+
+
+def _assign_run_keys(run_plan: list[ResolvedBenchRun]) -> list[ResolvedBenchRun]:
+    totals: dict[str, int] = {}
+    for target in run_plan:
+        selector = _run_selector(target)
+        totals[selector] = totals.get(selector, 0) + 1
+    seen: dict[str, int] = {}
+    assigned: list[ResolvedBenchRun] = []
+    for target in run_plan:
+        selector = _run_selector(target)
+        instance_id = seen.get(selector, 0) + 1
+        seen[selector] = instance_id
+        run_key = selector if totals.get(selector, 0) <= 1 else f"{selector}#{instance_id}"
+        assigned.append(replace(target, run_instance_id=instance_id, run_key=run_key))
+    return assigned
+
+
+def _tracepack_root_for(path: Path) -> Path:
+    return path.with_suffix("")
+
+
+def _write_json_exact(path: Path, payload: dict[str, Any]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return path
+
+
+def _resolve_output_path(
+    path_value: str | None,
+    *,
+    kind: str,
+    level_name: str,
+    bot_name: str,
+    seeds: list[int],
+    scenarios: list[str],
+) -> Path | None:
+    if not path_value:
+        return None
+    if path_value == "auto":
+        target = default_artifact_path(
+            kind=kind,
+            level_name=level_name,
+            bot_name=bot_name,
+            seeds=seeds,
+            scenarios=scenarios,
+        )
+        return collision_safe_path(target).resolve()
+    return Path(path_value).resolve()
 
 
 def _scenario_has_randomized_fields(runtime_level_name: str, runtime_scenario_name: str | None) -> bool:
@@ -130,10 +194,10 @@ def resolve_benchmark_plan(cfg: BenchSettings) -> list[ResolvedBenchRun]:
                 goal_resolver=resolve_goal_cached,
             )
         )
-    return run_plan
+    return _assign_run_keys(run_plan)
 
 
-def _to_run_settings(cfg: BenchSettings) -> RunSettings:
+def _to_run_settings(cfg: BenchSettings, *, trace_root_dir: Path | None = None) -> RunSettings:
     first_binding = expand_selector_bindings(
         cfg.selectors[0].level_name,
         scenario_path=cfg.selectors[0].scenario_path,
@@ -152,9 +216,9 @@ def _to_run_settings(cfg: BenchSettings) -> RunSettings:
         print_freq=0,
         max_time=cfg.max_time,
         max_steps=cfg.max_steps,
-        plot_mode=cfg.plot_mode,
-        plot_output=cfg.plot_output,
-        plot_max_side_px=cfg.plot_max_side_px,
+        trace_enabled=cfg.trace_enabled,
+        trace_sample_period_s=cfg.trace_sample_period_s,
+        trace_root_dir=(str(trace_root_dir) if trace_root_dir is not None else None),
         stop_on_crash=True,
         stop_on_out_of_fuel=True,
         stop_on_first_land=True,
@@ -176,22 +240,24 @@ def _run_batch_sequential(
     for run_idx, target in enumerate(run_plan, start=1):
         print(f"[{run_idx}/{total}] {target.display_label()}")
         records.append(
-            run_once_record(
-                run_settings,
-                seed=target.seed,
-                level_name=target.runtime_level_name,
-                eval_scenario_name=target.runtime_scenario_name,
-                eval_goal_name=target.eval_goal_name,
-                record_level_name=target.level_name,
-                record_scenario_name=target.scenario_name,
-                benchmark_mode=benchmark_mode,
+                run_once_record(
+                    run_settings,
+                    seed=target.seed,
+                    level_name=target.runtime_level_name,
+                    eval_scenario_name=target.runtime_scenario_name,
+                    eval_goal_name=target.eval_goal_name,
+                    record_level_name=target.level_name,
+                    record_scenario_name=target.scenario_name,
+                    benchmark_mode=benchmark_mode,
+                    trace_selector_tag=target.run_key,
+                    run_key=target.run_key,
+                    run_instance_id=target.run_instance_id,
+                )
             )
-        )
     return records
 
 
 def run_benchmark(cfg: BenchSettings) -> int:
-    run_settings = _to_run_settings(cfg)
     run_plan = resolve_benchmark_plan(cfg)
     total = len(run_plan)
     if total <= 0:
@@ -209,10 +275,39 @@ def run_benchmark(cfg: BenchSettings) -> int:
                 f"{missing_csv}"
             )
 
+    artifact_level = unique_levels[0] if len(unique_levels) == 1 else "batch"
+    artifact_tags = sorted(
+        {
+            render_selector_group(
+                level_name=target.level_name,
+                scenario_name=target.scenario_name,
+                goal=target.eval_goal_name,
+            )
+            for target in run_plan
+        }
+    )
+    used_seeds = sorted({target.seed for target in run_plan})
+    batch_bot_name = cfg.bot_name or "level_default"
+
+    tracepack_path: Path | None = None
+    trace_root_dir: Path | None = None
+    tracepack_path = _resolve_output_path(
+        cfg.json_path,
+        kind="tracepack.json",
+        level_name=artifact_level,
+        bot_name=batch_bot_name,
+        seeds=used_seeds,
+        scenarios=artifact_tags,
+    )
+    if tracepack_path is not None:
+        trace_root_dir = _tracepack_root_for(tracepack_path)
+
+    run_settings = _to_run_settings(cfg, trace_root_dir=trace_root_dir)
     worker_count = max(1, min(cfg.workers, total, os.cpu_count() or 1))
     print(f"Batch workers: requested={cfg.workers} effective={worker_count}")
 
     benchmark_mode = "sample"
+    benchmark_started = perf_counter()
     if worker_count <= 1:
         records = _run_batch_sequential(
             run_settings,
@@ -235,6 +330,9 @@ def run_benchmark(cfg: BenchSettings) -> int:
                         record_level_name=target.level_name,
                         record_scenario_name=target.scenario_name,
                         benchmark_mode=benchmark_mode,
+                        trace_selector_tag=target.run_key,
+                        run_key=target.run_key,
+                        run_instance_id=target.run_instance_id,
                     )
                     future_map[fut] = (run_idx, target)
 
@@ -263,58 +361,47 @@ def run_benchmark(cfg: BenchSettings) -> int:
                 "Resolve worker/process support and rerun."
             ) from exc
 
+    benchmark_wall_clock_s = perf_counter() - benchmark_started
     summary = aggregate_eval_records(records)
     failed = [r for r in records if not r.get("success", False)]
-    used_seeds = sorted({target.seed for target in run_plan})
-
-    batch_bot_name = cfg.bot_name or "level_default"
-    artifact_level = unique_levels[0] if len(unique_levels) == 1 else "batch"
-    artifact_tags = sorted(
+    trace_index = [
         {
-            render_selector_group(
-                level_name=target.level_name,
-                scenario_name=target.scenario_name,
-                goal=target.eval_goal_name,
+            "selector": render_selector_group(
+                level_name=str(record.get("level") or ""),
+                scenario_name=str(record.get("scenario") or ""),
+                goal=str(record.get("eval_goal") or "landing"),
             )
-            for target in run_plan
+            + f":{int(record.get('seed', 0) or 0)}",
+            "run_key": record.get("run_key"),
+            "run_instance_id": record.get("run_instance_id"),
+            "trace_path": record.get("trace_path"),
+            "trace_rel_path": record.get("trace_rel_path"),
+            "trace_preview_path": record.get("trace_preview_path"),
+            "trace_preview_rel_path": record.get("trace_preview_rel_path"),
         }
-    )
+        for record in records
+    ]
 
-    json_path = None
-    csv_path = None
-    if cfg.json_path:
-        json_target = (
-            default_artifact_path(
-                kind="json",
-                level_name=artifact_level,
-                bot_name=batch_bot_name,
-                seeds=used_seeds,
-                scenarios=artifact_tags,
-            )
-            if cfg.json_path == "auto"
-            else cfg.json_path
-        )
-        json_path = write_json_report(
-            json_target,
-            {
-                "summary": summary,
-                "records": records,
-            },
-        )
+    if tracepack_path is not None:
+        outputs_root = Path("outputs").resolve()
+        tracepack_payload = {
+            "schema": TRACEPACK_SCHEMA,
+            "schema_version": TRACEPACK_SCHEMA_VERSION,
+            "created_at_utc": datetime.now(timezone.utc).isoformat(),
+            "benchmark_wall_clock_s": benchmark_wall_clock_s,
+            "trace_enabled": bool(cfg.trace_enabled),
+            "trace_sample_period_s": float(cfg.trace_sample_period_s),
+            "trace_root_path": (str(trace_root_dir) if trace_root_dir is not None else None),
+            "trace_root_rel": (
+                trace_root_dir.relative_to(outputs_root).as_posix()
+                if trace_root_dir is not None and trace_root_dir.is_relative_to(outputs_root)
+                else None
+            ),
+            "run_index": trace_index,
+            "summary": summary,
+            "records": records,
+        }
+        _write_json_exact(tracepack_path, tracepack_payload)
 
-    if cfg.csv_path:
-        csv_target = (
-            default_artifact_path(
-                kind="csv",
-                level_name=artifact_level,
-                bot_name=batch_bot_name,
-                seeds=used_seeds,
-                scenarios=artifact_tags,
-            )
-            if cfg.csv_path == "auto"
-            else cfg.csv_path
-        )
-        csv_path = write_csv_records(csv_target, records)
-
-    print_batch_summary(summary, failed, json_path, csv_path)
+    print_batch_summary(summary, failed, tracepack_path)
     return 0 if summary["successes"] == summary["runs"] else 1

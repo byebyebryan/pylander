@@ -25,13 +25,12 @@ from levels.registry import (  # noqa: E402
     selector_children,
     selector_path_looks_like_seed,
 )
+from skills.lib.trace_report import ensure_viewer_assets, render_trace_detail_html  # noqa: E402
 from skills.lib.orchestration import load_json, run_command  # noqa: E402
 
 _SERVER_SCRIPT = (_REPO_ROOT / "skills" / "pylander-benchmark-runner" / "scripts" / "serve_outputs.py").resolve()
 _SERVER_SERVICE_NAME = "pylander_outputs_server"
 _SERVER_HEALTH_PATH = "/__pylander_viewer_health__"
-
-
 def _sanitize_token(value: str) -> str:
     out = []
     prev_us = False
@@ -94,10 +93,6 @@ def _artifact_path(path_value: str | None, *, outputs_root: Path) -> Path | None
 
 def _derive_meta_path(candidate_json: Path) -> Path:
     return candidate_json.with_name(f"{candidate_json.stem}.meta.json")
-
-
-def _derive_csv_path(candidate_json: Path) -> Path:
-    return candidate_json.with_suffix(".csv")
 
 
 def _rel_to_outputs(path: Path | None, *, outputs_root: Path) -> str | None:
@@ -286,7 +281,6 @@ def _summary_card_sections(bundle: dict[str, Any]) -> list[tuple[str, list[tuple
         part
         for part in (
             f"bench {_format_seconds(timing.get('benchmark_wall_clock_s'))}" if timing.get("benchmark_wall_clock_s") is not None else "",
-            f"plots {_format_seconds(timing.get('plot_pack_wall_clock_s'))}" if timing.get("plot_pack_wall_clock_s") is not None else "",
             f"render {_format_seconds(timing.get('bundle_render_wall_clock_s'))}" if timing.get("bundle_render_wall_clock_s") is not None else "",
         )
         if part
@@ -453,8 +447,38 @@ def _scenario_selector_for_record(record: dict[str, Any]) -> str:
 
 
 def _record_detail_rel_path(bundle_id: str, record: dict[str, Any]) -> str:
-    selector = render_record_selector(record)
-    return f"viewer/bundles/{bundle_id}/runs/{_sanitize_token(selector)}.html"
+    run_key = str(record.get("run_key") or "").strip()
+    if not run_key:
+        run_key = render_record_selector(record)
+    return f"viewer/bundles/{bundle_id}/runs/{_sanitize_token(run_key)}.html"
+
+
+def _load_trace_asset_paths(record: dict[str, Any], *, outputs_root: Path) -> dict[str, Any]:
+    trace_path = _artifact_path(
+        str(record.get("trace_rel_path") or record.get("trace_path") or ""),
+        outputs_root=outputs_root,
+    )
+    preview_path = _artifact_path(
+        str(record.get("trace_preview_rel_path") or record.get("trace_preview_path") or ""),
+        outputs_root=outputs_root,
+    )
+    return {
+        "trace_path": str(trace_path) if trace_path is not None else None,
+        "trace_path_rel": _rel_to_outputs(trace_path, outputs_root=outputs_root),
+        "preview_path": str(preview_path) if preview_path is not None else None,
+        "preview_path_rel": _rel_to_outputs(preview_path, outputs_root=outputs_root),
+    }
+
+
+def _load_trace_payload(run: dict[str, Any], *, outputs_root: Path) -> dict[str, Any]:
+    trace_path = _artifact_path(
+        str(run.get("trace_path_rel") or run.get("trace_path") or ""),
+        outputs_root=outputs_root,
+    )
+    if trace_path is None or not trace_path.exists():
+        return {}
+    loaded = load_json(trace_path)
+    return dict(loaded) if isinstance(loaded, dict) else {}
 
 
 def _load_plot_case_assets(case: dict[str, Any], *, outputs_root: Path) -> dict[str, Any] | None:
@@ -597,10 +621,10 @@ def _new_scenario_tree_node(selector: str, *, level: str, depth: int) -> dict[st
 
 
 def _leaf_representative_run(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
-    plotted = [run for run in runs if run.get("plot") is not None]
-    if not plotted:
+    traced = [run for run in runs if run.get("trace_path_rel") or run.get("trace_path")]
+    if not traced:
         return None
-    return min(plotted, key=lambda run: _scenario_representative_sort_key(dict(run.get("record") or {})))
+    return min(traced, key=lambda run: _scenario_representative_sort_key(dict(run.get("record") or {})))
 
 
 def _find_descendant_representative_run(node: dict[str, Any], selector: str) -> dict[str, Any] | None:
@@ -697,42 +721,42 @@ def _build_bundle_report_model(bundle: dict[str, Any], *, outputs_root: Path) ->
     benchmark = dict(bundle.get("benchmark") or {})
     candidate = dict(benchmark.get("candidate") or {})
     summary = dict(candidate.get("summary") or {})
-    plot_pack = dict(bundle.get("plot_pack") or {}) or None
     bundle_id = str(bundle.get("bundle_id") or "bundle")
 
-    plot_assets_by_selector: dict[str, dict[str, Any]] = {}
-    if plot_pack:
-        for case in plot_pack.get("cases") or []:
-            if not isinstance(case, dict):
-                continue
-            selector = str(case.get("selector") or "").strip()
-            if not selector:
-                continue
-            assets = _load_plot_case_assets(case, outputs_root=outputs_root)
-            if assets is not None:
-                plot_assets_by_selector[selector] = assets
-
     records = [dict(item) for item in benchmark.get("records") or [] if isinstance(item, dict)]
-    records.sort(key=lambda record: (_selector_sort_key(_scenario_selector_for_record(record)), _record_seed_sort_key(record)))
+    records.sort(
+        key=lambda record: (
+            _selector_sort_key(_scenario_selector_for_record(record)),
+            _record_seed_sort_key(record),
+            int(record.get("run_instance_id", 1) or 1),
+        )
+    )
 
     runs_by_scenario: dict[str, list[dict[str, Any]]] = {}
-    runs_by_selector: dict[str, dict[str, Any]] = {}
+    runs: list[dict[str, Any]] = []
     failures: list[dict[str, Any]] = []
+    duplicate_counts: dict[str, int] = {}
+    for record in records:
+        selector = render_record_selector(record)
+        duplicate_counts[selector] = duplicate_counts.get(selector, 0) + 1
 
     for record in records:
         run_selector = render_record_selector(record)
         scenario_selector = _scenario_selector_for_record(record)
         detail_rel = _record_detail_rel_path(bundle_id, record)
-        plot_assets = plot_assets_by_selector.get(run_selector)
+        trace_assets = _load_trace_asset_paths(record, outputs_root=outputs_root)
         run_info = {
             "selector": run_selector,
             "scenario_selector": scenario_selector,
             "record": record,
             "detail_rel": detail_rel,
-            "plot": plot_assets,
+            "run_key": str(record.get("run_key") or run_selector),
+            "run_instance_id": int(record.get("run_instance_id", 1) or 1),
+            "duplicate_count": duplicate_counts.get(run_selector, 1),
+            **trace_assets,
         }
         runs_by_scenario.setdefault(scenario_selector, []).append(run_info)
-        runs_by_selector[run_selector] = run_info
+        runs.append(run_info)
         if not bool(record.get("success", False)):
             failures.append(run_info)
 
@@ -741,7 +765,7 @@ def _build_bundle_report_model(bundle: dict[str, Any], *, outputs_root: Path) ->
     return {
         "scenario_trees_by_level": scenario_trees_by_level,
         "failures": sorted(failures, key=lambda item: _selector_sort_key(str(item.get("selector") or ""))),
-        "runs_by_selector": runs_by_selector,
+        "runs": runs,
     }
 
 
@@ -781,10 +805,9 @@ def _render_scenario_sections(
     table_counter = 0
 
     def _render_preview_cell(selector: str, representative_run: dict[str, Any] | None) -> str:
-        if representative_run is None or representative_run.get("plot") is None:
+        if representative_run is None:
             return "<span class=\"muted\">expand</span>"
-        preview_entry = dict(representative_run["plot"].get("preview_entry") or {})
-        preview_href = _href_from(bundle_dir, str(preview_entry.get("path_rel") or ""), outputs_root=outputs_root)
+        preview_href = _href_from(bundle_dir, str(representative_run.get("preview_path_rel") or ""), outputs_root=outputs_root)
         detail_href = _href_from(bundle_dir, str(representative_run.get("detail_rel") or ""), outputs_root=outputs_root)
         if not preview_href or not detail_href:
             return "<span class=\"muted\">expand</span>"
@@ -826,9 +849,7 @@ def _render_scenario_sections(
         for run in node.get("runs") or []:
             record = dict(run.get("record") or {})
             detail_href = _href_from(bundle_dir, str(run.get("detail_rel") or ""), outputs_root=outputs_root) or "#"
-            plot_assets = dict(run.get("plot") or {})
-            preview_entry = dict(plot_assets.get("preview_entry") or {})
-            preview_href = _href_from(bundle_dir, str(preview_entry.get("path_rel") or ""), outputs_root=outputs_root)
+            preview_href = _href_from(bundle_dir, str(run.get("preview_path_rel") or ""), outputs_root=outputs_root)
             preview_cell = "<span class=\"muted\">no plot</span>"
             if preview_href:
                 preview_cell = (
@@ -837,10 +858,13 @@ def _render_scenario_sections(
                     "</a>"
                 )
             metric_text = f"offset={_format_float(record.get('landing_offset'), 3)}"
+            seed_label = f"seed {record.get('seed') if record.get('seed') is not None else '-'}"
+            if int(run.get("duplicate_count", 1) or 1) > 1:
+                seed_label = f"{seed_label} #{int(run.get('run_instance_id', 1) or 1)}"
             rows.append(
                 "<tr class=\"seed-row\" hidden"
                 f' data-parent="{html.escape(group_id)}">'
-                f'<td class="tree-label seed-label" style="--depth: {depth + 1};">seed {html.escape(str(record.get("seed") if record.get("seed") is not None else "-"))}</td>'
+                f'<td class="tree-label seed-label" style="--depth: {depth + 1};">{html.escape(str(seed_label))}</td>'
                 f"<td>{html.escape(str(record.get('state') or ''))}</td>"
                 f"<td>{html.escape(_format_float(record.get('fuel_consumed'), 3))}</td>"
                 f"<td>{html.escape(_format_float(record.get('time'), 3))}</td>"
@@ -894,9 +918,10 @@ def _render_failure_sections(
         for run in sorted(failures_by_level[level_name], key=lambda item: _selector_sort_key(str(item.get("selector") or ""))):
             record = dict(run.get("record") or {})
             detail_href = _href_from(bundle_dir, str(run.get("detail_rel") or ""), outputs_root=outputs_root) or "#"
-            plot_assets = dict(run.get("plot") or {})
-            preview_entry = dict(plot_assets.get("preview_entry") or {})
-            preview_href = _href_from(bundle_dir, str(preview_entry.get("path_rel") or ""), outputs_root=outputs_root)
+            preview_href = _href_from(bundle_dir, str(run.get("preview_path_rel") or ""), outputs_root=outputs_root)
+            selector_label = str(run.get("selector") or "")
+            if int(run.get("duplicate_count", 1) or 1) > 1:
+                selector_label = f"{selector_label} #{int(run.get('run_instance_id', 1) or 1)}"
             if preview_href:
                 preview_cell = (
                     f"<a class=\"table-preview\" href=\"{html.escape(detail_href)}\">"
@@ -908,7 +933,7 @@ def _render_failure_sections(
 
             row_blocks.append(
                 "<tr class=\"failure-row\">"
-                f"<td>{html.escape(str(run.get('selector') or ''))}</td>"
+                f"<td>{html.escape(selector_label)}</td>"
                 f"<td>{html.escape(str(record.get('state') or ''))}</td>"
                 f"<td>{html.escape(_format_float(record.get('fuel_consumed'), 3))}</td>"
                 f"<td>{html.escape(_format_float(record.get('time'), 3))}</td>"
@@ -941,135 +966,53 @@ def _render_run_detail_html(
     candidate = dict(benchmark.get("candidate") or {})
     record = dict(run.get("record") or {})
     selector = str(run.get("selector") or "unknown")
-    plot_assets = dict(run.get("plot") or {})
+    trace_payload = _load_trace_payload(run, outputs_root=outputs_root)
     detail_dir = (outputs_root / str(run["detail_rel"])).parent
     index_href = _href_from(detail_dir, str(bundle.get("bundle_page_path") or ""), outputs_root=outputs_root) or "../index.html"
     latest_href = _href_from(detail_dir, str(bundle.get("latest_page_path") or ""), outputs_root=outputs_root)
     candidate_href = _href_from(detail_dir, candidate.get("json_path"), outputs_root=outputs_root)
-    manifest_href = _href_from(detail_dir, str(plot_assets.get("manifest_path_rel") or ""), outputs_root=outputs_root)
-    bundle_dir_href = _href_from(detail_dir, str(plot_assets.get("bundle_dir_rel") or ""), outputs_root=outputs_root)
-
-    cards = _render_metric_card_grid(_run_metric_cards(record))
-
-    gallery = "<p class=\"muted\">No split plot images were generated for this specific run.</p>"
-    if plot_assets.get("split_plot_entries"):
-        gallery_cards: list[str] = []
-        for entry in plot_assets.get("split_plot_entries") or []:
-            if not isinstance(entry, dict):
-                continue
-            href = _href_from(detail_dir, str(entry.get("path_rel") or ""), outputs_root=outputs_root)
-            if not href:
-                continue
-            gallery_cards.append(
-                "<figure class=\"plot-frame\">"
-                f"<figcaption>{html.escape(str(entry.get('filename') or 'plot'))}</figcaption>"
-                f"<a href=\"{html.escape(href)}\"><img src=\"{html.escape(href)}\" alt=\"{html.escape(str(entry.get('filename') or 'plot'))}\"></a>"
-                "</figure>"
-            )
-        if gallery_cards:
-            gallery = "<div class=\"plot-stack\">" + "".join(gallery_cards) + "</div>"
+    trace_href = _href_from(detail_dir, str(run.get("trace_path_rel") or ""), outputs_root=outputs_root)
+    plotly_href = _href_from(
+        detail_dir,
+        str(dict(bundle.get("viewer_assets") or {}).get("plotly_rel") or ""),
+        outputs_root=outputs_root,
+    ) or "../../assets/plotly-basic.min.js"
 
     scenario_selector = str(run.get("scenario_selector") or "")
-    scenario_runs = list(report.get("runs_by_selector", {}).values())
+    scenario_runs = list(report.get("runs") or [])
     representative = next(
         (
             item
             for item in scenario_runs
-            if str(item.get("scenario_selector") or "") == scenario_selector and item.get("plot") is not None
+            if str(item.get("scenario_selector") or "") == scenario_selector
+            and (item.get("trace_path_rel") or item.get("trace_path"))
         ),
         None,
     )
     representative_href = None
-    if representative is not None and representative is not run:
+    if representative is not None and str(representative.get("run_key") or "") != str(run.get("run_key") or ""):
         representative_href = _href_from(detail_dir, str(representative.get("detail_rel") or ""), outputs_root=outputs_root)
 
-    repro_cmd = html.escape(
-        "uv run python main.py plot "
-        f"{selector} --bot {html.escape(str(record.get('bot') or 'pdg'))} --plot all --plot-output split"
+    return render_trace_detail_html(
+        title=f"{selector} • Pylander Run Detail",
+        selector=selector,
+        scenario_selector=scenario_selector,
+        record=record,
+        trace_payload=trace_payload,
+        plotly_href=plotly_href,
+        top_links=[
+            ("bundle report", index_href),
+            ("latest page", latest_href),
+        ],
+        raw_links=[
+            ("candidate json", candidate_href),
+            ("trace json", trace_href),
+            ("scenario representative detail", representative_href),
+        ],
+        repro_commands=[
+            f"uv run python main.py plot {selector} --bot {str(record.get('bot') or 'pdg')}"
+        ],
     )
-    plot_cmd = html.escape(" ".join(str(item) for item in plot_assets.get("command") or []))
-
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{html.escape(selector)} • Pylander Run Detail</title>
-  <style>
-    :root {{
-      color-scheme: light;
-      --bg: #f4f1e8;
-      --panel: #fffaf0;
-      --ink: #1d1f24;
-      --muted: #575f66;
-      --accent: #0e6b60;
-      --warn: #8e3b2e;
-      --line: #d8cfbf;
-      --shadow: rgba(29, 31, 36, 0.08);
-    }}
-    * {{ box-sizing: border-box; }}
-    body {{ margin: 0; font-family: Georgia, "Times New Roman", serif; color: var(--ink); background: linear-gradient(180deg, #f7f4ec 0%, var(--bg) 100%); }}
-    main {{ max-width: 1280px; margin: 0 auto; padding: 24px 20px 48px; }}
-    header, section, .card {{ background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 8px 24px var(--shadow); }}
-    header, section {{ padding: 18px 20px; margin-bottom: 18px; }}
-    h1, h2, h3 {{ margin: 0 0 10px; font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif; }}
-    .meta, .links, .muted {{ color: var(--muted); }}
-    .banner {{ display: inline-block; padding: 8px 12px; border-radius: 999px; font-weight: 700; background: rgba(14, 107, 96, 0.12); color: var(--accent); }}
-    .banner.bad {{ background: rgba(142, 59, 46, 0.12); color: var(--warn); }}
-    .cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 16px; }}
-    .card {{ padding: 14px; }}
-    .label {{ color: var(--muted); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }}
-    .value {{ font-size: 1.35rem; margin-top: 6px; }}
-    a {{ color: var(--accent); text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
-    table {{ width: 100%; border-collapse: collapse; }}
-    th, td {{ text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }}
-    th {{ color: var(--muted); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }}
-    .plot-stack {{ display: grid; grid-template-columns: 1fr; gap: 24px; }}
-    .plot-frame {{ margin: 0; }}
-    .plot-frame figcaption {{ margin-bottom: 10px; color: var(--muted); font-size: 0.95rem; }}
-    .plot-frame img {{ width: 100%; height: 520px; display: block; object-fit: fill; border-radius: 12px; border: 1px solid var(--line); background: #efe7da; }}
-    code {{ font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 0.9rem; white-space: pre-wrap; word-break: break-word; }}
-  </style>
-</head>
-<body>
-  <main>
-    <header>
-      <p class="links"><a href="{html.escape(index_href)}">bundle report</a>{f' | <a href="{html.escape(latest_href)}">latest page</a>' if latest_href else ''}</p>
-      <h1>{html.escape(selector)}</h1>
-      <p class="meta">scenario={html.escape(scenario_selector)}</p>
-      <p class="banner {'bad' if not bool(record.get('success', False)) else ''}">{html.escape(str(record.get('state') or '-'))} / failure={html.escape(str(record.get('failure_mode') or '-'))}</p>
-      <div class="cards">{cards}</div>
-    </header>
-
-    <section>
-      <h2>Plots</h2>
-      {gallery}
-      <p class="links">{' | '.join(link for link in [
-        f'<a href="{html.escape(candidate_href)}">candidate json</a>' if candidate_href else '',
-        f'<a href="{html.escape(manifest_href)}">plot manifest</a>' if manifest_href else '',
-        f'<a href="{html.escape(bundle_dir_href)}">plot bundle dir</a>' if bundle_dir_href else '',
-        f'<a href="{html.escape(representative_href)}">scenario representative detail</a>' if representative_href else '',
-      ] if link)}</p>
-    </section>
-
-    <section>
-      <h2>Events</h2>
-      {_render_events_table(list(plot_assets.get("events") or []))}
-    </section>
-
-    <section>
-      <h2>Commands</h2>
-      <details>
-        <summary>Show repro commands</summary>
-        <p><code>{repro_cmd}</code></p>
-        <p><code>{plot_cmd}</code></p>
-      </details>
-    </section>
-  </main>
-</body>
-</html>
-"""
 
 
 def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_root: Path) -> str:
@@ -1088,10 +1031,8 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
     raw_links: list[str] = []
     for label, path_rel in (
         ("candidate json", candidate.get("json_path")),
-        ("candidate csv", candidate.get("csv_path")),
         ("candidate meta", candidate.get("meta_path")),
         ("compare report", compare.get("json_path")),
-        ("plot pack", dict(bundle.get("plot_pack") or {}).get("manifest_path")),
         ("bundle json", bundle.get("bundle_json_path")),
     ):
         href = _href_from(bundle_dir, path_rel, outputs_root=outputs_root)
@@ -1139,7 +1080,6 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
         )
 
     benchmark_cmd = html.escape(" ".join(str(item) for item in benchmark.get("command") or []))
-    plot_cmd = html.escape(" ".join(str(item) for item in dict(bundle.get("plot_pack") or {}).get("command") or []))
     latest_href = _href_from(bundle_dir, bundle.get("latest_page_path"), outputs_root=outputs_root)
     scenario_sections_html = _render_scenario_sections(report, bundle_dir=bundle_dir, outputs_root=outputs_root)
     failure_sections_html = _render_failure_sections(report, bundle_dir=bundle_dir, outputs_root=outputs_root)
@@ -1369,7 +1309,6 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
       <details>
         <summary>Show commands</summary>
         <p><code>{benchmark_cmd}</code></p>
-        <p><code>{plot_cmd}</code></p>
       </details>
     </header>
 
@@ -1580,19 +1519,13 @@ def _bundle_payload(
     benchmark_exit_code: int,
     benchmark_wall_clock_s: float,
     candidate_json_path: Path,
-    candidate_csv_path: Path,
     candidate_meta_path: Path,
     candidate_payload: dict[str, Any],
     candidate_cached: str | None,
     compare_path: Path | None,
     compare_payload: dict[str, Any] | None,
-    plot_pack_cmd: list[str] | None,
-    plot_pack_exit_code: int | None,
-    plot_pack_wall_clock_s: float | None,
-    plot_pack_path: Path | None,
-    plot_pack_payload: dict[str, Any] | None,
-    plot_scope: str,
     outputs_root: Path,
+    viewer_assets: dict[str, str],
 ) -> dict[str, Any]:
     latest_page = "viewer/latest/index.html"
     bundle_page = f"viewer/bundles/{bundle_id}/index.html"
@@ -1604,16 +1537,11 @@ def _bundle_payload(
         "latest_page_path": latest_page,
         "bundle_page_path": bundle_page,
         "bundle_json_path": bundle_json,
+        "viewer_assets": dict(viewer_assets),
         "timing": {
             "benchmark_wall_clock_s": float(benchmark_wall_clock_s),
-            "plot_pack_wall_clock_s": None if plot_pack_wall_clock_s is None else float(plot_pack_wall_clock_s),
             "bundle_render_wall_clock_s": None,
             "total_wall_clock_s": None,
-            "plot_workers": (
-                int(dict(plot_pack_payload or {}).get("plot_workers"))
-                if dict(plot_pack_payload or {}).get("plot_workers") is not None
-                else None
-            ),
         },
         "benchmark": {
             "command": benchmark_cmd,
@@ -1622,9 +1550,13 @@ def _bundle_payload(
             "candidate": {
                 "cached": candidate_cached,
                 "json_path": _rel_to_outputs(candidate_json_path, outputs_root=outputs_root),
-                "csv_path": _rel_to_outputs(candidate_csv_path, outputs_root=outputs_root),
                 "meta_path": _rel_to_outputs(candidate_meta_path, outputs_root=outputs_root),
                 "summary": dict(candidate_payload.get("summary") or {}),
+                "schema": candidate_payload.get("schema"),
+                "schema_version": candidate_payload.get("schema_version"),
+                "trace_sample_period_s": candidate_payload.get("trace_sample_period_s"),
+                "trace_root_path": candidate_payload.get("trace_root_path"),
+                "trace_root_rel": candidate_payload.get("trace_root_rel"),
             },
             "failures": _failure_rows(candidate_payload),
         },
@@ -1636,17 +1568,6 @@ def _bundle_payload(
             if compare_path and compare_payload is not None
             else None
         ),
-        "plot_pack": (
-            {
-                "command": plot_pack_cmd,
-                "exit_code": plot_pack_exit_code,
-                "selection_scope": plot_scope,
-                "manifest_path": _rel_to_outputs(plot_pack_path, outputs_root=outputs_root),
-                "cases": list(plot_pack_payload.get("cases") or []),
-            }
-            if plot_pack_path is not None and plot_pack_payload is not None
-            else None
-        ),
     }
 
 
@@ -1656,13 +1577,15 @@ def _write_bundle_files(
     outputs_root: Path,
 ) -> tuple[Path, Path, Path]:
     render_started = time.perf_counter()
+    viewer_assets = ensure_viewer_assets(outputs_root)
+    bundle["viewer_assets"] = dict(viewer_assets)
     bundle_page_rel = Path(str(bundle["bundle_page_path"]))
     bundle_dir = (outputs_root / bundle_page_rel).parent
     bundle_dir.mkdir(parents=True, exist_ok=True)
     report = _build_bundle_report_model(bundle, outputs_root=outputs_root)
     detail_payloads: list[tuple[Path, str]] = []
 
-    for run in report.get("runs_by_selector", {}).values():
+    for run in report.get("runs") or []:
         if not isinstance(run, dict):
             continue
         detail_rel = str(run.get("detail_rel") or "").strip()
@@ -1688,7 +1611,7 @@ def _write_bundle_files(
     timing["bundle_render_wall_clock_s"] = render_elapsed
     timing["total_wall_clock_s"] = sum(
         float(timing.get(key) or 0.0)
-        for key in ("benchmark_wall_clock_s", "plot_pack_wall_clock_s", "bundle_render_wall_clock_s")
+        for key in ("benchmark_wall_clock_s", "bundle_render_wall_clock_s")
     )
     bundle["timing"] = timing
 
@@ -1897,12 +1820,6 @@ def main() -> None:
     ap.add_argument("--results-dir", default="outputs/benchmarks")
     ap.add_argument("--no-reuse", action="store_true")
     ap.add_argument("--crash-detail-limit", type=int, default=8)
-    ap.add_argument("--top-plots", type=int, default=8)
-    ap.add_argument("--plot-scope", choices=("top", "per-scenario", "per-run"), default="top")
-    ap.add_argument("--plot-mode", choices=("speed", "thrust", "all"), default="all")
-    ap.add_argument("--plot-output", choices=("combined", "split", "both"), default="split")
-    ap.add_argument("--plot-max-side-px", type=int, default=1800)
-    ap.add_argument("--plot-workers", type=int, default=0)
     ap.add_argument("--viewer-base-url", default=None)
     ap.add_argument("--viewer-hostname", default=None)
     ap.add_argument("--server-port", type=int, default=8765)
@@ -1934,7 +1851,6 @@ def main() -> None:
             "Unable to resolve candidate benchmark JSON from run_cached_benchmark output.\n"
             f"exit_code={benchmark_exit_code}\n{benchmark_output}"
         )
-    candidate_csv_path = _output_path(candidate_section.get("csv")) or _derive_csv_path(candidate_json_path)
     candidate_meta_path = _output_path(candidate_section.get("meta")) or _derive_meta_path(candidate_json_path)
 
     candidate_payload = load_json(candidate_json_path)
@@ -1950,27 +1866,7 @@ def main() -> None:
     bundle_id = _sanitize_token(f"{ts}_{candidate_json_path.stem}")
     bundle_dir = (outputs_root / "viewer" / "bundles" / bundle_id).resolve()
     bundle_dir.mkdir(parents=True, exist_ok=True)
-
-    plot_pack_cmd: list[str] | None = None
-    plot_pack_exit_code: int | None = None
-    plot_pack_wall_clock_s: float | None = None
-    plot_pack_path: Path | None = None
-    plot_pack_payload: dict[str, Any] | None = None
-
-    if str(args.plot_scope).strip().lower() in {"per-scenario", "per-run"} or int(args.top_plots) > 0:
-        plot_pack_path = bundle_dir / "plot_pack.json"
-        plot_pack_cmd = _plot_pack_command(
-            benchmark_json=candidate_json_path,
-            candidate_payload=candidate_payload,
-            compare_json=compare_path if compare_payload is not None else None,
-            bundle_plot_manifest=plot_pack_path,
-            args=args,
-        )
-        plot_pack_started = time.perf_counter()
-        plot_pack_exit_code, _plot_output = run_command(plot_pack_cmd, cwd=_REPO_ROOT)
-        plot_pack_wall_clock_s = time.perf_counter() - plot_pack_started
-        if plot_pack_path.exists():
-            plot_pack_payload = load_json(plot_pack_path)
+    viewer_assets = ensure_viewer_assets(outputs_root)
 
     bundle = _bundle_payload(
         bundle_id=bundle_id,
@@ -1979,19 +1875,13 @@ def main() -> None:
         benchmark_exit_code=benchmark_exit_code,
         benchmark_wall_clock_s=benchmark_wall_clock_s,
         candidate_json_path=candidate_json_path,
-        candidate_csv_path=candidate_csv_path,
         candidate_meta_path=candidate_meta_path,
         candidate_payload=candidate_payload,
         candidate_cached=candidate_section.get("cached"),
         compare_path=compare_path,
         compare_payload=compare_payload,
-        plot_pack_cmd=plot_pack_cmd,
-        plot_pack_exit_code=plot_pack_exit_code,
-        plot_pack_wall_clock_s=plot_pack_wall_clock_s,
-        plot_pack_path=plot_pack_path if plot_pack_payload is not None else None,
-        plot_pack_payload=plot_pack_payload,
-        plot_scope=str(args.plot_scope),
         outputs_root=outputs_root,
+        viewer_assets=viewer_assets,
     )
     bundle_page_path, bundle_json_path, latest_page_path = _write_bundle_files(
         bundle,
@@ -2008,26 +1898,18 @@ def main() -> None:
     print("# bench_bundle")
     print(f"server_status={server_status}")
     print(f"viewer_base_url={base_url}")
-    print(f"plot_scope={args.plot_scope}")
     print(f"benchmark_wall_clock_s={benchmark_wall_clock_s:.3f}")
-    if plot_pack_wall_clock_s is not None:
-        print(f"plot_pack_wall_clock_s={plot_pack_wall_clock_s:.3f}")
     timing = dict(bundle.get("timing") or {})
     if timing.get("bundle_render_wall_clock_s") is not None:
         print(f"bundle_render_wall_clock_s={float(timing['bundle_render_wall_clock_s']):.3f}")
     if timing.get("total_wall_clock_s") is not None:
         print(f"total_wall_clock_s={float(timing['total_wall_clock_s']):.3f}")
-    if timing.get("plot_workers") is not None:
-        print(f"plot_workers={int(timing['plot_workers'])}")
     if server_state_path is not None:
         print(f"server_state={server_state_path}")
     print(f"candidate_json={candidate_json_path}")
-    print(f"candidate_csv={candidate_csv_path}")
     print(f"candidate_meta={candidate_meta_path}")
     if compare_path is not None:
         print(f"compare_json={compare_path}")
-    if plot_pack_path is not None and plot_pack_payload is not None:
-        print(f"plot_pack_manifest={plot_pack_path}")
     print(f"bundle_page={bundle_page_path}")
     print(f"bundle_json={bundle_json_path}")
     print(f"latest_page={latest_page_path}")

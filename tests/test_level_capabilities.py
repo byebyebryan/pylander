@@ -6,9 +6,8 @@ from core.level_capabilities import (
     BenchmarkScenarioSets,
     LevelBenchmarkProfile,
     level_name_tag,
-    level_plot_max_side_px,
-    level_plot_mode,
-    level_plot_output,
+    level_trace_enabled,
+    level_trace_sample_period_s,
     level_scenario_tag,
     list_batch_scenarios_safe,
     resolve_default_bot_name,
@@ -97,9 +96,8 @@ def test_level_tag_helpers_apply_defaults() -> None:
         pass
 
     level = _Level()
-    assert level_plot_mode(level) == "none"
-    assert level_plot_output(level) == "combined"
-    assert level_plot_max_side_px(level) == 1800
+    assert level_trace_enabled(level) is False
+    assert level_trace_sample_period_s(level) == 0.25
     assert level_name_tag(level) == type(level).__module__.split(".")[-1]
     assert level_scenario_tag(level) == ""
 

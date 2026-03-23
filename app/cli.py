@@ -78,24 +78,16 @@ def _add_common_run_args(
         help="Limit simulation to S seconds (default: 300)",
     )
     parser.add_argument(
-        "-p",
-        "--plot",
-        choices=("none", "speed", "thrust", "all"),
+        "--trace",
+        action=argparse.BooleanOptionalAction,
         default=None,
-        help="Trajectory plot mode",
+        help="Enable structured trace capture for this run",
     )
     parser.add_argument(
-        "-o",
-        "--plot-output",
-        choices=("combined", "split", "both"),
+        "--trace-sample-period-s",
+        type=float,
         default=None,
-        help="Plot output profile (combined image, split panels, or both)",
-    )
-    parser.add_argument(
-        "--plot-max-side-px",
-        type=int,
-        default=None,
-        help="Max plot image long side in pixels (default: 1800)",
+        help="Trace sampling period in seconds (default: 0.25 when tracing is enabled)",
     )
     parser.add_argument(
         "--stop-on-crash",
@@ -153,7 +145,7 @@ def build_parser() -> argparse.ArgumentParser:
     sim = sub.add_parser("sim", help="Single headless simulation run")
     _add_common_run_args(sim, include_freq=True)
 
-    plot = sub.add_parser("plot", help="Headless simulation with plotting enabled")
+    plot = sub.add_parser("plot", help="Headless simulation with trace capture enabled")
     _add_common_run_args(plot, include_freq=True)
 
     bench = sub.add_parser("bench", help="Headless benchmark batch")
@@ -173,27 +165,18 @@ def build_parser() -> argparse.ArgumentParser:
     bench.add_argument("-n", "--steps", type=int, default=None, help="Limit simulation to N steps")
     bench.add_argument("-t", "--time", type=float, default=None, help="Limit simulation to S seconds")
     bench.add_argument(
-        "-p",
-        "--plot",
-        choices=("none", "speed", "thrust", "all"),
-        default="none",
-        help="Plot mode for headless runs",
+        "--trace-sample-period-s",
+        type=float,
+        default=0.25,
+        help="Trace sampling period in seconds for benchmark capture",
     )
     bench.add_argument(
-        "-o",
-        "--plot-output",
-        choices=("combined", "split", "both"),
-        default="combined",
-        help="Plot output profile for headless benchmark runs",
+        "-j",
+        "--json",
+        type=str,
+        default="auto",
+        help="Write tracepack JSON path (or 'auto')",
     )
-    bench.add_argument(
-        "--plot-max-side-px",
-        type=int,
-        default=1800,
-        help="Max plot image long side in pixels",
-    )
-    bench.add_argument("-j", "--json", type=str, default=None, help="Write report JSON path (or 'auto')")
-    bench.add_argument("-c", "--csv", type=str, default=None, help="Write report CSV path (or 'auto')")
     bench.add_argument(
         "--bot-profile",
         action=argparse.BooleanOptionalAction,
@@ -239,7 +222,7 @@ def _build_run_settings(
     levels: set[str],
     default_level: str | None,
     headless: bool,
-    default_plot_mode: str,
+    default_trace_enabled: bool,
 ) -> RunSettings:
     if headless:
         print_freq = 60 if args.freq is None else int(args.freq)
@@ -272,9 +255,12 @@ def _build_run_settings(
             )
             raise AssertionError from exc
 
-    plot_mode = default_plot_mode if args.plot is None else str(args.plot)
-    plot_output = "combined" if args.plot_output is None else str(args.plot_output)
-    plot_max_side_px = 1800 if args.plot_max_side_px is None else max(256, int(args.plot_max_side_px))
+    trace_enabled = default_trace_enabled if args.trace is None else bool(args.trace)
+    trace_sample_period_s = (
+        0.25
+        if args.trace_sample_period_s is None
+        else max(0.05, float(args.trace_sample_period_s))
+    )
     return RunSettings(
         level_name=binding.level_name,
         runtime_level_name=binding.runtime_level_name,
@@ -288,9 +274,9 @@ def _build_run_settings(
         print_freq=print_freq,
         max_time=300.0 if args.time is None else float(args.time),
         max_steps=args.steps,
-        plot_mode=plot_mode,
-        plot_output=plot_output,
-        plot_max_side_px=plot_max_side_px,
+        trace_enabled=trace_enabled,
+        trace_sample_period_s=trace_sample_period_s,
+        trace_root_dir=None,
         stop_on_crash=bool(args.stop_on_crash),
         stop_on_out_of_fuel=bool(args.stop_on_out_of_fuel),
         stop_on_first_land=bool(args.stop_on_first_land),
@@ -329,7 +315,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
                 levels=levels,
                 default_level=default_level,
                 headless=False,
-                default_plot_mode="none",
+                default_trace_enabled=False,
             )
         )
 
@@ -342,7 +328,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
                 levels=levels,
                 default_level=default_level,
                 headless=headless,
-                default_plot_mode="none",
+                default_trace_enabled=False,
             )
         )
 
@@ -354,7 +340,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
                 levels=levels,
                 default_level=default_level,
                 headless=True,
-                default_plot_mode="none",
+                default_trace_enabled=False,
             )
         )
 
@@ -366,7 +352,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
                 levels=levels,
                 default_level=default_level,
                 headless=True,
-                default_plot_mode="all",
+                default_trace_enabled=True,
             )
         )
 
@@ -416,11 +402,9 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
             workers=workers,
             max_time=300.0 if args.time is None else float(args.time),
             max_steps=args.steps,
-            plot_mode=args.plot,
-            plot_output=str(args.plot_output or "combined"),
-            plot_max_side_px=max(256, int(args.plot_max_side_px)),
+            trace_enabled=True,
+            trace_sample_period_s=max(0.05, float(args.trace_sample_period_s)),
             json_path=args.json,
-            csv_path=args.csv,
             bot_profile_enabled=bool(args.bot_profile),
             bot_profile_interval_s=(
                 None
@@ -446,10 +430,9 @@ def announce_command(command: Command) -> None:
         print(f"Workers requested: {cfg.workers}")
         if cfg.bot_config_path:
             print(f"Bot config: {cfg.bot_config_path}")
-        print(f"Plot: {cfg.plot_mode}")
-        if cfg.plot_mode != "none":
-            print(f"Plot output: {cfg.plot_output}")
-            print(f"Plot max side: {cfg.plot_max_side_px}px")
+        print(f"Trace capture: {'on' if cfg.trace_enabled else 'off'}")
+        if cfg.trace_enabled:
+            print(f"Trace sample period: {cfg.trace_sample_period_s:.2f}s")
         print(f"Bot profile: {'on' if cfg.bot_profile_enabled else 'off'}")
         print(f"Bot profile logs: {'on' if cfg.bot_profile_log_lines else 'off'}")
         if cfg.bot_profile_interval_s is not None:
@@ -487,7 +470,6 @@ def _print_run_summary(cfg: RunSettings) -> None:
         print(f"Max time: {cfg.max_time:.1f}s")
         if cfg.max_steps is not None:
             print(f"Max steps: {cfg.max_steps}")
-        print(f"Plot: {cfg.plot_mode}")
-        if cfg.plot_mode != "none":
-            print(f"Plot output: {cfg.plot_output}")
-            print(f"Plot max side: {cfg.plot_max_side_px}px")
+        print(f"Trace capture: {'on' if cfg.trace_enabled else 'off'}")
+        if cfg.trace_enabled:
+            print(f"Trace sample period: {cfg.trace_sample_period_s:.2f}s")

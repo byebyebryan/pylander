@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from core.bot import FlightPhaseSnapshot, PlotMarker
+from core.bot import BoostCutoffMetrics, FlightPhaseSnapshot, PlotMarker
 from core.components import Transform
 
 _SHARED_MILESTONE_LABELS: dict[str, tuple[str, str]] = {
@@ -76,6 +76,26 @@ def _emit_plot_event(
     events_seen.add(event_key)
 
 
+def _boost_cutoff_event_payload(
+    boost_cutoff: BoostCutoffMetrics | None,
+) -> tuple[float | None, float | None, dict[str, float | str | None] | None]:
+    if boost_cutoff is None:
+        return None, None, None
+    metadata: dict[str, float | str | None] = {}
+    for key in ("time_s", "vx", "vy_up"):
+        value = getattr(boost_cutoff, key, None)
+        if value is None:
+            continue
+        metadata[key] = float(value)
+    x = getattr(boost_cutoff, "x", None)
+    y = getattr(boost_cutoff, "y", None)
+    event_x = None if x is None else float(x)
+    event_y = None if y is None else float(y)
+    if event_x is None and event_y is None and not metadata:
+        return None, None, None
+    return event_x, event_y, metadata
+
+
 def track_plot_events(
     *,
     actor_bots: dict[str, Any],
@@ -92,6 +112,36 @@ def track_plot_events(
             continue
         default_x = float(trans.pos.x)
         default_y = float(trans.pos.y)
+
+        phase_snapshot = _safe_phase_snapshot(bot)
+        if phase_snapshot is not None:
+            for milestone in phase_snapshot.milestones:
+                marker_spec = _SHARED_MILESTONE_LABELS.get(str(milestone))
+                if marker_spec is None:
+                    continue
+                event_name, label = marker_spec
+                event_x = None
+                event_y = None
+                metadata: dict[str, float | str | None] | None = None
+                if event_name == "boost_cutoff":
+                    event_x, event_y, metadata = _boost_cutoff_event_payload(
+                        phase_snapshot.boost_cutoff
+                    )
+                    if event_x is None and event_y is None and metadata is None:
+                        continue
+                _emit_plot_event(
+                    plotter=plotter,
+                    events_seen=events_seen,
+                    actor_uid=uid,
+                    event_id=str(milestone),
+                    event_name=event_name,
+                    label=label,
+                    default_x=default_x,
+                    default_y=default_y,
+                    x=event_x,
+                    y=event_y,
+                    metadata=metadata,
+                )
 
         for marker in _safe_plot_markers(bot):
             event_id = str(marker.id).strip()
@@ -112,21 +162,3 @@ def track_plot_events(
                 y=marker.y,
                 metadata=dict(marker.metadata),
             )
-
-        phase_snapshot = _safe_phase_snapshot(bot)
-        if phase_snapshot is not None:
-            for milestone in phase_snapshot.milestones:
-                marker_spec = _SHARED_MILESTONE_LABELS.get(str(milestone))
-                if marker_spec is None:
-                    continue
-                event_name, label = marker_spec
-                _emit_plot_event(
-                    plotter=plotter,
-                    events_seen=events_seen,
-                    actor_uid=uid,
-                    event_id=str(milestone),
-                    event_name=event_name,
-                    label=label,
-                    default_x=default_x,
-                    default_y=default_y,
-                )
