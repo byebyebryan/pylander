@@ -38,6 +38,7 @@ summary context.
 - `bot` (default: `pdg`)
 - `top_n` (default: `8`)
 - `trace_sample_period_s` (default: `0.25` for `main.py plot`)
+- `trace_detail` (default: `debug` for `main.py plot`)
 - `execute` (default: true)
 
 ## Core command
@@ -55,7 +56,7 @@ Preferred remote-sharing command for benchmark-backed requests:
 - fallback to benchmark records with large generic boost-cutoff miss, bot-owned terminal-entry miss, or fuel signals
 - `focus`: use explicit selectors only
 2. Generate plot command(s) per case:
-- `main.py plot <selector> --trace-sample-period-s <seconds>`
+- `main.py plot <selector> --trace-sample-period-s <seconds> --trace-detail debug`
 3. Write pack manifest under `outputs/viewer/plot-packs/pack_<ts>/manifest.json` with:
 - case reasons/severity
 - executed commands
@@ -69,5 +70,6 @@ return the stable latest URL instead of only listing files.
 ## Notes
 
 - The benchmark/report workflow is trace-first; PNGs remain only as small preview thumbnails.
+- `plot` defaults to `debug` traces; benchmark bundles default to lean `report` traces.
 - Current triage ranking uses `boost_cutoff_projected_dx` and the selected bot's
   `bot_<botname>_terminal_entry_projected_dx` when available.

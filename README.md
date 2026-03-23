@@ -220,6 +220,7 @@ pages render interactive Plotly charts directly from per-run trace JSON.
 - `-n, --steps N`
 - `-t, --time S`
 - `--trace-sample-period-s S` (default: 0.25)
+- `--trace-detail report|replay|debug` (default: `report` for `bench`)
 - `-j, --json PATH|auto`
 - `--bot-profile, --no-bot-profile` (default: on)
 - `--bot-profile-interval-s S` (optional profiler log interval)
@@ -236,6 +237,16 @@ PNGs under the sibling tracepack directory. Plain `bench` runs write it by
 default; explicit `--json` paths overwrite exactly, while `--json auto` uses
 collision-safe names.
 
+Trace detail defaults now vary by command:
+
+- `bench`: `report` (optimized for report rendering and analysis)
+- `plot`: `debug` (keeps verbose bot-action debug logs)
+- `run` / `sim` with `--trace`: `report`
+
+Opt into richer trace capture with `--trace-detail replay` or
+`--trace-detail debug`. The default `report` mode keeps snapshots, events,
+derived plot data, and final results, but omits the large per-tick control log.
+
 Boost-phase evaluation metrics are reported through generic fields such as
 `boost_cutoff_*` and `boost_goal_*`. For `terminal:normal:*` and `terminal:error:*:*`,
 `boost_cutoff_*` is a spawn-time coast-entry snapshot rather than a post-burn
@@ -245,7 +256,7 @@ boost-cutoff latch. Bot-owned diagnostics stay namespaced under
 
 Trace-enabled runs emit trace metadata such as `trace_path`,
 `trace_preview_path`, optional outputs-relative `trace_rel_path` and
-`trace_preview_rel_path`, `run_key`, `run_instance_id`,
+`trace_preview_rel_path`, `run_key`, `run_instance_id`, `trace_detail`,
 `trace_sample_period_s`, and trace event/snapshot counts.
 
 ## Project skills

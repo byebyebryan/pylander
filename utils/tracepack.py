@@ -5,6 +5,12 @@ import math
 from pathlib import Path
 from typing import Any, Callable
 
+from core.trace_policy import (
+    TRACE_DETAIL_DEBUG,
+    TRACE_DETAIL_REPLAY,
+    TRACE_DETAIL_REPORT,
+    normalize_trace_detail,
+)
 from core.bot import Bot, BotAction, BotDisplayState, BotEvalDecision, FlightPhaseSnapshot
 from core.components import (
     ActorProfile,
@@ -42,8 +48,8 @@ from utils.plot import (
 
 TRACEPACK_SCHEMA = "pylander.tracepack.v1"
 RUN_TRACE_SCHEMA = "pylander.run_trace.v1"
-TRACEPACK_SCHEMA_VERSION = 2
-RUN_TRACE_SCHEMA_VERSION = 1
+TRACEPACK_SCHEMA_VERSION = 3
+RUN_TRACE_SCHEMA_VERSION = 2
 
 
 def _safe_float(value: Any) -> float | None:
@@ -97,7 +103,7 @@ def _sanitize_token(value: str) -> str:
 
 def _json_write(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    path.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
 
 
 def _vector_payload(vec: Any) -> dict[str, float] | None:
@@ -616,6 +622,7 @@ class TraceRecorder:
         *,
         enabled: bool = False,
         sample_period_s: float = 0.25,
+        detail: str = TRACE_DETAIL_REPORT,
         outputs_root: str | Path = "outputs",
     ) -> None:
         self.enabled = bool(enabled)
@@ -627,6 +634,7 @@ class TraceRecorder:
         self._selector_tag = "run"
         self._trace_root_dir: Path | None = None
         self._sample_period_s = max(0.05, float(sample_period_s))
+        self._trace_detail = normalize_trace_detail(detail, default=TRACE_DETAIL_REPORT)
         self._time_accum = 0.0
         self._sample_time_s = 0.0
         self._snapshots: list[dict[str, Any]] = []
@@ -644,6 +652,18 @@ class TraceRecorder:
 
     def set_sample_period_s(self, value: float) -> None:
         self._sample_period_s = max(0.05, float(value))
+
+    def set_trace_detail(self, value: str) -> None:
+        self._trace_detail = normalize_trace_detail(value, default=TRACE_DETAIL_REPORT)
+
+    def _control_log_enabled(self) -> bool:
+        return self._trace_detail in {TRACE_DETAIL_REPLAY, TRACE_DETAIL_DEBUG}
+
+    def _debug_bot_action_enabled(self) -> bool:
+        return self._trace_detail == TRACE_DETAIL_DEBUG
+
+    def _include_entity_catalog(self) -> bool:
+        return self._trace_detail in {TRACE_DETAIL_REPLAY, TRACE_DETAIL_DEBUG}
 
     def set_identity(
         self,
@@ -726,7 +746,7 @@ class TraceRecorder:
         update_s: float,
         bot: Bot,
     ) -> None:
-        if not self.enabled:
+        if not self.enabled or not self._debug_bot_action_enabled():
             return
         self._control_log.append(
             {
@@ -772,7 +792,7 @@ class TraceRecorder:
         elapsed_time_s: float,
         controls_by_uid: dict[str, tuple[float, float, bool] | None],
     ) -> None:
-        if not self.enabled:
+        if not self.enabled or not self._control_log_enabled():
             return
         serialized: dict[str, Any] = {}
         for uid, control in controls_by_uid.items():
@@ -815,16 +835,17 @@ class TraceRecorder:
                 continue
             payload[key] = value
         self._events.append(payload)
-        self._control_log.append(
-            {
-                "kind": "event",
-                "elapsed_time_s": _event_time(payload) if _event_time(payload) is not None else self._sample_time_s,
-                "event": dict(payload),
-            }
-        )
+        if self._control_log_enabled():
+            self._control_log.append(
+                {
+                    "kind": "event",
+                    "elapsed_time_s": _event_time(payload) if _event_time(payload) is not None else self._sample_time_s,
+                    "event": dict(payload),
+                }
+            )
 
     def record_eval_decision(self, *, elapsed_time_s: float, decision: BotEvalDecision) -> None:
-        if not self.enabled:
+        if not self.enabled or not self._control_log_enabled():
             return
         self._control_log.append(
             {
@@ -881,13 +902,14 @@ class TraceRecorder:
         outcome_event = self._build_outcome_event(elapsed_time_s=float(elapsed_time_s))
         if outcome_event is not None:
             self._events.append(outcome_event)
-            self._control_log.append(
-                {
-                    "kind": "outcome",
-                    "elapsed_time_s": float(elapsed_time_s),
-                    "event": dict(outcome_event),
-                }
-            )
+            if self._control_log_enabled():
+                self._control_log.append(
+                    {
+                        "kind": "outcome",
+                        "elapsed_time_s": float(elapsed_time_s),
+                        "event": dict(outcome_event),
+                    }
+                )
 
         primary_uid = self._primary_uid or self.active_uid_getter()
         samples = _trace_primary_samples(self._snapshots, primary_uid=primary_uid)
@@ -903,17 +925,13 @@ class TraceRecorder:
             "schema_version": RUN_TRACE_SCHEMA_VERSION,
             "selector_tag": self._selector_tag,
             "trace_sample_period_s": float(self._sample_period_s),
+            "trace_detail": self._trace_detail,
             "primary_uid": primary_uid,
             "identity": dict(self._identity),
             "target": dict(self._target or {}) or None,
             "terrain_profile": terrain_payload,
-            "entity_catalog": [
-                _serialize_entity(entity, actor_bots=self.actor_bots)
-                for entity in self.ecs_world.entities
-            ],
             "snapshots": list(self._snapshots),
             "events": list(self._events),
-            "control_log": list(self._control_log),
             "plot": plot_payload,
             "final_result": {
                 key: value
@@ -921,6 +939,13 @@ class TraceRecorder:
                 if isinstance(key, str) and not key.startswith("_")
             },
         }
+        if self._include_entity_catalog():
+            trace_payload["entity_catalog"] = [
+                _serialize_entity(entity, actor_bots=self.actor_bots)
+                for entity in self.ecs_world.entities
+            ]
+        if self._control_log_enabled():
+            trace_payload["control_log"] = list(self._control_log)
 
         trace_root_dir = self._trace_root_dir
         if trace_root_dir is None:
@@ -949,6 +974,7 @@ class TraceRecorder:
             "trace_preview_rel_path": preview_rel_path if preview_path.exists() else None,
             "trace_schema_version": RUN_TRACE_SCHEMA_VERSION,
             "trace_sample_period_s": float(self._sample_period_s),
+            "trace_detail": self._trace_detail,
             "trace_snapshot_count": len(self._snapshots),
             "trace_event_count": len(self._events),
             "trace_control_log_count": len(self._control_log),

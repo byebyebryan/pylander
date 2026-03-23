@@ -220,6 +220,7 @@ def _plot_command(
     *,
     bot: str,
     trace_sample_period_s: float,
+    trace_detail: str,
 ) -> list[str]:
     return [
         "uv",
@@ -232,6 +233,8 @@ def _plot_command(
         bot,
         "--trace-sample-period-s",
         f"{max(0.05, float(trace_sample_period_s)):.3f}",
+        "--trace-detail",
+        str(trace_detail),
     ]
 
 
@@ -250,11 +253,13 @@ def _run_plot_command(
     *,
     bot: str,
     trace_sample_period_s: float,
+    trace_detail: str,
 ) -> dict[str, Any]:
     cmd = _plot_command(
         selector,
         bot=bot,
         trace_sample_period_s=trace_sample_period_s,
+        trace_detail=trace_detail,
     )
     started = time.perf_counter()
     proc = subprocess.run(
@@ -282,6 +287,7 @@ def _case_run(
     index: int,
     bot: str,
     trace_sample_period_s: float,
+    trace_detail: str,
     execute: bool,
 ) -> dict[str, Any]:
     selector = str(case.get("selector") or "").strip()
@@ -289,6 +295,7 @@ def _case_run(
         selector,
         bot=bot,
         trace_sample_period_s=trace_sample_period_s,
+        trace_detail=trace_detail,
     )
     if not execute:
         return {
@@ -307,6 +314,7 @@ def _case_run(
         selector,
         bot=bot,
         trace_sample_period_s=trace_sample_period_s,
+        trace_detail=trace_detail,
     )
     return {
         **case,
@@ -556,6 +564,7 @@ def main() -> None:
     ap.add_argument("--bot", default="pdg")
     ap.add_argument("--top-n", type=int, default=8)
     ap.add_argument("--trace-sample-period-s", type=float, default=0.25)
+    ap.add_argument("--trace-detail", choices=("report", "replay", "debug"), default="debug")
     ap.add_argument("--plot-workers", type=int, default=0)
     ap.add_argument("--execute", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--output-manifest", type=str, default=None)
@@ -620,6 +629,7 @@ def main() -> None:
                     index=idx,
                     bot=args.bot,
                     trace_sample_period_s=max(0.05, float(args.trace_sample_period_s)),
+                    trace_detail=str(args.trace_detail),
                     execute=bool(args.execute),
                 )
             )
@@ -633,6 +643,7 @@ def main() -> None:
                     index=idx,
                     bot=args.bot,
                     trace_sample_period_s=max(0.05, float(args.trace_sample_period_s)),
+                    trace_detail=str(args.trace_detail),
                     execute=bool(args.execute),
                 ): idx
                 for idx, case in filtered_cases
@@ -680,6 +691,7 @@ def main() -> None:
         "mode": args.mode,
         "bot": args.bot,
         "trace_sample_period_s": max(0.05, float(args.trace_sample_period_s)),
+        "trace_detail": str(args.trace_detail),
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
         "started_at_utc": started_at_utc,
         "wall_clock_s": wall_clock_s,

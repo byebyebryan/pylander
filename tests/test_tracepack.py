@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from matplotlib.axes import Axes
 
-from core.components import Transform
+from core.bot import BotAction, BotEvalDecision
+from core.components import Engine, FuelTank, LanderState, PhysicsState, Transform
 from core.ecs import Entity, World
 from core.maths import Vector2
 from utils import tracepack
@@ -142,3 +144,153 @@ def test_trace_recorder_samples_current_frame_time_without_backdating(tmp_path: 
     trace_payload = json.loads(Path(str(trace_meta["trace_path"])).read_text(encoding="utf-8"))
     snapshots = trace_payload["snapshots"]
     assert [round(float(item["elapsed_time_s"]), 3) for item in snapshots[:3]] == [0.0, 0.3, 0.9]
+
+
+def _make_trace_recorder(tmp_path: Path, *, detail: str) -> tuple[tracepack.TraceRecorder, Entity]:
+    class _Terrain:
+        def __call__(self, _x: float, lod: int = 0) -> float:
+            _ = lod
+            return 0.0
+
+        def get_resolution(self, lod: int = 0) -> float:
+            _ = lod
+            return 4.0
+
+    actor = Entity("lander")
+    actor.add_component(Transform(pos=Vector2(1.0, 4.0)))
+    actor.add_component(PhysicsState())
+    actor.add_component(Engine())
+    actor.add_component(FuelTank())
+    actor.add_component(LanderState(state="landed"))
+    world = World()
+    world.add_entity(actor)
+    recorder = tracepack.TraceRecorder(
+        enabled=True,
+        terrain=_Terrain(),
+        ecs_world=world,
+        actor_bots={},
+        active_uid_getter=lambda: "lander",
+        outputs_root=tmp_path,
+        sample_period_s=0.25,
+        detail=detail,
+    )
+    recorder.seed_initial_sample()
+    return recorder, actor
+
+
+def test_trace_recorder_report_mode_omits_control_log_and_entity_catalog(tmp_path: Path) -> None:
+    recorder, actor = _make_trace_recorder(tmp_path, detail="report")
+    actor.get_component(Transform).pos = Vector2(10.0, 4.0)  # type: ignore[union-attr]
+    recorder.update(0.30, elapsed_time_s=0.30)
+    recorder.record_controls_map(
+        elapsed_time_s=0.30,
+        controls_by_uid={"lander": (0.7, 0.1, False)},
+    )
+    recorder.mark_event(name="boost_cutoff", x=5.0, y=9.0, metadata={"time_s": 0.30})
+    recorder.record_eval_decision(
+        elapsed_time_s=0.30,
+        decision=BotEvalDecision(should_end=True, success=True, end_reason="done"),
+    )
+
+    trace_meta = recorder.finalize(result={"state": "landed", "success": True}, elapsed_time_s=0.30)
+    trace_path = Path(str(trace_meta["trace_path"]))
+    trace_payload = json.loads(trace_path.read_text(encoding="utf-8"))
+
+    assert trace_meta["trace_detail"] == "report"
+    assert trace_meta["trace_control_log_count"] == 0
+    assert trace_payload["trace_detail"] == "report"
+    assert "control_log" not in trace_payload
+    assert "entity_catalog" not in trace_payload
+    assert trace_path.read_text(encoding="utf-8").count("\n") == 0
+
+
+def test_trace_recorder_replay_mode_keeps_lean_control_log(tmp_path: Path) -> None:
+    recorder, _actor = _make_trace_recorder(tmp_path, detail="replay")
+    sensors = SimpleNamespace(
+        x=0.0,
+        y=4.0,
+        altitude=4.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=0.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=100.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        state="flying",
+    )
+    recorder.record_bot_action(
+        uid="lander",
+        elapsed_time_s=0.10,
+        bot_dt_s=1 / 60,
+        sensors=sensors,
+        action=BotAction(target_thrust=0.3, target_angle=0.0, refuel=False),
+        passive_s=0.001,
+        update_s=0.002,
+        bot=object(),  # type: ignore[arg-type]
+    )
+    recorder.record_controls_map(
+        elapsed_time_s=0.10,
+        controls_by_uid={"lander": (0.3, 0.0, False)},
+    )
+    recorder.mark_event(name="boost_cutoff", x=5.0, y=9.0, metadata={"time_s": 0.10})
+    recorder.record_eval_decision(
+        elapsed_time_s=0.30,
+        decision=BotEvalDecision(should_end=True, success=True, end_reason="done"),
+    )
+
+    trace_meta = recorder.finalize(result={"state": "landed", "success": True}, elapsed_time_s=0.30)
+    trace_payload = json.loads(Path(str(trace_meta["trace_path"])).read_text(encoding="utf-8"))
+    kinds = [item["kind"] for item in trace_payload["control_log"]]
+
+    assert trace_meta["trace_detail"] == "replay"
+    assert "entity_catalog" in trace_payload
+    assert "bot_action" not in kinds
+    assert "routed_controls" in kinds
+    assert "event" in kinds
+    assert "eval_decision" in kinds
+    assert "outcome" in kinds
+
+
+def test_trace_recorder_debug_mode_keeps_verbose_bot_action_log(tmp_path: Path) -> None:
+    recorder, _actor = _make_trace_recorder(tmp_path, detail="debug")
+    sensors = SimpleNamespace(
+        x=0.0,
+        y=4.0,
+        altitude=4.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=0.0,
+        vy_up=0.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=100.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        state="flying",
+    )
+    recorder.record_bot_action(
+        uid="lander",
+        elapsed_time_s=0.10,
+        bot_dt_s=1 / 60,
+        sensors=sensors,
+        action=BotAction(target_thrust=0.3, target_angle=0.0, refuel=False, status="ok"),
+        passive_s=0.001,
+        update_s=0.002,
+        bot=object(),  # type: ignore[arg-type]
+    )
+    recorder.record_controls_map(
+        elapsed_time_s=0.10,
+        controls_by_uid={"lander": (0.3, 0.0, False)},
+    )
+
+    trace_meta = recorder.finalize(result={"state": "landed", "success": True}, elapsed_time_s=0.30)
+    trace_payload = json.loads(Path(str(trace_meta["trace_path"])).read_text(encoding="utf-8"))
+    kinds = [item["kind"] for item in trace_payload["control_log"]]
+
+    assert trace_meta["trace_detail"] == "debug"
+    assert "bot_action" in kinds

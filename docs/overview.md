@@ -95,6 +95,13 @@ Headless tracing supports:
 - `--trace` / `--no-trace` for single-run `run` / `sim`
 - `plot` command defaults to trace capture
 - `--trace-sample-period-s <seconds>` to control sampled snapshot cadence
+- `--trace-detail <report|replay|debug>` to control trace verbosity
+
+Trace detail defaults:
+
+- `bench`: `report`
+- `plot`: `debug`
+- `run` / `sim` with trace enabled: `report`
 
 Benchmark runs write canonical tracepack manifests plus per-run trace files and
 preview PNGs by default. Trace-enabled run results may include:
@@ -105,6 +112,7 @@ preview PNGs by default. Trace-enabled run results may include:
 - `trace_preview_rel_path`
 - `run_key`
 - `run_instance_id`
+- `trace_detail`
 - `trace_sample_period_s`
 - `trace_snapshot_count`
 - `trace_event_count`

@@ -17,6 +17,7 @@ from utils.input import InputHandler
 from utils.tracepack import TraceRecorder
 from core.level_capabilities import (
     level_name_tag,
+    level_trace_detail,
     level_trace_enabled,
     level_trace_sample_period_s,
     level_scenario_tag,
@@ -194,6 +195,7 @@ def bootstrap_trace_runtime(
         active_uid_getter,
         enabled=(headless and level_trace_enabled(level)),
         sample_period_s=level_trace_sample_period_s(level),
+        detail=level_trace_detail(level),
     )
     explicit_tag = getattr(level, "trace_selector_tag", None)
     if isinstance(explicit_tag, str) and explicit_tag.strip():

@@ -1555,6 +1555,7 @@ def _bundle_payload(
                 "schema": candidate_payload.get("schema"),
                 "schema_version": candidate_payload.get("schema_version"),
                 "trace_sample_period_s": candidate_payload.get("trace_sample_period_s"),
+                "trace_detail": candidate_payload.get("trace_detail"),
                 "trace_root_path": candidate_payload.get("trace_root_path"),
                 "trace_root_rel": candidate_payload.get("trace_root_rel"),
             },

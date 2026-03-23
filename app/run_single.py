@@ -102,6 +102,7 @@ def configure_level(level, settings: RunSettings, *, benchmark_mode: str | None 
 
     level.trace_enabled = settings.trace_enabled
     level.trace_sample_period_s = settings.trace_sample_period_s
+    level.trace_detail = settings.trace_detail
     level.trace_root_dir = settings.trace_root_dir
     level.max_time = settings.max_time
     if settings.lander_name:

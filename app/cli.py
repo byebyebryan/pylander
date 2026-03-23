@@ -3,11 +3,16 @@ from __future__ import annotations
 import argparse
 import os
 
+from app.config import BenchCommand, BenchSettings, BenchTarget, Command, RunCommand, RunSettings
 from bots import list_available_bots
 from landers import list_available_landers
-
-from app.config import BenchCommand, BenchSettings, BenchTarget, Command, RunCommand, RunSettings
 from app.selector import parse_seed_spec, parse_selector, render_selector
+from core.trace_policy import (
+    TRACE_DETAIL_DEBUG,
+    TRACE_DETAIL_MODES,
+    TRACE_DETAIL_REPORT,
+    normalize_trace_detail,
+)
 from levels.registry import (
     expand_selector_bindings,
     list_public_levels,
@@ -88,6 +93,12 @@ def _add_common_run_args(
         type=float,
         default=None,
         help="Trace sampling period in seconds (default: 0.25 when tracing is enabled)",
+    )
+    parser.add_argument(
+        "--trace-detail",
+        choices=TRACE_DETAIL_MODES,
+        default=None,
+        help="Trace detail level when tracing is enabled",
     )
     parser.add_argument(
         "--stop-on-crash",
@@ -171,6 +182,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Trace sampling period in seconds for benchmark capture",
     )
     bench.add_argument(
+        "--trace-detail",
+        choices=TRACE_DETAIL_MODES,
+        default=TRACE_DETAIL_REPORT,
+        help="Trace detail level for benchmark capture",
+    )
+    bench.add_argument(
         "-j",
         "--json",
         type=str,
@@ -223,6 +240,7 @@ def _build_run_settings(
     default_level: str | None,
     headless: bool,
     default_trace_enabled: bool,
+    default_trace_detail: str,
 ) -> RunSettings:
     if headless:
         print_freq = 60 if args.freq is None else int(args.freq)
@@ -261,6 +279,7 @@ def _build_run_settings(
         if args.trace_sample_period_s is None
         else max(0.05, float(args.trace_sample_period_s))
     )
+    trace_detail = normalize_trace_detail(args.trace_detail, default=default_trace_detail)
     return RunSettings(
         level_name=binding.level_name,
         runtime_level_name=binding.runtime_level_name,
@@ -276,6 +295,7 @@ def _build_run_settings(
         max_steps=args.steps,
         trace_enabled=trace_enabled,
         trace_sample_period_s=trace_sample_period_s,
+        trace_detail=trace_detail,
         trace_root_dir=None,
         stop_on_crash=bool(args.stop_on_crash),
         stop_on_out_of_fuel=bool(args.stop_on_out_of_fuel),
@@ -316,6 +336,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
                 default_level=default_level,
                 headless=False,
                 default_trace_enabled=False,
+                default_trace_detail=TRACE_DETAIL_REPORT,
             )
         )
 
@@ -329,6 +350,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
                 default_level=default_level,
                 headless=headless,
                 default_trace_enabled=False,
+                default_trace_detail=TRACE_DETAIL_REPORT,
             )
         )
 
@@ -341,6 +363,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
                 default_level=default_level,
                 headless=True,
                 default_trace_enabled=False,
+                default_trace_detail=TRACE_DETAIL_REPORT,
             )
         )
 
@@ -353,6 +376,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
                 default_level=default_level,
                 headless=True,
                 default_trace_enabled=True,
+                default_trace_detail=TRACE_DETAIL_DEBUG,
             )
         )
 
@@ -404,6 +428,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
             max_steps=args.steps,
             trace_enabled=True,
             trace_sample_period_s=max(0.05, float(args.trace_sample_period_s)),
+            trace_detail=normalize_trace_detail(args.trace_detail, default=TRACE_DETAIL_REPORT),
             json_path=args.json,
             bot_profile_enabled=bool(args.bot_profile),
             bot_profile_interval_s=(
@@ -433,6 +458,7 @@ def announce_command(command: Command) -> None:
         print(f"Trace capture: {'on' if cfg.trace_enabled else 'off'}")
         if cfg.trace_enabled:
             print(f"Trace sample period: {cfg.trace_sample_period_s:.2f}s")
+            print(f"Trace detail: {cfg.trace_detail}")
         print(f"Bot profile: {'on' if cfg.bot_profile_enabled else 'off'}")
         print(f"Bot profile logs: {'on' if cfg.bot_profile_log_lines else 'off'}")
         if cfg.bot_profile_interval_s is not None:
@@ -473,3 +499,4 @@ def _print_run_summary(cfg: RunSettings) -> None:
         print(f"Trace capture: {'on' if cfg.trace_enabled else 'off'}")
         if cfg.trace_enabled:
             print(f"Trace sample period: {cfg.trace_sample_period_s:.2f}s")
+            print(f"Trace detail: {cfg.trace_detail}")

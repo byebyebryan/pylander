@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
 from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal, normalize_eval_goals
+from core.trace_policy import TRACE_DETAIL_REPORT, normalize_trace_detail
 
 
 @runtime_checkable
@@ -238,6 +239,11 @@ def level_trace_sample_period_s(level, *, default: float = 0.25) -> float:
     except (TypeError, ValueError):
         value = float(default)
     return max(0.05, value)
+
+
+def level_trace_detail(level, *, default: str = TRACE_DETAIL_REPORT) -> str:
+    raw = getattr(level, "trace_detail", default)
+    return normalize_trace_detail(raw, default=default)
 
 
 def level_name_tag(level) -> str:
