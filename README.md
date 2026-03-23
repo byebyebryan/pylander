@@ -176,14 +176,21 @@ uv run python skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py \
 ```
 
 Static bundles are written under `outputs/viewer/bundles/<bundle-id>/`, and the
-stable latest page is `outputs/viewer/latest/index.html`. With the example
-server above, the browser URL is `http://myhost:8765/viewer/latest/index.html`.
+stable latest page is `outputs/viewer/latest/index.html`. That file is rewritten
+as a full report page on each bundle generation, so refreshing the same URL
+always loads the newest bundle. With the example server above, the browser URL
+is `http://myhost:8765/viewer/latest/index.html`.
 
 `gen_bench_bundle.py` can also manage the server for you. By default it checks
 whether the outputs server is already running on port `8765`, starts it in the
 background if needed, and prints the latest report URL. If `--viewer-base-url`
 is omitted, it prefers the machine's `.lan` hostname when available (for
 example `http://starship.lan:8765/viewer/latest/index.html`).
+
+Bundle detail pages render the split plot images directly in a single scrollable
+column. `gen_bench_bundle.py` now defaults to `--plot-output split`, so it does
+not spend time generating the combined overview image unless you opt back into
+`--plot-output both` or `--plot-output combined`.
 
 Plot selection scopes:
 
