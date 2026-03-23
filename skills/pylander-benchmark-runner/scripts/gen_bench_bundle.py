@@ -19,6 +19,12 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from core.selector_codec import render_record_selector  # noqa: E402
+from levels.registry import (  # noqa: E402
+    list_public_levels,
+    resolve_selector_binding,
+    selector_children,
+    selector_path_looks_like_seed,
+)
 from skills.lib.orchestration import load_json, run_command  # noqa: E402
 
 _SERVER_SCRIPT = (_REPO_ROOT / "skills" / "pylander-benchmark-runner" / "scripts" / "serve_outputs.py").resolve()
@@ -411,11 +417,34 @@ def _render_plot_cases(
 def _selector_sort_key(selector: str) -> tuple[tuple[int, int | str], ...]:
     parts = [part for part in str(selector).split(":") if part]
     key: list[tuple[int, int | str]] = []
-    for part in parts:
+    if not parts:
+        return tuple()
+
+    level = parts[0]
+    level_order = {name: idx for idx, name in enumerate(list_public_levels())}
+    if level in level_order:
+        key.append((0, level_order[level]))
+    else:
+        key.append((1, level))
+
+    prefix: tuple[str, ...] = ()
+    for part in parts[1:]:
+        if selector_path_looks_like_seed(part):
+            try:
+                key.append((2, int(part)))
+            except ValueError:
+                key.append((3, part))
+            continue
         try:
-            key.append((0, int(part)))
+            children = selector_children(level, prefix)
         except ValueError:
-            key.append((1, part))
+            children = ()
+        if part in children:
+            key.append((0, children.index(part)))
+            prefix = (*prefix, part)
+            continue
+        key.append((3, part))
+        prefix = (*prefix, part)
     return tuple(key)
 
 
@@ -556,6 +585,114 @@ def _scenario_summary_data(summary_row: dict[str, Any], runs: list[dict[str, Any
     }
 
 
+def _new_scenario_tree_node(selector: str, *, level: str, depth: int) -> dict[str, Any]:
+    return {
+        "selector": selector,
+        "level": level,
+        "depth": depth,
+        "runs": [],
+        "summary_row": {},
+        "children_map": {},
+    }
+
+
+def _leaf_representative_run(runs: list[dict[str, Any]]) -> dict[str, Any] | None:
+    plotted = [run for run in runs if run.get("plot") is not None]
+    if not plotted:
+        return None
+    return min(plotted, key=lambda run: _scenario_representative_sort_key(dict(run.get("record") or {})))
+
+
+def _find_descendant_representative_run(node: dict[str, Any], selector: str) -> dict[str, Any] | None:
+    if str(node.get("selector") or "") == selector:
+        representative = node.get("representative_run")
+        return representative if isinstance(representative, dict) else None
+    for child in node.get("children") or []:
+        found = _find_descendant_representative_run(child, selector)
+        if found is not None:
+            return found
+    return None
+
+
+def _preferred_representative_run(node: dict[str, Any]) -> dict[str, Any] | None:
+    children = list(node.get("children") or [])
+    if not children:
+        return _leaf_representative_run(list(node.get("runs") or []))
+
+    selector = str(node.get("selector") or "")
+    parts = selector.split(":")
+    if not parts:
+        return None
+    level_name = parts[0]
+    scenario_path = tuple(parts[1:])
+    try:
+        binding = resolve_selector_binding(level_name, scenario_path=scenario_path)
+    except ValueError:
+        binding = None
+    if binding is not None and binding.path:
+        default_selector = ":".join([level_name, *binding.path])
+        default_run = _find_descendant_representative_run(node, default_selector)
+        if default_run is not None:
+            return default_run
+    for child in children:
+        representative = child.get("representative_run")
+        if isinstance(representative, dict):
+            return representative
+    return None
+
+
+def _finalize_scenario_tree_node(node: dict[str, Any]) -> dict[str, Any]:
+    children = sorted(
+        list(dict(node.get("children_map") or {}).values()),
+        key=lambda item: _selector_sort_key(str(item.get("selector") or "")),
+    )
+    for child in children:
+        _finalize_scenario_tree_node(child)
+    node["children"] = children
+    node["summary"] = _scenario_summary_data(dict(node.get("summary_row") or {}), list(node.get("runs") or []))
+    node["representative_run"] = _preferred_representative_run(node)
+    node.pop("children_map", None)
+    return node
+
+
+def _build_scenario_trees(
+    *,
+    runs_by_scenario: dict[str, list[dict[str, Any]]],
+    summary: dict[str, Any],
+) -> dict[str, list[dict[str, Any]]]:
+    roots: dict[str, dict[str, Any]] = {}
+    for scenario_selector in sorted(runs_by_scenario, key=_selector_sort_key):
+        runs = list(runs_by_scenario[scenario_selector])
+        tokens = scenario_selector.split(":")
+        if len(tokens) < 2:
+            continue
+        level_name = tokens[0]
+        summary_row = dict(summary.get("by_selector", {}).get(scenario_selector) or {})
+        root = roots.setdefault(level_name, {"children_map": {}})
+        parent_children = root["children_map"]
+        for depth_index, token_count in enumerate(range(2, len(tokens) + 1)):
+            prefix_selector = ":".join(tokens[:token_count])
+            node = parent_children.get(prefix_selector)
+            if node is None:
+                node = _new_scenario_tree_node(prefix_selector, level=level_name, depth=depth_index)
+                parent_children[prefix_selector] = node
+            node["runs"].extend(runs)
+            if token_count == len(tokens):
+                node["summary_row"] = summary_row
+            parent_children = node["children_map"]
+
+    trees_by_level: dict[str, list[dict[str, Any]]] = {}
+    for level_name in sorted(roots, key=_selector_sort_key):
+        top_children = sorted(
+            list(dict(roots[level_name].get("children_map") or {}).values()),
+            key=lambda item: _selector_sort_key(str(item.get("selector") or "")),
+        )
+        for child in top_children:
+            _finalize_scenario_tree_node(child)
+        trees_by_level[level_name] = top_children
+    return trees_by_level
+
+
 def _build_bundle_report_model(bundle: dict[str, Any], *, outputs_root: Path) -> dict[str, Any]:
     benchmark = dict(bundle.get("benchmark") or {})
     candidate = dict(benchmark.get("candidate") or {})
@@ -599,29 +736,10 @@ def _build_bundle_report_model(bundle: dict[str, Any], *, outputs_root: Path) ->
         if not bool(record.get("success", False)):
             failures.append(run_info)
 
-    scenario_items: list[dict[str, Any]] = []
-    for scenario_selector in sorted(runs_by_scenario, key=_selector_sort_key):
-        runs = list(runs_by_scenario[scenario_selector])
-        summary_row = dict(summary.get("by_selector", {}).get(scenario_selector) or {})
-        representative_run = next((run for run in runs if run.get("plot") is not None), None)
-        scenario_items.append(
-            {
-                "selector": scenario_selector,
-                "level": scenario_selector.split(":", 1)[0],
-                "tokens": scenario_selector.split(":"),
-                "summary": _scenario_summary_data(summary_row, runs),
-                "runs": runs,
-                "representative_run": representative_run,
-            }
-        )
-
-    scenarios_by_level: dict[str, list[dict[str, Any]]] = {}
-    for item in scenario_items:
-        scenarios_by_level.setdefault(str(item["level"]), []).append(item)
+    scenario_trees_by_level = _build_scenario_trees(runs_by_scenario=runs_by_scenario, summary=summary)
 
     return {
-        "scenario_items": scenario_items,
-        "scenarios_by_level": scenarios_by_level,
+        "scenario_trees_by_level": scenario_trees_by_level,
         "failures": sorted(failures, key=lambda item: _selector_sort_key(str(item.get("selector") or ""))),
         "runs_by_selector": runs_by_selector,
     }
@@ -660,68 +778,91 @@ def _render_scenario_sections(
     bundle_dir: Path,
     outputs_root: Path,
 ) -> str:
-    sections: list[str] = []
-    for level_name in sorted(report["scenarios_by_level"], key=_selector_sort_key):
-        row_blocks: list[str] = []
-        for item in report["scenarios_by_level"][level_name]:
-            summary_data = dict(item.get("summary") or {})
-            group_id = _sanitize_token(str(item["selector"]))
-            aggregate_status = f"{int(summary_data.get('successes', 0) or 0)}/{int(summary_data.get('runs', 0) or 0)}"
-            preview_cell = "<span class=\"muted\">expand</span>"
-            representative_run = item.get("representative_run")
-            if representative_run is not None and representative_run.get("plot") is not None:
-                preview_entry = dict(representative_run["plot"].get("preview_entry") or {})
-                preview_href = _href_from(bundle_dir, str(preview_entry.get("path_rel") or ""), outputs_root=outputs_root)
-                detail_href = _href_from(bundle_dir, str(representative_run.get("detail_rel") or ""), outputs_root=outputs_root)
-                if preview_href and detail_href:
-                    preview_cell = (
-                        f"<a class=\"table-preview\" href=\"{html.escape(detail_href)}\">"
-                        f"<img src=\"{html.escape(preview_href)}\" alt=\"{html.escape(str(item['selector']))}\">"
-                        "</a>"
-                    )
+    table_counter = 0
 
-            row_blocks.append(
+    def _render_preview_cell(selector: str, representative_run: dict[str, Any] | None) -> str:
+        if representative_run is None or representative_run.get("plot") is None:
+            return "<span class=\"muted\">expand</span>"
+        preview_entry = dict(representative_run["plot"].get("preview_entry") or {})
+        preview_href = _href_from(bundle_dir, str(preview_entry.get("path_rel") or ""), outputs_root=outputs_root)
+        detail_href = _href_from(bundle_dir, str(representative_run.get("detail_rel") or ""), outputs_root=outputs_root)
+        if not preview_href or not detail_href:
+            return "<span class=\"muted\">expand</span>"
+        return (
+            f"<a class=\"table-preview\" href=\"{html.escape(detail_href)}\">"
+            f"<img src=\"{html.escape(preview_href)}\" alt=\"{html.escape(selector)}\">"
+            "</a>"
+        )
+
+    def _render_tree_rows(node: dict[str, Any], *, parent_group_id: str | None) -> list[str]:
+        selector = str(node.get("selector") or "")
+        group_id = _sanitize_token(selector)
+        depth = int(node.get("depth", 0) or 0)
+        summary_data = dict(node.get("summary") or {})
+        hidden_attr = " hidden" if parent_group_id else ""
+        parent_attr = f' data-parent="{html.escape(parent_group_id)}"' if parent_group_id else ""
+        preview_cell = _render_preview_cell(selector, node.get("representative_run"))
+        rows = [
+            (
                 "<tr class=\"scenario-row\""
-                f" data-group=\"{html.escape(group_id)}\" aria-expanded=\"false\" tabindex=\"0\">"
-                f"<td><span class=\"expander\">+</span>{html.escape(str(item['selector']))}</td>"
-                f"<td>{html.escape(aggregate_status)}</td>"
+                f"{hidden_attr}{parent_attr}"
+                f' data-group="{html.escape(group_id)}" aria-expanded="false" tabindex="0">'
+                f'<td class="tree-label" style="--depth: {depth};"><span class="expander">+</span>{html.escape(selector)}</td>'
+                f"<td>{html.escape(str(int(summary_data.get('successes', 0) or 0)) + '/' + str(int(summary_data.get('runs', 0) or 0)))}</td>"
                 f"<td>{html.escape(_format_float(summary_data.get('fuel_mean')))}</td>"
                 f"<td>{html.escape(_format_float(summary_data.get('time_mean')))}</td>"
                 f"<td>{html.escape(_format_float(summary_data.get('total_ms_mean')))}</td>"
                 f"<td>{preview_cell}</td>"
                 "</tr>"
             )
+        ]
 
-            for run in item.get("runs") or []:
-                record = dict(run.get("record") or {})
-                detail_href = _href_from(bundle_dir, str(run.get("detail_rel") or ""), outputs_root=outputs_root) or "#"
-                preview_cell = "<span class=\"muted\">no plot</span>"
-                plot_assets = dict(run.get("plot") or {})
-                preview_entry = dict(plot_assets.get("preview_entry") or {})
-                preview_href = _href_from(bundle_dir, str(preview_entry.get("path_rel") or ""), outputs_root=outputs_root)
-                if preview_href:
-                    preview_cell = (
-                        f"<a class=\"table-preview\" href=\"{html.escape(detail_href)}\">"
-                        f"<img src=\"{html.escape(preview_href)}\" alt=\"{html.escape(str(run.get('selector') or 'run'))}\">"
-                        "</a>"
-                    )
-                metric_text = f"offset={_format_float(record.get('landing_offset'), 3)}"
-                row_blocks.append(
-                    "<tr class=\"seed-row\" hidden"
-                    f" data-parent=\"{html.escape(group_id)}\">"
-                    f"<td class=\"seed-label\">seed {html.escape(str(record.get('seed') if record.get('seed') is not None else '-'))}</td>"
-                    f"<td>{html.escape(str(record.get('state') or ''))}</td>"
-                    f"<td>{html.escape(_format_float(record.get('fuel_consumed'), 3))}</td>"
-                    f"<td>{html.escape(_format_float(record.get('time'), 3))}</td>"
-                    f"<td>{html.escape(metric_text)}</td>"
-                    f"<td>{preview_cell}</td>"
-                    "</tr>"
+        children = list(node.get("children") or [])
+        if children:
+            for child in children:
+                rows.extend(_render_tree_rows(child, parent_group_id=group_id))
+            return rows
+
+        for run in node.get("runs") or []:
+            record = dict(run.get("record") or {})
+            detail_href = _href_from(bundle_dir, str(run.get("detail_rel") or ""), outputs_root=outputs_root) or "#"
+            plot_assets = dict(run.get("plot") or {})
+            preview_entry = dict(plot_assets.get("preview_entry") or {})
+            preview_href = _href_from(bundle_dir, str(preview_entry.get("path_rel") or ""), outputs_root=outputs_root)
+            preview_cell = "<span class=\"muted\">no plot</span>"
+            if preview_href:
+                preview_cell = (
+                    f"<a class=\"table-preview\" href=\"{html.escape(detail_href)}\">"
+                    f"<img src=\"{html.escape(preview_href)}\" alt=\"{html.escape(str(run.get('selector') or 'run'))}\">"
+                    "</a>"
                 )
+            metric_text = f"offset={_format_float(record.get('landing_offset'), 3)}"
+            rows.append(
+                "<tr class=\"seed-row\" hidden"
+                f' data-parent="{html.escape(group_id)}">'
+                f'<td class="tree-label seed-label" style="--depth: {depth + 1};">seed {html.escape(str(record.get("seed") if record.get("seed") is not None else "-"))}</td>'
+                f"<td>{html.escape(str(record.get('state') or ''))}</td>"
+                f"<td>{html.escape(_format_float(record.get('fuel_consumed'), 3))}</td>"
+                f"<td>{html.escape(_format_float(record.get('time'), 3))}</td>"
+                f"<td>{html.escape(metric_text)}</td>"
+                f"<td>{preview_cell}</td>"
+                "</tr>"
+            )
+        return rows
+
+    sections: list[str] = []
+    for level_name in sorted(report["scenario_trees_by_level"], key=_selector_sort_key):
+        table_counter += 1
+        table_id = f"scenario-table-{table_counter}"
+        row_blocks: list[str] = []
+        for node in report["scenario_trees_by_level"][level_name]:
+            row_blocks.extend(_render_tree_rows(node, parent_group_id=None))
         sections.append(
             "<section>"
             f"<h2>{html.escape(level_name.title())}</h2>"
+            f"<div class=\"table-controls\"><button type=\"button\" class=\"table-button\" data-action=\"expand\" data-target=\"{html.escape(table_id)}\">Expand All</button><button type=\"button\" class=\"table-button\" data-action=\"collapse\" data-target=\"{html.escape(table_id)}\">Collapse All</button></div>"
             "<div class=\"table-wrap\">"
-            "<table class=\"scenario-table\">"
+            f"<table class=\"scenario-table\" data-tree-table=\"{html.escape(table_id)}\">"
             "<thead><tr><th>Selector</th><th>Status</th><th>Fuel</th><th>Time</th><th>Metric</th><th>Details</th></tr></thead>"
             f"<tbody>{''.join(row_blocks)}</tbody>"
             "</table>"
@@ -1136,6 +1277,23 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
       font-size: 0.92rem;
     }}
     .table-wrap {{ overflow-x: auto; }}
+    .table-controls {{
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }}
+    .table-button {{
+      border: 1px solid var(--line);
+      background: rgba(14, 107, 96, 0.08);
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 6px 12px;
+      font: inherit;
+      cursor: pointer;
+    }}
+    .table-button:hover {{
+      background: rgba(14, 107, 96, 0.14);
+    }}
     .scenario-table {{
       width: 100%;
       min-width: 860px;
@@ -1153,6 +1311,9 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
     .scenario-row td:first-child {{
       font-weight: 700;
     }}
+    .tree-label {{
+      padding-left: calc(10px + var(--depth, 0) * 22px);
+    }}
     .scenario-row .expander {{
       display: inline-block;
       width: 1.25rem;
@@ -1166,7 +1327,6 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
       background: rgba(255, 250, 240, 0.55);
     }}
     .seed-label {{
-      padding-left: 28px;
       color: var(--muted);
     }}
     .table-preview {{
@@ -1223,13 +1383,53 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
     {scenario_sections_html}
   </main>
   <script>
+    const rowsForTable = (table) => Array.from(table.querySelectorAll("tr.scenario-row, tr.seed-row"));
+    const childRows = (table, group) => Array.from(table.querySelectorAll(`tr[data-parent="${{group}}"]`));
+
+    const collapseDescendants = (table, group) => {{
+      childRows(table, group).forEach((child) => {{
+        child.hidden = true;
+        if (child.dataset.group) {{
+          child.setAttribute("aria-expanded", "false");
+          collapseDescendants(table, child.dataset.group);
+        }}
+      }});
+    }};
+
     const toggleScenarioRows = (row) => {{
+      const table = row.closest("table");
+      if (!table) return;
       const group = row.dataset.group;
       if (!group) return;
       const expanded = row.getAttribute("aria-expanded") === "true";
-      row.setAttribute("aria-expanded", expanded ? "false" : "true");
-      document.querySelectorAll(`tr[data-parent="${{group}}"]`).forEach((child) => {{
-        child.hidden = expanded;
+      if (expanded) {{
+        row.setAttribute("aria-expanded", "false");
+        collapseDescendants(table, group);
+        return;
+      }}
+      row.setAttribute("aria-expanded", "true");
+      childRows(table, group).forEach((child) => {{
+        child.hidden = false;
+      }});
+    }};
+
+    const expandAll = (table) => {{
+      rowsForTable(table).forEach((row) => {{
+        row.hidden = false;
+        if (row.classList.contains("scenario-row")) {{
+          row.setAttribute("aria-expanded", "true");
+        }}
+      }});
+    }};
+
+    const collapseAll = (table) => {{
+      rowsForTable(table).forEach((row) => {{
+        if (row.classList.contains("scenario-row")) {{
+          row.setAttribute("aria-expanded", "false");
+        }}
+        if (row.dataset.parent) {{
+          row.hidden = true;
+        }}
       }});
     }};
 
@@ -1242,6 +1442,20 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
         if (event.key !== "Enter" && event.key !== " ") return;
         event.preventDefault();
         toggleScenarioRows(row);
+      }});
+    }});
+
+    document.querySelectorAll(".table-button").forEach((button) => {{
+      button.addEventListener("click", () => {{
+        const target = button.dataset.target;
+        if (!target) return;
+        const table = document.querySelector(`table[data-tree-table="${{target}}"]`);
+        if (!table) return;
+        if (button.dataset.action === "expand") {{
+          expandAll(table);
+        }} else {{
+          collapseAll(table);
+        }}
       }});
     }});
   </script>
