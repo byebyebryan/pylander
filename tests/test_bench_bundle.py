@@ -239,7 +239,36 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     assert "Interactive Detail" in detail_html
     assert "chart-spatial" in detail_html
     assert "chart-metrics" in detail_html
-    assert "chart-angle" not in detail_html
+    assert "chart-speed-spatial" not in detail_html
+    assert "chart-thrust-spatial" not in detail_html
+    assert 'data-mode="plain"' in detail_html
+    assert 'data-mode="speed"' in detail_html
+    assert 'data-mode="thrust"' in detail_html
+    assert 'data-mode="vectors"' in detail_html
+    assert ">Velocity<" in detail_html
+    assert ">Thrust<" in detail_html
+    assert ">Vectors<" in detail_html
+    assert "spatialElement.on(\"plotly_hover\"" in detail_html
+    assert 'spatialElement.addEventListener("mouseleave", () => updateThrustVector(null));' in detail_html
+    assert "const buildHoverCarrier = () => {" in detail_html
+    assert "const hoverSubdivisionCount = 6;" in detail_html
+    assert "const buildVectorModeAnnotations = (intervalS) => {" in detail_html
+    assert "const vectorModeIntervalS = 1.0;" in detail_html
+    assert 'mode: "lines"' in detail_html
+    assert 'const hoverCarrierIndex = spatialTraces.findIndex((trace) => trace.name === "trajectory hover");' in detail_html
+    assert 'const eventTraceIndex = spatialTraces.findIndex((trace) => trace.name === "events");' in detail_html
+    assert "const applySpatialMode = (mode, hoverIndex = null) => {" in detail_html
+    assert 'if (currentSpatialMode !== "thrust") return;' in detail_html
+    assert 'points.some((point) => point.curveNumber === eventTraceIndex)' in detail_html
+    assert 'requestAnimationFrame(() => Plotly.Fx.unhover(spatialElement));' in detail_html
+    assert "arrowhead: 3" in detail_html
+    assert "vectorModeAnnotations" in detail_html
+    assert "thrustExtent.min" in detail_html
+    assert "shapes: eventGuideShapes" in detail_html
+    assert 'hoverinfo: "skip"' in detail_html
+    assert 'xaxis: {title: "", domain: [0.0, 0.93]}' in detail_html
+    assert 'yaxis: {title: "", scaleanchor: "x", scaleratio: 1}' in detail_html
+    assert 'x: 0.955,' in detail_html
     assert 'name: "velocity"' in detail_html
     assert 'name: "vx"' in detail_html
     assert 'visible: "legendonly"' in detail_html
