@@ -164,6 +164,9 @@ def render_trace_detail_html(
     .plot-stack {{ display: grid; grid-template-columns: 1fr; gap: 20px; }}
     .plot-frame {{ margin: 0; }}
     .plot-frame h3 {{ margin: 0 0 8px; font-size: 1rem; }}
+    .plot-toolbar {{ display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 10px; }}
+    .plot-toolbar button {{ border: 1px solid var(--line); background: #f7f1e4; color: var(--ink); border-radius: 999px; padding: 6px 12px; cursor: pointer; font: inherit; }}
+    .plot-toolbar button.active {{ background: var(--accent); color: #fffaf0; border-color: var(--accent); }}
     .plot-frame .chart {{ width: 100%; height: 380px; border: 1px solid var(--line); border-radius: 12px; background: #fbf8f1; }}
     code {{ font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 0.9rem; white-space: pre-wrap; word-break: break-word; }}
   </style>
@@ -182,9 +185,7 @@ def render_trace_detail_html(
     <section>
       <h2>Interactive Detail</h2>
       <div class="plot-stack">
-        <section class="plot-frame"><h3>Trajectory</h3><div id="chart-spatial" class="chart"></div></section>
-        <section class="plot-frame"><h3>Trajectory by Speed</h3><div id="chart-speed-spatial" class="chart"></div></section>
-        <section class="plot-frame"><h3>Trajectory by Thrust</h3><div id="chart-thrust-spatial" class="chart"></div></section>
+        <section class="plot-frame"><h3>Trajectory</h3><div class="plot-toolbar" id="spatial-mode-toolbar"><button type="button" data-mode="plain" class="active">Plain</button><button type="button" data-mode="speed">Velocity</button><button type="button" data-mode="thrust">Thrust</button><button type="button" data-mode="vectors">Vectors</button></div><div id="chart-spatial" class="chart"></div></section>
         <section class="plot-frame"><h3>Flight Metrics</h3><div id="chart-metrics" class="chart"></div></section>
       </div>
       <p class="links">{raw_links_html}</p>
@@ -224,6 +225,8 @@ def render_trace_detail_html(
     const vyValues = Array.isArray(samples.vy) ? samples.vy.map((value) => Number(value)) : [];
     const thrustXValues = thrustValues.map((value, index) => value * Math.sin(Number(angleValues[index] || 0)));
     const thrustYValues = thrustValues.map((value, index) => value * Math.cos(Number(angleValues[index] || 0)));
+    const spatialBounds = plotPayload.bounds || {{}};
+    const hoverSubdivisionCount = 6;
 
     const clamp01 = (value) => Math.max(0, Math.min(1, value));
     const hexToRgb = (hex) => {{
@@ -252,8 +255,10 @@ def render_trace_detail_html(
       }}
       return scale[scale.length - 1][1];
     }};
+    const finiteValues = (values) =>
+      values.map((value) => Number(value)).filter((value) => Number.isFinite(value));
     const valueExtent = (values) => {{
-      const finite = values.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+      const finite = finiteValues(values);
       if (!finite.length) return {{min: 0, max: 1}};
       const minValue = Math.min(...finite);
       const maxValue = Math.max(...finite);
@@ -272,6 +277,16 @@ def render_trace_detail_html(
       [0.7, "#2b8aeb"],
       [1.0, "#0b3d91"],
     ];
+    const thrustExtent = valueExtent(thrustValues);
+    const spatialSpan = Math.max(
+      1,
+      Number(spatialBounds.span_x || 0),
+      Number(spatialBounds.span_y || 0),
+      ...finiteValues(xValues).map((value) => Math.abs(value)),
+      ...finiteValues(yValues).map((value) => Math.abs(value)),
+    );
+    const thrustVectorScale = 0.04 * spatialSpan;
+    const vectorModeIntervalS = 1.0;
     const buildScalarSpatialTraces = ({{values, colorscale, colorbarTitle}}) => {{
       const traces = [
         {{
@@ -321,9 +336,14 @@ def render_trace_detail_html(
           colorbar: {{
             title: colorbarTitle,
             outlinecolor: "#cfc4b2",
+            x: 0.955,
+            xanchor: "left",
+            len: 0.74,
+            thickness: 12,
+            y: 0.5,
           }},
         }},
-        hovertemplate: `${{colorbarTitle}}<br>x=%{{x:.1f}}<br>y=%{{y:.1f}}<br>value=%{{marker.color:.3f}}<extra></extra>`,
+        hoverinfo: "skip",
         showlegend: false,
       }});
       return traces;
@@ -344,6 +364,27 @@ def render_trace_detail_html(
           return {{symbol: "square", color: "#8e3b2e"}};
       }}
     }};
+    const eventGuideShapes = events
+      .map((event) => {{
+        const timeValue = Number(event.time_s);
+        if (!Number.isFinite(timeValue)) return null;
+        const style = eventStyle(event.name);
+        return {{
+          type: "line",
+          xref: "x",
+          yref: "paper",
+          x0: timeValue,
+          x1: timeValue,
+          y0: 0,
+          y1: 1,
+          line: {{
+            color: style.color,
+            width: 1.5,
+            dash: "dot",
+          }},
+        }};
+      }})
+      .filter(Boolean);
 
     const padTrace = () => {{
       if (target.x === undefined || target.y === undefined) return null;
@@ -355,6 +396,7 @@ def render_trace_detail_html(
         x: [Number(target.x) - size, Number(target.x) + size],
         y: [Number(target.y), Number(target.y)],
         line: {{color: "#2ecc71", width: 5}},
+        hoverinfo: "skip",
       }};
     }};
 
@@ -365,6 +407,95 @@ def render_trace_detail_html(
       x: terrain.xs || [],
       y: terrain.ys || [],
       line: {{color: "#6c614d", width: 2}},
+      hoverinfo: "skip",
+    }};
+    const buildHoverCarrier = () => {{
+      const carrierX = [];
+      const carrierY = [];
+      const carrierData = [];
+      const appendPoint = (sampleIndex, xValue, yValue) => {{
+        const index = Math.max(0, Math.min(xValues.length - 1, Number(sampleIndex)));
+        carrierX.push(Number(xValue));
+        carrierY.push(Number(yValue));
+        carrierData.push([
+          Number(timeValues[index]),
+          Number(speedValues[index]),
+          Number(thrustValues[index]),
+          Number(vxValues[index]),
+          Number(vyValues[index]),
+          index,
+        ]);
+      }};
+      if (!xValues.length || !yValues.length) {{
+        return {{x: carrierX, y: carrierY, customdata: carrierData}};
+      }}
+      for (let index = 0; index < Math.min(xValues.length, yValues.length) - 1; index += 1) {{
+        const x0 = Number(xValues[index]);
+        const y0 = Number(yValues[index]);
+        const x1 = Number(xValues[index + 1]);
+        const y1 = Number(yValues[index + 1]);
+        if (![x0, y0, x1, y1].every((value) => Number.isFinite(value))) continue;
+        for (let step = 0; step < hoverSubdivisionCount; step += 1) {{
+          const alpha = step / hoverSubdivisionCount;
+          const nearestIndex = alpha < 0.5 ? index : index + 1;
+          appendPoint(
+            nearestIndex,
+            x0 + ((x1 - x0) * alpha),
+            y0 + ((y1 - y0) * alpha),
+          );
+        }}
+      }}
+      appendPoint(xValues.length - 1, Number(xValues[xValues.length - 1]), Number(yValues[yValues.length - 1]));
+      return {{x: carrierX, y: carrierY, customdata: carrierData}};
+    }};
+    const buildArrowAnnotation = (sampleIndex) => {{
+      const index = Number(sampleIndex);
+      if (!Number.isInteger(index) || index < 0 || index >= xValues.length) return null;
+      const x0 = Number(xValues[index]);
+      const y0 = Number(yValues[index]);
+      const thrustX = Number(thrustXValues[index]);
+      const thrustY = Number(thrustYValues[index]);
+      const thrustValue = Number(thrustValues[index]);
+      if (![x0, y0, thrustX, thrustY, thrustValue].every((value) => Number.isFinite(value))) return null;
+      return {{
+        x: x0 + (thrustX * thrustVectorScale),
+        y: y0 + (thrustY * thrustVectorScale),
+        ax: x0,
+        ay: y0,
+        axref: "x",
+        ayref: "y",
+        xref: "x",
+        yref: "y",
+        text: "",
+        showarrow: true,
+        arrowhead: 3,
+        arrowsize: 0.6,
+        arrowwidth: 3,
+        arrowcolor: interpolateColor(
+          thrustColorScale,
+          thrustValue,
+          thrustExtent.min,
+          thrustExtent.max,
+        ),
+      }};
+    }};
+    const buildVectorModeAnnotations = (intervalS) => {{
+      const annotations = [];
+      const seen = new Set();
+      let nextTarget = null;
+      for (let index = 0; index < timeValues.length; index += 1) {{
+        const timeValue = Number(timeValues[index]);
+        if (!Number.isFinite(timeValue)) continue;
+        if (nextTarget === null) nextTarget = timeValue;
+        if (timeValue + 1e-9 < nextTarget) continue;
+        if (!seen.has(index)) {{
+          const annotation = buildArrowAnnotation(index);
+          if (annotation) annotations.push(annotation);
+          seen.add(index);
+        }}
+        while (nextTarget !== null && nextTarget <= timeValue + 1e-9) nextTarget += intervalS;
+      }}
+      return annotations;
     }};
     const pathTrace = {{
       type: "scatter",
@@ -373,6 +504,23 @@ def render_trace_detail_html(
       x: xValues,
       y: yValues,
       line: {{color: "#0e6b60", width: 3}},
+      hoverinfo: "skip",
+    }};
+    const hoverCarrierData = buildHoverCarrier();
+    const spatialHoverTrace = {{
+      type: "scatter",
+      mode: "lines",
+      name: "trajectory hover",
+      x: hoverCarrierData.x,
+      y: hoverCarrierData.y,
+      customdata: hoverCarrierData.customdata,
+      line: {{
+        color: "rgba(14,107,96,0.003)",
+        width: 18,
+      }},
+      hovertemplate:
+        "t=%{{customdata[0]:.2f}}s<br>x=%{{x:.1f}}<br>y=%{{y:.1f}}<br>velocity=%{{customdata[1]:.2f}}<br>thrust=%{{customdata[2]:.2f}}<br>vx=%{{customdata[3]:.2f}}<br>vy=%{{customdata[4]:.2f}}<extra></extra>",
+      showlegend: false,
     }};
     const eventTrace = {{
       type: "scatter",
@@ -400,6 +548,7 @@ def render_trace_detail_html(
       x: ballistic.xs,
       y: ballistic.ys,
       line: {{color: "#cf7b00", width: 2, dash: "dot"}},
+      hoverinfo: "skip",
     }} : null;
     const reference = plotPayload.reference_curve || {{}};
     const referenceTrace = Array.isArray(reference.xs) ? {{
@@ -409,13 +558,14 @@ def render_trace_detail_html(
       x: reference.xs,
       y: reference.ys,
       line: {{color: "#5b73c6", width: 2, dash: "dash"}},
+      hoverinfo: "skip",
     }} : null;
 
     const layoutBase = (title, extra = {{}}) => Object.assign({{
       title,
       paper_bgcolor: paperBg,
       plot_bgcolor: plotBg,
-      margin: {{l: 64, r: 24, t: 56, b: 34}},
+      margin: {{l: 64, r: 24, t: 92, b: 34}},
       legend: {{
         orientation: "h",
         yanchor: "bottom",
@@ -426,37 +576,146 @@ def render_trace_detail_html(
       }},
     }}, extra);
 
+    const speedSpatialTraces = buildScalarSpatialTraces({{
+      values: speedValues,
+      colorscale: speedColorScale,
+      colorbarTitle: "speed",
+    }});
+    const thrustSpatialTraces = buildScalarSpatialTraces({{
+      values: thrustValues,
+      colorscale: thrustColorScale,
+      colorbarTitle: "thrust",
+    }});
+    const optionalSpatialTraces = [
+      padTrace(),
+      ballisticTrace,
+      referenceTrace,
+      spatialHoverTrace,
+      eventTrace,
+    ].filter(Boolean);
+    const spatialTraces = [
+      terrainTrace,
+      pathTrace,
+      ...speedSpatialTraces,
+      ...thrustSpatialTraces,
+      ...optionalSpatialTraces,
+    ];
+    const terrainIndex = 0;
+    const pathIndex = 1;
+    const speedStart = 2;
+    const speedEnd = speedStart + speedSpatialTraces.length;
+    const thrustStart = speedEnd;
+    const thrustEnd = thrustStart + thrustSpatialTraces.length;
+    const optionalStart = spatialTraces.length - optionalSpatialTraces.length;
+    const hoverCarrierIndex = spatialTraces.findIndex((trace) => trace.name === "trajectory hover");
+    const eventTraceIndex = spatialTraces.findIndex((trace) => trace.name === "events");
+    const alwaysVisibleIndices = new Set([terrainIndex]);
+    for (let index = optionalStart; index < spatialTraces.length; index += 1) {{
+      if (index >= 0 && index !== hoverCarrierIndex) alwaysVisibleIndices.add(index);
+    }}
+    const spatialVisibility = (mode) =>
+      spatialTraces.map((_trace, index) => {{
+        if (alwaysVisibleIndices.has(index)) return true;
+        if (mode === "speed") return index >= speedStart && index < speedEnd;
+        if (mode === "thrust") return index === hoverCarrierIndex || (index >= thrustStart && index < thrustEnd);
+        return index === pathIndex;
+      }});
+    const spatialModeTitle = (mode) => {{
+      if (mode === "speed") return "Trajectory (velocity-colored)";
+      if (mode === "thrust") return "Trajectory (thrust-colored)";
+      if (mode === "vectors") return "Trajectory (thrust vectors)";
+      return "Trajectory";
+    }};
+    const spatialElement = document.getElementById("chart-spatial");
+    const spatialToolbar = document.getElementById("spatial-mode-toolbar");
+    const vectorModeAnnotations = buildVectorModeAnnotations(vectorModeIntervalS);
+    let currentSpatialMode = "plain";
+
+    const annotationsForMode = (mode, hoverIndex = null) => {{
+      if (mode === "vectors") return vectorModeAnnotations;
+      if (mode === "thrust" && hoverIndex !== null) {{
+        const annotation = buildArrowAnnotation(hoverIndex);
+        return annotation ? [annotation] : [];
+      }}
+      return [];
+    }};
+    const syncToolbarButtons = (mode) => {{
+      if (!spatialToolbar) return;
+      for (const button of spatialToolbar.querySelectorAll("button[data-mode]")) {{
+        button.classList.toggle("active", button.dataset.mode === mode);
+      }}
+    }};
+
     Plotly.newPlot(
-      "chart-spatial",
-      [terrainTrace, pathTrace, padTrace(), ballisticTrace, referenceTrace, eventTrace].filter(Boolean),
+      spatialElement,
+      spatialTraces.map((trace, index) => ({{...trace, visible: spatialVisibility("plain")[index]}})),
       layoutBase("Trajectory", {{
-        xaxis: {{title: ""}},
-        yaxis: {{title: "Y", scaleanchor: "x", scaleratio: 1}},
+        hovermode: "closest",
+        hoverdistance: 32,
+        xaxis: {{title: "", domain: [0.0, 0.93]}},
+        yaxis: {{title: "", scaleanchor: "x", scaleratio: 1}},
+        annotations: [],
       }}),
       baseConfig,
     );
-
-    Plotly.newPlot(
-      "chart-speed-spatial",
-      [terrainTrace, ...buildScalarSpatialTraces({{values: speedValues, colorscale: speedColorScale, colorbarTitle: "speed"}}), padTrace()].filter(Boolean),
-      layoutBase("Trajectory by Speed", {{
-        xaxis: {{title: ""}},
-        yaxis: {{title: "Y", scaleanchor: "x", scaleratio: 1}},
-        showlegend: false,
-      }}),
-      baseConfig,
-    );
-
-    Plotly.newPlot(
-      "chart-thrust-spatial",
-      [terrainTrace, ...buildScalarSpatialTraces({{values: thrustValues, colorscale: thrustColorScale, colorbarTitle: "thrust"}}), padTrace()].filter(Boolean),
-      layoutBase("Trajectory by Thrust", {{
-        xaxis: {{title: ""}},
-        yaxis: {{title: "Y", scaleanchor: "x", scaleratio: 1}},
-        showlegend: false,
-      }}),
-      baseConfig,
-    );
+    let hoverVectorBusy = false;
+    let lastHoverSampleIndex = null;
+    const applySpatialMode = (mode, hoverIndex = null) => {{
+      currentSpatialMode = mode;
+      lastHoverSampleIndex = mode === "thrust" ? hoverIndex : null;
+      syncToolbarButtons(mode);
+      return Plotly.update(
+        spatialElement,
+        {{
+          visible: spatialVisibility(mode),
+        }},
+        {{
+          title: spatialModeTitle(mode),
+          annotations: annotationsForMode(mode, hoverIndex),
+        }},
+      );
+    }};
+    if (spatialToolbar) {{
+      for (const button of spatialToolbar.querySelectorAll("button[data-mode]")) {{
+        button.addEventListener("click", () => {{
+          const nextMode = button.dataset.mode || "plain";
+          if (nextMode === currentSpatialMode) return;
+          hoverVectorBusy = true;
+          Promise.resolve(applySpatialMode(nextMode, null)).finally(() => {{
+            hoverVectorBusy = false;
+          }});
+        }});
+      }}
+    }}
+    const updateThrustVector = (sampleIndex) => {{
+      if (hoverVectorBusy) return;
+      if (currentSpatialMode !== "thrust") return;
+      if (sampleIndex === lastHoverSampleIndex) return;
+      const index = Number(sampleIndex);
+      hoverVectorBusy = true;
+      const nextHoverIndex = Number.isInteger(index) && index >= 0 && index < xValues.length ? index : null;
+      Promise.resolve(applySpatialMode("thrust", nextHoverIndex)).finally(() => {{
+        hoverVectorBusy = false;
+      }});
+    }};
+    spatialElement.on("plotly_hover", (eventData) => {{
+      const points = Array.isArray(eventData?.points) ? eventData.points : [];
+      if (
+        currentSpatialMode === "thrust" &&
+        eventTraceIndex >= 0 &&
+        points.some((point) => point.curveNumber === eventTraceIndex)
+      ) {{
+        return;
+      }}
+      const hoverPoint = points.find((point) => point.curveNumber === hoverCarrierIndex);
+      if (!hoverPoint) return;
+      const sampleIndex = Array.isArray(hoverPoint.customdata) ? hoverPoint.customdata[5] : null;
+      updateThrustVector(sampleIndex);
+      if (currentSpatialMode === "thrust") {{
+        requestAnimationFrame(() => Plotly.Fx.unhover(spatialElement));
+      }}
+    }});
+    spatialElement.addEventListener("mouseleave", () => updateThrustVector(null));
 
     Plotly.newPlot(
       "chart-metrics",
@@ -473,6 +732,7 @@ def render_trace_detail_html(
         xaxis: {{title: "Time (s)"}},
         yaxis: {{title: "Velocity", zeroline: true}},
         yaxis2: {{title: "Thrust", overlaying: "y", side: "right", zeroline: true}},
+        shapes: eventGuideShapes,
       }}),
       baseConfig,
     );
