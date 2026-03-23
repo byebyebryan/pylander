@@ -132,6 +132,19 @@ def _format_seconds(value: Any, digits: int = 1) -> str:
         return "-"
 
 
+def _format_timestamp(value: Any) -> str:
+    token = str(value or "").strip()
+    if not token:
+        return "-"
+    try:
+        dt = datetime.fromisoformat(token)
+    except ValueError:
+        return token
+    if dt.tzinfo is None:
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
 def _record_seed_sort_key(record: dict[str, Any]) -> tuple[int, int | str]:
     seed = record.get("seed")
     try:
@@ -177,8 +190,9 @@ def _all_run_plot_selectors(candidate_payload: dict[str, Any]) -> list[str]:
     return selectors
 
 
-def _summary_metric(summary: dict[str, Any], field: str) -> dict[str, Any]:
-    block = dict(summary.get("efficiency_success") or {})
+def _summary_metric(summary: dict[str, Any], field: str, *, scope: str = "success") -> dict[str, Any]:
+    scope_key = "efficiency_all" if str(scope).strip().lower() == "all" else "efficiency_success"
+    block = dict(summary.get(scope_key) or {})
     return dict(block.get(field) or {})
 
 
@@ -252,21 +266,66 @@ def _root_path(path_rel: str | None) -> str | None:
     return "/" + path_rel.lstrip("/")
 
 
-def _summary_cards(summary: dict[str, Any]) -> list[tuple[str, str]]:
+def _summary_card_sections(bundle: dict[str, Any]) -> list[tuple[str, list[tuple[str, str]]]]:
+    benchmark = dict(bundle.get("benchmark") or {})
+    candidate = dict(benchmark.get("candidate") or {})
+    summary = dict(candidate.get("summary") or {})
+    timing = dict(bundle.get("timing") or {})
+    runs = int(summary.get("runs", 0) or 0)
+    successes = int(summary.get("successes", 0) or 0)
+    failures = max(0, runs - successes)
+    cached_value = str(candidate.get("cached") or "").strip()
+    cached_label = "-" if not cached_value else ("yes" if cached_value.lower() == "true" else "no")
+    wall_breakdown = " / ".join(
+        part
+        for part in (
+            f"bench {_format_seconds(timing.get('benchmark_wall_clock_s'))}" if timing.get("benchmark_wall_clock_s") is not None else "",
+            f"plots {_format_seconds(timing.get('plot_pack_wall_clock_s'))}" if timing.get("plot_pack_wall_clock_s") is not None else "",
+            f"render {_format_seconds(timing.get('bundle_render_wall_clock_s'))}" if timing.get("bundle_render_wall_clock_s") is not None else "",
+        )
+        if part
+    ) or "-"
     return [
-        ("Runs", str(int(summary.get("runs", 0) or 0))),
-        ("Successes", str(int(summary.get("successes", 0) or 0))),
-        ("Success Rate", _format_percent(summary.get("success_rate"))),
-        ("Crashed", str(int(summary.get("crashed", 0) or 0))),
-        ("Fuel Mean", _format_float(_summary_metric(summary, "fuel_consumed").get("mean"))),
-        ("Time Mean", _format_float(_summary_metric(summary, "time").get("mean"))),
         (
-            "Bot ms/tick",
-            _format_float(_summary_metric(summary, "bot_profile_total_ms_per_tick").get("mean")),
+            "Bench",
+            [
+                ("Bench Id", str(bundle.get("bundle_id") or "-")),
+                ("Time", _format_timestamp(bundle.get("created_at_utc"))),
+                ("Cached", cached_label),
+            ],
         ),
         (
-            "Bot p99",
-            _format_float(_summary_metric(summary, "bot_profile_total_ms_per_tick_p99").get("mean")),
+            "Wall Clock",
+            [
+                ("Wall Clock Total", _format_seconds(timing.get("total_wall_clock_s"))),
+                ("Wall Clock Breakdown", wall_breakdown),
+            ],
+        ),
+        (
+            "Outcome",
+            [
+                ("Runs", str(runs)),
+                ("Success", str(successes)),
+                ("Success Rate", _format_percent(summary.get("success_rate"))),
+                ("Failure", str(failures)),
+            ],
+        ),
+        (
+            "Efficiency",
+            [
+                ("Fuel Mean", _format_float(_summary_metric(summary, "fuel_consumed", scope="all").get("mean"))),
+                ("Fuel Mean Success", _format_float(_summary_metric(summary, "fuel_consumed", scope="success").get("mean"))),
+                ("Time Mean", _format_float(_summary_metric(summary, "time", scope="all").get("mean"))),
+                ("Time Mean Success", _format_float(_summary_metric(summary, "time", scope="success").get("mean"))),
+            ],
+        ),
+        (
+            "Bot Tick",
+            [
+                ("Bot Tick Mean", _format_float(_summary_metric(summary, "bot_profile_total_ms_per_tick", scope="all").get("mean"))),
+                ("Bot Tick P90", _format_float(_summary_metric(summary, "bot_profile_total_ms_per_tick_p90", scope="all").get("mean"))),
+                ("Bot Tick P99", _format_float(_summary_metric(summary, "bot_profile_total_ms_per_tick_p99", scope="all").get("mean"))),
+            ],
         ),
     ]
 
@@ -502,7 +561,6 @@ def _build_bundle_report_model(bundle: dict[str, Any], *, outputs_root: Path) ->
     candidate = dict(benchmark.get("candidate") or {})
     summary = dict(candidate.get("summary") or {})
     plot_pack = dict(bundle.get("plot_pack") or {}) or None
-    timing = dict(bundle.get("timing") or {})
     bundle_id = str(bundle.get("bundle_id") or "bundle")
 
     plot_assets_by_selector: dict[str, dict[str, Any]] = {}
@@ -561,35 +619,11 @@ def _build_bundle_report_model(bundle: dict[str, Any], *, outputs_root: Path) ->
     for item in scenario_items:
         scenarios_by_level.setdefault(str(item["level"]), []).append(item)
 
-    failure_scenarios = sorted({item["scenario_selector"] for item in failures}, key=_selector_sort_key)
-    quick_summary = [
-        f"{int(summary.get('successes', 0) or 0)}/{int(summary.get('runs', 0) or 0)} successful across {len(scenario_items)} scenarios.",
-        f"{len(plot_assets_by_selector)} run detail page(s) include split-image plot galleries.",
-    ]
-    if failure_scenarios:
-        quick_summary.append(
-            f"{int(summary.get('crashed', 0) or 0)} crash(es), all in {', '.join(failure_scenarios[:3])}{' ...' if len(failure_scenarios) > 3 else ''}."
-        )
-    timing_parts = []
-    for label, key in (
-        ("bench", "benchmark_wall_clock_s"),
-        ("plots", "plot_pack_wall_clock_s"),
-        ("render", "bundle_render_wall_clock_s"),
-        ("total", "total_wall_clock_s"),
-    ):
-        if timing.get(key) is not None:
-            timing_parts.append(f"{label}={_format_seconds(timing.get(key))}")
-    if timing_parts:
-        quick_summary.append("Wall clock: " + ", ".join(timing_parts) + ".")
-    if timing.get("plot_workers") is not None:
-        quick_summary.append(f"Plot workers: {int(timing.get('plot_workers') or 0)}.")
-
     return {
         "scenario_items": scenario_items,
         "scenarios_by_level": scenarios_by_level,
         "failures": sorted(failures, key=lambda item: _selector_sort_key(str(item.get("selector") or ""))),
         "runs_by_selector": runs_by_selector,
-        "quick_summary": quick_summary,
     }
 
 
@@ -632,10 +666,7 @@ def _render_scenario_sections(
         for item in report["scenarios_by_level"][level_name]:
             summary_data = dict(item.get("summary") or {})
             group_id = _sanitize_token(str(item["selector"]))
-            aggregate_status = (
-                f"{int(summary_data.get('successes', 0) or 0)}/{int(summary_data.get('runs', 0) or 0)} success"
-                f" | crashed={int(summary_data.get('crashed', 0) or 0)}"
-            )
+            aggregate_status = f"{int(summary_data.get('successes', 0) or 0)}/{int(summary_data.get('runs', 0) or 0)}"
             preview_cell = "<span class=\"muted\">expand</span>"
             representative_run = item.get("representative_run")
             if representative_run is not None and representative_run.get("plot") is not None:
@@ -658,7 +689,6 @@ def _render_scenario_sections(
                 f"<td>{html.escape(_format_float(summary_data.get('time_mean')))}</td>"
                 f"<td>{html.escape(_format_float(summary_data.get('total_ms_mean')))}</td>"
                 f"<td>{preview_cell}</td>"
-                f"<td>{len(item.get('runs') or [])}</td>"
                 "</tr>"
             )
 
@@ -680,12 +710,11 @@ def _render_scenario_sections(
                     "<tr class=\"seed-row\" hidden"
                     f" data-parent=\"{html.escape(group_id)}\">"
                     f"<td class=\"seed-label\">seed {html.escape(str(record.get('seed') if record.get('seed') is not None else '-'))}</td>"
-                    f"<td>{html.escape(str(record.get('state') or ''))} / {html.escape(str(record.get('failure_mode') or ''))}</td>"
+                    f"<td>{html.escape(str(record.get('state') or ''))}</td>"
                     f"<td>{html.escape(_format_float(record.get('fuel_consumed'), 3))}</td>"
                     f"<td>{html.escape(_format_float(record.get('time'), 3))}</td>"
                     f"<td>{html.escape(metric_text)}</td>"
                     f"<td>{preview_cell}</td>"
-                    f"<td><a href=\"{html.escape(detail_href)}\">detail</a></td>"
                     "</tr>"
                 )
         sections.append(
@@ -693,7 +722,7 @@ def _render_scenario_sections(
             f"<h2>{html.escape(level_name.title())}</h2>"
             "<div class=\"table-wrap\">"
             "<table class=\"scenario-table\">"
-            "<thead><tr><th>Selector</th><th>Status</th><th>Fuel</th><th>Time</th><th>Metric</th><th>Trajectory</th><th>Link</th></tr></thead>"
+            "<thead><tr><th>Selector</th><th>Status</th><th>Fuel</th><th>Time</th><th>Metric</th><th>Details</th></tr></thead>"
             f"<tbody>{''.join(row_blocks)}</tbody>"
             "</table>"
             "</div>"
@@ -702,26 +731,61 @@ def _render_scenario_sections(
     return "".join(sections)
 
 
-def _render_failure_table(
+def _render_failure_sections(
     report: dict[str, Any],
     *,
     bundle_dir: Path,
     outputs_root: Path,
 ) -> str:
-    rows = []
-    for run in report.get("failures") or []:
-        record = dict(run.get("record") or {})
-        detail_href = _href_from(bundle_dir, str(run.get("detail_rel") or ""), outputs_root=outputs_root) or "#"
-        rows.append(
-            [
-                f"<a href=\"{html.escape(detail_href)}\">{html.escape(str(run.get('selector') or ''))}</a>",
-                html.escape(str(record.get("state") or "")),
-                html.escape(str(record.get("failure_mode") or "")),
-                _format_float(record.get("fuel_consumed"), 3),
-                _format_float(record.get("time"), 3),
-            ]
+    failures = list(report.get("failures") or [])
+    if not failures:
+        return "<p class=\"muted\">No failures in this benchmark pack.</p>"
+
+    failures_by_level: dict[str, list[dict[str, Any]]] = {}
+    for run in failures:
+        selector = str(run.get("selector") or "")
+        level_name = selector.split(":", 1)[0] if selector else "unknown"
+        failures_by_level.setdefault(level_name, []).append(run)
+
+    sections: list[str] = []
+    for level_name in sorted(failures_by_level, key=_selector_sort_key):
+        row_blocks: list[str] = []
+        for run in sorted(failures_by_level[level_name], key=lambda item: _selector_sort_key(str(item.get("selector") or ""))):
+            record = dict(run.get("record") or {})
+            detail_href = _href_from(bundle_dir, str(run.get("detail_rel") or ""), outputs_root=outputs_root) or "#"
+            plot_assets = dict(run.get("plot") or {})
+            preview_entry = dict(plot_assets.get("preview_entry") or {})
+            preview_href = _href_from(bundle_dir, str(preview_entry.get("path_rel") or ""), outputs_root=outputs_root)
+            if preview_href:
+                preview_cell = (
+                    f"<a class=\"table-preview\" href=\"{html.escape(detail_href)}\">"
+                    f"<img src=\"{html.escape(preview_href)}\" alt=\"{html.escape(str(run.get('selector') or 'run'))}\">"
+                    "</a>"
+                )
+            else:
+                preview_cell = "<span class=\"muted\">no plot</span>"
+
+            row_blocks.append(
+                "<tr class=\"failure-row\">"
+                f"<td>{html.escape(str(run.get('selector') or ''))}</td>"
+                f"<td>{html.escape(str(record.get('state') or ''))}</td>"
+                f"<td>{html.escape(_format_float(record.get('fuel_consumed'), 3))}</td>"
+                f"<td>{html.escape(_format_float(record.get('time'), 3))}</td>"
+                f"<td>{html.escape(str(record.get('failure_mode') or '-'))}</td>"
+                f"<td>{preview_cell}</td>"
+                "</tr>"
+            )
+
+        sections.append(
+            "<div class=\"table-wrap\">"
+            f"<h3>{html.escape(level_name.title())}</h3>"
+            "<table class=\"scenario-table\">"
+            "<thead><tr><th>Selector</th><th>Status</th><th>Fuel</th><th>Time</th><th>Metric</th><th>Details</th></tr></thead>"
+            f"<tbody>{''.join(row_blocks)}</tbody>"
+            "</table>"
+            "</div>"
         )
-    return _render_table(["Selector", "State", "Failure", "Fuel", "Time"], rows)
+    return "".join(sections)
 
 
 def _render_run_detail_html(
@@ -756,13 +820,13 @@ def _render_run_detail_html(
             if not href:
                 continue
             gallery_cards.append(
-                "<article class=\"plot-card\">"
-                f"<h3>{html.escape(str(entry.get('filename') or 'plot'))}</h3>"
+                "<figure class=\"plot-frame\">"
+                f"<figcaption>{html.escape(str(entry.get('filename') or 'plot'))}</figcaption>"
                 f"<a href=\"{html.escape(href)}\"><img src=\"{html.escape(href)}\" alt=\"{html.escape(str(entry.get('filename') or 'plot'))}\"></a>"
-                "</article>"
+                "</figure>"
             )
         if gallery_cards:
-            gallery = "<div class=\"plot-strip\">" + "".join(gallery_cards) + "</div>"
+            gallery = "<div class=\"plot-stack\">" + "".join(gallery_cards) + "</div>"
 
     scenario_selector = str(run.get("scenario_selector") or "")
     scenario_runs = list(report.get("runs_by_selector", {}).values())
@@ -805,7 +869,7 @@ def _render_run_detail_html(
     * {{ box-sizing: border-box; }}
     body {{ margin: 0; font-family: Georgia, "Times New Roman", serif; color: var(--ink); background: linear-gradient(180deg, #f7f4ec 0%, var(--bg) 100%); }}
     main {{ max-width: 1280px; margin: 0 auto; padding: 24px 20px 48px; }}
-    header, section, .card, .plot-card {{ background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 8px 24px var(--shadow); }}
+    header, section, .card {{ background: var(--panel); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 8px 24px var(--shadow); }}
     header, section {{ padding: 18px 20px; margin-bottom: 18px; }}
     h1, h2, h3 {{ margin: 0 0 10px; font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif; }}
     .meta, .links, .muted {{ color: var(--muted); }}
@@ -820,16 +884,17 @@ def _render_run_detail_html(
     table {{ width: 100%; border-collapse: collapse; }}
     th, td {{ text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }}
     th {{ color: var(--muted); font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }}
-    .plot-strip {{ display: grid; grid-auto-flow: column; grid-auto-columns: 280px; gap: 14px; overflow-x: auto; padding-bottom: 8px; }}
-    .plot-card {{ padding: 14px; }}
-    .plot-card img {{ width: 100%; height: 220px; display: block; object-fit: fill; border-radius: 12px; border: 1px solid var(--line); margin-top: 10px; background: #efe7da; }}
+    .plot-stack {{ display: grid; grid-template-columns: 1fr; gap: 24px; }}
+    .plot-frame {{ margin: 0; }}
+    .plot-frame figcaption {{ margin-bottom: 10px; color: var(--muted); font-size: 0.95rem; }}
+    .plot-frame img {{ width: 100%; height: 520px; display: block; object-fit: fill; border-radius: 12px; border: 1px solid var(--line); background: #efe7da; }}
     code {{ font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 0.9rem; white-space: pre-wrap; word-break: break-word; }}
   </style>
 </head>
 <body>
   <main>
     <header>
-      <p class="links"><a href="{html.escape(index_href)}">bundle report</a>{f' | <a href="{html.escape(latest_href)}">latest alias</a>' if latest_href else ''}</p>
+      <p class="links"><a href="{html.escape(index_href)}">bundle report</a>{f' | <a href="{html.escape(latest_href)}">latest page</a>' if latest_href else ''}</p>
       <h1>{html.escape(selector)}</h1>
       <p class="meta">scenario={html.escape(scenario_selector)}</p>
       <p class="banner {'bad' if not bool(record.get('success', False)) else ''}">{html.escape(str(record.get('state') or '-'))} / failure={html.escape(str(record.get('failure_mode') or '-'))}</p>
@@ -870,9 +935,14 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
     benchmark = dict(bundle.get("benchmark") or {})
     candidate = dict(benchmark.get("candidate") or {})
     compare = dict(bundle.get("compare") or {})
-    summary = dict(candidate.get("summary") or {})
     report = _build_bundle_report_model(bundle, outputs_root=outputs_root)
-    summary_cards = _render_metric_card_grid(_summary_cards(summary))
+    summary_sections_html = "".join(
+        "<div class=\"card-group\">"
+        f"<h2>{html.escape(title)}</h2>"
+        f"<div class=\"cards\">{_render_metric_card_grid(cards)}</div>"
+        "</div>"
+        for title, cards in _summary_card_sections(bundle)
+    )
 
     raw_links: list[str] = []
     for label, path_rel in (
@@ -930,9 +1000,8 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
     benchmark_cmd = html.escape(" ".join(str(item) for item in benchmark.get("command") or []))
     plot_cmd = html.escape(" ".join(str(item) for item in dict(bundle.get("plot_pack") or {}).get("command") or []))
     latest_href = _href_from(bundle_dir, bundle.get("latest_page_path"), outputs_root=outputs_root)
-    quick_summary_html = "".join(f"<li>{html.escape(str(item))}</li>" for item in report.get("quick_summary") or [])
     scenario_sections_html = _render_scenario_sections(report, bundle_dir=bundle_dir, outputs_root=outputs_root)
-    failure_table = _render_failure_table(report, bundle_dir=bundle_dir, outputs_root=outputs_root)
+    failure_sections_html = _render_failure_sections(report, bundle_dir=bundle_dir, outputs_root=outputs_root)
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -992,11 +1061,21 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
     }}
     .banner.ok {{ background: rgba(14, 107, 96, 0.12); color: var(--accent); }}
     .banner.bad {{ background: rgba(142, 59, 46, 0.12); color: var(--warn); }}
+    .card-group + .card-group {{
+      margin-top: 18px;
+    }}
+    .card-group h2 {{
+      margin: 0 0 10px;
+      font-size: 1rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }}
     .cards {{
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
       gap: 12px;
-      margin: 18px 0 10px;
+      margin: 0;
     }}
     .card, section, .plot-card {{
       background: var(--panel);
@@ -1006,6 +1085,7 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
     }}
     .card {{
       padding: 14px;
+      min-width: 0;
     }}
     .label {{
       color: var(--muted);
@@ -1014,8 +1094,10 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
       letter-spacing: 0.04em;
     }}
     .value {{
-      font-size: 1.5rem;
+      font-size: 1.15rem;
       margin-top: 6px;
+      line-height: 1.35;
+      word-break: break-word;
     }}
     section {{
       padding: 18px 20px;
@@ -1053,10 +1135,6 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
       color: var(--muted);
       font-size: 0.92rem;
     }}
-    .summary-list {{
-      margin: 0;
-      padding-left: 20px;
-    }}
     .table-wrap {{ overflow-x: auto; }}
     .scenario-table {{
       width: 100%;
@@ -1065,6 +1143,9 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
     .scenario-row {{
       cursor: pointer;
       background: rgba(14, 107, 96, 0.04);
+    }}
+    .failure-row {{
+      background: rgba(142, 59, 46, 0.05);
     }}
     .scenario-row:hover {{
       background: rgba(14, 107, 96, 0.08);
@@ -1122,14 +1203,9 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
   <main>
     <header>
       <h1>{html.escape(str(bundle.get("title") or "Pylander Bench Bundle"))}</h1>
-      <p class="meta">created_at_utc={html.escape(str(bundle.get("created_at_utc") or ""))}</p>
-      <p class="meta">bundle_id={html.escape(str(bundle.get("bundle_id") or ""))}</p>
-      <p class="banner {'bad' if int(summary.get('crashed', 0) or 0) > 0 else 'ok'}">
-        benchmark_exit_code={html.escape(str(benchmark.get("exit_code")))} cached={html.escape(str(candidate.get("cached")))}
-      </p>
-      <div class="cards">{summary_cards}</div>
+      {summary_sections_html}
       <p class="links">{' | '.join(raw_links)}</p>
-      <p class="links">{f'<a href="{html.escape(latest_href)}">latest alias</a>' if latest_href else ''}</p>
+      <p class="links">{f'<a href="{html.escape(latest_href)}">latest page</a>' if latest_href else ''}</p>
       <details>
         <summary>Show commands</summary>
         <p><code>{benchmark_cmd}</code></p>
@@ -1137,19 +1213,14 @@ def _render_bundle_html(bundle: dict[str, Any], *, bundle_dir: Path, outputs_roo
       </details>
     </header>
 
-    <section>
-      <h2>Quick Summary</h2>
-      <ul class="summary-list">{quick_summary_html}</ul>
-    </section>
-
     {compare_html}
-
-    {scenario_sections_html}
 
     <section>
       <h2>Failures</h2>
-      {failure_table}
+      {failure_sections_html}
     </section>
+
+    {scenario_sections_html}
   </main>
   <script>
     const toggleScenarioRows = (row) => {{
@@ -1424,8 +1495,10 @@ def _write_bundle_files(
 
     latest_path = outputs_root / str(bundle["latest_page_path"])
     latest_path.parent.mkdir(parents=True, exist_ok=True)
-    latest_href = _href_from(latest_path.parent, str(bundle["bundle_page_path"]), outputs_root=outputs_root)
-    latest_path.write_text(_redirect_html(latest_href or "../bundles/"), encoding="utf-8")
+    latest_path.write_text(
+        _render_bundle_html(bundle, bundle_dir=latest_path.parent, outputs_root=outputs_root),
+        encoding="utf-8",
+    )
     return html_path, bundle_json_path, latest_path
 
 
@@ -1613,7 +1686,7 @@ def main() -> None:
     ap.add_argument("--top-plots", type=int, default=8)
     ap.add_argument("--plot-scope", choices=("top", "per-scenario", "per-run"), default="top")
     ap.add_argument("--plot-mode", choices=("speed", "thrust", "all"), default="all")
-    ap.add_argument("--plot-output", choices=("combined", "split", "both"), default="both")
+    ap.add_argument("--plot-output", choices=("combined", "split", "both"), default="split")
     ap.add_argument("--plot-max-side-px", type=int, default=1800)
     ap.add_argument("--plot-workers", type=int, default=0)
     ap.add_argument("--viewer-base-url", default=None)

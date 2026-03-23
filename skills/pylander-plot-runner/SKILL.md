@@ -18,6 +18,7 @@ That wrapper:
 - checks whether the outputs web server is already running
 - starts it in the background if needed
 - returns a reachable latest URL (preferring the machine's `.lan` hostname when available)
+- defaults to split images so detail pages can show the plots inline in a single scrollable column
 
 When the user says "full bench and plots", interpret that as:
 - `--mode full`

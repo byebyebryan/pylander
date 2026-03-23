@@ -14,7 +14,9 @@ another machine, prefer the static bundle workflow:
 
 That command wraps the cached benchmark run, generates the HTML report plus plot
 gallery, checks whether the outputs server is already running, starts it in the
-background if not, and prints the stable latest URL.
+background if not, and prints the stable latest URL. It defaults to split plot
+images so the report pages can embed the panels directly without also spending
+time on combined overview renders.
 
 When the user says "full bench and plots", interpret that as:
 - `--mode full`
@@ -156,7 +158,7 @@ Always include:
 - per-scenario notable regressions (`level:scenario`)
 - crash regression details:
   - selector(s), failure mode, key telemetry snapshot
-  - repro commands for `plot` (`--plot-output both`) and `sim`/profiled `sim`
+  - repro commands for `plot` (`--plot-output split`) and `sim`/profiled `sim`
 - explicit policy context (`excluded` / `observe_only` / `normal`)
 - recommendation (`keep`, `investigate`, `revert`)
 

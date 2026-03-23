@@ -253,10 +253,18 @@ def test_write_bundle_files_renders_relative_links_and_latest_redirect(tmp_path:
             "successes": 9,
             "crashed": 1,
             "success_rate": 0.9,
+            "efficiency_all": {
+                "fuel_consumed": {"mean": 13.5},
+                "time": {"mean": 9.25},
+                "bot_profile_total_ms_per_tick": {"mean": 1.5},
+                "bot_profile_total_ms_per_tick_p90": {"mean": 3.25},
+                "bot_profile_total_ms_per_tick_p99": {"mean": 5.0},
+            },
             "efficiency_success": {
                 "fuel_consumed": {"mean": 12.5},
                 "time": {"mean": 8.75},
                 "bot_profile_total_ms_per_tick": {"mean": 1.25},
+                "bot_profile_total_ms_per_tick_p90": {"mean": 3.0},
                 "bot_profile_total_ms_per_tick_p99": {"mean": 4.5},
             },
             "by_selector": {
@@ -384,8 +392,13 @@ def test_write_bundle_files_renders_relative_links_and_latest_redirect(tmp_path:
         outputs_root / "viewer" / "bundles" / "bundle_x" / "runs" / "boost_climb_high_full_0.html"
     ).read_text(encoding="utf-8")
 
-    assert "Quick Summary" in html_payload
-    assert "Wall clock:" in html_payload
+    assert "Quick Summary" not in html_payload
+    assert "Bench Id" in html_payload
+    assert "Wall Clock Total" in html_payload
+    assert "Wall Clock Breakdown" in html_payload
+    assert "Fuel Mean Success" in html_payload
+    assert "Time Mean Success" in html_payload
+    assert "Bot Tick P90" in html_payload
     assert "Show commands" in html_payload
     assert "scenario-table" in html_payload
     assert "scenario-row" in html_payload
@@ -395,7 +408,20 @@ def test_write_bundle_files_renders_relative_links_and_latest_redirect(tmp_path:
     assert "../../../plots/case_a/spatial_trajectory_comparison.png" in html_payload
     assert "../../../benchmarks/head/full_pack.json" in html_payload
     assert "notable_regression=True" in html_payload
-    assert "../bundles/bundle_x/index.html" in latest_payload
+    assert "benchmark_exit_code=1 cached=False" not in html_payload
+    assert "9/10 successful across 1 scenarios." not in html_payload
+    assert "1 run detail page(s) include split-image plot galleries." not in html_payload
+    assert "Wall clock:" not in html_payload
+    assert "Plot workers:" not in html_payload
+    assert "<th>Link</th>" not in html_payload
+    assert "<th>Details</th>" in html_payload
+    assert ">9/10<" in html_payload
+    assert ">crashed<" in html_payload
+    assert html_payload.index("<h2>Failures</h2>") < html_payload.index("<h2>Boost</h2>")
+    assert "Bench Id" in latest_payload
+    assert "latest page" in latest_payload
+    assert "../bundles/bundle_x/runs/boost_climb_high_full_0.html" in latest_payload
+    assert "../../benchmarks/head/full_pack.json" in latest_payload
     assert bundle_json_payload["plot_pack"]["manifest_path"] == "viewer/bundles/bundle_x/plot_pack.json"
     assert bundle_json_payload["plot_pack"]["selection_scope"] == "per-scenario"
     assert bundle_json_payload["timing"]["benchmark_wall_clock_s"] == 12.5
@@ -403,7 +429,8 @@ def test_write_bundle_files_renders_relative_links_and_latest_redirect(tmp_path:
     assert bundle_json_payload["timing"]["bundle_render_wall_clock_s"] is not None
     assert bundle_json_payload["timing"]["total_wall_clock_s"] is not None
     assert "Pylander Run Detail" in detail_html
-    assert "plot-strip" in detail_html
+    assert "plot-stack" in detail_html
+    assert "plot-frame" in detail_html
     assert "../../../../plots/case_a/spatial_trajectory_comparison.png" in detail_html
     assert "../../../../plots/case_a/spatial_speed.png" in detail_html
     assert "../../../../plots/overview/case_a.png" not in detail_html
