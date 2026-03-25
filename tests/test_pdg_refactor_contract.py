@@ -69,12 +69,12 @@ def test_pdg_instances_keep_runtime_state_isolated() -> None:
     first = _pdg_bot()
     second = _pdg_bot()
 
-    first._boost_cutoff_done = True
-    first._terminal_entry_done = True
+    first.state._boost_cutoff_done = True
+    first.state._terminal_entry_done = True
     first._solve_count = 11
 
-    assert second._boost_cutoff_done is False
-    assert second._terminal_entry_done is False
+    assert second.state._boost_cutoff_done is False
+    assert second.state._terminal_entry_done is False
     assert second._solve_count == 0
 
 
@@ -98,28 +98,29 @@ def test_pdg_snapshot_contains_expected_contract_keys() -> None:
 
 def test_pdg_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> None:
     bot = _pdg_bot()
-    bot._active_phase = "terminal"
-    bot._boost_cutoff_done = True
-    bot._boost_cutoff_time = 6.0
-    bot._boost_cutoff_altitude = 240.0
-    bot._boost_cutoff_x = 120.0
-    bot._boost_cutoff_y = 240.0
-    bot._boost_cutoff_vx = 8.0
-    bot._boost_cutoff_vy_up = -12.0
-    bot._boost_cutoff_projected_dx = 5.0
-    bot._boost_cutoff_projected_apex_y = 260.0
-    bot._boost_cutoff_projected_apex_over_target = 40.0
-    bot._boost_cutoff_has_target_y_solution = True
-    bot._boost_cutoff_projected_impact_dx = 5.0
-    bot._boost_cutoff_projected_impact_angle_deg = 63.0
-    bot._boost_cutoff_burn_duration_s = 6.0
-    bot._boost_cutoff_burn_fuel_used = 18.0
-    bot._boost_cutoff_burn_avg_thrust_level = 0.86
-    bot._terminal_entry_done = True
-    bot._terminal_entry_time = 7.0
-    bot._terminal_entry_x = 140.0
-    bot._terminal_entry_y = 180.0
-    bot._terminal_entry_projected_dx = -4.56
+    state = bot.state
+    state._active_phase = "terminal"
+    state._boost_cutoff_done = True
+    state._boost_cutoff_time = 6.0
+    state._boost_cutoff_altitude = 240.0
+    state._boost_cutoff_x = 120.0
+    state._boost_cutoff_y = 240.0
+    state._boost_cutoff_vx = 8.0
+    state._boost_cutoff_vy_up = -12.0
+    state._boost_cutoff_projected_dx = 5.0
+    state._boost_cutoff_projected_apex_y = 260.0
+    state._boost_cutoff_projected_apex_over_target = 40.0
+    state._boost_cutoff_has_target_y_solution = True
+    state._boost_cutoff_projected_impact_dx = 5.0
+    state._boost_cutoff_projected_impact_angle_deg = 63.0
+    state._boost_cutoff_burn_duration_s = 6.0
+    state._boost_cutoff_burn_fuel_used = 18.0
+    state._boost_cutoff_burn_avg_thrust_level = 0.86
+    state._terminal_entry_done = True
+    state._terminal_entry_time = 7.0
+    state._terminal_entry_x = 140.0
+    state._terminal_entry_y = 180.0
+    state._terminal_entry_projected_dx = -4.56
 
     phase_snapshot = bot.get_flight_phase_snapshot()
     markers = bot.get_plot_markers()
@@ -193,12 +194,12 @@ def test_boost_cutoff_waits_for_actual_thrust_shutdown() -> None:
 
     def wrapped_update(self, dt: float, passive: Sensors) -> BotAction:
         action = original_update(dt, passive)
-        if self._boost_cutoff_done:
+        if self.state._boost_cutoff_done:
             gate_samples.append(
                 (
-                    float(self._elapsed_time_s),
+                    float(self.state._elapsed_time_s),
                     float(passive.thrust_level),
-                    str(self._active_phase),
+                    str(self.state._active_phase),
                 )
             )
         return action

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import warnings
+from typing import Any, cast
 
 import pytest
 
@@ -18,17 +19,22 @@ def _run_level(
     max_time: float = 300.0,
     eval_goal: str | None = None,
 ):
-    level = create_level_by_name(level_name)
+    level = cast(Any, create_level_by_name(level_name))
     if hasattr(level, "set_eval_scenario"):
         level.set_eval_scenario(scenario)
     # Keep smoke runs bounded and stop as soon as a terminal condition is reached.
     level.stop_on_crash = True
     level.stop_on_out_of_fuel = True
     level.stop_on_first_land = True
-    bot = create_bot("pdg")
+    bot = cast(Any, create_bot("pdg"))
     if eval_goal is not None:
         bot.set_eval_goal(eval_goal)
-    game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal=eval_goal)
+    if eval_goal is None:
+        game = LanderGame(level=level, seed=0, bot=bot, headless=True)
+    else:
+        game = LanderGame(
+            level=level, seed=0, bot=bot, headless=True, eval_goal=eval_goal
+        )
     result = game.run(print_freq=0, max_steps=max_steps, max_time=max_time)
     return result, bot
 
@@ -76,7 +82,7 @@ def test_pdg_smoke_plunge_reaches_touchdown_seed0(
         max_time=max_time,
     )
     assert result.get("state") != "crashed"
-    assert bot._active_phase in {"touchdown", "landed"}
+    assert bot.state._active_phase in {"touchdown", "landed"}
 
 
 def test_pdg_launch_landing_offset_bound_seed0() -> None:
@@ -110,7 +116,7 @@ def test_pdg_passive_coast_suppresses_solver_work_mid_flare() -> None:
 
 def test_pdg_optimizer_solution_changes_with_runtime_gravity() -> None:
     optimizer = PDGOptimizer(PDGOptimizerConfig(horizon_steps=10, step_dt=0.2))
-    common = dict(
+    common: dict[str, Any] = dict(
         x=0.0,
         y=600.0,
         vx=25.0,
@@ -210,7 +216,7 @@ def test_pdg_optimizer_supports_runtime_path_override_and_rejects_bad_length() -
     assert optimizer.horizon_steps == 12
     assert optimizer.step_dt == pytest.approx(0.2)
 
-    common = dict(
+    common: dict[str, Any] = dict(
         x=0.0,
         y=600.0,
         vx=20.0,

@@ -88,6 +88,7 @@ def command_from_plan(
         a_y = clamp(a_y, 0.0, _GRAVITY_MAG + max_thrust_accel)
         a_x = clamp((-0.55 * vx) + (0.04 * dx), -7.0, 7.0)
     else:
+        runtime_state = bot.state
         idx = bot._plan_index()
         a_x = float(bot._plan.ax[idx])
         a_y = float(bot._plan.ay[idx])
@@ -97,23 +98,34 @@ def command_from_plan(
             dx,
             float(passive.vx),
             dy=dy,
-            phase=bot._active_phase,
-            vy_up=float(passive.vy_up) if bot._active_phase == "terminal" else None,
-            max_thrust_accel=max_thrust_accel if bot._active_phase == "terminal" else None,
-            lateral_dx=projected_dx if bot._active_phase == "terminal" else None,
+            phase=runtime_state._active_phase,
+            vy_up=float(passive.vy_up)
+            if runtime_state._active_phase == "terminal"
+            else None,
+            max_thrust_accel=max_thrust_accel
+            if runtime_state._active_phase == "terminal"
+            else None,
+            lateral_dx=projected_dx
+            if runtime_state._active_phase == "terminal"
+            else None,
         )
         tilt_tan = math.tan(max_tilt)
         a_x = clamp(a_x, -tilt_tan * max(0.2, a_y), tilt_tan * max(0.2, a_y))
 
+    runtime_state = bot.state
     max_tilt_now = bot._resolve_max_tilt(
         alt,
         dx,
         float(passive.vx),
         dy=dy,
-        phase=bot._active_phase,
-        vy_up=float(passive.vy_up) if bot._active_phase == "terminal" else None,
-        max_thrust_accel=max_thrust_accel if bot._active_phase == "terminal" else None,
-        lateral_dx=projected_dx if bot._active_phase == "terminal" else None,
+        phase=runtime_state._active_phase,
+        vy_up=float(passive.vy_up)
+        if runtime_state._active_phase == "terminal"
+        else None,
+        max_thrust_accel=max_thrust_accel
+        if runtime_state._active_phase == "terminal"
+        else None,
+        lateral_dx=projected_dx if runtime_state._active_phase == "terminal" else None,
     )
     angle_target = math.atan2(a_x, max(0.2, a_y))
     angle_target = clamp(angle_target, -max_tilt_now, max_tilt_now)
@@ -157,13 +169,14 @@ def command_from_plan(
 
     down_speed = max(0.0, -float(passive.vy_up))
     rescue_limit = bot._braking_speed_limit(alt, max_thrust_accel, max_tilt_now)
-    if (
-        alt <= cfg.touchdown_rescue_altitude
-        and down_speed > (cfg.touchdown_rescue_vy_ratio * rescue_limit)
+    if alt <= cfg.touchdown_rescue_altitude and down_speed > (
+        cfg.touchdown_rescue_vy_ratio * rescue_limit
     ):
         rescue_angle_target = 0.0
         if abs(float(passive.vx)) > cfg.touchdown_zero_vx:
-            rescue_angle_target = math.copysign(cfg.touchdown_rescue_tilt, -float(passive.vx))
+            rescue_angle_target = math.copysign(
+                cfg.touchdown_rescue_tilt, -float(passive.vx)
+            )
         rescue_angle_target = clamp(
             rescue_angle_target,
             -cfg.touchdown_rescue_tilt,

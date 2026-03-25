@@ -44,8 +44,9 @@ class BoostObjectiveGeometry:
 
 
 def _direction_sign(bot, *, dx: float) -> float:
-    if bot._shape_window_started:
-        delta = float(bot._shape_target_x) - float(bot._shape_start_x)
+    state = bot.state
+    if state._shape_window_started:
+        delta = float(state._shape_target_x) - float(state._shape_start_x)
         if abs(delta) > 1e-6:
             return math.copysign(1.0, delta)
     if abs(float(dx)) > 1e-6:
@@ -77,11 +78,10 @@ def apex_target_and_tolerance(
 
 
 def transfer_dy_for_boost(bot, *, dy: float) -> float:
+    state = bot.state
     transfer_dy = float(dy)
-    if bool(getattr(bot, "_shape_window_started", False)):
-        transfer_dy = float(getattr(bot, "_shape_target_y", 0.0)) - float(
-            getattr(bot, "_shape_start_y", 0.0)
-        )
+    if bool(state._shape_window_started):
+        transfer_dy = float(state._shape_target_y) - float(state._shape_start_y)
     return transfer_dy
 
 
@@ -120,6 +120,7 @@ def select_reference_times(
     dy: float,
     plan,
 ) -> tuple[float, float, float]:
+    state = bot.state
     ref_x = float(passive.x)
     ref_y = float(passive.y)
     ref_vx = float(passive.vx)
@@ -127,7 +128,7 @@ def select_reference_times(
     _ = plan
 
     dx_anchor_abs = (
-        bot._shape_anchor_dx_abs if bot._shape_window_started else abs(float(dx))
+        state._shape_anchor_dx_abs if state._shape_window_started else abs(float(dx))
     )
     apex_target, _ = apex_target_and_tolerance(bot, dx_anchor_abs=dx_anchor_abs, dy=dy)
 
@@ -238,7 +239,7 @@ def evaluate_boost_quality(
     dx_limit = boost_dx_limit(bot)
     ratio_min, ratio_max = descent_angle_ratio_bounds(bot)
 
-    target_y = float(bot._last_target_y)
+    target_y = float(bot.state._last_target_y)
     apex = ballistic_apex_from_state(
         x=float(passive.x),
         y=float(passive.y),

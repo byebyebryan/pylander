@@ -177,28 +177,12 @@ class PDGState:
     _shape_shortfall_sample_count: int = 0
 
 
-PDG_STATE_FIELD_NAMES = {name for name in PDGState.__dataclass_fields__}
-
-
 class PDGBot(Bot):
     _state: PDGState
 
-    def __getattr__(self, name: str) -> Any:
-        state = self.__dict__.get("_state")
-        if isinstance(state, PDGState) and name in PDG_STATE_FIELD_NAMES:
-            return getattr(state, name)
-        raise AttributeError(name)
-
-    def __setattr__(self, name: str, value: Any) -> None:
-        state = self.__dict__.get("_state")
-        if isinstance(state, PDGState) and name in PDG_STATE_FIELD_NAMES:
-            setattr(state, name, value)
-            return
-        super().__setattr__(name, value)
-
     def __init__(self, behavior: str = "pdg") -> None:
         super().__init__()
-        super().__setattr__("_state", PDGState())
+        self._state = PDGState()
         self.set_identity_name("pdg")
         self._cfg = PDGConfig()
         self._optimizer_boost = self._build_boost_optimizer()
@@ -243,6 +227,10 @@ class PDGBot(Bot):
         _reset_evaluation_state_impl(self, clear_last_flight_snapshot=True)
 
         self.set_behavior(behavior)
+
+    @property
+    def state(self) -> PDGState:
+        return self._state
 
     def _build_boost_optimizer(self) -> PDGOptimizer:
         return PDGOptimizer(
@@ -291,24 +279,25 @@ class PDGBot(Bot):
 
     def prime_boost_cutoff(self, boost_cutoff: BoostCutoffMetrics) -> None:
         _apply_boost_cutoff_metrics_impl(self, boost_cutoff=boost_cutoff)
-        self._boost_cutoff_spawn_primed = True
+        state = self._state
+        state._boost_cutoff_spawn_primed = True
         if self._cfg.force_terminal_from_start:
-            self._terminal_entry_done = True
-            self._terminal_entry_time = 0.0
-            self._terminal_entry_altitude = (
+            state._terminal_entry_done = True
+            state._terminal_entry_time = 0.0
+            state._terminal_entry_altitude = (
                 float(boost_cutoff.altitude)
                 if boost_cutoff.altitude is not None
                 else None
             )
-            self._terminal_entry_projected_dx = (
+            state._terminal_entry_projected_dx = (
                 float(boost_cutoff.projected_impact_dx)
                 if boost_cutoff.projected_impact_dx is not None
                 else None
             )
-            self._terminal_entry_x = (
+            state._terminal_entry_x = (
                 float(boost_cutoff.x) if boost_cutoff.x is not None else None
             )
-            self._terminal_entry_y = (
+            state._terminal_entry_y = (
                 float(boost_cutoff.y) if boost_cutoff.y is not None else None
             )
             self._transition_to(FlightStage.TERMINAL, None)
@@ -412,24 +401,25 @@ class PDGBot(Bot):
         self._display_summary = summary.strip()
 
     def _reset_shape_window_state(self) -> None:
-        self._shape_window_started = False
-        self._shape_window_done = False
-        self._shape_window_start_time: float | None = None
-        self._shape_window_end_time: float | None = None
-        self._shape_start_x = 0.0
-        self._shape_start_y = 0.0
-        self._shape_target_x = 0.0
-        self._shape_target_y = 0.0
-        self._shape_anchor_dx_abs = 0.0
-        self._shape_apex_target_over_target = 0.0
-        self._shape_apex_actual_over_target = 0.0
-        self._shape_curve_sq_err_sum = 0.0
-        self._shape_curve_count = 0
-        self._shape_projected_dx_abs_sum = 0.0
-        self._shape_projected_dx_abs_max = 0.0
-        self._shape_projected_dx_count = 0
-        self._shape_shortfall_count = 0
-        self._shape_shortfall_sample_count = 0
+        state = self._state
+        state._shape_window_started = False
+        state._shape_window_done = False
+        state._shape_window_start_time = None
+        state._shape_window_end_time = None
+        state._shape_start_x = 0.0
+        state._shape_start_y = 0.0
+        state._shape_target_x = 0.0
+        state._shape_target_y = 0.0
+        state._shape_anchor_dx_abs = 0.0
+        state._shape_apex_target_over_target = 0.0
+        state._shape_apex_actual_over_target = 0.0
+        state._shape_curve_sq_err_sum = 0.0
+        state._shape_curve_count = 0
+        state._shape_projected_dx_abs_sum = 0.0
+        state._shape_projected_dx_abs_max = 0.0
+        state._shape_projected_dx_count = 0
+        state._shape_shortfall_count = 0
+        state._shape_shortfall_sample_count = 0
 
     @staticmethod
     def _contact_distance(contact) -> float:
@@ -506,11 +496,12 @@ class PDGBot(Bot):
         return _percentile_impl(values, p)
 
     def _track_boost_phase_metrics(self, *, dt: float, passive: Sensors) -> None:
-        if self._boost_cutoff_done:
+        state = self._state
+        if state._boost_cutoff_done:
             return
-        if self._boost_phase_fuel_start is None:
-            self._boost_phase_fuel_start = float(passive.fuel)
-        self._boost_phase_thrust_integral += float(passive.thrust_level) * max(
+        if state._boost_phase_fuel_start is None:
+            state._boost_phase_fuel_start = float(passive.fuel)
+        state._boost_phase_thrust_integral += float(passive.thrust_level) * max(
             0.0, float(dt)
         )
 
@@ -984,13 +975,14 @@ class PDGBot(Bot):
         )
 
     def _shape_reference_y_at_x(self, x: float) -> float:
-        den = self._shape_target_x - self._shape_start_x
+        state = self._state
+        den = state._shape_target_x - state._shape_start_x
         if abs(den) <= 1e-6:
             s = 0.0
         else:
-            s = clamp((float(x) - self._shape_start_x) / den, 0.0, 1.0)
-        baseline = ((1.0 - s) * self._shape_start_y) + (s * self._shape_target_y)
-        return baseline + (4.0 * self._shape_apex_target_over_target * s * (1.0 - s))
+            s = clamp((float(x) - state._shape_start_x) / den, 0.0, 1.0)
+        baseline = ((1.0 - s) * state._shape_start_y) + (s * state._shape_target_y)
+        return baseline + (4.0 * state._shape_apex_target_over_target * s * (1.0 - s))
 
     def _update_shape_window_metrics(
         self,
@@ -1007,19 +999,28 @@ class PDGBot(Bot):
         )
 
     def _shape_curve_rmse(self) -> float | None:
-        if self._shape_curve_count <= 0:
+        state = self._state
+        if state._shape_curve_count <= 0:
             return None
-        return math.sqrt(self._shape_curve_sq_err_sum / max(1, self._shape_curve_count))
+        return math.sqrt(
+            state._shape_curve_sq_err_sum / max(1, state._shape_curve_count)
+        )
 
     def _shape_projected_dx_abs_mean(self) -> float | None:
-        if self._shape_projected_dx_count <= 0:
+        state = self._state
+        if state._shape_projected_dx_count <= 0:
             return None
-        return self._shape_projected_dx_abs_sum / max(1, self._shape_projected_dx_count)
+        return state._shape_projected_dx_abs_sum / max(
+            1, state._shape_projected_dx_count
+        )
 
     def _shape_shortfall_ratio(self) -> float | None:
-        if self._shape_shortfall_sample_count <= 0:
+        state = self._state
+        if state._shape_shortfall_sample_count <= 0:
             return None
-        return self._shape_shortfall_count / max(1, self._shape_shortfall_sample_count)
+        return state._shape_shortfall_count / max(
+            1, state._shape_shortfall_sample_count
+        )
 
     def _finalize_terminal_entry(
         self,
@@ -1035,19 +1036,20 @@ class PDGBot(Bot):
         latest_safe_margin_s: float,
         required_accel_ratio: float,
     ) -> None:
+        state = self._state
         _finalize_terminal_entry_metrics_impl(
             self,
             passive=passive,
             alt=alt,
             projected_dx=projected_dx,
         )
-        self._terminal_gate_mode = mode
-        self._terminal_gate_horizon_s = horizon_s
-        self._terminal_gate_terminal_speed = terminal_speed
-        self._terminal_gate_peak_accel_ratio = peak_accel_ratio
-        self._terminal_gate_od_excess_s = od_excess_s
-        self._terminal_gate_latest_safe_margin_s = latest_safe_margin_s
-        self._terminal_gate_required_accel_ratio = required_accel_ratio
+        state._terminal_gate_mode = mode
+        state._terminal_gate_horizon_s = horizon_s
+        state._terminal_gate_terminal_speed = terminal_speed
+        state._terminal_gate_peak_accel_ratio = peak_accel_ratio
+        state._terminal_gate_od_excess_s = od_excess_s
+        state._terminal_gate_latest_safe_margin_s = latest_safe_margin_s
+        state._terminal_gate_required_accel_ratio = required_accel_ratio
 
     def _evaluate_terminal_gate(
         self,
@@ -1123,7 +1125,7 @@ class PDGBot(Bot):
         dt: float,
         passive: Sensors,
     ) -> BotAction:
-        hold_angle = getattr(self, "_boost_cut_hold_angle", None)
+        hold_angle = self._state._boost_cut_hold_angle
         if hold_angle is None:
             return self._command_passive_coast(dt=dt, passive=passive)
         return _command_zero_thrust_hold_angle_impl(
@@ -1140,8 +1142,11 @@ class PDGBot(Bot):
         dy: float,
         projection: BallisticProjection,
     ):
+        state = self._state
         dx_anchor_abs = (
-            self._shape_anchor_dx_abs if self._shape_window_started else abs(float(dx))
+            state._shape_anchor_dx_abs
+            if state._shape_window_started
+            else abs(float(dx))
         )
         return _evaluate_boost_quality_impl(
             self,
@@ -1161,8 +1166,11 @@ class PDGBot(Bot):
         settle_s: float,
         settle_angle_target: float | None = None,
     ):
+        state = self._state
         dx_anchor_abs = (
-            self._shape_anchor_dx_abs if self._shape_window_started else abs(float(dx))
+            state._shape_anchor_dx_abs
+            if state._shape_window_started
+            else abs(float(dx))
         )
         return _evaluate_boost_quality_after_settle_impl(
             self,
@@ -1201,10 +1209,11 @@ class PDGBot(Bot):
         *,
         ctx: UpdateContext,
     ) -> StageTickResult:
+        state = self._state
         if (
             ctx.suggested_stage != FlightStage.BOOST
-            and (not self._boost_cut_latched)
-            and (not self._boost_cutoff_done)
+            and (not state._boost_cut_latched)
+            and (not state._boost_cutoff_done)
         ):
             return StageTickResult(next_stage=ctx.suggested_stage)
 
@@ -1214,9 +1223,9 @@ class PDGBot(Bot):
             dy=ctx.dy,
             projection=ctx.projection,
         )
-        self._boost_quality_verdict = quality.verdict
+        state._boost_quality_verdict = quality.verdict
 
-        if self._boost_cut_latched:
+        if state._boost_cut_latched:
             action = self._command_boost_settle(dt=ctx.dt, passive=ctx.passive)
             action.status = f"pdg settle/boost {quality.verdict}"
             self._set_display_state(
@@ -1229,9 +1238,9 @@ class PDGBot(Bot):
                     alt=ctx.alt,
                     projection=ctx.projection,
                 )
-                self._boost_cutoff_quality_pass = bool(quality.passed)
-                self._boost_cutoff_quality_verdict = quality.verdict
-                self._debug_boost_post_end_time = self._elapsed_time_s + 4.0
+                state._boost_cutoff_quality_pass = bool(quality.passed)
+                state._boost_cutoff_quality_verdict = quality.verdict
+                state._debug_boost_post_end_time = state._elapsed_time_s + 4.0
                 return StageTickResult(action=action, next_stage=FlightStage.COAST)
             return StageTickResult(action=action)
 
@@ -1240,9 +1249,10 @@ class PDGBot(Bot):
         boost_cut_thrust = float(self._cfg.boost_cutoff_burn_start_thrust)
         boost_thrust_floor_ratio = float(self._cfg.boost_active_thrust_floor)
         if float(ctx.dy) >= float(self._cfg.uphill_boost_dy_min):
+            state = self._state
             dx_anchor_abs = (
-                self._shape_anchor_dx_abs
-                if self._shape_window_started
+                state._shape_anchor_dx_abs
+                if state._shape_window_started
                 else abs(float(ctx.dx))
             )
             distance_alpha = self._boost_distance_alpha(dx_anchor_abs)
@@ -1254,12 +1264,12 @@ class PDGBot(Bot):
                 (1.0 - distance_alpha) * float(self._cfg.boost_active_thrust_floor_near)
             ) + (distance_alpha * float(self._cfg.boost_active_thrust_floor_far))
         if (not quality.passed) and abs(float(ctx.dx)) > 1e-3:
-            self._boost_burn_started = True
-            self._boost_burn_idle_since = None
-            if self._boost_burn_start_time is None:
-                self._boost_burn_start_time = self._elapsed_time_s
+            state._boost_burn_started = True
+            state._boost_burn_idle_since = None
+            if state._boost_burn_start_time is None:
+                state._boost_burn_start_time = state._elapsed_time_s
         settled_quality = quality
-        if self._boost_burn_started:
+        if state._boost_burn_started:
             settle_s = self._boost_cut_wind_down_s(
                 passive=ctx.passive,
                 minimum_s=float(self._cfg.boost_cutoff_burn_end_settle_s),
@@ -1277,29 +1287,29 @@ class PDGBot(Bot):
             and abs(float(ctx.dx)) > 1e-3
             and (float(quality.projected_dx) * float(ctx.dx)) < 0.0
         )
-        if settled_quality.passed and self._boost_burn_started:
-            self._boost_cut_latched = True
-            self._boost_settle_start_time = self._elapsed_time_s
-            self._boost_cut_hold_angle = self._boost_settle_hold_angle(dy=ctx.dy)
-            self._boost_cutoff_quality_pass = True
-            self._boost_cutoff_quality_verdict = settled_quality.verdict
+        if settled_quality.passed and state._boost_burn_started:
+            state._boost_cut_latched = True
+            state._boost_settle_start_time = state._elapsed_time_s
+            state._boost_cut_hold_angle = self._boost_settle_hold_angle(dy=ctx.dy)
+            state._boost_cutoff_quality_pass = True
+            state._boost_cutoff_quality_verdict = settled_quality.verdict
             settle_action = self._command_boost_settle(dt=ctx.dt, passive=ctx.passive)
             settle_action.status = "pdg settle/boost pass"
             self._set_display_state(mode="passive", phase="boost", summary="cut pass")
             return StageTickResult(action=settle_action)
-        if self._boost_burn_started and (not quality.passed):
-            burn_elapsed = self._elapsed_time_s - float(
-                self._boost_burn_start_time or self._elapsed_time_s
+        if state._boost_burn_started and (not quality.passed):
+            burn_elapsed = state._elapsed_time_s - float(
+                state._boost_burn_start_time or state._elapsed_time_s
             )
             if quality.verdict != "no_target_y_solution":
                 if overshot_target_direction and burn_elapsed >= 0.75:
-                    self._boost_cut_latched = True
-                    self._boost_settle_start_time = self._elapsed_time_s
-                    self._boost_cut_hold_angle = self._boost_settle_hold_angle(
+                    state._boost_cut_latched = True
+                    state._boost_settle_start_time = state._elapsed_time_s
+                    state._boost_cut_hold_angle = self._boost_settle_hold_angle(
                         dy=ctx.dy
                     )
-                    self._boost_cutoff_quality_pass = False
-                    self._boost_cutoff_quality_verdict = quality.verdict
+                    state._boost_cutoff_quality_pass = False
+                    state._boost_cutoff_quality_verdict = quality.verdict
                     settle_action = self._command_boost_settle(
                         dt=ctx.dt, passive=ctx.passive
                     )
@@ -1311,13 +1321,13 @@ class PDGBot(Bot):
                     )
                     return StageTickResult(action=settle_action)
                 if burn_elapsed >= float(self._cfg.boost_burn_max_s):
-                    self._boost_cut_latched = True
-                    self._boost_settle_start_time = self._elapsed_time_s
-                    self._boost_cut_hold_angle = self._boost_settle_hold_angle(
+                    state._boost_cut_latched = True
+                    state._boost_settle_start_time = state._elapsed_time_s
+                    state._boost_cut_hold_angle = self._boost_settle_hold_angle(
                         dy=ctx.dy
                     )
-                    self._boost_cutoff_quality_pass = False
-                    self._boost_cutoff_quality_verdict = quality.verdict
+                    state._boost_cutoff_quality_pass = False
+                    state._boost_cutoff_quality_verdict = quality.verdict
                     settle_action = self._command_boost_settle(
                         dt=ctx.dt, passive=ctx.passive
                     )
@@ -1328,29 +1338,29 @@ class PDGBot(Bot):
                         summary=f"cut {quality.verdict}",
                     )
                     return StageTickResult(action=settle_action)
-                self._boost_burn_idle_since = None
+                state._boost_burn_idle_since = None
             else:
                 if planner_target_thrust < boost_cut_thrust and burn_elapsed >= 0.75:
-                    if self._boost_burn_idle_since is None:
-                        self._boost_burn_idle_since = self._elapsed_time_s
+                    if state._boost_burn_idle_since is None:
+                        state._boost_burn_idle_since = state._elapsed_time_s
                 else:
-                    self._boost_burn_idle_since = None
+                    state._boost_burn_idle_since = None
                 idle_elapsed = 0.0
-                if self._boost_burn_idle_since is not None:
-                    idle_elapsed = self._elapsed_time_s - float(
-                        self._boost_burn_idle_since
+                if state._boost_burn_idle_since is not None:
+                    idle_elapsed = state._elapsed_time_s - float(
+                        state._boost_burn_idle_since
                     )
                 if burn_elapsed >= float(self._cfg.boost_burn_max_s) or (
-                    self._boost_burn_idle_since is not None
+                    state._boost_burn_idle_since is not None
                     and idle_elapsed >= float(self._cfg.boost_failure_cut_idle_s)
                 ):
-                    self._boost_cut_latched = True
-                    self._boost_settle_start_time = self._elapsed_time_s
-                    self._boost_cut_hold_angle = self._boost_settle_hold_angle(
+                    state._boost_cut_latched = True
+                    state._boost_settle_start_time = state._elapsed_time_s
+                    state._boost_cut_hold_angle = self._boost_settle_hold_angle(
                         dy=ctx.dy
                     )
-                    self._boost_cutoff_quality_pass = False
-                    self._boost_cutoff_quality_verdict = quality.verdict
+                    state._boost_cutoff_quality_pass = False
+                    state._boost_cutoff_quality_verdict = quality.verdict
                     settle_action = self._command_boost_settle(
                         dt=ctx.dt, passive=ctx.passive
                     )
@@ -1372,12 +1382,12 @@ class PDGBot(Bot):
         action.status = f"pdg opt/boost {quality.verdict}"
         if (
             self._debug_boost
-            and (self._elapsed_time_s - self._debug_boost_last_print_t) >= 0.24
+            and (state._elapsed_time_s - state._debug_boost_last_print_t) >= 0.24
         ):
-            self._debug_boost_last_print_t = self._elapsed_time_s
+            state._debug_boost_last_print_t = state._elapsed_time_s
             self._debug_boost_print(
                 "boost_cmd "
-                f"t={self._elapsed_time_s:6.2f} "
+                f"t={state._elapsed_time_s:6.2f} "
                 f"cmd_thrust={float(action.target_thrust):5.2f} "
                 f"cmd_angle={math.degrees(float(action.target_angle)):6.2f} "
                 f"q={quality.verdict}"
@@ -1394,9 +1404,10 @@ class PDGBot(Bot):
         return StageTickResult(action=action)
 
     def _transition_to(self, stage: FlightStage, ctx: UpdateContext | None) -> None:
-        current = getattr(self, "_active_stage", None)
+        state = self._state
+        current = state._active_stage
         if current == stage:
-            self._active_phase = stage.value
+            state._active_phase = stage.value
             if stage == FlightStage.TAKEOFF:
                 self._launch_takeoff_active = True
             elif stage != FlightStage.TAKEOFF:
@@ -1404,8 +1415,8 @@ class PDGBot(Bot):
             return
         if isinstance(current, FlightStage) and current in self._controllers:
             self._controllers[current].exit(self, ctx)
-        self._active_stage = stage
-        self._active_phase = stage.value
+        state._active_stage = stage
+        state._active_phase = stage.value
         self._launch_takeoff_active = stage == FlightStage.TAKEOFF
         if stage in (FlightStage.TAKEOFF, FlightStage.COAST):
             self._thrust_enabled = False
@@ -1419,11 +1430,12 @@ class PDGBot(Bot):
             self._replan_timer = 0.0
             self._fallback_steps_remaining = int(self._cfg.fallback_hold_steps)
         if stage == FlightStage.BOOST:
-            self._boost_cut_latched = False
-            self._boost_cut_hold_angle = None
-            self._boost_settle_start_time = None
-            self._boost_quality_verdict = None
-            self._boost_burn_start_time = None
+            state = self._state
+            state._boost_cut_latched = False
+            state._boost_cut_hold_angle = None
+            state._boost_settle_start_time = None
+            state._boost_quality_verdict = None
+            state._boost_burn_start_time = None
         if stage in self._controllers:
             self._controllers[stage].enter(self, ctx)
 
@@ -1549,6 +1561,7 @@ class PDGBot(Bot):
 
     def update(self, dt: float, sensors: Sensors) -> BotAction:
         passive = sensors
+        state = self._state
         if passive.state == "crashed":
             return self._reset_with_status(
                 angle=passive.angle,
@@ -1636,7 +1649,7 @@ class PDGBot(Bot):
             )
         if (
             self._last_flight_snapshot is not None
-            and self._elapsed_time_s <= 1e-9
+            and state._elapsed_time_s <= 1e-9
             and self._solve_count == 0
         ):
             # New run after a reset: discard prior episode telemetry.
@@ -1650,23 +1663,23 @@ class PDGBot(Bot):
             dx = float(target.x) - float(passive.x)
             dy = float(target.y) - float(passive.y)
             self._last_target_half = target_half_width(getattr(target, "size", None))
-            self._last_target_y = float(target.y)
-            self._peak_alt_over_target = max(
-                self._peak_alt_over_target,
-                max(0.0, float(passive.y) - self._last_target_y),
+            state._last_target_y = float(target.y)
+            state._peak_alt_over_target = max(
+                state._peak_alt_over_target,
+                max(0.0, float(passive.y) - state._last_target_y),
             )
-            self._clearance_margin = 0.0
-            self._clearance_scale = 0.0
-            self._clearance_active = False
+            state._clearance_margin = 0.0
+            state._clearance_scale = 0.0
+            state._clearance_active = False
         else:
             dx = 0.0
             dy = -max(0.0, finite_altitude(passive))
-            self._last_target_y = 0.0
-            self._clearance_margin = 0.0
-            self._clearance_scale = 0.0
-            self._clearance_active = False
+            state._last_target_y = 0.0
+            state._clearance_margin = 0.0
+            state._clearance_scale = 0.0
+            state._clearance_active = False
 
-        self._elapsed_time_s += max(0.0, float(dt))
+        state._elapsed_time_s += max(0.0, float(dt))
         self._track_boost_phase_metrics(dt=dt, passive=passive)
         self._maybe_start_shape_window(passive=passive, dx=dx, dy=dy)
         projection = estimate_target_y_projection(
@@ -1707,7 +1720,7 @@ class PDGBot(Bot):
             suggested_stage=suggested_stage,
         )
         for _ in range(6):
-            active_stage = getattr(self, "_active_stage", None) or FlightStage.BOOST
+            active_stage = self._state._active_stage or FlightStage.BOOST
             controller = self._controllers[active_stage]
             result = controller.update(self, ctx)
             if result.next_stage is not None and result.next_stage != active_stage:
@@ -1719,7 +1732,7 @@ class PDGBot(Bot):
             raise RuntimeError("pdg stage router exceeded transition budget")
         if action is None:
             raise RuntimeError(
-                f"pdg stage '{self._active_phase}' did not produce an action"
+                f"pdg stage '{self._state._active_phase}' did not produce an action"
             )
         self.status = action.status
         self._last_flight_snapshot = self._build_evaluation_snapshot()
@@ -1732,82 +1745,87 @@ class PDGBot(Bot):
         return _resolve_evaluation_snapshot_impl(self)
 
     def get_display_state(self) -> BotDisplayState | None:
+        state = self._state
         return BotDisplayState(
             bot_name="pdg",
             mode=self._display_mode,
-            phase=self._display_phase or self._active_phase,
+            phase=self._display_phase or state._active_phase,
             summary=self._display_summary,
         )
 
     def get_flight_phase_snapshot(self) -> FlightPhaseSnapshot | None:
+        state = self._state
         milestones: tuple[str, ...] = (
-            ("boost_cutoff",) if self._boost_cutoff_done else ()
+            ("boost_cutoff",) if state._boost_cutoff_done else ()
         )
         boost_cutoff = None
-        if self._boost_cutoff_done:
+        if state._boost_cutoff_done:
             boost_cutoff = BoostCutoffMetrics(
-                time_s=self._boost_cutoff_time,
-                altitude=self._boost_cutoff_altitude,
-                x=self._boost_cutoff_x,
-                y=self._boost_cutoff_y,
-                vx=self._boost_cutoff_vx,
-                vy_up=self._boost_cutoff_vy_up,
-                projected_apex_y=self._boost_cutoff_projected_apex_y,
-                projected_apex_over_target=self._boost_cutoff_projected_apex_over_target,
-                has_target_y_solution=self._boost_cutoff_has_target_y_solution,
-                projected_dx=self._boost_cutoff_projected_dx,
-                projected_impact_dx=self._boost_cutoff_projected_impact_dx,
-                projected_impact_angle_deg=self._boost_cutoff_projected_impact_angle_deg,
-                burn_duration_s=self._boost_cutoff_burn_duration_s,
-                burn_fuel_used=self._boost_cutoff_burn_fuel_used,
-                burn_avg_thrust_level=self._boost_cutoff_burn_avg_thrust_level,
+                time_s=state._boost_cutoff_time,
+                altitude=state._boost_cutoff_altitude,
+                x=state._boost_cutoff_x,
+                y=state._boost_cutoff_y,
+                vx=state._boost_cutoff_vx,
+                vy_up=state._boost_cutoff_vy_up,
+                projected_apex_y=state._boost_cutoff_projected_apex_y,
+                projected_apex_over_target=state._boost_cutoff_projected_apex_over_target,
+                has_target_y_solution=state._boost_cutoff_has_target_y_solution,
+                projected_dx=state._boost_cutoff_projected_dx,
+                projected_impact_dx=state._boost_cutoff_projected_impact_dx,
+                projected_impact_angle_deg=state._boost_cutoff_projected_impact_angle_deg,
+                burn_duration_s=state._boost_cutoff_burn_duration_s,
+                burn_fuel_used=state._boost_cutoff_burn_fuel_used,
+                burn_avg_thrust_level=state._boost_cutoff_burn_avg_thrust_level,
             )
         return FlightPhaseSnapshot(
-            phase=self._active_phase,
+            phase=state._active_phase,
             milestones=milestones,
             boost_cutoff=boost_cutoff,
         )
 
     def get_plot_markers(self) -> tuple[PlotMarker, ...]:
+        state = self._state
         out: list[PlotMarker] = []
-        if self._boost_cutoff_done:
+        if state._boost_cutoff_done:
             out.append(
                 PlotMarker(
                     id="boost_cutoff",
                     name="boost_cutoff",
                     label="boost cutoff",
-                    x=self._boost_cutoff_x,
-                    y=self._boost_cutoff_y,
+                    x=state._boost_cutoff_x,
+                    y=state._boost_cutoff_y,
                     metadata={
-                        "time_s": self._boost_cutoff_time,
-                        "vx": self._boost_cutoff_vx,
-                        "vy_up": self._boost_cutoff_vy_up,
+                        "time_s": state._boost_cutoff_time,
+                        "vx": state._boost_cutoff_vx,
+                        "vy_up": state._boost_cutoff_vy_up,
                     },
                 )
             )
-        if self._terminal_entry_done:
+        if state._terminal_entry_done:
             label = "terminal"
-            if self._terminal_gate_mode:
+            if state._terminal_gate_mode:
                 mode_label = (
-                    "ready" if self._terminal_gate_mode == "nominal_ready" else "late"
+                    "ready" if state._terminal_gate_mode == "nominal_ready" else "late"
                 )
                 label = f"{label} {mode_label}"
-            if self._terminal_entry_projected_dx is not None:
-                label = f"{label} dx={stable(self._terminal_entry_projected_dx, 1):.1f}"
+            if state._terminal_entry_projected_dx is not None:
+                label = (
+                    f"{label} dx={stable(state._terminal_entry_projected_dx, 1):.1f}"
+                )
             metadata: dict[str, float | str | None] = {
-                "time_s": self._terminal_entry_time
+                "time_s": state._terminal_entry_time
             }
-            if self._terminal_gate_mode is not None:
-                metadata["mode"] = self._terminal_gate_mode
-            if self._terminal_gate_horizon_s is not None:
-                metadata["horizon_s"] = self._terminal_gate_horizon_s
+            if state._terminal_gate_mode is not None:
+                metadata["mode"] = state._terminal_gate_mode
+            if state._terminal_gate_horizon_s is not None:
+                metadata["horizon_s"] = state._terminal_gate_horizon_s
             out.append(
                 PlotMarker(
                     id="terminal_entry",
                     name="terminal_entry",
                     label=label,
-                    x=self._terminal_entry_x,
-                    y=self._terminal_entry_y,
+                    x=state._terminal_entry_x,
+                    y=state._terminal_entry_y,
                     metadata=metadata,
                 )
             )
