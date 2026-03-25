@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import MethodType
+from typing import Any, cast
 
 import pytest
 
@@ -11,7 +12,9 @@ from game import LanderGame
 from levels import create_level
 
 
-def _sensors(*, vx: float, vy_up: float, altitude: float, thrust_level: float = 0.0) -> Sensors:
+def _sensors(
+    *, vx: float, vy_up: float, altitude: float, thrust_level: float = 0.0
+) -> Sensors:
     return Sensors(
         x=0.0,
         y=altitude,
@@ -34,7 +37,7 @@ def _sensors(*, vx: float, vy_up: float, altitude: float, thrust_level: float = 
 
 
 def test_latest_safe_margin_shrinks_when_lateral_overshoot_requires_more_time() -> None:
-    bot = create_bot("pdg")
+    bot = cast(Any, create_bot("pdg"))
     passive = _sensors(vx=28.0, vy_up=-12.0, altitude=120.0)
 
     mild_overshoot = _latest_safe_state(
@@ -64,7 +67,7 @@ def test_latest_safe_margin_shrinks_when_lateral_overshoot_requires_more_time() 
 
 
 def test_flare_dynamic_tilt_relaxes_when_vertical_state_has_recovery_margin() -> None:
-    bot = create_bot("pdg")
+    bot = cast(Any, create_bot("pdg"))
 
     base_tilt = bot._resolve_max_tilt(
         180.0,
@@ -90,7 +93,7 @@ def test_flare_dynamic_tilt_relaxes_when_vertical_state_has_recovery_margin() ->
 
 
 def test_flare_dynamic_tilt_stays_near_base_when_vertical_margin_is_tight() -> None:
-    bot = create_bot("pdg")
+    bot = cast(Any, create_bot("pdg"))
 
     base_tilt = bot._resolve_max_tilt(
         24.0,
@@ -114,7 +117,7 @@ def test_flare_dynamic_tilt_stays_near_base_when_vertical_margin_is_tight() -> N
 
 
 def test_flare_dynamic_tilt_stays_below_overshoot_cap_without_crossing_case() -> None:
-    bot = create_bot("pdg")
+    bot = cast(Any, create_bot("pdg"))
 
     relaxed_tilt = bot._resolve_max_tilt(
         180.0,
@@ -141,9 +144,9 @@ def test_flare_flight_levels_prime_boost_cutoff_and_start_in_coast(
     level_name: str,
     scenario_name: str,
 ) -> None:
-    level = create_level(level_name)
+    level = cast(Any, create_level(level_name))
     level.set_eval_scenario(scenario_name)
-    bot = create_bot("pdg")
+    bot = cast(Any, create_bot("pdg"))
 
     game = LanderGame(level=level, seed=0, bot=bot, headless=True)
 
@@ -166,9 +169,9 @@ def test_flare_flight_levels_prime_boost_cutoff_and_start_in_coast(
 
 
 def test_terminal_error_wide_triggers_terminal_gate_before_impact() -> None:
-    level = create_level("terminal")
+    level = cast(Any, create_level("terminal"))
     level.set_eval_scenario("error:mid:wide")
-    bot = create_bot("pdg")
+    bot = cast(Any, create_bot("pdg"))
 
     game = LanderGame(level=level, seed=0, bot=bot, headless=True)
     result = game.run(print_freq=0, max_time=7.0)
@@ -182,9 +185,9 @@ def test_terminal_error_wide_triggers_terminal_gate_before_impact() -> None:
 
 
 def test_flare_flight_levels_can_force_flare_from_spawn() -> None:
-    level = create_level("terminal")
+    level = cast(Any, create_level("terminal"))
     level.set_eval_scenario("normal:mid")
-    bot = create_bot("pdg")
+    bot = cast(Any, create_bot("pdg"))
     bot.apply_config_override({"force_terminal_from_start": True})
 
     game = LanderGame(level=level, seed=0, bot=bot, headless=True)
@@ -210,9 +213,9 @@ def test_terminal_gate_handoff_does_not_execute_probe_pulse(
     scenario_name: str,
     max_time: float,
 ) -> None:
-    level = create_level(level_name)
+    level = cast(Any, create_level(level_name))
     level.set_eval_scenario(scenario_name)
-    bot = create_bot("pdg")
+    bot = cast(Any, create_bot("pdg"))
 
     command_log: list[tuple[float, float, str]] = []
     original_update = bot.update
@@ -221,9 +224,9 @@ def test_terminal_gate_handoff_does_not_execute_probe_pulse(
         action = original_update(dt, passive)
         command_log.append(
             (
-                float(self._elapsed_time_s),
+                float(self.state._elapsed_time_s),
                 float(action.target_thrust),
-                str(self._active_phase),
+                str(self.state._active_phase),
             )
         )
         return action
@@ -243,6 +246,8 @@ def test_terminal_gate_handoff_does_not_execute_probe_pulse(
     ]
     assert post_gate
 
-    first_positive = next((time_s for time_s, thrust in post_gate if thrust > 1e-3), None)
+    first_positive = next(
+        (time_s for time_s, thrust in post_gate if thrust > 1e-3), None
+    )
     assert first_positive is not None
     assert float(first_positive) - float(gate_time) >= 0.30

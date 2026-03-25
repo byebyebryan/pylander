@@ -103,7 +103,9 @@ def _burn_time_candidates(
         max_thrust_accel=float(tilt_accel),
         lateral_dx=lateral_dx,
     )
-    target_vy_up = float(bot._desired_terminal_vy(max(0.0, float(alt)), thrust_accel, max_tilt))
+    target_vy_up = float(
+        bot._desired_terminal_vy(max(0.0, float(alt)), thrust_accel, max_tilt)
+    )
     down_speed = max(0.0, -float(passive.vy_up))
     target_down_speed = max(0.0, -target_vy_up)
     vertical_up_accel = max(
@@ -261,7 +263,10 @@ def _latest_safe_state(
     if feasible_candidates:
         best_candidate = min(
             feasible_candidates,
-            key=lambda candidate: (candidate.burn_time_s, candidate.required_accel_ratio),
+            key=lambda candidate: (
+                candidate.burn_time_s,
+                candidate.required_accel_ratio,
+            ),
         )
     else:
         best_candidate = min(
@@ -334,23 +339,23 @@ def evaluate_terminal_gate(
         )
         for burn_time_s in candidate_times
     ]
-    best_nominal = next((candidate for candidate in nominal_candidates if candidate.ready), None)
+    best_nominal = next(
+        (candidate for candidate in nominal_candidates if candidate.ready), None
+    )
+    state = bot.state
     if best_nominal is not None:
-        bot._terminal_gate_ready_ticks += 1
-        bot._terminal_gate_required_accel_ratio = best_nominal.required_accel_ratio
+        state._terminal_gate_ready_ticks += 1
+        state._terminal_gate_required_accel_ratio = best_nominal.required_accel_ratio
     else:
-        bot._terminal_gate_ready_ticks = 0
-        bot._terminal_gate_required_accel_ratio = (
-            min(
-                (candidate.required_accel_ratio for candidate in nominal_candidates),
-                default=0.0,
-            )
+        state._terminal_gate_ready_ticks = 0
+        state._terminal_gate_required_accel_ratio = min(
+            (candidate.required_accel_ratio for candidate in nominal_candidates),
+            default=0.0,
         )
-    bot._terminal_gate_latest_safe_margin_s = latest_safe_margin_s
+    state._terminal_gate_latest_safe_margin_s = latest_safe_margin_s
 
-    if (
-        best_nominal is not None
-        and bot._terminal_gate_ready_ticks >= max(1, int(bot._cfg.terminal_gate_hysteresis_ticks))
+    if best_nominal is not None and state._terminal_gate_ready_ticks >= max(
+        1, int(bot._cfg.terminal_gate_hysteresis_ticks)
     ):
         return TerminalGateDecision(
             mode="nominal_ready",
@@ -360,8 +365,10 @@ def evaluate_terminal_gate(
         )
 
     if latest_safe_margin_s <= 0.0:
-        bot._terminal_gate_ready_ticks = 0
-        bot._terminal_gate_required_accel_ratio = latest_safe_state.best_candidate.required_accel_ratio
+        state._terminal_gate_ready_ticks = 0
+        state._terminal_gate_required_accel_ratio = (
+            latest_safe_state.best_candidate.required_accel_ratio
+        )
         return TerminalGateDecision(
             mode="latest_safe",
             burn_time_s=latest_safe_state.best_candidate.burn_time_s,
