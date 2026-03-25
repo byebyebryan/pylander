@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from core.bot import Bot, BotAction, BotEvalDecision, FlightPhaseSnapshot, Sensors, BoostCutoffMetrics
+from typing import Any, cast
+
+from core.bot import (
+    Bot,
+    BotAction,
+    BotEvalDecision,
+    FlightPhaseSnapshot,
+    Sensors,
+    BoostCutoffMetrics,
+)
 from runtime.result_pipeline import (
     apply_bot_eval_to_result,
     merge_bot_snapshots_into_result,
@@ -12,13 +21,13 @@ class _Bot(Bot):
     def __init__(
         self,
         *,
-        decision: BotEvalDecision | object | None = None,
+        decision: Any = None,
         telemetry: dict[str, object] | None = None,
         phase_snapshot: FlightPhaseSnapshot | None = None,
         raise_decision: bool = False,
     ) -> None:
         super().__init__()
-        self._bot_name = "pdg"
+        self.set_identity_name("pdg")
         self._decision = decision
         self._telemetry = telemetry
         self._phase_snapshot = phase_snapshot
@@ -28,10 +37,10 @@ class _Bot(Bot):
         _ = dt, sensors
         return BotAction(target_thrust=0.0, target_angle=0.0, refuel=False)
 
-    def get_evaluation_decision(self) -> BotEvalDecision | object | None:
+    def get_evaluation_decision(self) -> BotEvalDecision | None:
         if self._raise_decision:
             raise RuntimeError("boom")
-        return self._decision
+        return cast(BotEvalDecision | None, self._decision)
 
     def get_bot_telemetry(self) -> dict[str, object]:
         return dict(self._telemetry or {})
@@ -46,13 +55,21 @@ def test_resolve_headless_bot_eval_decision_returns_none_for_non_headless() -> N
 
 
 def test_resolve_headless_bot_eval_decision_ignores_errors_and_invalid_types() -> None:
-    assert resolve_headless_bot_eval_decision(headless=True, bot=_Bot(raise_decision=True)) is None
-    assert resolve_headless_bot_eval_decision(headless=True, bot=_Bot(decision=object())) is None
+    assert (
+        resolve_headless_bot_eval_decision(headless=True, bot=_Bot(raise_decision=True))
+        is None
+    )
+    assert (
+        resolve_headless_bot_eval_decision(headless=True, bot=_Bot(decision=object()))
+        is None
+    )
 
 
-def test_merge_bot_snapshots_into_result_prefixes_fields_and_preserves_existing() -> None:
+def test_merge_bot_snapshots_into_result_prefixes_fields_and_preserves_existing() -> (
+    None
+):
     result = {"bot_pdg_value": "existing", "boost_cutoff_done": "existing"}
-    actor_bots = {
+    actor_bots: dict[str, Bot] = {
         "a": _Bot(
             telemetry={"value": 7, "solve_count": 9, "bot_other_done": True},
             phase_snapshot=FlightPhaseSnapshot(

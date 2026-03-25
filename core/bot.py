@@ -11,6 +11,7 @@ from core.sensor import RadarContact, ProximityContact
 @dataclass(frozen=True)
 class VehicleInfo:
     """Static vehicle parameters provided to the bot once at setup."""
+
     width: float
     height: float
     dry_mass: float
@@ -141,9 +142,11 @@ class PlotMarker:
 
 
 def resolve_bot_name(bot: "Bot") -> str:
-    bot_name = getattr(bot, "_bot_name", None)
-    if isinstance(bot_name, str) and bot_name:
-        return bot_name
+    get_identity_name = getattr(bot, "get_identity_name", None)
+    if callable(get_identity_name):
+        bot_name = get_identity_name()
+        if isinstance(bot_name, str) and bot_name:
+            return bot_name
     return bot.__class__.__module__.split(".")[-1]
 
 
@@ -175,6 +178,7 @@ class Bot(ABC):
         self.vehicle_info: VehicleInfo | None = None
         self._pinned_target_uid: str | None = None
         self._eval_goal = EVAL_GOAL_LANDING
+        self._bot_identity_name: str | None = None
 
     @abstractmethod
     def update(self, dt: float, sensors: Sensors) -> BotAction:
@@ -231,6 +235,13 @@ class Bot(ABC):
 
     def get_eval_goal(self) -> str:
         return self._eval_goal
+
+    def set_identity_name(self, name: str | None) -> None:
+        normalized = str(name or "").strip()
+        self._bot_identity_name = normalized or None
+
+    def get_identity_name(self) -> str | None:
+        return self._bot_identity_name
 
     def prime_boost_cutoff(self, boost_cutoff: BoostCutoffMetrics) -> None:
         """Optionally seed a boost-cutoff milestone before the first update."""

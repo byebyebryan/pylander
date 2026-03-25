@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 from core.trace_policy import (
     TRACE_DETAIL_DEBUG,
@@ -11,7 +11,14 @@ from core.trace_policy import (
     TRACE_DETAIL_REPORT,
     normalize_trace_detail,
 )
-from core.bot import Bot, BotAction, BotDisplayState, BotEvalDecision, FlightPhaseSnapshot
+from core.bot import (
+    Bot,
+    BotAction,
+    BotDisplayState,
+    BotEvalDecision,
+    FlightPhaseSnapshot,
+    resolve_bot_name,
+)
 from core.components import (
     ActorProfile,
     ContactReport,
@@ -131,7 +138,9 @@ def _display_state_payload(display: BotDisplayState | None) -> dict[str, Any] | 
     return payload or None
 
 
-def _phase_snapshot_payload(snapshot: FlightPhaseSnapshot | None) -> dict[str, Any] | None:
+def _phase_snapshot_payload(
+    snapshot: FlightPhaseSnapshot | None,
+) -> dict[str, Any] | None:
     if snapshot is None:
         return None
     boost_cutoff = snapshot.boost_cutoff
@@ -145,11 +154,15 @@ def _phase_snapshot_payload(snapshot: FlightPhaseSnapshot | None) -> dict[str, A
             "vx": _safe_float(boost_cutoff.vx),
             "vy_up": _safe_float(boost_cutoff.vy_up),
             "projected_apex_y": _safe_float(boost_cutoff.projected_apex_y),
-            "projected_apex_over_target": _safe_float(boost_cutoff.projected_apex_over_target),
+            "projected_apex_over_target": _safe_float(
+                boost_cutoff.projected_apex_over_target
+            ),
             "has_target_y_solution": _safe_bool(boost_cutoff.has_target_y_solution),
             "projected_dx": _safe_float(boost_cutoff.projected_dx),
             "projected_impact_dx": _safe_float(boost_cutoff.projected_impact_dx),
-            "projected_impact_angle_deg": _safe_float(boost_cutoff.projected_impact_angle_deg),
+            "projected_impact_angle_deg": _safe_float(
+                boost_cutoff.projected_impact_angle_deg
+            ),
             "burn_duration_s": _safe_float(boost_cutoff.burn_duration_s),
             "burn_fuel_used": _safe_float(boost_cutoff.burn_fuel_used),
             "burn_avg_thrust_level": _safe_float(boost_cutoff.burn_avg_thrust_level),
@@ -243,7 +256,11 @@ def _serialize_entity(entity: Entity, *, actor_bots: dict[str, Bot]) -> dict[str
     if lander_state is not None:
         state_value = lander_state.state
         payload["lander_state"] = {
-            "state": str(state_value.value if isinstance(state_value, FlightState) else state_value),
+            "state": str(
+                state_value.value
+                if isinstance(state_value, FlightState)
+                else state_value
+            ),
             "safe_landing_velocity": float(lander_state.safe_landing_velocity),
             "safe_landing_angle": float(lander_state.safe_landing_angle),
         }
@@ -320,9 +337,13 @@ def _serialize_entity(entity: Entity, *, actor_bots: dict[str, Bot]) -> dict[str
     if contact_report is not None:
         payload["contact_report"] = {
             "colliding": bool(contact_report.colliding),
-            "normal": list(contact_report.normal) if contact_report.normal is not None else None,
+            "normal": list(contact_report.normal)
+            if contact_report.normal is not None
+            else None,
             "rel_speed": float(contact_report.rel_speed),
-            "point": list(contact_report.point) if contact_report.point is not None else None,
+            "point": list(contact_report.point)
+            if contact_report.point is not None
+            else None,
         }
 
     player_controlled = entity.get_component(PlayerControlled)
@@ -335,7 +356,7 @@ def _serialize_entity(entity: Entity, *, actor_bots: dict[str, Bot]) -> dict[str
 
     bot = actor_bots.get(entity.uid)
     if bot is not None:
-        bot_name = _safe_str(getattr(bot, "_bot_name", None)) or type(bot).__name__
+        bot_name = _safe_str(resolve_bot_name(bot)) or type(bot).__name__
         payload["bot"] = {
             "name": bot_name,
             "display_state": _display_state_payload(_safe_display_state(bot)),
@@ -382,7 +403,7 @@ def _trace_primary_samples(
             ),
             None,
         )
-        if actor is None:
+        if actor is None or not isinstance(actor, dict):
             continue
         transform = dict(actor.get("transform") or {})
         physics = dict(actor.get("physics") or {})
@@ -393,19 +414,32 @@ def _trace_primary_samples(
         vx = _safe_float(physics.get("vx"))
         vy = _safe_float(physics.get("vy"))
         thrust = _safe_float(engine.get("thrust_level"))
-        if None in {x, y, rotation, vx, vy, thrust}:
+        if (
+            x is None
+            or y is None
+            or rotation is None
+            or vx is None
+            or vy is None
+            or thrust is None
+        ):
             continue
-        speed = math.hypot(float(vx), float(vy))
+        x_val = cast(float, x)
+        y_val = cast(float, y)
+        rotation_val = cast(float, rotation)
+        vx_val = cast(float, vx)
+        vy_val = cast(float, vy)
+        thrust_val = cast(float, thrust)
+        speed = math.hypot(float(vx_val), float(vy_val))
         samples.append(
             (
-                float(x),
-                float(y),
+                float(x_val),
+                float(y_val),
                 float(speed),
-                float(thrust),
-                float(rotation),
+                float(thrust_val),
+                float(rotation_val),
                 float(elapsed),
-                float(vx),
-                float(vy),
+                float(vx_val),
+                float(vy_val),
             )
         )
     return samples
@@ -446,7 +480,9 @@ def _derive_plot_payload(
                 "metadata": {
                     str(key): value
                     for key, value in event.items()
-                    if isinstance(key, str) and key not in {"name", "label", "x", "y", "time_s", "elapsed_time_s"}
+                    if isinstance(key, str)
+                    and key
+                    not in {"name", "label", "x", "y", "time_s", "elapsed_time_s"}
                 },
             }
         )
@@ -467,14 +503,25 @@ def _derive_plot_payload(
                 cutoff_y = _safe_float(boost_cutoff_event.get("y"))
                 cutoff_vx = _safe_float(boost_cutoff_event.get("vx"))
                 cutoff_vy_up = _safe_float(boost_cutoff_event.get("vy_up"))
-                if None not in {cutoff_x, cutoff_y, cutoff_vx, cutoff_vy_up}:
-                    ballistic_xs, ballistic_ys, has_target_y_solution = _ballistic_curve_from_state(
-                        x=float(cutoff_x),
-                        y=float(cutoff_y),
-                        vx=float(cutoff_vx),
-                        vy_up=float(cutoff_vy_up),
-                        target_x=float(target_x),
-                        target_y=float(target_y),
+                if (
+                    cutoff_x is not None
+                    and cutoff_y is not None
+                    and cutoff_vx is not None
+                    and cutoff_vy_up is not None
+                ):
+                    cutoff_x_val = cast(float, cutoff_x)
+                    cutoff_y_val = cast(float, cutoff_y)
+                    cutoff_vx_val = cast(float, cutoff_vx)
+                    cutoff_vy_up_val = cast(float, cutoff_vy_up)
+                    ballistic_xs, ballistic_ys, has_target_y_solution = (
+                        _ballistic_curve_from_state(
+                            x=float(cutoff_x_val),
+                            y=float(cutoff_y_val),
+                            vx=float(cutoff_vx_val),
+                            vy_up=float(cutoff_vy_up_val),
+                            target_x=float(target_x),
+                            target_y=float(target_y),
+                        )
                     )
                     if has_target_y_solution:
                         ballistic_curve = {
@@ -527,8 +574,12 @@ def _derive_plot_payload(
             "vy": [float(value) for value in ctx.vys],
         },
         "vector_sample_indices": [int(value) for value in vector_indices],
-        "actual_apex": None if apex_actual is None else {"x": float(apex_actual[0]), "y": float(apex_actual[1])},
-        "projected_apex": None if apex_projected is None else {"x": float(apex_projected[0]), "y": float(apex_projected[1])},
+        "actual_apex": None
+        if apex_actual is None
+        else {"x": float(apex_actual[0]), "y": float(apex_actual[1])},
+        "projected_apex": None
+        if apex_projected is None
+        else {"x": float(apex_projected[0]), "y": float(apex_projected[1])},
         "ballistic_curve": ballistic_curve,
         "reference_curve": reference_curve,
     }
@@ -554,7 +605,13 @@ def _write_preview_png(
     fig, ax = plt.subplots(figsize=(2.6, 1.5), dpi=100)
     fig.patch.set_facecolor("#faf7ef")
     ax.set_facecolor("#faf7ef")
-    ax.plot(terrain.get("xs") or [], terrain.get("ys") or [], color="#746651", linewidth=1.0, alpha=0.9)
+    ax.plot(
+        terrain.get("xs") or [],
+        terrain.get("ys") or [],
+        color="#746651",
+        linewidth=1.0,
+        alpha=0.9,
+    )
     ref_xs = reference_curve.get("xs") or []
     ref_ys = reference_curve.get("ys") or []
     if ref_xs and ref_ys:
@@ -596,16 +653,29 @@ def _write_preview_png(
         event_y = _safe_float(event.get("y"))
         if event_x is None or event_y is None:
             continue
+        event_x_val = cast(float, event_x)
+        event_y_val = cast(float, event_y)
         color = "#2ecc71" if event_name == "success" else "#d62728"
-        ax.scatter([float(event_x)], [float(event_y)], s=12.0, color=color, zorder=5)
+        ax.scatter(
+            [float(event_x_val)], [float(event_y_val)], s=12.0, color=color, zorder=5
+        )
 
     min_x = _safe_float(bounds.get("min_x"))
     max_x = _safe_float(bounds.get("max_x"))
     lower_y = _safe_float(bounds.get("lower_y"))
     upper_y = _safe_float(bounds.get("upper_y"))
-    if None not in {min_x, max_x, lower_y, upper_y}:
-        ax.set_xlim(float(min_x), float(max_x))
-        ax.set_ylim(float(lower_y), float(upper_y))
+    if (
+        min_x is not None
+        and max_x is not None
+        and lower_y is not None
+        and upper_y is not None
+    ):
+        min_x_val = cast(float, min_x)
+        max_x_val = cast(float, max_x)
+        lower_y_val = cast(float, lower_y)
+        upper_y_val = cast(float, upper_y)
+        ax.set_xlim(float(min_x_val), float(max_x_val))
+        ax.set_ylim(float(lower_y_val), float(upper_y_val))
     ax.axis("off")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, bbox_inches="tight", pad_inches=0.02)
@@ -717,7 +787,9 @@ class TraceRecorder:
         if self._time_accum < self._sample_period_s:
             return
         self._time_accum = math.fmod(self._time_accum, self._sample_period_s)
-        self.capture_snapshot(elapsed_time_s=float(elapsed_time_s), frame_dt_s=float(dt))
+        self.capture_snapshot(
+            elapsed_time_s=float(elapsed_time_s), frame_dt_s=float(dt)
+        )
 
     def capture_snapshot(self, *, elapsed_time_s: float, frame_dt_s: float) -> None:
         if not self.enabled:
@@ -839,12 +911,16 @@ class TraceRecorder:
             self._control_log.append(
                 {
                     "kind": "event",
-                    "elapsed_time_s": _event_time(payload) if _event_time(payload) is not None else self._sample_time_s,
+                    "elapsed_time_s": _event_time(payload)
+                    if _event_time(payload) is not None
+                    else self._sample_time_s,
                     "event": dict(payload),
                 }
             )
 
-    def record_eval_decision(self, *, elapsed_time_s: float, decision: BotEvalDecision) -> None:
+    def record_eval_decision(
+        self, *, elapsed_time_s: float, decision: BotEvalDecision
+    ) -> None:
         if not self.enabled or not self._control_log_enabled():
             return
         self._control_log.append(
@@ -870,8 +946,16 @@ class TraceRecorder:
         fuel = active_actor.get_component(FuelTank)
         if lander_state is None or transform is None:
             return None
-        state_name = str(lander_state.state.value if isinstance(lander_state.state, FlightState) else lander_state.state)
-        if state_name not in {"landed", "crashed"} and fuel is not None and fuel.fuel <= 0.0:
+        state_name = str(
+            lander_state.state.value
+            if isinstance(lander_state.state, FlightState)
+            else lander_state.state
+        )
+        if (
+            state_name not in {"landed", "crashed"}
+            and fuel is not None
+            and fuel.fuel <= 0.0
+        ):
             state_name = "out_of_fuel"
         event_name = None
         if state_name == "landed":
@@ -890,14 +974,22 @@ class TraceRecorder:
             "time_s": float(elapsed_time_s),
         }
 
-    def finalize(self, *, result: dict[str, Any], elapsed_time_s: float) -> dict[str, Any]:
+    def finalize(
+        self, *, result: dict[str, Any], elapsed_time_s: float
+    ) -> dict[str, Any]:
         if not self.enabled:
             return {}
         if self._primary_uid is None:
             self._primary_uid = self.active_uid_getter()
         if not self._snapshots:
             self.capture_snapshot(elapsed_time_s=float(elapsed_time_s), frame_dt_s=0.0)
-        elif abs(float(self._snapshots[-1].get("elapsed_time_s") or 0.0) - float(elapsed_time_s)) > 1e-6:
+        elif (
+            abs(
+                float(self._snapshots[-1].get("elapsed_time_s") or 0.0)
+                - float(elapsed_time_s)
+            )
+            > 1e-6
+        ):
             self.capture_snapshot(elapsed_time_s=float(elapsed_time_s), frame_dt_s=0.0)
         outcome_event = self._build_outcome_event(elapsed_time_s=float(elapsed_time_s))
         if outcome_event is not None:
@@ -919,7 +1011,11 @@ class TraceRecorder:
             events=self._events,
             target=self._target,
         )
-        terrain_payload = _terrain_payload_from_samples(self.terrain, samples=samples) if samples else None
+        terrain_payload = (
+            _terrain_payload_from_samples(self.terrain, samples=samples)
+            if samples
+            else None
+        )
         trace_payload = {
             "schema": RUN_TRACE_SCHEMA,
             "schema_version": RUN_TRACE_SCHEMA_VERSION,
@@ -949,9 +1045,15 @@ class TraceRecorder:
 
         trace_root_dir = self._trace_root_dir
         if trace_root_dir is None:
-            trace_root_dir = (self.outputs_root / "traces" / self._selector_tag).resolve()
-        trace_path = (trace_root_dir / "traces" / f"{self._selector_tag}.trace.json").resolve()
-        preview_path = (trace_root_dir / "previews" / f"{self._selector_tag}.png").resolve()
+            trace_root_dir = (
+                self.outputs_root / "traces" / self._selector_tag
+            ).resolve()
+        trace_path = (
+            trace_root_dir / "traces" / f"{self._selector_tag}.trace.json"
+        ).resolve()
+        preview_path = (
+            trace_root_dir / "previews" / f"{self._selector_tag}.png"
+        ).resolve()
         _json_write(trace_path, trace_payload)
         if plot_payload is not None:
             _write_preview_png(plot_payload, out_path=preview_path)
@@ -971,7 +1073,9 @@ class TraceRecorder:
             "trace_path": str(trace_path),
             "trace_rel_path": trace_rel_path,
             "trace_preview_path": str(preview_path) if preview_path.exists() else None,
-            "trace_preview_rel_path": preview_rel_path if preview_path.exists() else None,
+            "trace_preview_rel_path": preview_rel_path
+            if preview_path.exists()
+            else None,
             "trace_schema_version": RUN_TRACE_SCHEMA_VERSION,
             "trace_sample_period_s": float(self._sample_period_s),
             "trace_detail": self._trace_detail,

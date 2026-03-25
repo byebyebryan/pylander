@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.bot import Bot, BotEvalDecision, FlightPhaseSnapshot, BoostCutoffMetrics
+from core.bot import (
+    Bot,
+    BotEvalDecision,
+    FlightPhaseSnapshot,
+    BoostCutoffMetrics,
+    resolve_bot_name,
+)
 from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_BOOST
 
 _SETUP_GATE_RESULT_TO_ATTR: tuple[tuple[str, str], ...] = (
@@ -22,10 +28,16 @@ _SETUP_GATE_TO_SETUP_GOAL_FIELDS: tuple[tuple[str, str], ...] = (
     ("boost_goal_time", "boost_cutoff_time"),
     ("boost_goal_altitude", "boost_cutoff_altitude"),
     ("boost_goal_projected_apex_y", "boost_cutoff_projected_apex_y"),
-    ("boost_goal_projected_apex_over_target", "boost_cutoff_projected_apex_over_target"),
+    (
+        "boost_goal_projected_apex_over_target",
+        "boost_cutoff_projected_apex_over_target",
+    ),
     ("boost_goal_has_target_y_solution", "boost_cutoff_has_target_y_solution"),
     ("boost_goal_projected_dx", "boost_cutoff_projected_dx"),
-    ("boost_goal_projected_impact_angle_deg", "boost_cutoff_projected_impact_angle_deg"),
+    (
+        "boost_goal_projected_impact_angle_deg",
+        "boost_cutoff_projected_impact_angle_deg",
+    ),
     ("boost_goal_fuel_consumed", "boost_cutoff_burn_fuel_used"),
     ("boost_goal_burn_avg_thrust_level", "boost_cutoff_burn_avg_thrust_level"),
 )
@@ -43,9 +55,7 @@ def _safe_bot_telemetry(bot: Any) -> dict[str, Any]:
 
 
 def _bot_metric_prefix(bot: Bot) -> str:
-    raw_name = getattr(bot, "_bot_name", None)
-    if not isinstance(raw_name, str) or not raw_name.strip():
-        raw_name = type(bot).__name__
+    raw_name = resolve_bot_name(bot)
     token = str(raw_name).strip().lower().replace("-", "_").replace(" ", "_")
     return f"bot_{token}_"
 
@@ -66,7 +76,10 @@ def _merge_boost_cutoff_snapshot_into_result(
     result: dict[str, Any],
     phase_snapshot: FlightPhaseSnapshot,
 ) -> None:
-    has_boost_cutoff = "boost_cutoff" in phase_snapshot.milestones or phase_snapshot.boost_cutoff is not None
+    has_boost_cutoff = (
+        "boost_cutoff" in phase_snapshot.milestones
+        or phase_snapshot.boost_cutoff is not None
+    )
     if not has_boost_cutoff:
         return
     result.setdefault("boost_cutoff_done", True)

@@ -3,8 +3,12 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from types import SimpleNamespace
+from typing import cast
 
-from bots.common_ballistics import ballistic_apex_from_state, estimate_target_y_projection
+from bots.common_ballistics import (
+    ballistic_apex_from_state,
+    estimate_target_y_projection,
+)
 from bots.common_math import engine_profile
 from core.bot import Sensors
 from core.config import GRAVITY
@@ -56,10 +60,14 @@ def apex_target_and_tolerance(
     dy: float = 0.0,
 ) -> tuple[float, float]:
     transfer_dy = transfer_dy_for_boost(bot, dy=dy)
-    apex_target = bot._shape_apex_target(float(dx_anchor_abs)) + max(
-        0.0,
-        transfer_dy * float(bot._cfg.boost_apex_height_per_uphill_dy),
-    ) + max(0.0, -transfer_dy)
+    apex_target = (
+        bot._shape_apex_target(float(dx_anchor_abs))
+        + max(
+            0.0,
+            transfer_dy * float(bot._cfg.boost_apex_height_per_uphill_dy),
+        )
+        + max(0.0, -transfer_dy)
+    )
     cfg = bot._cfg
     apex_tolerance = max(
         float(cfg.boost_cutoff_apex_tol_abs),
@@ -81,7 +89,8 @@ def boost_dx_limit(bot) -> float:
     cfg = bot._cfg
     return max(
         float(cfg.boost_cutoff_projected_dx_abs),
-        float(cfg.boost_cutoff_projected_dx_target_ratio) * float(bot._last_target_half),
+        float(cfg.boost_cutoff_projected_dx_target_ratio)
+        * float(bot._last_target_half),
     )
 
 
@@ -117,7 +126,9 @@ def select_reference_times(
     ref_vy = float(passive.vy_up)
     _ = plan
 
-    dx_anchor_abs = bot._shape_anchor_dx_abs if bot._shape_window_started else abs(float(dx))
+    dx_anchor_abs = (
+        bot._shape_anchor_dx_abs if bot._shape_window_started else abs(float(dx))
+    )
     apex_target, _ = apex_target_and_tolerance(bot, dx_anchor_abs=dx_anchor_abs, dy=dy)
 
     apex = ballistic_apex_from_state(
@@ -175,7 +186,9 @@ def boost_objective_geometry(
     if has_solution and getattr(projection, "projected_dx", None) is not None:
         projected_dx = float(projection.projected_dx)
     else:
-        projected_dx = float(dx) - (float(passive.vx) * max(0.0, float(boost_t_cross_ref)))
+        projected_dx = float(dx) - (
+            float(passive.vx) * max(0.0, float(boost_t_cross_ref))
+        )
 
     impact_angle = None
     if has_solution:
@@ -191,7 +204,11 @@ def boost_objective_geometry(
 
     angle_scale = 0.0
     if has_solution and impact_angle is not None:
-        angle_scale = 1.0 if impact_angle < float(bot._cfg.boost_descent_angle_deg_target) else 0.0
+        angle_scale = (
+            1.0
+            if impact_angle < float(bot._cfg.boost_descent_angle_deg_target)
+            else 0.0
+        )
 
     return BoostObjectiveGeometry(
         has_target_y_solution=has_solution,
@@ -280,7 +297,9 @@ def evaluate_boost_quality_after_settle(
     settle_angle_target: float | None = None,
 ) -> BoostQualityStatus:
     settle_dt = max(0.0, float(settle_s))
-    max_power, _min_throttle, _max_throttle, _ramp_up = engine_profile(getattr(bot, "vehicle_info", None))
+    max_power, _min_throttle, _max_throttle, _ramp_up = engine_profile(
+        getattr(bot, "vehicle_info", None)
+    )
     thrust_down_rate = 1.8
     vehicle_info = getattr(bot, "vehicle_info", None)
     if vehicle_info is not None:
@@ -309,11 +328,7 @@ def evaluate_boost_quality_after_settle(
         angle_mid = angle_settle + (0.5 * angle_step)
         thrust_next = max(0.0, thrust_settle - (thrust_down_rate * step_dt))
         thrust_avg = 0.5 * (thrust_settle + thrust_next)
-        thrust_acc = (
-            _SETTLE_THRUST_EFFECT_SCALE
-            * (thrust_avg * max_power)
-            / mass
-        )
+        thrust_acc = _SETTLE_THRUST_EFFECT_SCALE * (thrust_avg * max_power) / mass
         thrust_ax = math.sin(angle_mid) * thrust_acc
         thrust_ay = math.cos(angle_mid) * thrust_acc
         net_ay = thrust_ay - _GRAVITY_MAG
@@ -344,7 +359,7 @@ def evaluate_boost_quality_after_settle(
     )
     return evaluate_boost_quality(
         bot,
-        passive=settled_passive,
+        passive=cast(Sensors, settled_passive),
         dx=dx_settle,
         dy=dy_settle,
         projection=projection,

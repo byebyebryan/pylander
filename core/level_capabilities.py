@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol, runtime_checkable
+from typing import Iterable, Literal, Protocol, cast, runtime_checkable
 
 from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal, normalize_eval_goals
+from core.level import Level, LevelRuntimeContext, LevelTraceConfig
 from core.trace_policy import TRACE_DETAIL_REPORT, normalize_trace_detail
 
 
@@ -71,7 +72,9 @@ def set_eval_scenario_checked(level, name: str | None) -> None:
         return
     if not isinstance(level, SupportsEvalScenario):
         level_type_name = type(level).__name__
-        raise ValueError(f"Level '{level_type_name}' does not support scenario selection")
+        raise ValueError(
+            f"Level '{level_type_name}' does not support scenario selection"
+        )
     level.set_eval_scenario(name)
 
 
@@ -80,8 +83,14 @@ def resolve_level_eval_goals(level) -> tuple[str, ...]:
     if not callable(getter):
         return (EVAL_GOAL_LANDING,)
     raw = getter()
+    if raw is not None and not isinstance(raw, (list, tuple, set, frozenset)):
+        level_type_name = type(level).__name__
+        raise ValueError(
+            f"Level '{level_type_name}' returned invalid supported_eval_goals(): expected iterable"
+        )
     try:
-        return normalize_eval_goals(raw)
+        goals = cast(Iterable[str] | None, raw)
+        return normalize_eval_goals(goals)
     except Exception as exc:
         level_type_name = type(level).__name__
         raise ValueError(
@@ -133,7 +142,7 @@ def _normalize_policy(value: object, *, level_name: str) -> BenchmarkLevelPolicy
             f"Level '{level_name}' has invalid benchmark policy {value!r}. "
             "Expected one of: normal, observe_only, excluded"
         )
-    return token  # type: ignore[return-value]
+    return cast(BenchmarkLevelPolicy, token)
 
 
 def _normalize_scenario_names(
@@ -168,8 +177,12 @@ def _normalize_scenario_names(
     return tuple(out)
 
 
-def resolve_level_benchmark_profile(level, level_name: str | None = None) -> LevelBenchmarkProfile:
-    resolved_level_name = str(level_name or type(level).__name__).strip() or type(level).__name__
+def resolve_level_benchmark_profile(
+    level, level_name: str | None = None
+) -> LevelBenchmarkProfile:
+    resolved_level_name = (
+        str(level_name or type(level).__name__).strip() or type(level).__name__
+    )
     if not isinstance(level, SupportsBenchmarkProfile):
         raise ValueError(
             f"Level '{resolved_level_name}' does not implement benchmark_profile()"
@@ -228,12 +241,25 @@ def resolve_level_benchmark_profile(level, level_name: str | None = None) -> Lev
 
 
 def level_trace_enabled(level, *, default: bool = False) -> bool:
+    if isinstance(level, Level):
+        return bool(level.ensure_trace_config().enabled)
+    trace_config = getattr(level, "_trace_config", None)
+    if isinstance(trace_config, LevelTraceConfig):
+        return bool(trace_config.enabled)
     raw = getattr(level, "trace_enabled", default)
     return bool(raw)
 
 
 def level_trace_sample_period_s(level, *, default: float = 0.25) -> float:
-    raw = getattr(level, "trace_sample_period_s", default)
+    if isinstance(level, Level):
+        raw = level.ensure_trace_config().sample_period_s
+    else:
+        trace_config = getattr(level, "_trace_config", None)
+        raw = (
+            trace_config.sample_period_s
+            if isinstance(trace_config, LevelTraceConfig)
+            else getattr(level, "trace_sample_period_s", default)
+        )
     try:
         value = float(raw)
     except (TypeError, ValueError):
@@ -242,16 +268,41 @@ def level_trace_sample_period_s(level, *, default: float = 0.25) -> float:
 
 
 def level_trace_detail(level, *, default: str = TRACE_DETAIL_REPORT) -> str:
-    raw = getattr(level, "trace_detail", default)
+    if isinstance(level, Level):
+        raw = level.ensure_trace_config().detail
+    else:
+        trace_config = getattr(level, "_trace_config", None)
+        raw = (
+            trace_config.detail
+            if isinstance(trace_config, LevelTraceConfig)
+            else getattr(level, "trace_detail", default)
+        )
     return normalize_trace_detail(raw, default=default)
 
 
 def level_name_tag(level) -> str:
-    raw = getattr(level, "_level_name", type(level).__module__.split(".")[-1])
+    runtime_context = (
+        level.ensure_runtime_context()
+        if isinstance(level, Level)
+        else getattr(level, "_runtime_context", None)
+    )
+    raw = type(level).__module__.split(".")[-1]
+    if isinstance(runtime_context, LevelRuntimeContext) and runtime_context.level_name:
+        raw = runtime_context.level_name
     name = str(raw or "").strip()
     return name if name else "level"
 
 
 def level_scenario_tag(level) -> str:
-    raw = getattr(level, "_public_scenario_name", getattr(level, "scenario_name", ""))
+    runtime_context = (
+        level.ensure_runtime_context()
+        if isinstance(level, Level)
+        else getattr(level, "_runtime_context", None)
+    )
+    raw = getattr(level, "scenario_name", "")
+    if (
+        isinstance(runtime_context, LevelRuntimeContext)
+        and runtime_context.public_scenario_name is not None
+    ):
+        raw = runtime_context.public_scenario_name
     return str(raw or "").strip()

@@ -116,22 +116,27 @@ class BoostTransferLevel(ScenarioCatalogMixin, PresetLevel):
             ),
         )
         super().setup(game, seed)
+        if self.world is None:
+            raise RuntimeError("BoostTransferLevel world was not initialized")
 
         actor = self.world.actors[0]
         cargo = actor.get_component(CargoHold)
         if cargo is not None:
             cargo_mass = max(0.0, float(getattr(scenario, "cargo_mass", 0.0) or 0.0))
             cargo.cargo_mass = min(cargo_mass, float(cargo.max_cargo_mass))
-        engine = getattr(self, "engine", None)
-        if engine is not None and hasattr(engine, "set_lander_mass"):
-            engine.set_lander_mass(get_mass(actor), uid=actor.uid)
+        engine = self.engine
+        set_lander_mass = getattr(engine, "set_lander_mass", None)
+        if callable(set_lander_mass):
+            set_lander_mass(get_mass(actor), uid=actor.uid)
 
-        setattr(self, "scenario_name", scenario.name)
+        self.set_runtime_identity(scenario_name=scenario.name)
         setattr(self, "_scenario_params", self._build_scenario_params(scenario, dest_x))
 
+        if self.sites is None:
+            raise RuntimeError("BoostTransferLevel sites were not initialized")
         dest_site = self.sites.get_site(TARGET_SITE_UID)
         if dest_site is not None:
-            setattr(self, "eval_target_pos", Vector2(dest_site.x, dest_site.y))
+            self.set_runtime_identity(eval_target_pos=Vector2(dest_site.x, dest_site.y))
 
     def _resolve_landed_site_uid(self, landed_x: float) -> str | None:
         return resolve_landed_site_uid(self.site_specs, landed_x)
@@ -141,6 +146,8 @@ class BoostTransferLevel(ScenarioCatalogMixin, PresetLevel):
         state = str(result.get("state", "unknown"))
         landed_uid: str | None = None
         if state == "landed":
+            if self.world is None:
+                raise RuntimeError("BoostTransferLevel world was not initialized")
             actor = self.world.actors[0]
             trans = require_component(actor, Transform)
             landed_uid = self._resolve_landed_site_uid(float(trans.pos.x))

@@ -45,7 +45,10 @@ def test_resolve_level_eval_goals_defaults_to_landing() -> None:
 
 
 def test_level_eval_goal_support_matches_declared_catalogs() -> None:
-    assert resolve_level_eval_goals(create_level("boost")) == ("landing", "boost_cutoff")
+    assert resolve_level_eval_goals(create_level("boost")) == (
+        "landing",
+        "boost_cutoff",
+    )
     assert resolve_level_eval_goals(create_level("terminal")) == ("landing",)
     assert resolve_level_eval_goals(create_level("plunge")) == ("landing",)
 
@@ -104,6 +107,24 @@ def test_level_tag_helpers_apply_defaults() -> None:
     assert level_scenario_tag(level) == ""
 
 
+def test_level_tag_helpers_prefer_level_runtime_context_for_real_levels() -> None:
+    level = create_level("boost")
+    level.scenario_name = "wrong"
+    level.trace_enabled = False
+    level.trace_sample_period_s = 9.0
+    level.trace_detail = "debug"
+    level.set_runtime_identity(
+        level_name="boost_public", public_scenario_name="boost:flat:mid:half"
+    )
+    level.set_trace_config(enabled=True, sample_period_s=0.4, detail="report")
+
+    assert level_name_tag(level) == "boost_public"
+    assert level_scenario_tag(level) == "boost:flat:mid:half"
+    assert level_trace_enabled(level) is True
+    assert level_trace_sample_period_s(level) == pytest.approx(0.4)
+    assert level_trace_detail(level) == "report"
+
+
 def test_resolve_level_benchmark_profile_accepts_valid_profile() -> None:
     class _Level:
         def benchmark_profile(self) -> LevelBenchmarkProfile:
@@ -149,7 +170,9 @@ def test_resolve_level_benchmark_profile_rejects_invalid_policy() -> None:
         def benchmark_profile(self) -> LevelBenchmarkProfile:
             return LevelBenchmarkProfile(
                 policy="weird",  # type: ignore[arg-type]
-                scenarios=BenchmarkScenarioSets(smoke=("mid",), quick=("mid",), full=("mid",)),
+                scenarios=BenchmarkScenarioSets(
+                    smoke=("mid",), quick=("mid",), full=("mid",)
+                ),
             )
 
     with pytest.raises(ValueError, match="invalid benchmark policy"):
@@ -161,7 +184,9 @@ def test_resolve_level_benchmark_profile_requires_non_empty_sets_for_normal() ->
         def benchmark_profile(self) -> LevelBenchmarkProfile:
             return LevelBenchmarkProfile(
                 policy="normal",
-                scenarios=BenchmarkScenarioSets(smoke=(), quick=("mid",), full=("mid",)),
+                scenarios=BenchmarkScenarioSets(
+                    smoke=(), quick=("mid",), full=("mid",)
+                ),
             )
 
     with pytest.raises(ValueError, match="must provide non-empty smoke/quick/full"):

@@ -41,16 +41,14 @@ def _scenario_name(alt_tier: str, weight_tier: str) -> str:
     return f"{alt_tier}:{weight_tier}"
 
 
-_SCENARIOS: tuple[PlungeScenario, ...] = (
-    tuple(
-        PlungeScenario(
-            name=_scenario_name(alt_tier, weight_tier),
-            spawn_clearance=spawn_clearance,
-            cargo_mass=cargo_mass,
-        )
-        for alt_tier, spawn_clearance in _ALTITUDE_TIERS
-        for weight_tier, cargo_mass in _WEIGHT_TIERS
+_SCENARIOS: tuple[PlungeScenario, ...] = tuple(
+    PlungeScenario(
+        name=_scenario_name(alt_tier, weight_tier),
+        spawn_clearance=spawn_clearance,
+        cargo_mass=cargo_mass,
     )
+    for alt_tier, spawn_clearance in _ALTITUDE_TIERS
+    for weight_tier, cargo_mass in _WEIGHT_TIERS
 )
 
 _SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
@@ -77,7 +75,7 @@ def _make_spec(scenario: PlungeScenario) -> ScenarioLevelSpec:
     )
 
 
-class PlungeLevel(ScenarioCatalogMixin, ScenarioLevel):
+class PlungeLevel(ScenarioCatalogMixin[PlungeScenario], ScenarioLevel):
     default_bot_name = "pdg"
     _scenario_by_name = _SCENARIO_BY_NAME
     _default_scenario_name = _DEFAULT_SCENARIO
@@ -94,6 +92,8 @@ class PlungeLevel(ScenarioCatalogMixin, ScenarioLevel):
         scenario = self._active_scenario()
         self.scenario = _make_spec(scenario)
         super().setup(game, seed)
+        if self.world is None:
+            raise RuntimeError("PlungeLevel world was not initialized")
 
         actor = self.world.actors[0]
         validate_scenario_recoverability(
@@ -109,7 +109,7 @@ class PlungeLevel(ScenarioCatalogMixin, ScenarioLevel):
         phys.vel = Vector2(float(scenario.initial_vx), float(scenario.initial_vy_up))
 
         sync_engine_pose_velocity(
-            getattr(self, "engine", None),
+            self.engine,
             trans.pos,
             trans.rotation,
             float(scenario.initial_vx),
@@ -117,7 +117,7 @@ class PlungeLevel(ScenarioCatalogMixin, ScenarioLevel):
             actor.uid,
         )
 
-        setattr(self, "scenario_name", scenario.name)
+        self.set_runtime_identity(scenario_name=scenario.name)
 
 
 def create_level() -> Level:

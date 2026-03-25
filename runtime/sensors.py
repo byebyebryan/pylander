@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, Iterable, cast
 
 from core.bot import Sensors, VehicleInfo
 from core.components import (
@@ -17,14 +17,18 @@ from core.components import (
     Transform,
 )
 from core.ecs import require_component
-from core.level import Level
+from core.level import Level, get_entity_mass
 from core.maths import Range1D, Vector2, clearance_above_terrain
 from core.terrain import estimate_terrain_slope, sample_terrain_height
-from levels.common_world import get_mass
 
 
-def resolve_eval_target_pos(level: Level, sites: Any, start_pos: Vector2) -> Vector2 | None:
-    explicit = getattr(level, "eval_target_pos", None)
+def resolve_eval_target_pos(level: Level, sites: Any, start_pos: Any) -> Any | None:
+    runtime_context = level.ensure_runtime_context()
+    explicit = (
+        runtime_context.eval_target_pos
+        if runtime_context.eval_target_pos is not None
+        else None
+    )
     if isinstance(explicit, Vector2):
         return Vector2(explicit)
     if isinstance(explicit, (tuple, list)) and len(explicit) >= 2:
@@ -37,7 +41,10 @@ def resolve_eval_target_pos(level: Level, sites: Any, start_pos: Vector2) -> Vec
     if not callable(get_sites):
         return None
     try:
-        all_sites = list(get_sites(Range1D.from_center(start_pos.x, 1_000_000.0)))
+        site_iterable = cast(
+            Iterable[Any], get_sites(Range1D.from_center(start_pos.x, 1_000_000.0))
+        )
+        all_sites = list(site_iterable)
     except (TypeError, ValueError, AttributeError):
         return None
     if not all_sites:
@@ -112,7 +119,7 @@ def build_sensors(entity, terrain) -> Sensors:
         angle=trans.rotation,
         ax=phys.acc.x,
         ay_up=phys.acc.y,
-        mass=get_mass(entity),
+        mass=get_entity_mass(entity),
         thrust_level=eng.thrust_level,
         fuel=tank.fuel,
         max_fuel=tank.max_fuel,

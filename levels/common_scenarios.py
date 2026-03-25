@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
-from typing import Literal, Mapping
+from typing import Any, Generic, Literal, Mapping, TypeGuard, TypeVar, cast
 
 import core.terrain as _terrain
 from core.components import (
@@ -26,7 +26,11 @@ from core.landing_sites import (
     to_view,
 )
 from core.level import Level, LevelWorld
-from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
+from core.level_capabilities import (
+    BenchmarkLevelPolicy,
+    BenchmarkScenarioSets,
+    LevelBenchmarkProfile,
+)
 from core.maths import Vector2
 from core.physics import PhysicsEngine
 from core.bot import BoostCutoffMetrics
@@ -64,9 +68,10 @@ class SampleRange:
 
 
 SampleValue = float | SampleRange
+ScenarioT = TypeVar("ScenarioT")
 
 
-def is_ranged_value(value: SampleValue) -> bool:
+def is_ranged_value(value: object) -> TypeGuard[SampleRange]:
     return isinstance(value, SampleRange)
 
 
@@ -81,7 +86,7 @@ def resolve_sample_value(
     rng: random.Random,
 ) -> float:
     if not is_ranged_value(value):
-        return float(value)
+        return float(cast(float, value))
     if mode == "median":
         return value.median()
     return value.sample(rng)
@@ -107,20 +112,22 @@ class ScenarioLevelSpec:
     cargo_mass: float | None = None
 
 
-class ScenarioCatalogMixin:
+class ScenarioCatalogMixin(Generic[ScenarioT]):
     """Shared scenario catalog plumbing for named scenario levels."""
 
-    _scenario_by_name: Mapping[str, object] = {}
+    _scenario_by_name: Mapping[str, ScenarioT] = {}
     _default_scenario_name: str = ""
     _smoke_benchmark_scenarios: tuple[str, ...] = ()
     _quick_benchmark_scenarios: tuple[str, ...] = ()
-    _benchmark_policy: str = "normal"
+    _benchmark_policy: BenchmarkLevelPolicy = "normal"
     _supported_eval_goals: tuple[str, ...] = (EVAL_GOAL_LANDING,)
 
     def _init_scenario_catalog(self) -> None:
         default_name = str(type(self)._default_scenario_name).strip()
         if not default_name:
-            raise ValueError(f"{type(self).__name__} must define _default_scenario_name")
+            raise ValueError(
+                f"{type(self).__name__} must define _default_scenario_name"
+            )
         self._eval_scenario_name = default_name
 
     @classmethod
@@ -130,32 +137,41 @@ class ScenarioCatalogMixin:
             type_name = type_name[:-5]
         return type_name.lower() or "level"
 
-    @classmethod
-    def _scenario_names(cls) -> tuple[str, ...]:
-        return tuple(str(name) for name in cls._scenario_by_name)
+    def _scenario_names(self) -> tuple[str, ...]:
+        return tuple(str(name) for name in type(self)._scenario_by_name)
 
-    def _active_scenario(self):
+    def _active_scenario(self) -> ScenarioT:
         return type(self)._scenario_by_name[self._eval_scenario_name]
 
-    @classmethod
-    def supported_eval_goals(cls) -> tuple[str, ...]:
-        return tuple(str(goal) for goal in cls._supported_eval_goals)
+    def supported_eval_goals(self) -> tuple[str, ...]:
+        return tuple(str(goal) for goal in type(self)._supported_eval_goals)
 
-    @classmethod
-    def list_batch_scenarios(cls) -> list[str]:
-        return list(cls._scenario_names())
+    def list_batch_scenarios(self) -> list[str]:
+        return list(self._scenario_names())
 
-    @classmethod
-    def list_quick_benchmark_scenarios(cls) -> list[str]:
-        return [name for name in cls._quick_benchmark_scenarios if name in cls._scenario_by_name]
+    def list_quick_benchmark_scenarios(self) -> list[str]:
+        scenario_by_name = type(self)._scenario_by_name
+        return [
+            name
+            for name in type(self)._quick_benchmark_scenarios
+            if name in scenario_by_name
+        ]
 
-    @classmethod
-    def benchmark_profile(cls) -> LevelBenchmarkProfile:
-        full = cls._scenario_names()
-        quick = tuple(name for name in cls._quick_benchmark_scenarios if name in cls._scenario_by_name)
-        smoke = tuple(name for name in cls._smoke_benchmark_scenarios if name in cls._scenario_by_name)
+    def benchmark_profile(self) -> LevelBenchmarkProfile:
+        scenario_by_name = type(self)._scenario_by_name
+        full = self._scenario_names()
+        quick = tuple(
+            name
+            for name in type(self)._quick_benchmark_scenarios
+            if name in scenario_by_name
+        )
+        smoke = tuple(
+            name
+            for name in type(self)._smoke_benchmark_scenarios
+            if name in scenario_by_name
+        )
         return LevelBenchmarkProfile(
-            policy=cls._benchmark_policy,
+            policy=type(self)._benchmark_policy,
             scenarios=BenchmarkScenarioSets(smoke=smoke, quick=quick, full=full),
         )
 
@@ -165,7 +181,9 @@ class ScenarioCatalogMixin:
         if key not in scenario_by_name:
             known = ", ".join(sorted(scenario_by_name))
             label = type(self)._scenario_catalog_name()
-            raise ValueError(f"Unknown {label} scenario '{name}'. Expected one of: {known}")
+            raise ValueError(
+                f"Unknown {label} scenario '{name}'. Expected one of: {known}"
+            )
         self._eval_scenario_name = key
 
 
@@ -200,7 +218,7 @@ def validate_scenario_recoverability(
 
 def sync_engine_pose_velocity(
     engine: object | None,
-    pos: Vector2,
+    pos: Any,
     rotation: float,
     vx: float,
     vy: float,
@@ -211,15 +229,17 @@ def sync_engine_pose_velocity(
     """Teleport + velocity sync on an engine, guarded by hasattr checks."""
     if engine is None:
         return
-    if hasattr(engine, "teleport_lander"):
-        engine.teleport_lander(
+    teleport_lander = getattr(engine, "teleport_lander", None)
+    if callable(teleport_lander):
+        teleport_lander(
             Vector2(pos),
             angle=rotation,
             clear_velocity=clear_velocity,
             uid=uid,
         )
-    if hasattr(engine, "set_lander_velocity"):
-        engine.set_lander_velocity(Vector2(vx, vy), uid=uid)
+    set_lander_velocity = getattr(engine, "set_lander_velocity", None)
+    if callable(set_lander_velocity):
+        set_lander_velocity(Vector2(vx, vy), uid=uid)
 
 
 def angle_from_velocity(vx: float, vy_up: float, *, opposite: bool = False) -> float:
@@ -316,9 +336,10 @@ def prime_boost_cutoff_for_primary_bot(level, game) -> None:
     if bot is None:
         return
 
-    target_pos = getattr(level, "eval_target_pos", None)
+    target_pos = level.ensure_runtime_context().eval_target_pos
     if not isinstance(target_pos, Vector2):
         return
+    resolved_target_pos = cast(Any, target_pos)
 
     trans = require_component(actor, Transform)
     phys = require_component(actor, PhysicsState)
@@ -330,8 +351,8 @@ def prime_boost_cutoff_for_primary_bot(level, game) -> None:
             vx=float(phys.vel.x),
             vy_up=float(phys.vel.y),
             altitude=altitude,
-            target_x=float(target_pos.x),
-            target_y=float(target_pos.y),
+            target_x=float(resolved_target_pos.x),
+            target_y=float(resolved_target_pos.y),
         )
     )
 
@@ -366,9 +387,7 @@ def _build_base_terrain(seed: int, spec: ScenarioLevelSpec):
     if spec.terrain_kind == "flat":
         return _terrain.LodGridGenerator(lambda _x: spec.terrain_base)
     if spec.terrain_kind == "slope":
-        return _terrain.LodGridGenerator(
-            lambda x: spec.terrain_base + spec.slope * x
-        )
+        return _terrain.LodGridGenerator(lambda x: spec.terrain_base + spec.slope * x)
     if spec.terrain_kind == "complex":
         simplex = _terrain.SimplexNoiseGenerator(
             seed=seed,
@@ -392,7 +411,9 @@ class ScenarioLevel(EndResultMixin, Level):
     def set_benchmark_mode(self, mode: str) -> None:
         key = str(mode or "sample").strip().lower()
         if key not in {"median", "sample"}:
-            raise ValueError(f"Unknown benchmark mode '{mode}'. Expected one of: median, sample")
+            raise ValueError(
+                f"Unknown benchmark mode '{mode}'. Expected one of: median, sample"
+            )
         self._benchmark_random_mode = "median" if key == "median" else "sample"
 
     def scenario_has_randomized_fields(self, _name: str | None = None) -> bool:
@@ -408,7 +429,8 @@ class ScenarioLevel(EndResultMixin, Level):
     def _set_scenario_params(self, params: dict[str, float | int | str | bool]) -> None:
         setattr(self, "_scenario_params", dict(params))
 
-    def setup(self, _game, seed: int) -> None:
+    def setup(self, game, seed: int) -> None:
+        _ = game
         spec = self.scenario
         if spec is None:
             raise ValueError(f"{type(self).__name__} must define `scenario`")
@@ -518,6 +540,8 @@ class ScenarioLevel(EndResultMixin, Level):
             lander=lander,
             extra_entities=[],
         )
-        setattr(self, "engine", engine)
-        setattr(self, "scenario_name", spec.name)
-        setattr(self, "eval_target_pos", Vector2(target_x, target_y))
+        self.engine = engine
+        self.set_runtime_identity(
+            scenario_name=spec.name,
+            eval_target_pos=Vector2(target_x, target_y),
+        )

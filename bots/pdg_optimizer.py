@@ -7,12 +7,14 @@ warm-start friendly at runtime.
 
 from __future__ import annotations
 
+import importlib
 import math
 import time
 from dataclasses import dataclass
+from typing import Any
 
-import cvxpy as cp
-import numpy as np
+cp = importlib.import_module("cvxpy")
+np = importlib.import_module("numpy")
 
 
 @dataclass(frozen=True)
@@ -100,46 +102,46 @@ class PDGOptimizer:
 
     def __init__(self, cfg: PDGOptimizerConfig | None = None) -> None:
         self._cfg = cfg or PDGOptimizerConfig()
-        self._problem: cp.Problem | None = None
+        self._problem: Any | None = None
 
-        self._x: cp.Variable | None = None
-        self._y: cp.Variable | None = None
-        self._vx: cp.Variable | None = None
-        self._vy: cp.Variable | None = None
-        self._ax: cp.Variable | None = None
-        self._ay: cp.Variable | None = None
+        self._x: Any | None = None
+        self._y: Any | None = None
+        self._vx: Any | None = None
+        self._vy: Any | None = None
+        self._ax: Any | None = None
+        self._ay: Any | None = None
 
-        self._x0: cp.Parameter | None = None
-        self._y0: cp.Parameter | None = None
-        self._vx0: cp.Parameter | None = None
-        self._vy0: cp.Parameter | None = None
-        self._target_x: cp.Parameter | None = None
-        self._target_y: cp.Parameter | None = None
-        self._y_floor: cp.Parameter | None = None
-        self._target_vy: cp.Parameter | None = None
-        self._a_max: cp.Parameter | None = None
-        self._a_min: cp.Parameter | None = None
-        self._a_nom: cp.Parameter | None = None
-        self._tilt_tan: cp.Parameter | None = None
-        self._x_ref: cp.Parameter | None = None
-        self._y_ref: cp.Parameter | None = None
-        self._vy_floor: cp.Parameter | None = None
-        self._g_param: cp.Parameter | None = None
-        self._x_tol: cp.Parameter | None = None
-        self._boost_pdx_time_ref: cp.Parameter | None = None
-        self._boost_proj_target: cp.Parameter | None = None
-        self._boost_proj_x_scale: cp.Parameter | None = None
-        self._boost_proj_vx_scale: cp.Parameter | None = None
-        self._boost_cross_y_scale: cp.Parameter | None = None
-        self._boost_cross_vy_scale: cp.Parameter | None = None
-        self._boost_cross_target: cp.Parameter | None = None
-        self._boost_cross_drop_weighted: cp.Parameter | None = None
-        self._boost_angle_vx_scale: cp.Parameter | None = None
-        self._boost_angle_vy_scale: cp.Parameter | None = None
-        self._boost_angle_vy_bias: cp.Parameter | None = None
-        self._boost_descend_vy_scale: cp.Parameter | None = None
-        self._boost_descend_vy_bias: cp.Parameter | None = None
-        self._boost_no_away_dir: cp.Parameter | None = None
+        self._x0: Any | None = None
+        self._y0: Any | None = None
+        self._vx0: Any | None = None
+        self._vy0: Any | None = None
+        self._target_x: Any | None = None
+        self._target_y: Any | None = None
+        self._y_floor: Any | None = None
+        self._target_vy: Any | None = None
+        self._a_max: Any | None = None
+        self._a_min: Any | None = None
+        self._a_nom: Any | None = None
+        self._tilt_tan: Any | None = None
+        self._x_ref: Any | None = None
+        self._y_ref: Any | None = None
+        self._vy_floor: Any | None = None
+        self._g_param: Any | None = None
+        self._x_tol: Any | None = None
+        self._boost_pdx_time_ref: Any | None = None
+        self._boost_proj_target: Any | None = None
+        self._boost_proj_x_scale: Any | None = None
+        self._boost_proj_vx_scale: Any | None = None
+        self._boost_cross_y_scale: Any | None = None
+        self._boost_cross_vy_scale: Any | None = None
+        self._boost_cross_target: Any | None = None
+        self._boost_cross_drop_weighted: Any | None = None
+        self._boost_angle_vx_scale: Any | None = None
+        self._boost_angle_vy_scale: Any | None = None
+        self._boost_angle_vy_bias: Any | None = None
+        self._boost_descend_vy_scale: Any | None = None
+        self._boost_descend_vy_bias: Any | None = None
+        self._boost_no_away_dir: Any | None = None
 
         self._build_problem()
 
@@ -159,7 +161,7 @@ class PDGOptimizer:
         target_x: float,
         target_y: float,
         altitude_hint: float,
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[Any, Any]:
         cfg = self._cfg
         n = int(cfg.horizon_steps)
         x_ref = np.linspace(float(x), float(target_x), n + 1)
@@ -170,7 +172,9 @@ class PDGOptimizer:
             y_ref = np.linspace(float(y), float(target_y), n + 1)
             return x_ref, y_ref
 
-        alt_alpha = np.clip(float(altitude_hint) / max(1e-6, cfg.ref_altitude_scale), 0.0, 1.0)
+        alt_alpha = np.clip(
+            float(altitude_hint) / max(1e-6, cfg.ref_altitude_scale), 0.0, 1.0
+        )
         hold_frac = float(
             cfg.ref_hold_frac_min
             + ((cfg.ref_hold_frac_max - cfg.ref_hold_frac_min) * alt_alpha)
@@ -235,7 +239,7 @@ class PDGOptimizer:
         boost_projected_dx_proxy = cp.Variable(n + 1)
         late_ramp = np.linspace(0.0, 1.0, n, dtype=float)
 
-        constraints: list[cp.Expression] = [
+        constraints: list[Any] = [
             x[0] == x0,
             y[0] == y0,
             vx[0] == vx0,
@@ -262,7 +266,8 @@ class PDGOptimizer:
             )
         constraints.extend(
             [
-                boost_projected_dx_proxy == target_x - x - cp.multiply(boost_pdx_time_ref, vx),
+                boost_projected_dx_proxy
+                == target_x - x - cp.multiply(boost_pdx_time_ref, vx),
             ]
         )
         for k in range(1, n + 1):
@@ -329,7 +334,10 @@ class PDGOptimizer:
             objective_expr = (
                 objective_expr
                 + (cfg.w_boost_projected_dx * cp.sum_squares(weighted_projected_dx))
-                + (cfg.w_boost_target_y_cross * cp.sum_squares(cp.pos(-weighted_y_cross)))
+                + (
+                    cfg.w_boost_target_y_cross
+                    * cp.sum_squares(cp.pos(-weighted_y_cross))
+                )
                 + (cfg.w_boost_apex * cp.sum_squares(cp.pos(weighted_y_cross)))
                 + (
                     cfg.w_boost_angle
@@ -382,6 +390,54 @@ class PDGOptimizer:
         self._boost_descend_vy_bias = boost_descend_vy_bias
         self._boost_no_away_dir = boost_no_away_dir
 
+    def _require_solver_state(self) -> dict[str, Any]:
+        required = {
+            "problem": self._problem,
+            "x": self._x,
+            "y": self._y,
+            "vx": self._vx,
+            "vy": self._vy,
+            "ax": self._ax,
+            "ay": self._ay,
+            "x0": self._x0,
+            "y0": self._y0,
+            "vx0": self._vx0,
+            "vy0": self._vy0,
+            "target_x": self._target_x,
+            "target_y": self._target_y,
+            "y_floor": self._y_floor,
+            "target_vy": self._target_vy,
+            "a_max": self._a_max,
+            "a_min": self._a_min,
+            "a_nom": self._a_nom,
+            "tilt_tan": self._tilt_tan,
+            "x_ref": self._x_ref,
+            "y_ref": self._y_ref,
+            "vy_floor": self._vy_floor,
+            "g_param": self._g_param,
+            "x_tol": self._x_tol,
+            "boost_pdx_time_ref": self._boost_pdx_time_ref,
+            "boost_proj_target": self._boost_proj_target,
+            "boost_proj_x_scale": self._boost_proj_x_scale,
+            "boost_proj_vx_scale": self._boost_proj_vx_scale,
+            "boost_cross_y_scale": self._boost_cross_y_scale,
+            "boost_cross_vy_scale": self._boost_cross_vy_scale,
+            "boost_cross_target": self._boost_cross_target,
+            "boost_cross_drop_weighted": self._boost_cross_drop_weighted,
+            "boost_angle_vx_scale": self._boost_angle_vx_scale,
+            "boost_angle_vy_scale": self._boost_angle_vy_scale,
+            "boost_angle_vy_bias": self._boost_angle_vy_bias,
+            "boost_descend_vy_scale": self._boost_descend_vy_scale,
+            "boost_descend_vy_bias": self._boost_descend_vy_bias,
+            "boost_no_away_dir": self._boost_no_away_dir,
+        }
+        missing = [name for name, value in required.items() if value is None]
+        if missing:
+            raise RuntimeError(
+                f"PDG optimizer is not initialized: {', '.join(missing)}"
+            )
+        return required
+
     def solve(
         self,
         *,
@@ -403,7 +459,7 @@ class PDGOptimizer:
         altitude_hint: float,
         warm_start: PDGPlan | None,
         terminal_x_tol: float | None = None,
-        y_ref_override: list[float] | tuple[float, ...] | np.ndarray | None = None,
+        y_ref_override: list[float] | tuple[float, ...] | Any | None = None,
         boost_t_cross_ref: float = 0.0,
         boost_t_angle_ref: float = 0.0,
         boost_no_away_dir: float = 0.0,
@@ -411,15 +467,54 @@ class PDGOptimizer:
     ) -> PDGPlan | None:
         if self._problem is None:
             return None
+        state = self._require_solver_state()
+        problem = state["problem"]
+        x_var = state["x"]
+        y_var = state["y"]
+        vx_var = state["vx"]
+        vy_var = state["vy"]
+        ax_var = state["ax"]
+        ay_var = state["ay"]
+        x0 = state["x0"]
+        y0 = state["y0"]
+        vx0 = state["vx0"]
+        vy0 = state["vy0"]
+        target_x_param = state["target_x"]
+        target_y_param = state["target_y"]
+        y_floor_param = state["y_floor"]
+        target_vy_param = state["target_vy"]
+        a_max_param = state["a_max"]
+        a_min_param = state["a_min"]
+        a_nom_param = state["a_nom"]
+        tilt_tan_param = state["tilt_tan"]
+        x_ref_param = state["x_ref"]
+        y_ref_param = state["y_ref"]
+        vy_floor_param = state["vy_floor"]
+        g_param = state["g_param"]
+        x_tol_param = state["x_tol"]
+        boost_pdx_time_ref_param = state["boost_pdx_time_ref"]
+        boost_proj_target_param = state["boost_proj_target"]
+        boost_proj_x_scale_param = state["boost_proj_x_scale"]
+        boost_proj_vx_scale_param = state["boost_proj_vx_scale"]
+        boost_cross_y_scale_param = state["boost_cross_y_scale"]
+        boost_cross_vy_scale_param = state["boost_cross_vy_scale"]
+        boost_cross_target_param = state["boost_cross_target"]
+        boost_cross_drop_weighted_param = state["boost_cross_drop_weighted"]
+        boost_angle_vx_scale_param = state["boost_angle_vx_scale"]
+        boost_angle_vy_scale_param = state["boost_angle_vy_scale"]
+        boost_angle_vy_bias_param = state["boost_angle_vy_bias"]
+        boost_descend_vy_scale_param = state["boost_descend_vy_scale"]
+        boost_descend_vy_bias_param = state["boost_descend_vy_bias"]
+        boost_no_away_dir_param = state["boost_no_away_dir"]
 
         n = int(self._cfg.horizon_steps)
 
-        self._x0.value = float(x)
-        self._y0.value = float(y)
-        self._vx0.value = float(vx)
-        self._vy0.value = float(vy)
-        self._target_x.value = float(target_x)
-        self._target_y.value = float(target_y)
+        x0.value = float(x)
+        y0.value = float(y)
+        vx0.value = float(vx)
+        vy0.value = float(vy)
+        target_x_param.value = float(target_x)
+        target_y_param.value = float(target_y)
         if isinstance(y_floor, (int, float)):
             y_floor_profile = np.full(n + 1, float(y_floor), dtype=float)
         elif len(y_floor) == 2:
@@ -430,27 +525,31 @@ class PDGOptimizer:
                 raise ValueError(
                     f"y_floor profile must have {n + 1} elements, got {y_floor_profile.shape}"
                 )
-        self._y_floor.value = y_floor_profile
-        self._target_vy.value = float(target_vy)
-        self._a_max.value = max(0.1, float(max_thrust_accel))
-        self._a_min.value = max(0.0, float(min_thrust_accel))
-        self._a_nom.value = min(
+        y_floor_param.value = y_floor_profile
+        target_vy_param.value = float(target_vy)
+        a_max_param.value = max(0.1, float(max_thrust_accel))
+        a_min_param.value = max(0.0, float(min_thrust_accel))
+        a_nom_param.value = min(
             max(0.1, float(max_thrust_accel)),
             max(0.1, float(nominal_thrust_accel)),
         )
-        self._tilt_tan.value = max(1e-3, math.tan(max(0.02, float(max_tilt_rad))))
-        self._vy_floor.value = float(descent_floor_vy)
-        self._g_param.value = max(0.0, float(gravity_mag))
-        x_tol = float(pad_half_width) if terminal_x_tol is None else float(terminal_x_tol)
-        self._x_tol.value = max(0.0, x_tol)
+        tilt_tan_param.value = max(1e-3, math.tan(max(0.02, float(max_tilt_rad))))
+        vy_floor_param.value = float(descent_floor_vy)
+        g_param.value = max(0.0, float(gravity_mag))
+        x_tol = (
+            float(pad_half_width) if terminal_x_tol is None else float(terminal_x_tol)
+        )
+        x_tol_param.value = max(0.0, x_tol)
         boost_t_cross_ref = max(0.0, float(boost_t_cross_ref))
         boost_t_angle_ref = max(0.0, float(boost_t_angle_ref))
         boost_pdx_time_ref = np.maximum(
-            boost_t_cross_ref - (np.arange(n + 1, dtype=float) * float(self._cfg.step_dt)),
+            boost_t_cross_ref
+            - (np.arange(n + 1, dtype=float) * float(self._cfg.step_dt)),
             0.0,
         )
         boost_angle_time_ref = np.maximum(
-            boost_t_angle_ref - (np.arange(n + 1, dtype=float) * float(self._cfg.step_dt)),
+            boost_t_angle_ref
+            - (np.arange(n + 1, dtype=float) * float(self._cfg.step_dt)),
             0.0,
         )
         active = boost_pdx_time_ref > 1e-6
@@ -460,25 +559,29 @@ class PDGOptimizer:
             boost_pdx_weight[active] = np.arange(1, active_count + 1, dtype=float)
             boost_pdx_weight = boost_pdx_weight / float(np.sum(boost_pdx_weight))
         boost_weight_sqrt = np.sqrt(boost_pdx_weight)
-        boost_cross_drop = 0.5 * max(0.0, float(gravity_mag)) * np.square(boost_pdx_time_ref)
+        boost_cross_drop = (
+            0.5 * max(0.0, float(gravity_mag)) * np.square(boost_pdx_time_ref)
+        )
         boost_angle_vy_mag = max(0.0, float(gravity_mag)) * boost_angle_time_ref
-        angle_weight_sqrt = boost_weight_sqrt * math.sqrt(max(0.0, float(boost_angle_active)))
-        self._boost_pdx_time_ref.value = boost_pdx_time_ref
-        self._boost_proj_target.value = boost_weight_sqrt * float(target_x)
-        self._boost_proj_x_scale.value = boost_weight_sqrt
-        self._boost_proj_vx_scale.value = boost_weight_sqrt * boost_pdx_time_ref
-        self._boost_cross_y_scale.value = boost_weight_sqrt
-        self._boost_cross_vy_scale.value = boost_weight_sqrt * boost_pdx_time_ref
-        self._boost_cross_target.value = boost_weight_sqrt * float(target_y)
-        self._boost_cross_drop_weighted.value = boost_weight_sqrt * boost_cross_drop
-        self._boost_angle_vx_scale.value = angle_weight_sqrt * float(
+        angle_weight_sqrt = boost_weight_sqrt * math.sqrt(
+            max(0.0, float(boost_angle_active))
+        )
+        boost_pdx_time_ref_param.value = boost_pdx_time_ref
+        boost_proj_target_param.value = boost_weight_sqrt * float(target_x)
+        boost_proj_x_scale_param.value = boost_weight_sqrt
+        boost_proj_vx_scale_param.value = boost_weight_sqrt * boost_pdx_time_ref
+        boost_cross_y_scale_param.value = boost_weight_sqrt
+        boost_cross_vy_scale_param.value = boost_weight_sqrt * boost_pdx_time_ref
+        boost_cross_target_param.value = boost_weight_sqrt * float(target_y)
+        boost_cross_drop_weighted_param.value = boost_weight_sqrt * boost_cross_drop
+        boost_angle_vx_scale_param.value = angle_weight_sqrt * float(
             self._cfg.boost_angle_slope_target
         )
-        self._boost_angle_vy_scale.value = angle_weight_sqrt
-        self._boost_angle_vy_bias.value = angle_weight_sqrt * boost_angle_vy_mag
-        self._boost_descend_vy_scale.value = boost_weight_sqrt
-        self._boost_descend_vy_bias.value = boost_weight_sqrt * boost_angle_vy_mag
-        self._boost_no_away_dir.value = float(boost_no_away_dir)
+        boost_angle_vy_scale_param.value = angle_weight_sqrt
+        boost_angle_vy_bias_param.value = angle_weight_sqrt * boost_angle_vy_mag
+        boost_descend_vy_scale_param.value = boost_weight_sqrt
+        boost_descend_vy_bias_param.value = boost_weight_sqrt * boost_angle_vy_mag
+        boost_no_away_dir_param.value = float(boost_no_away_dir)
 
         x_ref, y_ref_default = self._reference_profiles(
             x=float(x),
@@ -495,39 +598,39 @@ class PDGOptimizer:
                 raise ValueError(
                     f"y_ref_override must have {n + 1} elements, got {y_ref.shape}"
                 )
-        self._x_ref.value = x_ref
-        self._y_ref.value = y_ref
+        x_ref_param.value = x_ref
+        y_ref_param.value = y_ref
 
         if warm_start is not None and warm_start.feasible:
             shifted = warm_start.shifted()
             if len(shifted.ax) == n:
-                self._ax.value = np.asarray(shifted.ax, dtype=float)
-                self._ay.value = np.asarray(shifted.ay, dtype=float)
+                ax_var.value = np.asarray(shifted.ax, dtype=float)
+                ay_var.value = np.asarray(shifted.ay, dtype=float)
             if len(shifted.x) == n + 1:
-                self._x.value = np.asarray(shifted.x, dtype=float)
-                self._y.value = np.asarray(shifted.y, dtype=float)
-                self._vx.value = np.asarray(shifted.vx, dtype=float)
-                self._vy.value = np.asarray(shifted.vy, dtype=float)
+                x_var.value = np.asarray(shifted.x, dtype=float)
+                y_var.value = np.asarray(shifted.y, dtype=float)
+                vx_var.value = np.asarray(shifted.vx, dtype=float)
+                vy_var.value = np.asarray(shifted.vy, dtype=float)
 
         t0 = time.perf_counter()
         status = "error"
         try:
-            self._problem.solve(
+            problem.solve(
                 solver=self._cfg.solver,
                 warm_start=True,
                 verbose=False,
                 max_iter=self._cfg.solver_max_iters,
             )
-            status = str(self._problem.status)
+            status = str(problem.status)
         except Exception:
             try:
-                self._problem.solve(
+                problem.solve(
                     solver="SCS",
                     warm_start=True,
                     verbose=False,
                     max_iters=250,
                 )
-                status = str(self._problem.status)
+                status = str(problem.status)
             except Exception:
                 dt_ms = (time.perf_counter() - t0) * 1000.0
                 return PDGPlan(
@@ -561,15 +664,19 @@ class PDGOptimizer:
                 vy=tuple(float(vy) for _ in range(n + 1)),
             )
 
-        ax_val = np.asarray(self._ax.value, dtype=float)
-        ay_val = np.asarray(self._ay.value, dtype=float)
-        x_val = np.asarray(self._x.value, dtype=float)
-        y_val = np.asarray(self._y.value, dtype=float)
-        vx_val = np.asarray(self._vx.value, dtype=float)
-        vy_val = np.asarray(self._vy.value, dtype=float)
+        ax_val = np.asarray(ax_var.value, dtype=float)
+        ay_val = np.asarray(ay_var.value, dtype=float)
+        x_val = np.asarray(x_var.value, dtype=float)
+        y_val = np.asarray(y_var.value, dtype=float)
+        vx_val = np.asarray(vx_var.value, dtype=float)
+        vy_val = np.asarray(vy_var.value, dtype=float)
 
-        objective = self._problem.value
-        obj_val = float(objective) if objective is not None and math.isfinite(float(objective)) else 0.0
+        objective = problem.value
+        obj_val = (
+            float(objective)
+            if objective is not None and math.isfinite(float(objective))
+            else 0.0
+        )
 
         return PDGPlan(
             feasible=True,
