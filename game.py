@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import random
+from typing import Any
+from typing import Iterable, cast
 
-from core.bot import Bot, BotEvalDecision
+from core.bot import Bot, BotEvalDecision, resolve_bot_name
 from core.components import Transform
 from core.ecs import Entity, require_component
 from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal
-from core.level import Level
+from core.level import GameRunState, Level
 from core.level_capabilities import level_name_tag, level_scenario_tag
 from core.maths import Range1D, Vector2
 from runtime.actor_session import (
@@ -57,6 +59,18 @@ from core.config import (
 class LanderGame:
     """Main application for lunar lander game."""
 
+    control_routing_system: Any
+    refuel_system: Any
+    state_transition_system: Any
+    sensor_update_system: Any
+    scripted_control_system: Any
+    landing_site_motion_system: Any
+    landing_site_projection_system: Any
+    propulsion_system: Any
+    force_application_system: Any
+    physics_sync_system: Any
+    contact_system: Any
+
     def __init__(
         self,
         level: Level,
@@ -87,13 +101,18 @@ class LanderGame:
             raise ValueError("Headless mode requires a bot")
 
         self.running = True
+        self.run_state = GameRunState()
         self.level.setup(self, seed)
         self.actors = collect_actor_entities(self.level)
         if not self.actors:
             raise RuntimeError("Level did not provide any actor entities")
         self.active_player_actor_uid = find_initial_player_actor_uid(self.actors)
         self.lander = next(
-            (actor for actor in self.actors if actor.uid == self.active_player_actor_uid),
+            (
+                actor
+                for actor in self.actors
+                if actor.uid == self.active_player_actor_uid
+            ),
             self.actors[0],
         )
         core_runtime = bootstrap_core_runtime(
@@ -160,10 +179,12 @@ class LanderGame:
             level_name=level_name_tag(self.level),
             scenario_name=level_scenario_tag(self.level) or None,
             seed=self.seed,
-            bot_name=getattr(self.bot, "_bot_name", None),
+            bot_name=resolve_bot_name(self.bot) if self.bot is not None else None,
             eval_goal=self.eval_goal,
         )
-        self.trace_recorder.set_trace_root_dir(getattr(self.level, "trace_root_dir", None))
+        self.trace_recorder.set_trace_root_dir(
+            getattr(self.level, "trace_root_dir", None)
+        )
         self._bot_loop_context.trace_recorder = self.trace_recorder
         self._plot_events_seen = trace_runtime.events_seen
         self._bot_eval_decision: BotEvalDecision | None = None
@@ -216,6 +237,7 @@ class LanderGame:
         self._plot_events_seen.clear()
         self._bot_eval_decision = None
         self._elapsed_time = 0.0
+        self.run_state.elapsed_time = 0.0
         initial_actor = self.get_active_actor()
         initial_trans = require_component(initial_actor, Transform)
         start_pos = Vector2(getattr(initial_actor, "start_pos", initial_trans.pos))
@@ -225,14 +247,22 @@ class LanderGame:
             get_sites = getattr(self.sites, "get_sites", None)
             if callable(get_sites):
                 try:
-                    nearby_sites = list(get_sites(Range1D.from_center(float(eval_target_pos.x), 1000.0)))
+                    site_iterable = cast(
+                        Iterable[Any],
+                        get_sites(
+                            Range1D.from_center(float(eval_target_pos.x), 1000.0)
+                        ),
+                    )
+                    nearby_sites = list(site_iterable)
                 except Exception:
                     nearby_sites = []
                 if nearby_sites:
                     nearest_site = min(
                         nearby_sites,
-                        key=lambda site: (float(site.x) - float(eval_target_pos.x)) ** 2
-                        + (float(site.y) - float(eval_target_pos.y)) ** 2,
+                        key=lambda site: (
+                            (float(site.x) - float(eval_target_pos.x)) ** 2
+                            + (float(site.y) - float(eval_target_pos.y)) ** 2
+                        ),
                     )
                     target_size = float(getattr(nearest_site, "size", 0.0) or 0.0)
             self.trace_recorder.set_target(
@@ -246,7 +276,10 @@ class LanderGame:
             start_pos=start_pos,
             eval_target_pos=eval_target_pos,
         )
-        def process_input_step(frame_dt: float) -> tuple[tuple[float, float, bool] | None, dict]:
+
+        def process_input_step(
+            frame_dt: float,
+        ) -> tuple[tuple[float, float, bool] | None, dict]:
             result = process_interactive_input(
                 headless=self.headless,
                 input_handler=self.input_handler,
@@ -287,7 +320,9 @@ class LanderGame:
                 active_uid=lambda: self.active_player_actor_uid,
                 get_active_actor=self.get_active_actor,
                 process_input=process_input_step,
-                set_elapsed_time=lambda elapsed: setattr(self, "_elapsed_time", elapsed),
+                set_elapsed_time=lambda elapsed: setattr(
+                    self, "_elapsed_time", elapsed
+                ),
                 update_physics_steps=lambda timers: update_physics_steps(
                     timers,
                     context=self._physics_step_context,
@@ -320,13 +355,15 @@ class LanderGame:
                     terrain=self.terrain,
                     actor_bots=self.actor_bots,
                 ),
-                resolve_headless_bot_eval_decision=lambda: resolve_headless_bot_eval_decision(
-                    headless=self.headless,
-                    bot=active_actor_bot(
-                        actor_bots=self.actor_bots,
-                        active_uid=self.active_player_actor_uid,
-                        primary_bot=self.bot,
-                    ),
+                resolve_headless_bot_eval_decision=lambda: (
+                    resolve_headless_bot_eval_decision(
+                        headless=self.headless,
+                        bot=active_actor_bot(
+                            actor_bots=self.actor_bots,
+                            active_uid=self.active_player_actor_uid,
+                            primary_bot=self.bot,
+                        ),
+                    )
                 ),
                 level_should_end=lambda: self.level.should_end(self),
             ),
@@ -344,12 +381,19 @@ class LanderGame:
         self._bot_eval_decision = loop_result.bot_eval_decision
         self._bot_override_timer = loop_result.bot_override_timer
         self._elapsed_time = timers.elapsed_time
+        self.run_state.elapsed_time = timers.elapsed_time
         self._landing_count = metrics.landing_count
+        self.run_state.landing_count = metrics.landing_count
         self._crash_count = metrics.crash_count
+        self.run_state.crash_count = metrics.crash_count
         self._distance_flown = metrics.distance_flown
+        self.run_state.distance_flown = metrics.distance_flown
         self._fuel_consumed = metrics.fuel_consumed
+        self.run_state.fuel_consumed = metrics.fuel_consumed
         self._overdrive_time = metrics.overdrive_time
+        self.run_state.overdrive_time = metrics.overdrive_time
         self._overdrive_excess = metrics.overdrive_excess
+        self.run_state.overdrive_excess = metrics.overdrive_excess
         result = self.level.end(self)
         merge_bot_snapshots_into_result(actor_bots=self.actor_bots, result=result)
         apply_bot_eval_to_result(
@@ -375,4 +419,6 @@ class LanderGame:
 
     @property
     def terrain(self):
+        if self.level.world is None:
+            raise RuntimeError("Level world is not initialized")
         return self.level.world.terrain

@@ -97,14 +97,14 @@ class PlungeBot(Bot):
             return False
         if self._fuel_ratio(passive) < self._policy.min_fuel_ratio_for_overdrive:
             return False
-        if self._policy.overdrive_requires_terminal_burn and vertical_mode != "terminal_burn":
+        if (
+            self._policy.overdrive_requires_terminal_burn
+            and vertical_mode != "terminal_burn"
+        ):
             return False
-        return (
-            passive.vy_up < self._policy.emergency_vy_threshold
-            or (
-                alt < self._policy.emergency_low_alt
-                and passive.vy_up < self._policy.emergency_low_alt_vy_threshold
-            )
+        return passive.vy_up < self._policy.emergency_vy_threshold or (
+            alt < self._policy.emergency_low_alt
+            and passive.vy_up < self._policy.emergency_low_alt_vy_threshold
         )
 
     def _fuel_ratio(self, passive: Sensors) -> float:
@@ -183,7 +183,12 @@ class PlungeBot(Bot):
         thrust = (mass * a_up_sp) / max(max_power * cos_term, 1e-3)
         if alt < 9.0 and abs(dx) <= 10.0:
             angle_cmd = 0.0
-        if alt < 2.5 and abs(dx) <= 7.0 and abs(passive.vx) < 0.6 and abs(passive.vy_up) < 0.9:
+        if (
+            alt < 2.5
+            and abs(dx) <= 7.0
+            and abs(passive.vx) < 0.6
+            and abs(passive.vy_up) < 0.9
+        ):
             thrust = 0.0
             angle_cmd = 0.0
 
@@ -218,7 +223,9 @@ class PlungeBot(Bot):
 
         down_speed = max(0.0, -float(passive.vy_up))
         nominal_throttle = min(1.0, max_throttle)
-        spool_time = max(0.0, nominal_throttle - max(0.0, float(passive.thrust_level))) / max(
+        spool_time = max(
+            0.0, nominal_throttle - max(0.0, float(passive.thrust_level))
+        ) / max(
             1e-3,
             ramp_up,
         )
@@ -234,8 +241,7 @@ class PlungeBot(Bot):
         burn_now = bool(
             down_speed > 0.5
             and (
-                alt <= burn_altitude
-                or time_to_impact <= (time_to_brake + time_buffer)
+                alt <= burn_altitude or time_to_impact <= (time_to_brake + time_buffer)
             )
         )
 
@@ -256,7 +262,10 @@ class PlungeBot(Bot):
             vy_sp = -clamp(1.1 + (0.28 * math.sqrt(max(0.0, alt))), 1.2, 5.5)
             vx_sp = clamp(0.08 * track_dx, -2.6, 2.6)
 
-        if alt < self._policy.touchdown_altitude and abs(track_dx) <= self._policy.touchdown_track_band:
+        if (
+            alt < self._policy.touchdown_altitude
+            and abs(track_dx) <= self._policy.touchdown_track_band
+        ):
             phase = "touchdown"
             vertical_mode = "flare"
             vy_sp = -clamp(0.3 + (0.06 * alt), 0.2, 0.7)
@@ -272,7 +281,8 @@ class PlungeBot(Bot):
             burn_altitude=burn_altitude,
         )
 
-    def update(self, dt: float, passive: Sensors) -> BotAction:
+    def update(self, dt: float, sensors: Sensors) -> BotAction:
+        passive = sensors
         if passive.state in ("landed", "crashed", "out_of_fuel"):
             action = BotAction(
                 0.0,
@@ -280,7 +290,9 @@ class PlungeBot(Bot):
                 False,
                 status=f"{self._policy.status_prefix} {passive.state}",
             )
-            self._set_display_state(phase=str(passive.state), summary=str(passive.state))
+            self._set_display_state(
+                phase=str(passive.state), summary=str(passive.state)
+            )
             self.status = action.status
             return action
 
@@ -343,7 +355,10 @@ class PlungeBot(Bot):
             projection=projection,
             time_to_impact=time_to_impact,
         )
-        if guidance.vertical_mode == "coast" and abs(guidance.dx) <= self._policy.coast_horiz_deadband:
+        if (
+            guidance.vertical_mode == "coast"
+            and abs(guidance.dx) <= self._policy.coast_horiz_deadband
+        ):
             a_x_sp = 0.0
         else:
             a_x_sp = self._horizontal_controller(passive, guidance.vx_sp)

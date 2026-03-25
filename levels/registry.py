@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
-from typing import Type
+from typing import Type, cast
 
 from core.eval_goals import KNOWN_EVAL_GOAL_SET
 from core.level import Level
-from core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
+from core.level_capabilities import (
+    BenchmarkLevelPolicy,
+    BenchmarkScenarioSets,
+    LevelBenchmarkProfile,
+)
 
 _BENCHMARK_MODES = frozenset({"smoke", "quick", "full"})
 _PUBLIC_LEVEL_ORDER: tuple[str, ...] = (
@@ -16,7 +20,9 @@ _PUBLIC_LEVEL_ORDER: tuple[str, ...] = (
     "terminal",
     "plunge",
 )
-_SEED_TOKEN_RE = re.compile(r"^-?\d+(?:\s*-\s*-?\d+)?(?:\s*,\s*-?\d+(?:\s*-\s*-?\d+)?)*$")
+_SEED_TOKEN_RE = re.compile(
+    r"^-?\d+(?:\s*-\s*-?\d+)?(?:\s*,\s*-?\d+(?:\s*-\s*-?\d+)?)*$"
+)
 _LEGACY_LEVEL_REPLACEMENTS: dict[str, str] = {
     "boost_flat": "boost",
     "boost_downhill": "boost",
@@ -94,7 +100,7 @@ def create_level(name: str) -> Level:
 
 def resolve_public_level_benchmark_profile(level_name: str) -> LevelBenchmarkProfile:
     root = _normalize_root(level_name)
-    policy = _root_policy(root)
+    policy = cast(BenchmarkLevelPolicy, _root_policy(root))
     if policy == "excluded":
         return LevelBenchmarkProfile(
             policy="excluded",
@@ -137,15 +143,21 @@ def expand_selector_bindings(
     if any(not token for token in raw_tokens):
         raise ValueError(f"Invalid selector path for '{root}': empty selector token")
 
-    bindings = _expand_path(root, raw_tokens, prefix=(), allow_wildcards=allow_wildcards)
+    bindings = _expand_path(
+        root, raw_tokens, prefix=(), allow_wildcards=allow_wildcards
+    )
     if not bindings:
         raise ValueError(f"Selector '{root}' resolved no scenarios")
     return bindings
 
 
-def selector_children(level_name: str, path: tuple[str, ...] | list[str] | None = None) -> tuple[str, ...]:
+def selector_children(
+    level_name: str, path: tuple[str, ...] | list[str] | None = None
+) -> tuple[str, ...]:
     root = _normalize_root(level_name)
-    return _child_tokens(root, tuple(str(token).strip().lower() for token in (path or ())))
+    return _child_tokens(
+        root, tuple(str(token).strip().lower() for token in (path or ()))
+    )
 
 
 def selector_default_path(level_name: str) -> tuple[str, ...]:
@@ -161,7 +173,9 @@ def selector_token_is_reserved(token: str) -> bool:
     key = str(token or "").strip().lower()
     if not key:
         return True
-    return key == "*" or key in KNOWN_EVAL_GOAL_SET or selector_path_looks_like_seed(key)
+    return (
+        key == "*" or key in KNOWN_EVAL_GOAL_SET or selector_path_looks_like_seed(key)
+    )
 
 
 def _level_classes() -> dict[str, Type[Level]]:
@@ -196,7 +210,9 @@ def _normalize_root(level_name: str) -> str:
 def _root_policy(root: str) -> str:
     policies = {leaf.policy for leaf in _ROOT_TO_LEAVES[root]}
     if len(policies) != 1:
-        raise ValueError(f"Selector root '{root}' mixes benchmark policies: {sorted(policies)}")
+        raise ValueError(
+            f"Selector root '{root}' mixes benchmark policies: {sorted(policies)}"
+        )
     return next(iter(policies))
 
 
@@ -383,7 +399,11 @@ def _build_leaves() -> tuple[SelectorLeaf, ...]:
     for profile in ("shallower", "shallow", "mid", "steep", "steeper"):
         for tier in ("tight", "wide"):
             benchmark_modes = {"full"}
-            if (profile, tier) in {("shallow", "tight"), ("mid", "wide"), ("steep", "wide")}:
+            if (profile, tier) in {
+                ("shallow", "tight"),
+                ("mid", "wide"),
+                ("steep", "wide"),
+            }:
                 benchmark_modes.add("quick")
             if (profile, tier) == ("mid", "wide"):
                 benchmark_modes.add("smoke")
@@ -461,7 +481,9 @@ def _validate_catalog() -> None:
     for leaf in _LEAVES:
         key = (leaf.root, leaf.path)
         if key in seen_leafs:
-            raise ValueError(f"Duplicate selector leaf '{leaf.root}:{join_selector_path(leaf.path) or ''}'")
+            raise ValueError(
+                f"Duplicate selector leaf '{leaf.root}:{join_selector_path(leaf.path) or ''}'"
+            )
         seen_leafs.add(key)
 
     for root in _PUBLIC_LEVEL_ORDER:
@@ -481,7 +503,9 @@ def _validate_catalog() -> None:
             default_child = _default_child(root, prefix)
             selector = ":".join([root, *prefix])
             if default_child is None:
-                raise ValueError(f"Selector node '{selector}' is missing a default child")
+                raise ValueError(
+                    f"Selector node '{selector}' is missing a default child"
+                )
             if default_child not in children:
                 expected = ", ".join(children)
                 raise ValueError(
@@ -498,4 +522,3 @@ _ROOT_TO_LEAVES: dict[str, tuple[SelectorLeaf, ...]] = {
 _DEFAULT_CHILD_BY_PREFIX = _build_default_child_map()
 
 _validate_catalog()
-

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from core.bot import Bot
 from core.components import ActorControlRole, PlayerControlled, PlayerSelectable
@@ -12,9 +12,11 @@ from runtime.sensors import build_vehicle_info
 
 def collect_actor_entities(level: Level) -> list[Entity]:
     world = level.world
-    actors = list(getattr(world, "actors", []) or [])
+    if world is None:
+        return []
+    actors = cast(list[Entity], list(getattr(world, "actors", []) or []))
     if not actors and getattr(world, "lander", None) is not None:
-        actors = [world.lander]
+        actors = [cast(Entity, world.lander)]
     return actors
 
 
@@ -68,9 +70,9 @@ def set_active_actor(
             item.add_component(PlayerControlled(active=True))
         elif marker is not None:
             marker.active = is_active
-    if getattr(level, "world", None) is not None:
+    if level.world is not None:
         level.world.primary_actor_uid = uid
-        level.world.lander = actor
+        cast(Any, level.world).lander = actor
     engine_adapter.set_primary_actor(uid)
     return actor
 
@@ -122,9 +124,9 @@ def active_actor_bot(
 
 
 def ensure_bot_identity_fields(bot: Bot) -> None:
-    bot_name = getattr(bot, "_bot_name", None)
-    if not isinstance(bot_name, str) or not bot_name:
-        setattr(bot, "_bot_name", bot.__class__.__module__.split(".")[-1])
+    if bot.get_identity_name():
+        return
+    bot.set_identity_name(bot.__class__.__module__.split(".")[-1])
 
 
 def install_actor_bot(

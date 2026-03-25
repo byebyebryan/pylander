@@ -9,13 +9,11 @@ import core.terrain as _terrain
 from core.components import (
     ActorControlRole,
     ActorProfile,
-    CargoHold,
     FuelTank,
     LandingSite as LandingSiteComponent,
     LandingSiteEconomy,
     LanderGeometry,
     LanderState,
-    PhysicsState,
     PlayerControlled,
     PlayerSelectable,
     Radar,
@@ -23,8 +21,12 @@ from core.components import (
     Wallet,
 )
 from core.ecs import Entity, require_component
-from core.landing_sites import LandingSiteSurfaceModel, LandingSiteTerrainModifier, to_view
-from core.level import Level, LevelWorld
+from core.landing_sites import (
+    LandingSiteSurfaceModel,
+    LandingSiteTerrainModifier,
+    to_view,
+)
+from core.level import Level, LevelWorld, get_entity_mass
 from core.maths import Vector2
 from core.physics import PhysicsEngine
 from core.terrain import sample_terrain_height
@@ -46,7 +48,6 @@ class SiteSpec:
     support_height: float = 40.0
 
 
-
 def _get_focus_actor(game):
     if hasattr(game, "get_active_actor"):
         return game.get_active_actor()
@@ -54,11 +55,7 @@ def _get_focus_actor(game):
 
 
 def get_mass(entity) -> float:
-    phys = require_component(entity, PhysicsState)
-    tank = require_component(entity, FuelTank)
-    cargo = entity.get_component(CargoHold)
-    cargo_mass = cargo.effective_mass if cargo is not None else 0.0
-    return phys.mass + tank.fuel * tank.density + cargo_mass
+    return get_entity_mass(entity)
 
 
 def compute_spawn_pos(
@@ -67,7 +64,7 @@ def compute_spawn_pos(
     geo: LanderGeometry,
     *,
     clearance: float,
-) -> Vector2:
+) -> Any:
     half_w = max(geo.width * 0.5, 1.0)
     half_h = max(geo.height * 0.5, 1.0)
     max_ground = terrain(x)
@@ -95,23 +92,23 @@ def should_end_default(
         return True
     if stop_on_out_of_fuel and tank.fuel <= 0.0:
         return True
-    if (
-        game.headless
-        and max_time is not None
-        and getattr(game, "_elapsed_time", 0.0) >= max_time
-    ):
+    run_state = game.run_state
+    if game.headless and max_time is not None and run_state.elapsed_time >= max_time:
         return True
     return False
 
 
-def build_end_result_default(game, *, landing_count: int, crash_count: int, score: float) -> dict:
+def build_end_result_default(
+    game, *, landing_count: int, crash_count: int, score: float
+) -> dict:
     actor = _get_focus_actor(game)
     state = str(require_component(actor, LanderState).state)
     tank = require_component(actor, FuelTank)
     if state not in {"landed", "crashed"} and tank.fuel <= 0.0:
         state = "out_of_fuel"
+    run_state = game.run_state
     return {
-        "time": getattr(game, "_elapsed_time", 0.0),
+        "time": run_state.elapsed_time,
         "state": state,
         "landing_count": landing_count,
         "crash_count": crash_count,
@@ -121,7 +118,9 @@ def build_end_result_default(game, *, landing_count: int, crash_count: int, scor
     }
 
 
-def resolve_landed_site_uid(site_specs: tuple[SiteSpec, ...], landed_x: float) -> str | None:
+def resolve_landed_site_uid(
+    site_specs: tuple[SiteSpec, ...], landed_x: float
+) -> str | None:
     for spec in site_specs:
         half = 0.5 * float(spec.size)
         distance = abs(float(landed_x) - float(spec.x))
@@ -168,8 +167,12 @@ class EndResultMixin:
         )
 
     def end(self, game):
-        landing_count = getattr(game, "_landing_count", 0)
-        crash_count = getattr(game, "_crash_count", 0)
+        level = self
+        if not isinstance(level, Level):
+            raise TypeError("EndResultMixin requires a Level instance")
+        run_state = game.run_state
+        landing_count = run_state.landing_count
+        crash_count = run_state.crash_count
         score = compute_score_default(
             game,
             landing_count,
@@ -185,7 +188,9 @@ class EndResultMixin:
             crash_count=crash_count,
             score=score,
         )
-        result["scenario"] = getattr(self, "scenario_name", type(self).__name__)
+        result["scenario"] = (
+            level.ensure_runtime_context().scenario_name or type(self).__name__
+        )
         benchmark_mode = getattr(self, "_benchmark_random_mode", None)
         if benchmark_mode is not None:
             result["scenario_benchmark_mode"] = benchmark_mode
@@ -297,7 +302,9 @@ class PresetLevel(EndResultMixin, Level):
             if state["cluster_remaining"] > 0:
                 spacing_min = max(250.0, float(self.dynamic_cluster_spacing_min))
                 spacing_max = max(spacing_min, float(self.dynamic_cluster_spacing_max))
-                next_spacing = min(guidance_spacing, rng.uniform(spacing_min, spacing_max))
+                next_spacing = min(
+                    guidance_spacing, rng.uniform(spacing_min, spacing_max)
+                )
             else:
                 self._start_dynamic_corridor(direction, guidance_spacing)
                 next_spacing = self._corridor_spacing(direction, guidance_spacing)
@@ -308,7 +315,9 @@ class PresetLevel(EndResultMixin, Level):
             self._seed_dynamic_cluster_state(direction)
             spacing_min = max(250.0, float(self.dynamic_cluster_spacing_min))
             spacing_max = max(spacing_min, float(self.dynamic_cluster_spacing_max))
-            return "cluster", min(guidance_spacing, rng.uniform(spacing_min, spacing_max))
+            return "cluster", min(
+                guidance_spacing, rng.uniform(spacing_min, spacing_max)
+            )
 
         state["corridor_remaining"] = remaining - 1
         next_spacing = self._corridor_spacing(direction, guidance_spacing)
@@ -325,7 +334,9 @@ class PresetLevel(EndResultMixin, Level):
         if rng is None or base_terrain is None:
             return
 
-        site_kind, next_spacing = self._next_dynamic_spawn_plan(game, direction=direction)
+        site_kind, next_spacing = self._next_dynamic_spawn_plan(
+            game, direction=direction
+        )
         if direction >= 0:
             x = float(self._dynamic_next_site_x_right)
             self._dynamic_next_site_x_right = x + next_spacing
@@ -349,7 +360,9 @@ class PresetLevel(EndResultMixin, Level):
             pmax = max(pmin, float(self.dynamic_refuel_price_max))
             fuel_price = round(rng.uniform(pmin, pmax) * 2.0) / 2.0
         else:
-            elevated = rng.random() < max(0.0, min(1.0, self.dynamic_site_elevated_chance))
+            elevated = rng.random() < max(
+                0.0, min(1.0, self.dynamic_site_elevated_chance)
+            )
             if elevated:
                 terrain_mode = "elevated_supports"
                 terrain_bound = False
@@ -362,14 +375,10 @@ class PresetLevel(EndResultMixin, Level):
             blend_margin = rng.uniform(16.0, 28.0)
             cut_depth = rng.uniform(22.0, 34.0)
             award = 120.0 + rng.uniform(0.0, 240.0) + min(320.0, distance * 0.03)
-            fuel_price = round(
-                (
-                    8.0
-                    + rng.uniform(0.0, 3.5)
-                    + min(2.0, distance / 7000.0)
-                )
-                * 2.0
-            ) / 2.0
+            fuel_price = (
+                round((8.0 + rng.uniform(0.0, 3.5) + min(2.0, distance / 7000.0)) * 2.0)
+                / 2.0
+            )
 
         y = ground_y + y_offset
         support_height = max(20.0, y - ground_y)
@@ -405,7 +414,8 @@ class PresetLevel(EndResultMixin, Level):
             if engine is not None:
                 engine.set_landing_site_colliders(self._dynamic_elevated_sites)
 
-    def setup(self, _game, seed: int) -> None:
+    def setup(self, game, seed: int) -> None:
+        _ = game
         rng = random.Random(seed)
         base_terrain = self._build_base_terrain(seed)
 
@@ -417,7 +427,9 @@ class PresetLevel(EndResultMixin, Level):
             y = ground_y + spec.y_offset
             support_height = max(
                 20.0,
-                spec.support_height if spec.terrain_mode == "elevated_supports" else y - ground_y,
+                spec.support_height
+                if spec.terrain_mode == "elevated_supports"
+                else y - ground_y,
             )
 
             site_entity = Entity(uid=spec.uid)
@@ -502,7 +514,10 @@ class PresetLevel(EndResultMixin, Level):
             site_shape = site_entity.get_component(LandingSiteComponent)
             if site_trans is None or site_shape is None:
                 continue
-            if site_shape.terrain_bound and site_shape.terrain_mode != "elevated_supports":
+            if (
+                site_shape.terrain_bound
+                and site_shape.terrain_mode != "elevated_supports"
+            ):
                 continue
             elevated_sites.append((site_trans.pos.x, site_trans.pos.y, site_shape.size))
         if elevated_sites:
@@ -527,7 +542,7 @@ class PresetLevel(EndResultMixin, Level):
             lander=player_lander,
             extra_entities=[],
         )
-        setattr(self, "engine", engine)
+        self.engine = engine
         self._dynamic_base_terrain = base_terrain
         self._dynamic_site_rng = random.Random(seed ^ 0x9E3779B9)
         self._dynamic_site_uid_index = 0
@@ -559,7 +574,9 @@ class PresetLevel(EndResultMixin, Level):
         self._seed_dynamic_cluster_state(-1)
         guidance_spacing = self._dynamic_guidance_spacing(player_lander)
         cluster_spacing_min = max(250.0, float(self.dynamic_cluster_spacing_min))
-        cluster_spacing_max = max(cluster_spacing_min, float(self.dynamic_cluster_spacing_max))
+        cluster_spacing_max = max(
+            cluster_spacing_min, float(self.dynamic_cluster_spacing_max)
+        )
         initial_right_spacing = min(
             guidance_spacing,
             self._dynamic_site_rng.uniform(cluster_spacing_min, cluster_spacing_max),
@@ -568,7 +585,9 @@ class PresetLevel(EndResultMixin, Level):
             guidance_spacing,
             self._dynamic_site_rng.uniform(cluster_spacing_min, cluster_spacing_max),
         )
-        self._dynamic_next_site_x_right = self._dynamic_site_max_x + initial_right_spacing
+        self._dynamic_next_site_x_right = (
+            self._dynamic_site_max_x + initial_right_spacing
+        )
         self._dynamic_next_site_x_left = self._dynamic_site_min_x - initial_left_spacing
         self._dynamic_elevated_sites = list(elevated_sites)
 
@@ -603,6 +622,7 @@ class PresetLevel(EndResultMixin, Level):
             left_spawns += 1
             if left_spawns >= max_spawns_per_side:
                 break
+
 
 def compute_score_default(
     game,

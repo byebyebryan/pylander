@@ -13,6 +13,7 @@ from levels.terminal_catalog import (
     TERMINAL_QUICK_SCENARIOS,
     TERMINAL_SCENARIO_BY_NAME,
     TERMINAL_SMOKE_SCENARIOS,
+    TerminalScenario,
 )
 from levels.terminal_spawn import (
     apply_terminal_spawn,
@@ -24,7 +25,7 @@ from levels.terminal_spawn import (
 )
 
 
-class TerminalLevel(ScenarioCatalogMixin, ScenarioLevel):
+class TerminalLevel(ScenarioCatalogMixin[TerminalScenario], ScenarioLevel):
     default_bot_name = "pdg"
     _scenario_by_name = TERMINAL_SCENARIO_BY_NAME
     _default_scenario_name = TERMINAL_DEFAULT_SCENARIO
@@ -72,10 +73,12 @@ class TerminalLevel(ScenarioCatalogMixin, ScenarioLevel):
                 cargo_mass=float(scenario.cargo_mass),
             )
         super().setup(game, seed)
+        if self.world is None:
+            raise RuntimeError("TerminalLevel world was not initialized")
 
         actor = self.world.actors[0]
-        target_pos = getattr(self, "eval_target_pos", Vector2(0.0, 0.0))
-        engine = getattr(self, "engine", None)
+        target_pos = self.eval_target_pos or Vector2(0.0, 0.0)
+        engine = self.engine
 
         if scenario.mode == "normal":
             candidate, margin_t, margin_h, downspeed = select_terminal_normal_spawn(
@@ -120,7 +123,7 @@ class TerminalLevel(ScenarioCatalogMixin, ScenarioLevel):
                     **params,
                 }
             )
-        setattr(self, "scenario_name", scenario.name)
+        self.set_runtime_identity(scenario_name=scenario.name)
 
     def update(self, game, dt: float) -> None:
         _ = game, dt
@@ -131,4 +134,3 @@ class TerminalLevel(ScenarioCatalogMixin, ScenarioLevel):
 
 def create_level() -> Level:
     return TerminalLevel()
-

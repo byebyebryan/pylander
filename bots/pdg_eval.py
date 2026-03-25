@@ -126,7 +126,8 @@ def build_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | None]
         "terminal_gate_latest_safe_margin_s": bot._terminal_gate_latest_safe_margin_s,
         "terminal_gate_required_accel_ratio": bot._terminal_gate_required_accel_ratio,
         "fallback_frames": bot._fallback_frames,
-        "boost_quality_verdict": bot._boost_cutoff_quality_verdict or bot._boost_quality_verdict,
+        "boost_quality_verdict": bot._boost_cutoff_quality_verdict
+        or bot._boost_quality_verdict,
         "shape_apex_error": shape_apex_error,
         "shape_curve_rmse": shape_curve_rmse,
         "shape_projected_dx_abs_mean": shape_projected_dx_abs_mean,
@@ -174,7 +175,7 @@ def build_evaluation_decision(bot) -> BotEvalDecision | None:
         success = False
     bot._boost_cutoff_quality_pass = success
     bot._boost_cutoff_quality_verdict = verdict
-    metrics = {"boost_quality_verdict": verdict}
+    metrics: dict[str, str | bool] = {"boost_quality_verdict": verdict}
     if success:
         metrics["boost_quality_pass"] = True
         return BotEvalDecision(

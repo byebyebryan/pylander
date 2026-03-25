@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 import os
-from dataclasses import dataclass, fields, replace
+from dataclasses import dataclass, field, fields, replace
 from typing import Any
 
 from bots.common_ballistics import (
@@ -48,7 +48,9 @@ from bots.pdg_stages import (
     TakeoffBootstrapController,
     TouchdownBrakeController,
 )
-from bots.pdg_terminal_gate import evaluate_terminal_gate as _evaluate_terminal_gate_impl
+from bots.pdg_terminal_gate import (
+    evaluate_terminal_gate as _evaluate_terminal_gate_impl,
+)
 from bots.pdg_tracking import (
     apply_boost_cutoff_metrics as _apply_boost_cutoff_metrics_impl,
     finalize_boost_cutoff_metrics as _finalize_boost_cutoff_metrics_impl,
@@ -92,10 +94,112 @@ class UpdateContext:
     suggested_stage: FlightStage
 
 
+@dataclass
+class PDGState:
+    _elapsed_time_s: float = 0.0
+    _active_phase: str = "boost"
+    _active_stage: FlightStage | None = None
+    _boost_cutoff_done: bool = False
+    _boost_cutoff_time: float | None = None
+    _boost_cutoff_altitude: float | None = None
+    _boost_cutoff_projected_dx: float | None = None
+    _boost_cutoff_projected_apex_y: float | None = None
+    _boost_cutoff_projected_apex_over_target: float | None = None
+    _boost_cutoff_has_target_y_solution: bool | None = None
+    _boost_cutoff_projected_impact_dx: float | None = None
+    _boost_cutoff_projected_impact_angle_deg: float | None = None
+    _boost_cutoff_burn_duration_s: float | None = None
+    _boost_cutoff_burn_fuel_used: float | None = None
+    _boost_cutoff_burn_avg_thrust_level: float | None = None
+    _boost_cutoff_x: float | None = None
+    _boost_cutoff_y: float | None = None
+    _boost_cutoff_vx: float | None = None
+    _boost_cutoff_vy_up: float | None = None
+    _boost_cutoff_spawn_primed: bool = False
+    _boost_phase_thrust_integral: float = 0.0
+    _boost_phase_fuel_start: float | None = None
+    _boost_burn_started: bool = False
+    _boost_burn_start_time: float | None = None
+    _boost_burn_idle_since: float | None = None
+    _boost_cut_latched: bool = False
+    _boost_cut_hold_angle: float | None = None
+    _boost_settle_start_time: float | None = None
+    _boost_quality_verdict: str | None = None
+    _boost_cutoff_quality_pass: bool | None = None
+    _boost_cutoff_quality_verdict: str | None = None
+    _terminal_entry_done: bool = False
+    _terminal_entry_time: float | None = None
+    _terminal_entry_altitude: float | None = None
+    _terminal_entry_projected_dx: float | None = None
+    _terminal_entry_x: float | None = None
+    _terminal_entry_y: float | None = None
+    _terminal_gate_ready_ticks: int = 0
+    _terminal_probe_count: int = 0
+    _terminal_probe_ms_sum: float = 0.0
+    _terminal_probe_ms_samples: list[float] = field(default_factory=list)
+    _terminal_gate_mode: str | None = None
+    _terminal_gate_horizon_s: float | None = None
+    _terminal_gate_terminal_speed: float | None = None
+    _terminal_gate_peak_accel_ratio: float | None = None
+    _terminal_gate_od_excess_s: float | None = None
+    _terminal_gate_latest_safe_margin_s: float | None = None
+    _terminal_gate_required_accel_ratio: float | None = None
+    _last_projection_dx: float | None = None
+    _last_projection_t_fall: float | None = None
+    _last_projection_has_target_y: bool = False
+    _last_target_y: float = 0.0
+    _peak_alt_over_target: float = 0.0
+    _lateral_overshoot: float = 0.0
+    _hover_time: float = 0.0
+    _clearance_margin: float = 0.0
+    _clearance_scale: float = 0.0
+    _clearance_active: bool = False
+    _uphill_transfer: bool = False
+    _debug_boost_last_print_t: float = -1.0
+    _debug_boost_post_end_time: float | None = None
+    _shape_window_started: bool = False
+    _shape_window_done: bool = False
+    _shape_window_start_time: float | None = None
+    _shape_window_end_time: float | None = None
+    _shape_start_x: float = 0.0
+    _shape_start_y: float = 0.0
+    _shape_target_x: float = 0.0
+    _shape_target_y: float = 0.0
+    _shape_anchor_dx_abs: float = 0.0
+    _shape_apex_target_over_target: float = 0.0
+    _shape_apex_actual_over_target: float = 0.0
+    _shape_curve_sq_err_sum: float = 0.0
+    _shape_curve_count: int = 0
+    _shape_projected_dx_abs_sum: float = 0.0
+    _shape_projected_dx_abs_max: float = 0.0
+    _shape_projected_dx_count: int = 0
+    _shape_shortfall_count: int = 0
+    _shape_shortfall_sample_count: int = 0
+
+
+PDG_STATE_FIELD_NAMES = {name for name in PDGState.__dataclass_fields__}
+
+
 class PDGBot(Bot):
+    _state: PDGState
+
+    def __getattr__(self, name: str) -> Any:
+        state = self.__dict__.get("_state")
+        if isinstance(state, PDGState) and name in PDG_STATE_FIELD_NAMES:
+            return getattr(state, name)
+        raise AttributeError(name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        state = self.__dict__.get("_state")
+        if isinstance(state, PDGState) and name in PDG_STATE_FIELD_NAMES:
+            setattr(state, name, value)
+            return
+        super().__setattr__(name, value)
+
     def __init__(self, behavior: str = "pdg") -> None:
         super().__init__()
-        self._bot_name = "pdg"
+        super().__setattr__("_state", PDGState())
+        self.set_identity_name("pdg")
         self._cfg = PDGConfig()
         self._optimizer_boost = self._build_boost_optimizer()
         self._optimizer_terminal = self._build_terminal_optimizer()
@@ -120,10 +224,12 @@ class PDGBot(Bot):
         self._auto_target_uid: str | None = None
         self._launch_takeoff_active = False
         self._reset_shape_window_state()
-        self._last_flight_snapshot: dict[str, float | int | bool | str | None] | None = None
-        self._debug_boost = (
-            os.getenv("PYLANDER_PDG_DEBUG_BOOST", "").strip().lower() in ("1", "true", "yes", "on")
-        )
+        self._last_flight_snapshot: (
+            dict[str, float | int | bool | str | None] | None
+        ) = None
+        self._debug_boost = os.getenv(
+            "PYLANDER_PDG_DEBUG_BOOST", ""
+        ).strip().lower() in ("1", "true", "yes", "on")
         self._display_mode: str | None = None
         self._display_phase: str | None = None
         self._display_summary = ""
@@ -172,9 +278,7 @@ class PDGBot(Bot):
     def set_behavior(self, behavior: str) -> None:
         key = str(behavior).strip().lower().replace("-", "_")
         if key != "pdg":
-            raise ValueError(
-                f"Unknown pdg behavior '{behavior}'. Expected one of: pdg"
-            )
+            raise ValueError(f"Unknown pdg behavior '{behavior}'. Expected one of: pdg")
         self._behavior = "pdg"
         self._reset_state()
         self._auto_target_uid = None
@@ -192,15 +296,21 @@ class PDGBot(Bot):
             self._terminal_entry_done = True
             self._terminal_entry_time = 0.0
             self._terminal_entry_altitude = (
-                float(boost_cutoff.altitude) if boost_cutoff.altitude is not None else None
+                float(boost_cutoff.altitude)
+                if boost_cutoff.altitude is not None
+                else None
             )
             self._terminal_entry_projected_dx = (
                 float(boost_cutoff.projected_impact_dx)
                 if boost_cutoff.projected_impact_dx is not None
                 else None
             )
-            self._terminal_entry_x = float(boost_cutoff.x) if boost_cutoff.x is not None else None
-            self._terminal_entry_y = float(boost_cutoff.y) if boost_cutoff.y is not None else None
+            self._terminal_entry_x = (
+                float(boost_cutoff.x) if boost_cutoff.x is not None else None
+            )
+            self._terminal_entry_y = (
+                float(boost_cutoff.y) if boost_cutoff.y is not None else None
+            )
             self._transition_to(FlightStage.TERMINAL, None)
         else:
             self._transition_to(FlightStage.COAST, None)
@@ -237,7 +347,9 @@ class PDGBot(Bot):
                 else:
                     raise ValueError(f"pdg config key '{key}' must be an integer")
             elif isinstance(current, float):
-                if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+                if isinstance(raw_value, bool) or not isinstance(
+                    raw_value, (int, float)
+                ):
                     raise ValueError(f"pdg config key '{key}' must be a number")
                 patch[key] = float(raw_value)
             elif isinstance(current, tuple):
@@ -346,7 +458,11 @@ class PDGBot(Bot):
                 if contact.uid == forced_uid:
                     return contact
 
-        if passive.state == "landed" and self.pinned_target_uid is None and len(contacts) >= 2:
+        if (
+            passive.state == "landed"
+            and self.pinned_target_uid is None
+            and len(contacts) >= 2
+        ):
             landed_uid = self._landed_contact_uid(passive)
             for contact in contacts:
                 if contact.uid is not None and contact.uid != landed_uid:
@@ -394,39 +510,58 @@ class PDGBot(Bot):
             return
         if self._boost_phase_fuel_start is None:
             self._boost_phase_fuel_start = float(passive.fuel)
-        self._boost_phase_thrust_integral += float(passive.thrust_level) * max(0.0, float(dt))
+        self._boost_phase_thrust_integral += float(passive.thrust_level) * max(
+            0.0, float(dt)
+        )
 
     def _boost_cutoff_thrust_is_idle(self, passive: Sensors) -> bool:
         idle_thrust_max = max(0.0, float(self._cfg.boost_cutoff_idle_thrust_max))
         return float(getattr(passive, "thrust_level", 0.0)) <= idle_thrust_max
 
-    def _braking_speed_limit(self, alt: float, max_thrust_accel: float, max_tilt: float) -> float:
+    def _braking_speed_limit(
+        self, alt: float, max_thrust_accel: float, max_tilt: float
+    ) -> float:
         cfg = self._cfg
         alt_eff = max(0.0, alt - cfg.braking_alt_margin)
         tilt_eff = cfg.braking_tilt_scale * max_tilt
         vertical_brake = max(
             0.7,
-            cfg.braking_accel_safety * ((max_thrust_accel * math.cos(tilt_eff)) - _GRAVITY_MAG),
+            cfg.braking_accel_safety
+            * ((max_thrust_accel * math.cos(tilt_eff)) - _GRAVITY_MAG),
         )
-        speed = math.sqrt(max(0.0, (cfg.vy_touch_cap * cfg.vy_touch_cap) + (2.0 * vertical_brake * alt_eff)))
+        speed = math.sqrt(
+            max(
+                0.0,
+                (cfg.vy_touch_cap * cfg.vy_touch_cap)
+                + (2.0 * vertical_brake * alt_eff),
+            )
+        )
         return clamp(speed, cfg.braking_min_speed, cfg.braking_max_speed)
 
     @staticmethod
     def _stable(value: float | None, digits: int) -> float:
-        return stable(value, digits)
+        return stable(0.0 if value is None else value, digits)
 
-    def _desired_terminal_vy(self, alt: float, max_thrust_accel: float, max_tilt: float) -> float:
+    def _desired_terminal_vy(
+        self, alt: float, max_thrust_accel: float, max_tilt: float
+    ) -> float:
         cfg = self._cfg
-        vy_mag = cfg.braking_target_ratio * self._braking_speed_limit(alt, max_thrust_accel, max_tilt)
+        vy_mag = cfg.braking_target_ratio * self._braking_speed_limit(
+            alt, max_thrust_accel, max_tilt
+        )
         if alt <= cfg.vy_low_alt_cap_alt:
             vy_mag = min(vy_mag, cfg.vy_low_alt_cap)
         if alt <= cfg.vy_touch_cap_alt:
             vy_mag = min(vy_mag, cfg.vy_touch_cap)
         return -max(cfg.braking_min_speed, vy_mag)
 
-    def _descent_floor_vy(self, alt: float, max_thrust_accel: float, max_tilt: float) -> float:
+    def _descent_floor_vy(
+        self, alt: float, max_thrust_accel: float, max_tilt: float
+    ) -> float:
         cfg = self._cfg
-        vy_mag = cfg.braking_floor_ratio * self._braking_speed_limit(alt, max_thrust_accel, max_tilt)
+        vy_mag = cfg.braking_floor_ratio * self._braking_speed_limit(
+            alt, max_thrust_accel, max_tilt
+        )
         if alt <= cfg.vy_low_alt_cap_alt:
             vy_mag = min(vy_mag, cfg.vy_low_alt_cap + 1.2)
         if alt <= cfg.vy_touch_cap_alt:
@@ -434,7 +569,9 @@ class PDGBot(Bot):
         return -max(cfg.braking_min_speed, vy_mag)
 
     @staticmethod
-    def _terminal_lateral_correction_time(*, dx: float, vx: float, lateral_accel: float) -> float:
+    def _terminal_lateral_correction_time(
+        *, dx: float, vx: float, lateral_accel: float
+    ) -> float:
         accel = max(1e-3, float(lateral_accel))
         lateral_speed = float(vx)
         target_dx = float(dx)
@@ -444,7 +581,9 @@ class PDGBot(Bot):
         x_stop = 0.5 * lateral_speed * t_stop
         residual_dx = target_dx - x_stop
         t_translate = (
-            0.0 if abs(residual_dx) <= 1e-6 else 2.0 * math.sqrt(abs(residual_dx) / accel)
+            0.0
+            if abs(residual_dx) <= 1e-6
+            else 2.0 * math.sqrt(abs(residual_dx) / accel)
         )
         return t_stop + t_translate
 
@@ -462,10 +601,15 @@ class PDGBot(Bot):
             tilt = cfg.boost_max_tilt
             if float(dy) <= -cfg.downhill_boost_dy_min:
                 tilt = max(tilt, cfg.downhill_boost_tilt_max)
-            if float(dy) >= cfg.uphill_boost_dy_min and alt <= cfg.uphill_boost_tilt_alt:
+            if (
+                float(dy) >= cfg.uphill_boost_dy_min
+                and alt <= cfg.uphill_boost_tilt_alt
+            ):
                 uphill_tilt_max = cfg.uphill_boost_tilt_max
                 if float(dy) <= cfg.uphill_boost_relaxed_dy_max:
-                    uphill_tilt_max = max(uphill_tilt_max, cfg.uphill_boost_tilt_relaxed_max)
+                    uphill_tilt_max = max(
+                        uphill_tilt_max, cfg.uphill_boost_tilt_relaxed_max
+                    )
                 tilt = min(tilt, uphill_tilt_max)
             return tilt
         if alt < cfg.low_alt_tilt_alt:
@@ -530,7 +674,9 @@ class PDGBot(Bot):
         cfg = self._cfg
         if alt < float(cfg.terminal_overshoot_tilt_altitude_min):
             return None
-        if abs(float(dx)) <= 1e-3 or abs(float(vx)) < float(cfg.terminal_overshoot_tilt_vx_min):
+        if abs(float(dx)) <= 1e-3 or abs(float(vx)) < float(
+            cfg.terminal_overshoot_tilt_vx_min
+        ):
             return None
         if float(dx) * float(vx) <= 0.0:
             return None
@@ -539,7 +685,8 @@ class PDGBot(Bot):
 
         projected_dx_threshold = max(
             float(cfg.terminal_overshoot_tilt_projected_dx_abs),
-            float(cfg.terminal_overshoot_tilt_projected_dx_ratio) * float(self._last_target_half),
+            float(cfg.terminal_overshoot_tilt_projected_dx_ratio)
+            * float(self._last_target_half),
         )
         projected_dx_abs = abs(float(lateral_dx))
         if projected_dx_abs <= projected_dx_threshold:
@@ -551,7 +698,8 @@ class PDGBot(Bot):
             return None
 
         severity = clamp(
-            (projected_dx_abs - projected_dx_threshold) / max(1e-3, projected_dx_threshold),
+            (projected_dx_abs - projected_dx_threshold)
+            / max(1e-3, projected_dx_threshold),
             0.0,
             1.0,
         )
@@ -635,11 +783,7 @@ class PDGBot(Bot):
         max_thrust_accel: float | None = None,
         lateral_dx: float | None = None,
     ) -> float:
-        if (
-            phase == "terminal"
-            and vy_up is not None
-            and max_thrust_accel is not None
-        ):
+        if phase == "terminal" and vy_up is not None and max_thrust_accel is not None:
             return self._resolve_safe_terminal_max_tilt(
                 alt,
                 dx,
@@ -731,7 +875,9 @@ class PDGBot(Bot):
             return self._optimizer_boost
         return self._optimizer_terminal
 
-    def _replan_policy_for_phase(self, phase: str) -> tuple[float, float, float, float, float]:
+    def _replan_policy_for_phase(
+        self, phase: str
+    ) -> tuple[float, float, float, float, float]:
         cfg = self._cfg
         if phase == "boost":
             return (
@@ -994,7 +1140,9 @@ class PDGBot(Bot):
         dy: float,
         projection: BallisticProjection,
     ):
-        dx_anchor_abs = self._shape_anchor_dx_abs if self._shape_window_started else abs(float(dx))
+        dx_anchor_abs = (
+            self._shape_anchor_dx_abs if self._shape_window_started else abs(float(dx))
+        )
         return _evaluate_boost_quality_impl(
             self,
             passive=passive,
@@ -1013,7 +1161,9 @@ class PDGBot(Bot):
         settle_s: float,
         settle_angle_target: float | None = None,
     ):
-        dx_anchor_abs = self._shape_anchor_dx_abs if self._shape_window_started else abs(float(dx))
+        dx_anchor_abs = (
+            self._shape_anchor_dx_abs if self._shape_window_started else abs(float(dx))
+        )
         return _evaluate_boost_quality_after_settle_impl(
             self,
             passive=passive,
@@ -1069,7 +1219,9 @@ class PDGBot(Bot):
         if self._boost_cut_latched:
             action = self._command_boost_settle(dt=ctx.dt, passive=ctx.passive)
             action.status = f"pdg settle/boost {quality.verdict}"
-            self._set_display_state(mode="passive", phase="boost", summary=f"cut {quality.verdict}")
+            self._set_display_state(
+                mode="passive", phase="boost", summary=f"cut {quality.verdict}"
+            )
             if self._boost_cutoff_thrust_is_idle(ctx.passive):
                 _finalize_boost_cutoff_metrics_impl(
                     self,
@@ -1088,16 +1240,19 @@ class PDGBot(Bot):
         boost_cut_thrust = float(self._cfg.boost_cutoff_burn_start_thrust)
         boost_thrust_floor_ratio = float(self._cfg.boost_active_thrust_floor)
         if float(ctx.dy) >= float(self._cfg.uphill_boost_dy_min):
-            dx_anchor_abs = self._shape_anchor_dx_abs if self._shape_window_started else abs(float(ctx.dx))
+            dx_anchor_abs = (
+                self._shape_anchor_dx_abs
+                if self._shape_window_started
+                else abs(float(ctx.dx))
+            )
             distance_alpha = self._boost_distance_alpha(dx_anchor_abs)
             boost_cut_thrust = (
-                ((1.0 - distance_alpha) * float(self._cfg.boost_cutoff_burn_start_thrust_near))
-                + (distance_alpha * float(self._cfg.boost_cutoff_burn_start_thrust_far))
-            )
+                (1.0 - distance_alpha)
+                * float(self._cfg.boost_cutoff_burn_start_thrust_near)
+            ) + (distance_alpha * float(self._cfg.boost_cutoff_burn_start_thrust_far))
             boost_thrust_floor_ratio = (
-                ((1.0 - distance_alpha) * float(self._cfg.boost_active_thrust_floor_near))
-                + (distance_alpha * float(self._cfg.boost_active_thrust_floor_far))
-            )
+                (1.0 - distance_alpha) * float(self._cfg.boost_active_thrust_floor_near)
+            ) + (distance_alpha * float(self._cfg.boost_active_thrust_floor_far))
         if (not quality.passed) and abs(float(ctx.dx)) > 1e-3:
             self._boost_burn_started = True
             self._boost_burn_idle_since = None
@@ -1133,18 +1288,21 @@ class PDGBot(Bot):
             self._set_display_state(mode="passive", phase="boost", summary="cut pass")
             return StageTickResult(action=settle_action)
         if self._boost_burn_started and (not quality.passed):
-            burn_elapsed = self._elapsed_time_s - float(self._boost_burn_start_time or self._elapsed_time_s)
+            burn_elapsed = self._elapsed_time_s - float(
+                self._boost_burn_start_time or self._elapsed_time_s
+            )
             if quality.verdict != "no_target_y_solution":
-                if (
-                    overshot_target_direction
-                    and burn_elapsed >= 0.75
-                ):
+                if overshot_target_direction and burn_elapsed >= 0.75:
                     self._boost_cut_latched = True
                     self._boost_settle_start_time = self._elapsed_time_s
-                    self._boost_cut_hold_angle = self._boost_settle_hold_angle(dy=ctx.dy)
+                    self._boost_cut_hold_angle = self._boost_settle_hold_angle(
+                        dy=ctx.dy
+                    )
                     self._boost_cutoff_quality_pass = False
                     self._boost_cutoff_quality_verdict = quality.verdict
-                    settle_action = self._command_boost_settle(dt=ctx.dt, passive=ctx.passive)
+                    settle_action = self._command_boost_settle(
+                        dt=ctx.dt, passive=ctx.passive
+                    )
                     settle_action.status = f"pdg settle/boost {quality.verdict}"
                     self._set_display_state(
                         mode="passive",
@@ -1155,10 +1313,14 @@ class PDGBot(Bot):
                 if burn_elapsed >= float(self._cfg.boost_burn_max_s):
                     self._boost_cut_latched = True
                     self._boost_settle_start_time = self._elapsed_time_s
-                    self._boost_cut_hold_angle = self._boost_settle_hold_angle(dy=ctx.dy)
+                    self._boost_cut_hold_angle = self._boost_settle_hold_angle(
+                        dy=ctx.dy
+                    )
                     self._boost_cutoff_quality_pass = False
                     self._boost_cutoff_quality_verdict = quality.verdict
-                    settle_action = self._command_boost_settle(dt=ctx.dt, passive=ctx.passive)
+                    settle_action = self._command_boost_settle(
+                        dt=ctx.dt, passive=ctx.passive
+                    )
                     settle_action.status = f"pdg settle/boost {quality.verdict}"
                     self._set_display_state(
                         mode="passive",
@@ -1168,30 +1330,30 @@ class PDGBot(Bot):
                     return StageTickResult(action=settle_action)
                 self._boost_burn_idle_since = None
             else:
-                if (
-                    planner_target_thrust < boost_cut_thrust
-                    and burn_elapsed >= 0.75
-                ):
+                if planner_target_thrust < boost_cut_thrust and burn_elapsed >= 0.75:
                     if self._boost_burn_idle_since is None:
                         self._boost_burn_idle_since = self._elapsed_time_s
                 else:
                     self._boost_burn_idle_since = None
                 idle_elapsed = 0.0
                 if self._boost_burn_idle_since is not None:
-                    idle_elapsed = self._elapsed_time_s - float(self._boost_burn_idle_since)
-                if (
-                    burn_elapsed >= float(self._cfg.boost_burn_max_s)
-                    or (
-                        self._boost_burn_idle_since is not None
-                        and idle_elapsed >= float(self._cfg.boost_failure_cut_idle_s)
+                    idle_elapsed = self._elapsed_time_s - float(
+                        self._boost_burn_idle_since
                     )
+                if burn_elapsed >= float(self._cfg.boost_burn_max_s) or (
+                    self._boost_burn_idle_since is not None
+                    and idle_elapsed >= float(self._cfg.boost_failure_cut_idle_s)
                 ):
                     self._boost_cut_latched = True
                     self._boost_settle_start_time = self._elapsed_time_s
-                    self._boost_cut_hold_angle = self._boost_settle_hold_angle(dy=ctx.dy)
+                    self._boost_cut_hold_angle = self._boost_settle_hold_angle(
+                        dy=ctx.dy
+                    )
                     self._boost_cutoff_quality_pass = False
                     self._boost_cutoff_quality_verdict = quality.verdict
-                    settle_action = self._command_boost_settle(dt=ctx.dt, passive=ctx.passive)
+                    settle_action = self._command_boost_settle(
+                        dt=ctx.dt, passive=ctx.passive
+                    )
                     settle_action.status = f"pdg settle/boost {quality.verdict}"
                     self._set_display_state(
                         mode="passive",
@@ -1208,7 +1370,10 @@ class PDGBot(Bot):
             self._thrust_enabled = True
 
         action.status = f"pdg opt/boost {quality.verdict}"
-        if self._debug_boost and (self._elapsed_time_s - self._debug_boost_last_print_t) >= 0.24:
+        if (
+            self._debug_boost
+            and (self._elapsed_time_s - self._debug_boost_last_print_t) >= 0.24
+        ):
             self._debug_boost_last_print_t = self._elapsed_time_s
             self._debug_boost_print(
                 "boost_cmd "
@@ -1237,7 +1402,7 @@ class PDGBot(Bot):
             elif stage != FlightStage.TAKEOFF:
                 self._launch_takeoff_active = False
             return
-        if current in self._controllers:
+        if isinstance(current, FlightStage) and current in self._controllers:
             self._controllers[current].exit(self, ctx)
         self._active_stage = stage
         self._active_phase = stage.value
@@ -1306,8 +1471,8 @@ class PDGBot(Bot):
         stage: FlightStage,
     ) -> BotAction:
         phase = stage.value
-        replan_hz, dx_err_lim, dy_err_lim, vx_err_lim, vy_err_lim = self._replan_policy_for_phase(
-            phase
+        replan_hz, dx_err_lim, dy_err_lim, vx_err_lim, vy_err_lim = (
+            self._replan_policy_for_phase(phase)
         )
 
         self._replan_timer -= max(0.0, ctx.dt)
@@ -1343,7 +1508,11 @@ class PDGBot(Bot):
                 self._replan_timer = 1.0 / max(1e-3, replan_hz)
                 self._fallback_steps_remaining = int(self._cfg.fallback_hold_steps)
             else:
-                if self._fallback_steps_remaining > 0 and self._plan is not None and self._plan.feasible:
+                if (
+                    self._fallback_steps_remaining > 0
+                    and self._plan is not None
+                    and self._plan.feasible
+                ):
                     self._fallback_steps_remaining -= 1
                 else:
                     self._plan = None
@@ -1378,7 +1547,8 @@ class PDGBot(Bot):
         )
         return action
 
-    def update(self, dt: float, passive: Sensors) -> BotAction:
+    def update(self, dt: float, sensors: Sensors) -> BotAction:
+        passive = sensors
         if passive.state == "crashed":
             return self._reset_with_status(
                 angle=passive.angle,
@@ -1400,7 +1570,9 @@ class PDGBot(Bot):
             self._reset_state()
             self._transition_to(FlightStage.BOOST, None)
 
-        max_power, min_throttle, max_throttle, ramp_up = engine_profile(self.vehicle_info)
+        max_power, min_throttle, max_throttle, ramp_up = engine_profile(
+            self.vehicle_info
+        )
         target = self._resolve_target_contact(passive)
         target_uid = target.uid if target is not None else None
         alt = max(0.0, finite_altitude(passive))
@@ -1445,7 +1617,9 @@ class PDGBot(Bot):
                 min_thrust_accel=min_thrust_accel,
                 suggested_stage=FlightStage.TAKEOFF,
             )
-            action = self._controllers[FlightStage.TAKEOFF].update(self, takeoff_ctx).action
+            action = (
+                self._controllers[FlightStage.TAKEOFF].update(self, takeoff_ctx).action
+            )
             if action is None:
                 raise RuntimeError("pdg takeoff stage did not produce an action")
             self.status = action.status
@@ -1544,7 +1718,9 @@ class PDGBot(Bot):
         else:
             raise RuntimeError("pdg stage router exceeded transition budget")
         if action is None:
-            raise RuntimeError(f"pdg stage '{self._active_phase}' did not produce an action")
+            raise RuntimeError(
+                f"pdg stage '{self._active_phase}' did not produce an action"
+            )
         self.status = action.status
         self._last_flight_snapshot = self._build_evaluation_snapshot()
         return action
@@ -1564,7 +1740,9 @@ class PDGBot(Bot):
         )
 
     def get_flight_phase_snapshot(self) -> FlightPhaseSnapshot | None:
-        milestones: tuple[str, ...] = ("boost_cutoff",) if self._boost_cutoff_done else ()
+        milestones: tuple[str, ...] = (
+            ("boost_cutoff",) if self._boost_cutoff_done else ()
+        )
         boost_cutoff = None
         if self._boost_cutoff_done:
             boost_cutoff = BoostCutoffMetrics(
@@ -1616,7 +1794,9 @@ class PDGBot(Bot):
                 label = f"{label} {mode_label}"
             if self._terminal_entry_projected_dx is not None:
                 label = f"{label} dx={stable(self._terminal_entry_projected_dx, 1):.1f}"
-            metadata: dict[str, float | str | None] = {"time_s": self._terminal_entry_time}
+            metadata: dict[str, float | str | None] = {
+                "time_s": self._terminal_entry_time
+            }
             if self._terminal_gate_mode is not None:
                 metadata["mode"] = self._terminal_gate_mode
             if self._terminal_gate_horizon_s is not None:
@@ -1636,8 +1816,10 @@ class PDGBot(Bot):
     def get_evaluation_decision(self) -> BotEvalDecision | None:
         return _build_evaluation_decision_impl(self)
 
+
 def create_bot() -> Bot:
     return PDGBot()
+
 
 def list_behavior_names() -> tuple[str, ...]:
     return ("pdg",)

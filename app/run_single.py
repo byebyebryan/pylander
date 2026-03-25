@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable, cast
 
 from bots import create_bot
 from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal, normalize_eval_goals
@@ -67,7 +67,14 @@ def _resolve_bot_eval_goals(bot) -> tuple[str, ...]:
     getter = getattr(bot, "supported_eval_goals", None)
     if not callable(getter):
         return (EVAL_GOAL_LANDING,)
-    return normalize_eval_goals(getter())
+    raw_goals = getter()
+    if raw_goals is not None and not isinstance(
+        raw_goals, (list, tuple, set, frozenset)
+    ):
+        raise ValueError(
+            f"Bot '{type(bot).__name__}' returned invalid supported_eval_goals()"
+        )
+    return normalize_eval_goals(cast(Iterable[str] | None, raw_goals))
 
 
 def _load_bot_config(path: str | None) -> dict[str, Any] | None:
@@ -85,7 +92,9 @@ def _load_bot_config(path: str | None) -> dict[str, Any] | None:
     return dict(payload)
 
 
-def configure_level(level, settings: RunSettings, *, benchmark_mode: str | None = None) -> None:
+def configure_level(
+    level, settings: RunSettings, *, benchmark_mode: str | None = None
+) -> None:
     stop_on_crash = settings.stop_on_crash
     stop_on_out_of_fuel = settings.stop_on_out_of_fuel
     stop_on_first_land = settings.stop_on_first_land
@@ -100,10 +109,12 @@ def configure_level(level, settings: RunSettings, *, benchmark_mode: str | None 
 
     set_benchmark_mode_checked(level, benchmark_mode)
 
-    level.trace_enabled = settings.trace_enabled
-    level.trace_sample_period_s = settings.trace_sample_period_s
-    level.trace_detail = settings.trace_detail
-    level.trace_root_dir = settings.trace_root_dir
+    level.set_trace_config(
+        enabled=settings.trace_enabled,
+        sample_period_s=settings.trace_sample_period_s,
+        detail=settings.trace_detail,
+        root_dir=settings.trace_root_dir,
+    )
     level.max_time = settings.max_time
     if settings.lander_name:
         setattr(level, "lander_name", settings.lander_name)
@@ -127,22 +138,28 @@ def run_once(
     runtime_level_name = level_name or settings.runtime_level_name
     public_level_name = display_level_name or settings.level_name
     public_scenario_name = (
-        display_scenario_name if display_scenario_name is not None else settings.scenario_name
+        display_scenario_name
+        if display_scenario_name is not None
+        else settings.scenario_name
     )
 
     level = create_level_checked(runtime_level_name)
-    setattr(level, "_level_name", public_level_name)
-    setattr(level, "_public_scenario_name", public_scenario_name or public_level_name)
+    level.set_runtime_identity(
+        level_name=public_level_name,
+        public_scenario_name=public_scenario_name or public_level_name,
+    )
 
     chosen_scenario = (
-        eval_scenario_name if eval_scenario_name is not None else settings.runtime_scenario_name
+        eval_scenario_name
+        if eval_scenario_name is not None
+        else settings.runtime_scenario_name
     )
     set_eval_scenario(level, chosen_scenario)
     run_goal = resolve_run_goal(settings, eval_goal_name=eval_goal_name)
     run_goal = set_eval_goal(level, run_goal)
     configure_level(level, settings, benchmark_mode=benchmark_mode)
     if trace_selector_tag:
-        setattr(level, "trace_selector_tag", str(trace_selector_tag))
+        level.set_runtime_identity(trace_selector_tag=str(trace_selector_tag))
 
     run_bot_name = resolve_run_bot_name(settings, level)
     bot_config = _load_bot_config(settings.bot_config_path)
@@ -160,7 +177,7 @@ def run_once(
                 f"Supported goals: {supported_csv}"
             )
         bot.set_eval_goal(run_goal)
-        setattr(bot, "_bot_name", run_bot_name)
+        bot.set_identity_name(run_bot_name)
     if run_goal != EVAL_GOAL_LANDING and bot is None:
         raise ValueError(
             f"Eval goal '{run_goal}' requires a bot. "
@@ -227,7 +244,9 @@ def run_once_record(
         run_instance_id=run_instance_id,
     )
     record_bot_name = str(result.get("_bot_name") or settings.bot_name or "none")
-    record_level_name = str(result.get("_level_name") or record_level_name or settings.level_name)
+    record_level_name = str(
+        result.get("_level_name") or record_level_name or settings.level_name
+    )
     record_scenario_name = str(
         result.get("_scenario_name") or record_scenario_name or record_level_name
     )

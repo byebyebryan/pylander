@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from types import MethodType
+from typing import Any, cast
 
 import pytest
 
@@ -16,6 +17,10 @@ from core.bot import (
 )
 from game import LanderGame
 from levels import create_level as create_level_by_name
+
+
+def _pdg_bot() -> Any:
+    return cast(Any, create_bot("pdg"))
 
 
 def _sensors(*, state: str = "flying") -> Sensors:
@@ -41,13 +46,13 @@ def _sensors(*, state: str = "flying") -> Sensors:
 
 
 def test_pdg_update_returns_action_when_flying() -> None:
-    bot = create_bot("pdg")
+    bot = _pdg_bot()
     action = bot.update(1.0 / 30.0, _sensors(state="flying"))
     assert isinstance(action, BotAction)
 
 
 def test_pdg_non_flying_status_resets_runtime_state() -> None:
-    bot = create_bot("pdg")
+    bot = _pdg_bot()
     bot._solve_count = 9
     bot._auto_target_uid = "target-1"
     bot._launch_takeoff_active = True
@@ -60,8 +65,21 @@ def test_pdg_non_flying_status_resets_runtime_state() -> None:
     assert bot._launch_takeoff_active is False
 
 
+def test_pdg_instances_keep_runtime_state_isolated() -> None:
+    first = _pdg_bot()
+    second = _pdg_bot()
+
+    first._boost_cutoff_done = True
+    first._terminal_entry_done = True
+    first._solve_count = 11
+
+    assert second._boost_cutoff_done is False
+    assert second._terminal_entry_done is False
+    assert second._solve_count == 0
+
+
 def test_pdg_snapshot_contains_expected_contract_keys() -> None:
-    bot = create_bot("pdg")
+    bot = _pdg_bot()
     game = LanderGame(
         level=create_level_by_name("terminal"), seed=0, bot=bot, headless=True
     )
@@ -79,7 +97,7 @@ def test_pdg_snapshot_contains_expected_contract_keys() -> None:
 
 
 def test_pdg_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> None:
-    bot = create_bot("pdg")
+    bot = _pdg_bot()
     bot._active_phase = "terminal"
     bot._boost_cutoff_done = True
     bot._boost_cutoff_time = 6.0
@@ -152,9 +170,9 @@ def test_pdg_plot_marker_contract_exposes_shared_and_diagnostic_markers() -> Non
 
 
 def test_pdg_gate_ordering_invariant_launch_far() -> None:
-    level = create_level_by_name("boost")
+    level = cast(Any, create_level_by_name("boost"))
     level.set_eval_scenario("flat:far:half")
-    game = LanderGame(level=level, seed=1, bot=create_bot("pdg"), headless=True)
+    game = LanderGame(level=level, seed=1, bot=_pdg_bot(), headless=True)
     result = game.run(print_freq=0, max_time=15.0)
 
     boost_cutoff_time = result.get("boost_cutoff_time")
@@ -165,9 +183,9 @@ def test_pdg_gate_ordering_invariant_launch_far() -> None:
 
 
 def test_boost_cutoff_waits_for_actual_thrust_shutdown() -> None:
-    level = create_level_by_name("boost")
+    level = cast(Any, create_level_by_name("boost"))
     level.set_eval_scenario("flat:mid:half")
-    bot = create_bot("pdg")
+    bot = _pdg_bot()
     bot.set_eval_goal("boost_cutoff")
 
     gate_samples: list[tuple[float, float, str]] = []
@@ -186,7 +204,9 @@ def test_boost_cutoff_waits_for_actual_thrust_shutdown() -> None:
         return action
 
     bot.update = MethodType(wrapped_update, bot)
-    game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="boost_cutoff")
+    game = LanderGame(
+        level=level, seed=0, bot=bot, headless=True, eval_goal="boost_cutoff"
+    )
     result = game.run(print_freq=0, max_time=9.0)
 
     assert gate_samples
@@ -201,7 +221,7 @@ def test_boost_cutoff_waits_for_actual_thrust_shutdown() -> None:
 
 
 def test_direct_descent_terminal_handoff_prefers_touchdown() -> None:
-    bot = create_bot("pdg")
+    bot = _pdg_bot()
     passive = Sensors(
         x=0.0,
         y=60.0,
@@ -238,8 +258,10 @@ def test_direct_descent_terminal_handoff_prefers_touchdown() -> None:
     assert stage == FlightStage.TOUCHDOWN
 
 
-def test_boost_controller_honors_touchdown_stage_suggestion_before_boost_cutoff() -> None:
-    bot = create_bot("pdg")
+def test_boost_controller_honors_touchdown_stage_suggestion_before_boost_cutoff() -> (
+    None
+):
+    bot = _pdg_bot()
     passive = Sensors(
         x=0.0,
         y=60.0,

@@ -3,12 +3,14 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
+from typing import Any
 
 from core.config import GRAVITY
 from core.components import Engine, PhysicsState, Transform
 from core.ecs import require_component
 from core.maths import Vector2
 from levels.common_scenarios import (
+    BenchmarkRandomMode,
     SampleRange,
     angle_from_velocity,
     has_randomized_values,
@@ -35,7 +37,7 @@ class TerminalSpawnCandidate:
     entry_angle_deg: float
     start_dx: float
     start_dy: float
-    start_pos: Vector2
+    start_pos: Any
     initial_vx: float
     initial_vy_up: float
     trim_time_s: float
@@ -59,8 +61,8 @@ def sample_terminal_normal_candidate(
     scenario,
     seed: int,
     attempt: int,
-    target_pos: Vector2,
-    benchmark_random_mode: str,
+    target_pos: Any,
+    benchmark_random_mode: BenchmarkRandomMode,
 ) -> TerminalSpawnCandidate:
     seed_key = str(getattr(scenario, "seed_key", scenario.name) or scenario.name)
     scenario_hash = sum(ord(ch) for ch in seed_key)
@@ -83,7 +85,9 @@ def sample_terminal_normal_candidate(
         time_frac = _van_der_corput(seed_index + (scenario_hash * 7), 5)
 
         radius = _sample_from_fraction(scenario.radius, radius_frac)
-        angle_deviation_deg = _sample_from_fraction(scenario.angle_deviation_deg, angle_frac)
+        angle_deviation_deg = _sample_from_fraction(
+            scenario.angle_deviation_deg, angle_frac
+        )
         target_flight_time_s = max(
             1e-6,
             _sample_from_fraction(scenario.target_flight_time_s, time_frac),
@@ -127,8 +131,8 @@ def resolve_terminal_error_spawn(
     *,
     scenario,
     seed: int,
-    benchmark_random_mode: str,
-    target_pos: Vector2,
+    benchmark_random_mode: BenchmarkRandomMode,
+    target_pos: Any,
 ) -> tuple[TerminalSpawnCandidate, dict[str, float]]:
     seed_key = str(getattr(scenario, "seed_key", scenario.name) or scenario.name)
     rng = random.Random(scenario_seed(seed, seed_key))
@@ -142,10 +146,14 @@ def resolve_terminal_error_spawn(
     )
     target_flight_time_s = max(
         1e-6,
-        resolve_sample_value(scenario.target_flight_time_s, mode=benchmark_random_mode, rng=rng),
+        resolve_sample_value(
+            scenario.target_flight_time_s, mode=benchmark_random_mode, rng=rng
+        ),
     )
     projected_dx_error_mag = abs(
-        resolve_sample_value(scenario.projected_dx_error, mode=benchmark_random_mode, rng=rng)
+        resolve_sample_value(
+            scenario.projected_dx_error, mode=benchmark_random_mode, rng=rng
+        )
     )
     if benchmark_random_mode == "median":
         projected_dx_error_sign = 1.0
@@ -208,7 +216,7 @@ def compute_terminal_accel_limits(actor) -> tuple[float, float]:
 def validate_terminal_start_state(
     *,
     candidate: TerminalSpawnCandidate,
-    target_pos: Vector2,
+    target_pos: Any,
     a_up_max: float,
     a_lat_eff: float,
 ) -> tuple[bool, float, float, float]:
@@ -231,8 +239,8 @@ def select_terminal_normal_spawn(
     actor,
     scenario,
     seed: int,
-    benchmark_random_mode: str,
-    target_pos: Vector2,
+    benchmark_random_mode: BenchmarkRandomMode,
+    target_pos: Any,
 ) -> tuple[TerminalSpawnCandidate, float, float, float]:
     a_up_max, a_lat_eff = compute_terminal_accel_limits(actor)
 
@@ -253,7 +261,9 @@ def select_terminal_normal_spawn(
             validate_scenario_recoverability(
                 actor,
                 scenario_name=scenario.name,
-                spawn_clearance=max(0.0, float(candidate.start_pos.y) - float(target_pos.y)),
+                spawn_clearance=max(
+                    0.0, float(candidate.start_pos.y) - float(target_pos.y)
+                ),
                 initial_vy_up=float(candidate.initial_vy_up),
             )
         except ValueError:
@@ -277,7 +287,9 @@ def select_terminal_normal_spawn(
     return selected, margin_t, margin_h, downspeed
 
 
-def apply_terminal_spawn(actor, engine, candidate: TerminalSpawnCandidate, *, retrograde: bool) -> None:
+def apply_terminal_spawn(
+    actor, engine, candidate: TerminalSpawnCandidate, *, retrograde: bool
+) -> None:
     trans = require_component(actor, Transform)
     phys = require_component(actor, PhysicsState)
     trans.pos = Vector2(candidate.start_pos)
@@ -298,7 +310,9 @@ def apply_terminal_spawn(actor, engine, candidate: TerminalSpawnCandidate, *, re
     )
 
 
-def validate_terminal_error_recoverability(actor, scenario, candidate: TerminalSpawnCandidate) -> None:
+def validate_terminal_error_recoverability(
+    actor, scenario, candidate: TerminalSpawnCandidate
+) -> None:
     validate_scenario_recoverability(
         actor,
         scenario_name=scenario.name,

@@ -34,7 +34,8 @@ class BoostLevel(BoostTransferLevel):
             return 0.0
         return float(scenario.route_dy) / max(1e-6, float(scenario.route_dx))
 
-    def _build_base_terrain(self, _seed: int):
+    def _build_base_terrain(self, seed: int):
+        _ = seed
         scenario = self._active_scenario()
         slope = self._scenario_slope(scenario)
         return _terrain.LodGridGenerator(lambda x: slope * x)
@@ -62,4 +63,3 @@ class BoostLevel(BoostTransferLevel):
 
 def create_level() -> Level:
     return BoostLevel()
-

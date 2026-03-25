@@ -197,7 +197,12 @@ def bootstrap_trace_runtime(
         sample_period_s=level_trace_sample_period_s(level),
         detail=level_trace_detail(level),
     )
-    explicit_tag = getattr(level, "trace_selector_tag", None)
+    runtime_context = level.ensure_runtime_context()
+    explicit_tag = (
+        runtime_context.trace_selector_tag
+        if runtime_context.trace_selector_tag
+        else None
+    )
     if isinstance(explicit_tag, str) and explicit_tag.strip():
         trace_recorder.set_selector_tag(explicit_tag)
     else:
