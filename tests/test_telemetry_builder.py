@@ -22,10 +22,10 @@ def _script(rel: str) -> Path:
 
 builder = _load_module(
     "telemetry_builder_script",
-    _script("skills/pylander-telemetry-builder/scripts/plan_telemetry.py"),
+    _script(".agents/skills/pylander-telemetry-builder/scripts/plan_telemetry.py"),
 )
 contracts = _load_module(
-    "skill_contracts_for_builder", _script("skills/lib/contracts.py")
+    "skill_contracts_for_builder", _script(".agents/skills/lib/contracts.py")
 )
 
 

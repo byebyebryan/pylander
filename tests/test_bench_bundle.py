@@ -24,7 +24,7 @@ def _script(rel: str) -> Path:
 
 bench_bundle = _load_module(
     "bench_bundle_script",
-    _script("skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py"),
+    _script(".agents/skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py"),
 )
 
 
@@ -81,7 +81,15 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         "plot": {
             "terrain": {"xs": [-40.0, 0.0, 40.0], "ys": [0.0, 0.0, 0.0]},
             "target": {"x": 0.0, "y": 0.0, "label": "landing target", "size": 110.0},
-            "events": [{"name": "crash", "label": "crashed", "time_s": 12.1, "x": 4.0, "y": 1.5}],
+            "events": [
+                {
+                    "name": "crash",
+                    "label": "crashed",
+                    "time_s": 12.1,
+                    "x": 4.0,
+                    "y": 1.5,
+                }
+            ],
             "bounds": {"min_x": -40.0, "max_x": 40.0, "lower_y": -5.0, "upper_y": 60.0},
             "samples": {
                 "time_s": [0.0, 1.0, 2.0],
@@ -94,7 +102,11 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
                 "vy": [-20.0, -18.0, -32.0],
             },
             "ballistic_curve": {"xs": [4.0, 6.0, 8.0], "ys": [1.5, 0.8, 0.0]},
-            "reference_curve": {"xs": [-20.0, -8.0, 0.0], "ys": [48.0, 30.0, 0.0], "apex_y": 52.0},
+            "reference_curve": {
+                "xs": [-20.0, -8.0, 0.0],
+                "ys": [48.0, 30.0, 0.0],
+                "apex_y": 52.0,
+            },
         },
     }
     trace_path.write_text(json.dumps(trace_payload), encoding="utf-8")
@@ -192,7 +204,12 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     bundle = bench_bundle._bundle_payload(
         bundle_id="bundle_x",
         created_at_utc="2026-03-21T18:00:00+00:00",
-        benchmark_cmd=["uv", "run", "python", "skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py"],
+        benchmark_cmd=[
+            "uv",
+            "run",
+            "python",
+            ".agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py",
+        ],
         benchmark_exit_code=1,
         benchmark_wall_clock_s=12.5,
         candidate_json_path=candidate_json,
@@ -214,7 +231,12 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     latest_payload = latest_path.read_text(encoding="utf-8")
     bundle_json_payload = json.loads(bundle_json_path.read_text(encoding="utf-8"))
     detail_html = (
-        outputs_root / "viewer" / "bundles" / "bundle_x" / "runs" / "boost_climb_high_full_0.html"
+        outputs_root
+        / "viewer"
+        / "bundles"
+        / "bundle_x"
+        / "runs"
+        / "boost_climb_high_full_0.html"
     ).read_text(encoding="utf-8")
 
     assert "Bench Id" in html_payload
@@ -225,14 +247,25 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     assert "Collapse All" in html_payload
     assert "<th>Details</th>" in html_payload
     assert "boost:climb:high:full" in html_payload
-    assert "../../../benchmarks/head/full_pack.tracepack/previews/boost_climb_high_full_0.png" in html_payload
+    assert (
+        "../../../benchmarks/head/full_pack.tracepack/previews/boost_climb_high_full_0.png"
+        in html_payload
+    )
     assert "plot pack" not in html_payload.lower()
     assert "Bench Id" in latest_payload
     assert "latest page" in latest_payload
     assert "../bundles/bundle_x/runs/boost_climb_high_full_0.html" in latest_payload
-    assert bundle_json_payload["benchmark"]["candidate"]["schema"] == "pylander.tracepack.v1"
-    assert bundle_json_payload["benchmark"]["candidate"]["trace_root_path"] == str(trace_root)
-    assert bundle_json_payload["viewer_assets"]["plotly_rel"] == "viewer/assets/plotly-basic-2.35.2.min.js"
+    assert (
+        bundle_json_payload["benchmark"]["candidate"]["schema"]
+        == "pylander.tracepack.v1"
+    )
+    assert bundle_json_payload["benchmark"]["candidate"]["trace_root_path"] == str(
+        trace_root
+    )
+    assert (
+        bundle_json_payload["viewer_assets"]["plotly_rel"]
+        == "viewer/assets/plotly-basic-2.35.2.min.js"
+    )
     assert bundle_json_payload["timing"]["benchmark_wall_clock_s"] == 12.5
     assert bundle_json_payload["timing"]["bundle_render_wall_clock_s"] is not None
     assert bundle_json_payload["timing"]["total_wall_clock_s"] is not None
@@ -248,19 +281,32 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     assert ">Velocity<" in detail_html
     assert ">Thrust<" in detail_html
     assert ">Vectors<" in detail_html
-    assert "spatialElement.on(\"plotly_hover\"" in detail_html
-    assert 'spatialElement.addEventListener("mouseleave", () => updateThrustVector(null));' in detail_html
+    assert 'spatialElement.on("plotly_hover"' in detail_html
+    assert (
+        'spatialElement.addEventListener("mouseleave", () => updateThrustVector(null));'
+        in detail_html
+    )
     assert "const buildHoverCarrier = () => {" in detail_html
     assert "const hoverSubdivisionCount = 6;" in detail_html
     assert "const buildVectorModeAnnotations = (intervalS) => {" in detail_html
     assert "const vectorModeIntervalS = 1.0;" in detail_html
     assert 'mode: "lines"' in detail_html
-    assert 'const hoverCarrierIndex = spatialTraces.findIndex((trace) => trace.name === "trajectory hover");' in detail_html
-    assert 'const eventTraceIndex = spatialTraces.findIndex((trace) => trace.name === "events");' in detail_html
+    assert (
+        'const hoverCarrierIndex = spatialTraces.findIndex((trace) => trace.name === "trajectory hover");'
+        in detail_html
+    )
+    assert (
+        'const eventTraceIndex = spatialTraces.findIndex((trace) => trace.name === "events");'
+        in detail_html
+    )
     assert "const applySpatialMode = (mode, hoverIndex = null) => {" in detail_html
     assert 'if (currentSpatialMode !== "thrust") return;' in detail_html
-    assert 'points.some((point) => point.curveNumber === eventTraceIndex)' in detail_html
-    assert 'requestAnimationFrame(() => Plotly.Fx.unhover(spatialElement));' in detail_html
+    assert (
+        "points.some((point) => point.curveNumber === eventTraceIndex)" in detail_html
+    )
+    assert (
+        "requestAnimationFrame(() => Plotly.Fx.unhover(spatialElement));" in detail_html
+    )
     assert "arrowhead: 3" in detail_html
     assert "vectorModeAnnotations" in detail_html
     assert "thrustExtent.min" in detail_html
@@ -268,13 +314,16 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     assert 'hoverinfo: "skip"' in detail_html
     assert 'xaxis: {title: "", domain: [0.0, 0.93]}' in detail_html
     assert 'yaxis: {title: "", scaleanchor: "x", scaleratio: 1}' in detail_html
-    assert 'x: 0.955,' in detail_html
+    assert "x: 0.955," in detail_html
     assert 'name: "velocity"' in detail_html
     assert 'name: "vx"' in detail_html
     assert 'visible: "legendonly"' in detail_html
     assert 'return {symbol: "star", color: "#2f9e44"};' in detail_html
     assert 'return {symbol: "circle", color: "#5b73c6"};' in detail_html
-    assert 'return eventName === "success" || eventName === "crash" ? 16.5 : 15;' in detail_html
+    assert (
+        'return eventName === "success" || eventName === "crash" ? 16.5 : 15;'
+        in detail_html
+    )
     assert "trace json" in detail_html
     assert "plot manifest" not in detail_html
     assert "plotly-basic-2.35.2.min.js" in detail_html

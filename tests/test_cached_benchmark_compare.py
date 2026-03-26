@@ -1,21 +1,36 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
 
 import pytest
 
-_SCRIPT_DIR = (
+_SCRIPT_PATH = (
     Path(__file__).resolve().parents[1]
+    / ".agents"
     / "skills"
     / "pylander-benchmark-runner"
     / "scripts"
+    / "run_cached_benchmark.py"
 )
-if str(_SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCRIPT_DIR))
 
-import run_cached_benchmark as cached_bench  # noqa: E402
+
+def _load_module(module_name: str, path: Path):
+    script_dir = str(path.parent)
+    if script_dir not in sys.path:
+        sys.path.insert(0, script_dir)
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+cached_bench = _load_module("run_cached_benchmark", _SCRIPT_PATH)
 
 
 def _record(
@@ -109,7 +124,9 @@ def _write_cached_tracepack(
                 "trace_path": str(trace_path),
                 "trace_rel_path": trace_path.relative_to(outputs_root).as_posix(),
                 "trace_preview_path": str(preview_path),
-                "trace_preview_rel_path": preview_path.relative_to(outputs_root).as_posix(),
+                "trace_preview_rel_path": preview_path.relative_to(
+                    outputs_root
+                ).as_posix(),
             }
         ],
         "records": [
@@ -120,11 +137,15 @@ def _write_cached_tracepack(
                 "trace_path": str(trace_path),
                 "trace_rel_path": trace_path.relative_to(outputs_root).as_posix(),
                 "trace_preview_path": str(preview_path),
-                "trace_preview_rel_path": preview_path.relative_to(outputs_root).as_posix(),
+                "trace_preview_rel_path": preview_path.relative_to(
+                    outputs_root
+                ).as_posix(),
             }
         ],
     }
-    json_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    json_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+    )
     meta_payload = {
         **_expected_cache_meta(),
         "commit": commit,
@@ -132,7 +153,9 @@ def _write_cached_tracepack(
         "json_path": str(json_path),
         "bench_exit_code": 0,
     }
-    meta_path.write_text(json.dumps(meta_payload, indent=2, sort_keys=True), encoding="utf-8")
+    meta_path.write_text(
+        json.dumps(meta_payload, indent=2, sort_keys=True), encoding="utf-8"
+    )
     return results_root, json_path, meta_path, trace_path, preview_path
 
 
@@ -351,7 +374,9 @@ def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
     }
 
     rows = cached_bench._scenario_regressions(baseline, candidate)
-    assert [str(item["scenario"]) for item in rows] == ["boost:downhill:mid:half:boost_cutoff"]
+    assert [str(item["scenario"]) for item in rows] == [
+        "boost:downhill:mid:half:boost_cutoff"
+    ]
 
 
 def test_global_compute_regression_marks_notable_regression() -> None:
@@ -490,7 +515,9 @@ def test_run_diag_uses_selected_bot_terminal_metric_namespace() -> None:
 
 
 def test_validate_cached_tracepack_assets_accepts_complete_pack(tmp_path: Path) -> None:
-    results_root, json_path, _meta_path, _trace_path, _preview_path = _write_cached_tracepack(tmp_path)
+    results_root, json_path, _meta_path, _trace_path, _preview_path = (
+        _write_cached_tracepack(tmp_path)
+    )
 
     issue = cached_bench._validate_cached_tracepack_assets(
         json_path,
@@ -500,10 +527,14 @@ def test_validate_cached_tracepack_assets_accepts_complete_pack(tmp_path: Path) 
     assert issue is None
 
 
-def test_validate_cached_tracepack_assets_rejects_missing_preview(tmp_path: Path) -> None:
-    results_root, json_path, _meta_path, _trace_path, preview_path = _write_cached_tracepack(
-        tmp_path,
-        with_preview=False,
+def test_validate_cached_tracepack_assets_rejects_missing_preview(
+    tmp_path: Path,
+) -> None:
+    results_root, json_path, _meta_path, _trace_path, preview_path = (
+        _write_cached_tracepack(
+            tmp_path,
+            with_preview=False,
+        )
     )
 
     issue = cached_bench._validate_cached_tracepack_assets(
@@ -515,7 +546,9 @@ def test_validate_cached_tracepack_assets_rejects_missing_preview(tmp_path: Path
 
 
 def test_load_or_run_reuses_complete_cache(tmp_path: Path) -> None:
-    results_root, json_path, meta_path, _trace_path, _preview_path = _write_cached_tracepack(tmp_path)
+    results_root, json_path, meta_path, _trace_path, _preview_path = (
+        _write_cached_tracepack(tmp_path)
+    )
 
     loaded_json, loaded_meta, cached = cached_bench._load_or_run(
         commit="cand",
@@ -538,13 +571,19 @@ def test_load_or_run_reuses_complete_cache(tmp_path: Path) -> None:
     assert loaded_meta == meta_path
 
 
-def test_load_or_run_rejects_incomplete_cache_when_rerun_is_disallowed(tmp_path: Path) -> None:
-    results_root, _json_path, _meta_path, trace_path, _preview_path = _write_cached_tracepack(
-        tmp_path,
-        with_trace=False,
+def test_load_or_run_rejects_incomplete_cache_when_rerun_is_disallowed(
+    tmp_path: Path,
+) -> None:
+    results_root, _json_path, _meta_path, trace_path, _preview_path = (
+        _write_cached_tracepack(
+            tmp_path,
+            with_trace=False,
+        )
     )
 
-    with pytest.raises(SystemExit, match="Incomplete cache for commit cand: missing trace json"):
+    with pytest.raises(
+        SystemExit, match="Incomplete cache for commit cand: missing trace json"
+    ):
         cached_bench._load_or_run(
             commit="cand",
             stem="quick_boost_n1_deadbeef00",
@@ -568,13 +607,17 @@ def test_load_or_run_reruns_when_cached_trace_assets_are_missing(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
-    results_root, json_path, meta_path, trace_path, preview_path = _write_cached_tracepack(
-        tmp_path,
-        with_trace=False,
-        with_preview=False,
+    results_root, json_path, meta_path, trace_path, preview_path = (
+        _write_cached_tracepack(
+            tmp_path,
+            with_trace=False,
+            with_preview=False,
+        )
     )
 
-    monkeypatch.setattr(cached_bench, "build_bench_command", lambda **_kwargs: ["bench"])
+    monkeypatch.setattr(
+        cached_bench, "build_bench_command", lambda **_kwargs: ["bench"]
+    )
 
     def _fake_run_command(_cmd: list[str]) -> tuple[int, str]:
         trace_path.write_text("{}", encoding="utf-8")

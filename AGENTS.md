@@ -97,7 +97,7 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
   - `plunge` is a separate terminal/plunge benchmark and should be included only when explicitly named
 - Prefer explicit selectors in evals/benchmarks for reproducibility.
 - Use `--bot-config <path>` for tuned bot overrides; ensure comparisons use like-for-like bot config.
-- For broad regression checks, prefer `skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py` (cache-aware baseline compare).
+- For broad regression checks, prefer `.agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py` (cache-aware baseline compare).
 - Benchmark runs use default worker count; do not pass `--workers`.
 - Benchmark worker behavior is fail-fast when worker pools are unavailable; no implicit sequential fallback.
 
@@ -106,6 +106,6 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - `uv run ruff check .`
 - If behavior changed: run a relevant headless eval and compare metrics to a baseline
  - Example focused eval: `uv run python main.py sim boost:flat:far:half:0 --bot pdg`
- - Example quick regression compare: `uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot pdg`
+ - Example quick regression compare: `uv run python .agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot pdg`
 - If CLI/defaults/workflows changed: update `README.md`
 - Don’t check in artifacts (`outputs/` stays local/ignored), including benchmark caches and generated plots.
