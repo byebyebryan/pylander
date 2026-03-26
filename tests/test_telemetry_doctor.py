@@ -22,10 +22,10 @@ def _script(rel: str) -> Path:
 
 doctor = _load_module(
     "telemetry_doctor_script",
-    _script("skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py"),
+    _script(".agents/skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py"),
 )
 contracts = _load_module(
-    "skill_contracts_for_doctor", _script("skills/lib/contracts.py")
+    "skill_contracts_for_doctor", _script(".agents/skills/lib/contracts.py")
 )
 
 
@@ -160,7 +160,8 @@ def test_analyze_benchmark_without_compare_requests_probe() -> None:
     ]
     assert phase_findings
     assert (
-        phase_findings[0]["measured_evidence"]["bot_terminal_entry_projected_dx"] == 82.0
+        phase_findings[0]["measured_evidence"]["bot_terminal_entry_projected_dx"]
+        == 82.0
     )
     assert (
         phase_findings[0]["measured_evidence"]["bot_terminal_entry_projected_dx_field"]

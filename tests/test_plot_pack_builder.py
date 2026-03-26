@@ -24,7 +24,7 @@ def _script(rel: str) -> Path:
 
 plot_pack = _load_module(
     "plot_pack_builder_script",
-    _script("skills/pylander-plot-runner/scripts/build_plot_pack.py"),
+    _script(".agents/skills/pylander-plot-runner/scripts/build_plot_pack.py"),
 )
 
 
@@ -49,7 +49,10 @@ def test_build_cases_from_records_uses_selected_bot_terminal_metric_namespace() 
     evidence = dict(cases[0]["evidence"])
     assert evidence["boost_cutoff_projected_dx"] == 12.0
     assert evidence["bot_terminal_entry_projected_dx"] == 4.5
-    assert evidence["bot_terminal_entry_projected_dx_field"] == "bot_test_bot_terminal_entry_projected_dx"
+    assert (
+        evidence["bot_terminal_entry_projected_dx_field"]
+        == "bot_test_bot_terminal_entry_projected_dx"
+    )
 
 
 def test_extract_trace_assets_reads_trace_file_metadata() -> None:

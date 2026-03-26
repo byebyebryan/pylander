@@ -130,7 +130,7 @@ Bench selector format:
 - If seed spec is omitted, deterministic scenarios run with seed `0`.
 - If seed spec is omitted and the selector resolves to a randomized scenario, seeds auto-expand to `0-9`.
 
-Benchmark pack tooling (`skills/pylander-benchmark-runner/scripts/*.py`) now reads
+Benchmark pack tooling (`.agents/skills/pylander-benchmark-runner/scripts/*.py`) now reads
 level metadata from `benchmark_profile()`:
 
 - scenario sets: `smoke`, `quick`, `full`
@@ -155,7 +155,7 @@ Focused benchmark-pack selectors also accept explicit group aliases:
 Example:
 
 ```bash
-uv run python skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py \
+uv run python .agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py \
   --mode focused \
   --selectors @terminal \
   --seed-spec 0-9 \
@@ -167,10 +167,10 @@ benchmark tracepack and interactive run-detail pages:
 
 ```bash
 # Serve outputs/ once per tmux session
-uv run python skills/pylander-benchmark-runner/scripts/serve_outputs.py --port 8765
+uv run python .agents/skills/pylander-benchmark-runner/scripts/serve_outputs.py --port 8765
 
 # Generate the latest static bundle
-uv run python skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py \
+uv run python .agents/skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py \
   --mode full \
   --viewer-base-url http://myhost:8765
 ```
@@ -261,7 +261,7 @@ Trace-enabled runs emit trace metadata such as `trace_path`,
 
 ## Project skills
 
-Local project workflows live under `skills/`:
+Local project workflows live under `.agents/skills/`:
 
 - `pylander-goal-builder`: define/build new eval levels with benchmark profile coverage.
 - `pylander-goal-analyzer`: diagnose level-goal failures and produce ranked strategies.
@@ -301,18 +301,18 @@ For the full skill map (including intent, artifacts, and contracts), see:
 
 Core orchestration executors:
 
-- `uv run python skills/pylander-tune-routing-planner/scripts/route_tuning.py --input <in.json> --output <out.json>`
-- `uv run python skills/pylander-arena-branch-runner/scripts/run_arena_branch.py --input <in.json> --output <out.json> --no-execute-validation`
-- `uv run python skills/pylander-strategy-orchestrator/scripts/run_strategy_arena.py --input <in.json> --output <out.json> --no-execute-workers`
-- `uv run python skills/pylander-tune-orchestrator/scripts/run_tune_arena.py --input <in.json> --output <out.json> --no-execute-workers`
-- `uv run python skills/pylander-tune-loop-manager/scripts/run_tune_loop.py --input <in.json> --output <out.json>`
-- `uv run python skills/pylander-regression-analyzer/scripts/gate_regression.py --input <in.json> --output <out.json> --no-execute`
+- `uv run python .agents/skills/pylander-tune-routing-planner/scripts/route_tuning.py --input <in.json> --output <out.json>`
+- `uv run python .agents/skills/pylander-arena-branch-runner/scripts/run_arena_branch.py --input <in.json> --output <out.json> --no-execute-validation`
+- `uv run python .agents/skills/pylander-strategy-orchestrator/scripts/run_strategy_arena.py --input <in.json> --output <out.json> --no-execute-workers`
+- `uv run python .agents/skills/pylander-tune-orchestrator/scripts/run_tune_arena.py --input <in.json> --output <out.json> --no-execute-workers`
+- `uv run python .agents/skills/pylander-tune-loop-manager/scripts/run_tune_loop.py --input <in.json> --output <out.json>`
+- `uv run python .agents/skills/pylander-regression-analyzer/scripts/gate_regression.py --input <in.json> --output <out.json> --no-execute`
 
 Telemetry diagnostics executors:
 
-- `uv run python skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py --compare-json <path> --output-report <out.json>`
-- `uv run python skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py --benchmark-json <path> --sim-log <sim.log> --output-report <out.json>`
-- `uv run python skills/pylander-telemetry-builder/scripts/plan_telemetry.py --triage-report <triage.json> --output-plan <plan.json>`
+- `uv run python .agents/skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py --compare-json <path> --output-report <out.json>`
+- `uv run python .agents/skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py --benchmark-json <path> --sim-log <sim.log> --output-report <out.json>`
+- `uv run python .agents/skills/pylander-telemetry-builder/scripts/plan_telemetry.py --triage-report <triage.json> --output-plan <plan.json>`
 
 ## Bot profiling
 

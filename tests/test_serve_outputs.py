@@ -27,7 +27,7 @@ def _script(rel: str) -> Path:
 
 serve_outputs = _load_module(
     "serve_outputs_script",
-    _script("skills/pylander-benchmark-runner/scripts/serve_outputs.py"),
+    _script(".agents/skills/pylander-benchmark-runner/scripts/serve_outputs.py"),
 )
 
 

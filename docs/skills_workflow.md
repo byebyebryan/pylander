@@ -44,18 +44,18 @@ Cross-cutting skills usable at any stage:
 |---|---|---|---|
 | `pylander-goal-builder` | Build/adjust level goal surface and benchmark profile coverage | Playbook (`SKILL.md`) | Level + scenario updates and focused validation proof |
 | `pylander-goal-analyzer` | Failure diagnosis and ranked strategy proposal | Playbook (`SKILL.md`) | Diagnostic verdict (`doctor_verdict`), root causes, candidate strategy bundle |
-| `pylander-strategy-orchestrator` | Compare strategy branches and select winner/no-winner | Script-backed: `skills/pylander-strategy-orchestrator/scripts/run_strategy_arena.py` | `arena_scoreboard.v1` |
-| `pylander-arena-branch-runner` | Execute one strategy/tune branch and emit normalized report | Script-backed: `skills/pylander-arena-branch-runner/scripts/run_arena_branch.py` | `arena_branch_report.v1` |
-| `pylander-tune-routing-planner` | Route between tune-arena and direct tune-loop | Script-backed: `skills/pylander-tune-routing-planner/scripts/route_tuning.py` | `route_decision.v1` |
-| `pylander-tune-orchestrator` | Compare tune branches and hand off winner/no-winner | Script-backed: `skills/pylander-tune-orchestrator/scripts/run_tune_arena.py` | `arena_scoreboard.v1` |
-| `pylander-tune-loop-manager` | Bounded tuning loop (`light/standard/extensive`) | Script-backed: `skills/pylander-tune-loop-manager/scripts/run_tune_loop.py` | `tune_loop_report.v1` |
-| `pylander-regression-analyzer` | Broad quick/full regression gate | Script-backed: `skills/pylander-regression-analyzer/scripts/gate_regression.py` | `regression_gate_report.v1` |
-| `pylander-benchmark-runner` | Pack construction + cached benchmark execution/compare | Script-backed: `skills/pylander-benchmark-runner/scripts/*` | Bench JSON/CSV and optional compare report |
+| `pylander-strategy-orchestrator` | Compare strategy branches and select winner/no-winner | Script-backed: `.agents/skills/pylander-strategy-orchestrator/scripts/run_strategy_arena.py` | `arena_scoreboard.v1` |
+| `pylander-arena-branch-runner` | Execute one strategy/tune branch and emit normalized report | Script-backed: `.agents/skills/pylander-arena-branch-runner/scripts/run_arena_branch.py` | `arena_branch_report.v1` |
+| `pylander-tune-routing-planner` | Route between tune-arena and direct tune-loop | Script-backed: `.agents/skills/pylander-tune-routing-planner/scripts/route_tuning.py` | `route_decision.v1` |
+| `pylander-tune-orchestrator` | Compare tune branches and hand off winner/no-winner | Script-backed: `.agents/skills/pylander-tune-orchestrator/scripts/run_tune_arena.py` | `arena_scoreboard.v1` |
+| `pylander-tune-loop-manager` | Bounded tuning loop (`light/standard/extensive`) | Script-backed: `.agents/skills/pylander-tune-loop-manager/scripts/run_tune_loop.py` | `tune_loop_report.v1` |
+| `pylander-regression-analyzer` | Broad quick/full regression gate | Script-backed: `.agents/skills/pylander-regression-analyzer/scripts/gate_regression.py` | `regression_gate_report.v1` |
+| `pylander-benchmark-runner` | Pack construction + cached benchmark execution/compare | Script-backed: `.agents/skills/pylander-benchmark-runner/scripts/*` | Bench JSON/CSV and optional compare report |
 | `pylander-benchmark-analyzer` | Benchmark triage and root-cause ranking | Playbook (`SKILL.md`) | Diagnostic verdict (`doctor_verdict`), ranked findings, repro bundle |
-| `pylander-plot-runner` | Plot-pack case selection and plot command execution | Script-backed: `skills/pylander-plot-runner/scripts/build_plot_pack.py` | Plot pack manifest |
+| `pylander-plot-runner` | Plot-pack case selection and plot command execution | Script-backed: `.agents/skills/pylander-plot-runner/scripts/build_plot_pack.py` | Plot pack manifest |
 | `pylander-plot-analyzer` | Plot interpretation and anomaly diagnosis | Playbook (`SKILL.md`) | Diagnostic verdict (`doctor_verdict`), ranked visual findings, follow-ups |
-| `pylander-telemetry-analyzer` | Log/data crash+perf triage and reproducible repro bundle generation | Script-backed: `skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py` | `telemetry_triage_report.v1` |
-| `pylander-telemetry-builder` | Plan-first focused telemetry/probe design from triage gaps | Script-backed: `skills/pylander-telemetry-builder/scripts/plan_telemetry.py` | `telemetry_probe_plan.v1` |
+| `pylander-telemetry-analyzer` | Log/data crash+perf triage and reproducible repro bundle generation | Script-backed: `.agents/skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py` | `telemetry_triage_report.v1` |
+| `pylander-telemetry-builder` | Plan-first focused telemetry/probe design from triage gaps | Script-backed: `.agents/skills/pylander-telemetry-builder/scripts/plan_telemetry.py` | `telemetry_probe_plan.v1` |
 | `pylander-docs-sync-planner` | Docs drift analysis and patch planning | Playbook (`SKILL.md`) | Drift report and docs patch plan |
 | `pylander-maintenance-planner` | Test/benchmark maintenance planning (`test|bench|both`) | Playbook (`SKILL.md`) | Prioritized maintenance plan and command bundle |
 | `pylander-refactor-planner` | Incremental refactor planning with invariants and risk controls | Playbook (`SKILL.md`) | Phased refactor plan and optional patch-set spec |
@@ -63,7 +63,7 @@ Cross-cutting skills usable at any stage:
 
 ## Contracts and artifacts
 
-Script-backed orchestration contracts live under `skills/contracts/`:
+Script-backed orchestration contracts live under `.agents/skills/contracts/`:
 
 - `route_decision.v1.json`
 - `arena_branch_report.v1.json`
