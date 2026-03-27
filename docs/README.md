@@ -6,7 +6,7 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 
 - Running the game / CLI / headless / batch: [`../README.md`](../README.md)
 - Bot development framework + API: [`overview.md`](overview.md)
-- Benchmark workflow and wrapper commands: see the project skill section in [`../README.md`](../README.md).
+- Benchmark workflow CLI and reports (`pylander-benchmark` / `app.bench`): see the project skill section in [`../README.md`](../README.md).
 - Commit hygiene workflow (goal-scoped commits + standardized messages): see `pylander-commit-manager` in [`../README.md`](../README.md).
 
 ## Controllers and levels

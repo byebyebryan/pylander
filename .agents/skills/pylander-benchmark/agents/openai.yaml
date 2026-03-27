@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pylander Benchmark"
+  short_description: "Run contextual benchmark workflows"
+  default_prompt: "Use $pylander-benchmark to run a benchmark, choose the right baseline, and publish the report."

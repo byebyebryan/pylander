@@ -1,0 +1,4 @@
+interface:
+  display_name: "Pylander Commit Manager"
+  short_description: "Plan task-scoped commits for Pylander"
+  default_prompt: "Use $pylander-commit-manager to split the current working tree into reviewable commits."
