@@ -119,6 +119,94 @@ def test_derive_plot_payload_uses_boost_cutoff_for_ballistic_curve(
     assert payload["ballistic_curve"]["xs"] == [40.0, 150.0]
 
 
+def test_derive_plot_payload_uses_vx_adjusted_ballistic_reference_for_terminal_runs() -> None:
+    class _Terrain:
+        def __call__(self, x: float, lod: int = 0) -> float:
+            _ = (x, lod)
+            return 0.0
+
+        def get_resolution(self, lod: int = 0) -> float:
+            _ = lod
+            return 4.0
+
+    payload = tracepack._derive_plot_payload(
+        _Terrain(),
+        samples=[
+            (
+                524.9060006069626,
+                620.670373906408,
+                56.43,
+                0.0,
+                0.0,
+                0.0,
+                -56.43182235213426,
+                -0.051971032748025926,
+            ),
+            (300.0, 360.0, 50.0, 0.0, 0.0, 5.0, -40.0, -40.0),
+            (-15.514328954925649, 4.0, 0.0, 0.0, 0.0, 12.0, 0.0, 0.0),
+        ],
+        events=[
+            {
+                "name": "boost_cutoff",
+                "x": 524.9060006069626,
+                "y": 620.670373906408,
+                "vx": -56.43182235213426,
+                "vy_up": -0.051971032748025926,
+                "time_s": 0.0,
+            }
+        ],
+        target={"x": 0.0, "y": 0.0, "size": 110.0, "label": "landing target"},
+        identity={"level": "terminal"},
+    )
+
+    assert payload is not None
+    reference_curve = payload["reference_curve"]
+    assert reference_curve["kind"] == "ballistic_vx_adjusted"
+    assert reference_curve["label"] == "ballistic ref (vx adjusted)"
+    assert reference_curve["xs"][0] == 524.9060006069626
+    assert reference_curve["ys"][0] == 620.670373906408
+    assert reference_curve["xs"][-1] == 0.0
+    assert reference_curve["ys"][-1] == 0.0
+    assert reference_curve["xs"] != payload["ballistic_curve"]["xs"]
+
+
+def test_derive_plot_payload_expands_bounds_for_target_and_overlay_curves() -> None:
+    class _Terrain:
+        def __call__(self, x: float, lod: int = 0) -> float:
+            _ = (x, lod)
+            return 0.0
+
+        def get_resolution(self, lod: int = 0) -> float:
+            _ = lod
+            return 4.0
+
+    payload = tracepack._derive_plot_payload(
+        _Terrain(),
+        samples=[
+            (0.0, 4.0, 10.0, 1.0, 0.0, 0.0, 0.0, 12.0),
+            (40.0, 30.0, 18.0, 0.6, 0.0, 2.0, 14.0, 8.0),
+            (120.0, 4.0, 24.0, 0.0, 0.0, 10.0, 0.0, 0.0),
+        ],
+        events=[
+            {
+                "name": "boost_cutoff",
+                "x": 40.0,
+                "y": 30.0,
+                "vx": 14.0,
+                "vy_up": 8.0,
+                "time_s": 2.0,
+            }
+        ],
+        target={"x": 400.0, "y": 800.0, "size": 110.0, "label": "landing target"},
+        identity={"level": "boost"},
+    )
+
+    assert payload is not None
+    bounds = payload["bounds"]
+    assert bounds["max_x"] >= 408.0
+    assert bounds["upper_y"] >= 808.0
+
+
 def test_trace_recorder_samples_current_frame_time_without_backdating(
     tmp_path: Path,
 ) -> None:

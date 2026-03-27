@@ -50,6 +50,8 @@ from utils.plot import (
     _idealized_reference_apex_y,
     _idealized_reference_curve,
     _projected_apex_point,
+    _spatial_limits_with_target,
+    _vx_corrected_ballistic_reference_curve,
     _vector_sample_indices,
 )
 
@@ -458,6 +460,7 @@ def _derive_plot_payload(
     samples: list[tuple[float, float, float, float, float, float, float, float]],
     events: list[dict[str, Any]],
     target: dict[str, Any] | None,
+    identity: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     if not samples:
         return None
@@ -493,10 +496,13 @@ def _derive_plot_payload(
     ballistic_curve = None
     reference_curve = None
     reference_apex_y = None
+    reference_kind = ""
+    reference_label = ""
     if target is not None:
         target_x = _safe_float(target.get("x"))
         target_y = _safe_float(target.get("y"))
         if target_x is not None and target_y is not None:
+            level_name = str((identity or {}).get("level") or "").strip().lower()
             boost_cutoff_event = _find_event(events, name="boost_cutoff")
             if boost_cutoff_event is not None:
                 cutoff_x = _safe_float(boost_cutoff_event.get("x"))
@@ -530,38 +536,92 @@ def _derive_plot_payload(
                             "has_target_y_solution": True,
                             "source": "boost_cutoff",
                         }
-            reference_apex_y = _idealized_reference_apex_y(
-                start_x=ctx.xs[0],
-                start_y=ctx.ys[0],
-                target_x=float(target_x),
-                target_y=float(target_y),
-            )
-            ref_curve = _idealized_reference_curve(
-                start_x=ctx.xs[0],
-                start_y=ctx.ys[0],
-                target_x=float(target_x),
-                target_y=float(target_y),
-                apex_y=float(reference_apex_y),
-            )
-            if ref_curve is not None:
-                ref_xs, ref_ys = ref_curve
-                reference_curve = {
-                    "xs": [float(value) for value in ref_xs],
-                    "ys": [float(value) for value in ref_ys],
-                    "apex_y": float(reference_apex_y),
-                }
+            if level_name == "terminal":
+                corrected_curve = _vx_corrected_ballistic_reference_curve(
+                    start_x=float(ctx.xs[0]),
+                    start_y=float(ctx.ys[0]),
+                    vx=float(ctx.vxs[0]),
+                    vy_up=float(ctx.vys[0]),
+                    target_x=float(target_x),
+                    target_y=float(target_y),
+                )
+                if corrected_curve is not None:
+                    ref_xs, ref_ys = corrected_curve
+                    reference_curve = {
+                        "xs": [float(value) for value in ref_xs],
+                        "ys": [float(value) for value in ref_ys],
+                        "kind": "ballistic_vx_adjusted",
+                        "label": "ballistic ref (vx adjusted)",
+                    }
+                    reference_kind = "ballistic_vx_adjusted"
+                    reference_label = "ballistic ref (vx adjusted)"
+            else:
+                downhill_policy = (
+                    "exit_angle"
+                    if level_name == "boost" and float(target_y) < float(ctx.ys[0])
+                    else "descent_angle"
+                )
+                reference_apex_y = _idealized_reference_apex_y(
+                    start_x=ctx.xs[0],
+                    start_y=ctx.ys[0],
+                    target_x=float(target_x),
+                    target_y=float(target_y),
+                    downhill_policy=downhill_policy,
+                    min_exit_angle_deg=45.0,
+                )
+                ref_curve = _idealized_reference_curve(
+                    start_x=ctx.xs[0],
+                    start_y=ctx.ys[0],
+                    target_x=float(target_x),
+                    target_y=float(target_y),
+                    apex_y=float(reference_apex_y),
+                )
+                if ref_curve is not None:
+                    ref_xs, ref_ys = ref_curve
+                    reference_curve = {
+                        "xs": [float(value) for value in ref_xs],
+                        "ys": [float(value) for value in ref_ys],
+                        "apex_y": float(reference_apex_y),
+                        "kind": "idealized",
+                        "label": "idealized reference",
+                    }
+                    reference_kind = "idealized"
+                    reference_label = "idealized reference"
+
+    overlay_points: list[tuple[float, float]] = []
+    if apex_actual is not None:
+        overlay_points.append(apex_actual)
+    if apex_projected is not None:
+        overlay_points.append(apex_projected)
+    overlay_curves: list[dict[str, Any]] = []
+    for curve in (ballistic_curve, reference_curve):
+        if not isinstance(curve, dict):
+            continue
+        overlay_curves.append(curve)
+        curve_apex = _curve_apex_point(
+            [float(value) for value in curve.get("xs") or []],
+            [float(value) for value in curve.get("ys") or []],
+        )
+        if curve_apex is not None:
+            overlay_points.append(curve_apex)
+    min_x, max_x, lower_y, upper_y = _spatial_limits_with_target(
+        ctx,
+        target=dict(target or {}) or None,
+        extra_points=overlay_points or None,
+        overlay_curves=overlay_curves or None,
+    )
 
     return {
         "terrain": terrain_payload,
         "target": dict(target or {}) or None,
         "events": event_payloads,
         "bounds": {
-            "min_x": float(ctx.min_x),
-            "max_x": float(ctx.max_x),
-            "lower_y": float(ctx.lower_y),
-            "upper_y": float(ctx.upper_y),
-            "span_x": float(ctx.span_x),
-            "span_y": float(ctx.span_y),
+            "min_x": float(min_x),
+            "max_x": float(max_x),
+            "lower_y": float(lower_y),
+            "upper_y": float(upper_y),
+            "span_x": float(max_x - min_x),
+            "span_y": float(upper_y - lower_y),
         },
         "samples": {
             "time_s": [float(value) for value in ctx.sample_times],
@@ -582,6 +642,8 @@ def _derive_plot_payload(
         else {"x": float(apex_projected[0]), "y": float(apex_projected[1])},
         "ballistic_curve": ballistic_curve,
         "reference_curve": reference_curve,
+        "reference_kind": reference_kind or None,
+        "reference_label": reference_label or None,
     }
 
 
@@ -1010,6 +1072,7 @@ class TraceRecorder:
             samples=samples,
             events=self._events,
             target=self._target,
+            identity=self._identity,
         )
         terrain_payload = (
             _terrain_payload_from_samples(self.terrain, samples=samples)
