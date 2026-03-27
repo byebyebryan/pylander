@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 import hashlib
 import json
 from pathlib import Path
@@ -24,7 +25,7 @@ from utils.tracebundle import sanitize_token
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="Run cached Pylander benchmarks with optional baseline compare"
     )
@@ -88,7 +89,11 @@ def main() -> None:
         help="Ignore cache and rerun current commit pack",
     )
     ap.add_argument("--crash-detail-limit", type=int, default=8)
-    args = ap.parse_args()
+    return ap
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    args = build_parser().parse_args(list(argv) if argv is not None else None)
 
     try:
         pack: ResolvedSelectorPack = build_selectors(
@@ -196,7 +201,7 @@ def main() -> None:
     print(f"\n# compare_report\njson={compare_path}")
 
 
-__all__ = ["main"]
+__all__ = ["build_parser", "main"]
 
 
 if __name__ == "__main__":

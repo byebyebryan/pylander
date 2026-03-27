@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -412,7 +413,7 @@ def build_bench_command(
     return cmd
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="Build Pylander benchmark selector packs")
     ap.add_argument(
         "--mode", choices=("smoke", "quick", "full", "focused"), required=True
@@ -464,7 +465,11 @@ def main() -> None:
         default=False,
         help="Enable periodic profiler logs in benchmark output (default: off)",
     )
-    args = ap.parse_args()
+    return ap
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    args = build_parser().parse_args(list(argv) if argv is not None else None)
 
     try:
         pack = build_selectors(
@@ -506,6 +511,7 @@ __all__ = [
     "DEFAULT_SEEDS",
     "FOCUSED_SELECTOR_GROUPS",
     "ResolvedSelectorPack",
+    "build_parser",
     "build_bench_command",
     "build_selectors",
     "main",

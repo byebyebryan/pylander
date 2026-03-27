@@ -378,3 +378,32 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     assert match is not None
     detail_payload = json.loads(match.group(1))
     assert detail_payload["samples"]["x"] == [-20.0, -5.0, 4.0]
+
+    rendered = trace_bundle.render_bundle(
+        candidate_json_path=candidate_json,
+        candidate_meta_path=candidate_meta,
+        compare_path=compare_json,
+        benchmark_cmd=[
+            "uv",
+            "run",
+            "python",
+            "-m",
+            "app.run_cached_benchmark",
+            "--mode",
+            "full",
+        ],
+        benchmark_exit_code=1,
+        benchmark_wall_clock_s=12.5,
+        outputs_root=outputs_root,
+        bundle_id="bundle_report_x",
+        candidate_cached="True",
+    )
+    rendered_payload = json.loads(
+        rendered.bundle_json_path.read_text(encoding="utf-8")
+    )
+    assert rendered.bundle_page_path.exists()
+    assert (
+        rendered_payload["compare"]["json_path"]
+        == "benchmarks/head/full_pack.compare.json"
+    )
+    assert rendered_payload["benchmark"]["candidate"]["cached"] == "True"

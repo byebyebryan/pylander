@@ -130,7 +130,7 @@ Bench selector format:
 - If seed spec is omitted, deterministic scenarios run with seed `0`.
 - If seed spec is omitted and the selector resolves to a randomized scenario, seeds auto-expand to `0-9`.
 
-Benchmark pack tooling (`.agents/skills/pylander-benchmark-runner/scripts/*.py`) now reads
+Benchmark pack tooling (`uv run python -m app.bench ...`) now reads
 level metadata from `benchmark_profile()`:
 
 - scenario sets: `smoke`, `quick`, `full`
@@ -155,7 +155,7 @@ Focused benchmark-pack selectors also accept explicit group aliases:
 Example:
 
 ```bash
-uv run python .agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py \
+uv run python -m app.bench run \
   --mode focused \
   --selectors @terminal \
   --seed-spec 0-9 \
@@ -167,10 +167,10 @@ benchmark tracepack and interactive run-detail pages:
 
 ```bash
 # Serve outputs/ once per tmux session
-uv run python .agents/skills/pylander-benchmark-runner/scripts/serve_outputs.py --port 8765
+uv run python -m app.bench serve --port 8765
 
 # Generate the latest static bundle
-uv run python .agents/skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py \
+uv run python -m app.bench bundle \
   --mode full \
   --viewer-base-url http://myhost:8765
 ```
@@ -181,7 +181,7 @@ as a full report page on each bundle generation, so refreshing the same URL
 always loads the newest bundle. With the example server above, the browser URL
 is `http://myhost:8765/viewer/latest/index.html`.
 
-`gen_bench_bundle.py` can also manage the server for you. By default it checks
+`app.bench bundle` can also manage the server for you. By default it checks
 whether the outputs server is already running on port `8765`, starts it in the
 background if needed, and prints the latest report URL. If `--viewer-base-url`
 is omitted, it prefers the machine's `.lan` hostname when available (for
@@ -265,19 +265,20 @@ Trace-enabled runs emit trace metadata such as `trace_path`,
 
 Local project skills now stay intentionally small:
 
-- `pylander-benchmark-runner`: thin wrapper commands for quick/focused/full selector packs, cache-aware benchmark reuse/compare, unified HTML bundle rendering from the same tracepack data, and direct outputs serving when needed.
+- `pylander-benchmark-runner`: one benchmark workflow skill covering selector preview, cache-aware benchmark reuse/compare, report rendering from existing artifacts, the bundled run+report path, and direct outputs serving when needed.
 - `pylander-commit-manager`: prompt-only commit playbook for goal-scoped staging and standardized commit messages.
 
 Benchmark implementation lives in reusable app modules, not skill-local logic:
 `app.selector_pack`, `app.run_cached_benchmark`, `app.trace_bundle`,
-`app.output_viewer`, and `app.serve_outputs`.
+`app.output_viewer`, `app.serve_outputs`, and `app.bench`.
 
 Benchmark skill entrypoints:
 
-- `uv run python .agents/skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode quick`
-- `uv run python .agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main`
-- `uv run python .agents/skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py --mode quick --baseline-ref main`
-- `uv run python .agents/skills/pylander-benchmark-runner/scripts/serve_outputs.py --port 8765`
+- `uv run python -m app.bench selectors --mode quick`
+- `uv run python -m app.bench run --mode quick --baseline-ref main`
+- `uv run python -m app.bench report --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json --compare-json outputs/benchmarks/<ref>/<stem>.compare.json`
+- `uv run python -m app.bench bundle --mode quick --baseline-ref main`
+- `uv run python -m app.bench serve --port 8765`
 
 Focused plot-pack generation remains available as an app utility rather than a
 separate skill:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Sequence
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -37,14 +38,18 @@ class _NoCacheHandler(SimpleHTTPRequestHandler):
         super().end_headers()
 
 
-def main() -> None:
+def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="Serve the local outputs directory over HTTP"
     )
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--root", default=str((_REPO_ROOT / "outputs").resolve()))
-    args = ap.parse_args()
+    return ap
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    args = build_parser().parse_args(list(argv) if argv is not None else None)
 
     root = Path(args.root).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
@@ -61,7 +66,7 @@ def main() -> None:
         server.server_close()
 
 
-__all__ = ["_HEALTH_PATH", "_NoCacheHandler", "_SERVICE_NAME", "main"]
+__all__ = ["_HEALTH_PATH", "_NoCacheHandler", "_SERVICE_NAME", "build_parser", "main"]
 
 
 if __name__ == "__main__":
