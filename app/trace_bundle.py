@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import math
 import shlex
 import subprocess
 import time
@@ -52,8 +53,6 @@ from utils.traceviewer import (
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-
-
 @dataclass(frozen=True)
 class BundleRenderResult:
     bundle: dict[str, Any]
@@ -626,43 +625,77 @@ def _mean(values: list[float]) -> float | None:
     return sum(values) / float(len(values))
 
 
+def _stddev(values: list[float]) -> float | None:
+    if not values:
+        return None
+    mean = _mean(values)
+    if mean is None:
+        return None
+    return math.sqrt(sum((value - mean) ** 2 for value in values) / float(len(values)))
+
+
+def _successful_run_metric_values(
+    runs: list[dict[str, Any]], field: str
+) -> list[float]:
+    values: list[float] = []
+    for run in runs:
+        record = dict(run.get("record") or {})
+        if not bool(record.get("success", False)):
+            continue
+        raw_value = record.get(field)
+        try:
+            values.append(float(raw_value))
+        except (TypeError, ValueError):
+            continue
+    return values
+
+
+def _summary_metric_stat(
+    summary_row: dict[str, Any],
+    field: str,
+    *,
+    stat: str = "mean",
+    scope: str = "success",
+) -> float | None:
+    metric = _summary_metric(summary_row, field, scope=scope)
+    if stat != "count" and int(metric.get("count", 0) or 0) <= 0:
+        return None
+    raw_value = metric.get(stat)
+    try:
+        return float(raw_value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _scenario_metric_stat(
+    summary_row: dict[str, Any],
+    runs: list[dict[str, Any]],
+    field: str,
+    *,
+    stat: str = "mean",
+) -> float | None:
+    summary_value = _summary_metric_stat(summary_row, field, stat=stat, scope="success")
+    if summary_value is not None:
+        return summary_value
+    values = _successful_run_metric_values(runs, field)
+    if not values:
+        return None
+    if stat == "mean":
+        return _mean(values)
+    if stat == "stddev":
+        return _stddev(values)
+    if stat == "max":
+        return max(values)
+    if stat == "min":
+        return min(values)
+    if stat == "count":
+        return float(len(values))
+    return None
+
+
 def _scenario_summary_data(
     summary_row: dict[str, Any], runs: list[dict[str, Any]]
 ) -> dict[str, Any]:
-    eff_success = dict(summary_row.get("efficiency_success") or {})
-    fuel_mean = dict(eff_success.get("fuel_consumed") or {}).get("mean")
-    time_mean = dict(eff_success.get("time") or {}).get("mean")
-    total_ms_mean = dict(eff_success.get("bot_profile_total_ms_per_tick") or {}).get(
-        "mean"
-    )
-    if fuel_mean is None:
-        fuel_mean = _mean(
-            [
-                float(run["record"].get("fuel_consumed"))
-                for run in runs
-                if run["record"].get("fuel_consumed") is not None
-                and bool(run["record"].get("success", False))
-            ]
-        )
-    if time_mean is None:
-        time_mean = _mean(
-            [
-                float(run["record"].get("time"))
-                for run in runs
-                if run["record"].get("time") is not None
-                and bool(run["record"].get("success", False))
-            ]
-        )
-    if total_ms_mean is None:
-        total_ms_mean = _mean(
-            [
-                float(run["record"].get("bot_profile_total_ms_per_tick"))
-                for run in runs
-                if run["record"].get("bot_profile_total_ms_per_tick") is not None
-                and bool(run["record"].get("success", False))
-            ]
-        )
-
     return {
         "runs": int(summary_row.get("runs", len(runs)) or len(runs)),
         "successes": int(
@@ -696,9 +729,26 @@ def _scenario_summary_data(
             )
             or 0.0
         ),
-        "fuel_mean": fuel_mean,
-        "time_mean": time_mean,
-        "total_ms_mean": total_ms_mean,
+        "fuel_mean": _scenario_metric_stat(summary_row, runs, "fuel_consumed"),
+        "fuel_stddev": _scenario_metric_stat(
+            summary_row, runs, "fuel_consumed", stat="stddev"
+        ),
+        "time_mean": _scenario_metric_stat(summary_row, runs, "time"),
+        "time_stddev": _scenario_metric_stat(summary_row, runs, "time", stat="stddev"),
+        "offset_mean": _scenario_metric_stat(summary_row, runs, "landing_offset"),
+        "offset_stddev": _scenario_metric_stat(
+            summary_row, runs, "landing_offset", stat="stddev"
+        ),
+        "ref_gap_mean": _scenario_metric_stat(summary_row, runs, "trace_ref_gap_mean"),
+        "ref_gap_stddev": _scenario_metric_stat(
+            summary_row, runs, "trace_ref_gap_mean", stat="stddev"
+        ),
+        "ref_peak_max": _scenario_metric_stat(
+            summary_row, runs, "trace_ref_gap_max", stat="max"
+        ),
+        "total_ms_mean": _scenario_metric_stat(
+            summary_row, runs, "bot_profile_total_ms_per_tick"
+        ),
     }
 
 
@@ -871,7 +921,6 @@ def _build_bundle_report_model(
     scenario_trees_by_level = _build_scenario_trees(
         runs_by_scenario=runs_by_scenario, summary=summary
     )
-
     return {
         "scenario_trees_by_level": scenario_trees_by_level,
         "failures": sorted(
@@ -912,6 +961,161 @@ def _render_text_list(items: list[str], *, code: bool = False) -> str:
             value = f"<code>{value}</code>"
         rows.append(f"<li>{value}</li>")
     return f"<ul>{''.join(rows)}</ul>"
+
+
+def _format_mean_stddev(mean_value: Any, stddev_value: Any, *, digits: int = 2) -> str:
+    mean_number = _format_float(mean_value, digits)
+    if mean_number == "-":
+        return "-"
+    stddev_number = _format_float(stddev_value, digits)
+    if stddev_number == "-":
+        return mean_number
+    return f"{mean_number} ± {stddev_number}"
+
+
+def _format_mean_percent_spread(
+    mean_value: Any,
+    stddev_value: Any,
+    *,
+    digits: int = 2,
+    percent_digits: int = 1,
+) -> str:
+    try:
+        mean_number = float(mean_value)
+    except (TypeError, ValueError):
+        return "-"
+    try:
+        stddev_number = float(stddev_value)
+    except (TypeError, ValueError):
+        return _format_float(mean_number, digits)
+    if abs(mean_number) <= 1e-9:
+        return _format_float(mean_number, digits)
+    spread_percent = 100.0 * abs(stddev_number) / abs(mean_number)
+    return f"{mean_number:.{digits}f} ± {spread_percent:.{percent_digits}f}%"
+
+
+def _format_percent_spread(
+    mean_value: Any,
+    stddev_value: Any,
+    *,
+    digits: int = 1,
+) -> str:
+    spread_percent = _percent_spread_value(mean_value, stddev_value)
+    if spread_percent is None:
+        return "-"
+    return f"{spread_percent:.{digits}f}%"
+
+
+def _percent_spread_value(mean_value: Any, stddev_value: Any) -> float | None:
+    try:
+        mean_number = float(mean_value)
+        stddev_number = float(stddev_value)
+    except (TypeError, ValueError):
+        return None
+    if abs(mean_number) <= 1e-9:
+        return None
+    return 100.0 * abs(stddev_number) / abs(mean_number)
+
+
+def _summary_value_cell_html(
+    mean_value: Any,
+    stddev_value: Any,
+    *,
+    show_spread: bool,
+    digits: int = 2,
+    percent_digits: int = 1,
+) -> str:
+    mean_text = _format_float(mean_value, digits)
+    if not show_spread:
+        return html.escape(mean_text)
+    return html.escape(
+        _format_mean_percent_spread(
+            mean_value,
+            stddev_value,
+            digits=digits,
+            percent_digits=percent_digits,
+        )
+    )
+
+
+def _render_metric_stack(items: list[tuple[str, str]]) -> str:
+    rows: list[str] = []
+    for label, value in items:
+        if str(value).strip() in {"", "-"}:
+            continue
+        rows.append(
+            '<div class="metric-line">'
+            f'<span class="metric-key">{html.escape(label)}</span>'
+            f'<span>{html.escape(value)}</span>'
+            "</div>"
+        )
+    if not rows:
+        return '<span class="muted">-</span>'
+    return f'<div class="metric-stack">{"".join(rows)}</div>'
+
+
+def _render_run_preview_cell(
+    run: dict[str, Any] | None, *, bundle_dir: Path, outputs_root: Path
+) -> str:
+    if not isinstance(run, dict):
+        return '<span class="muted">expand</span>'
+    preview_href = _href_from(
+        bundle_dir,
+        str(run.get("preview_path_rel") or ""),
+        outputs_root=outputs_root,
+    )
+    detail_href = _href_from(
+        bundle_dir,
+        str(run.get("detail_rel") or ""),
+        outputs_root=outputs_root,
+    )
+    if not preview_href or not detail_href:
+        return '<span class="muted">expand</span>'
+    alt_text = html.escape(str(run.get("selector") or run.get("scenario_selector") or "run"))
+    return (
+        f'<a class="table-preview" href="{html.escape(detail_href)}">'
+        f'<img src="{html.escape(preview_href)}" alt="{alt_text}">'
+        "</a>"
+    )
+
+
+def _scenario_metric_cell_html(summary_data: dict[str, Any], *, show_spread: bool) -> str:
+    items: list[tuple[str, str]] = [
+        ("offset mean", _format_float(summary_data.get("offset_mean"), 3)),
+        ("ref gap mean", _format_float(summary_data.get("ref_gap_mean"), 3)),
+        ("ref peak max", _format_float(summary_data.get("ref_peak_max"), 3)),
+    ]
+    if show_spread:
+        items = [
+            (
+                "offset μ/σ",
+                _format_mean_stddev(
+                    summary_data.get("offset_mean"),
+                    summary_data.get("offset_stddev"),
+                    digits=3,
+                ),
+            ),
+            (
+                "ref gap μ/±%",
+                _format_mean_percent_spread(
+                    summary_data.get("ref_gap_mean"),
+                    summary_data.get("ref_gap_stddev"),
+                    digits=3,
+                ),
+            ),
+            ("ref peak max", _format_float(summary_data.get("ref_peak_max"), 3)),
+        ]
+    return _render_metric_stack(items)
+
+
+def _seed_metric_cell_html(record: dict[str, Any]) -> str:
+    return _render_metric_stack(
+        [
+            ("offset", _format_float(record.get("landing_offset"), 3)),
+            ("ref gap", _format_float(record.get("trace_ref_gap_mean"), 3)),
+            ("ref peak", _format_float(record.get("trace_ref_gap_max"), 3)),
+        ]
+    )
 
 
 def _render_context_section(intent: dict[str, Any]) -> str:
@@ -1049,29 +1253,6 @@ def _render_scenario_sections(
 ) -> str:
     table_counter = 0
 
-    def _render_preview_cell(
-        selector: str, representative_run: dict[str, Any] | None
-    ) -> str:
-        if representative_run is None:
-            return '<span class="muted">expand</span>'
-        preview_href = _href_from(
-            bundle_dir,
-            str(representative_run.get("preview_path_rel") or ""),
-            outputs_root=outputs_root,
-        )
-        detail_href = _href_from(
-            bundle_dir,
-            str(representative_run.get("detail_rel") or ""),
-            outputs_root=outputs_root,
-        )
-        if not preview_href or not detail_href:
-            return '<span class="muted">expand</span>'
-        return (
-            f'<a class="table-preview" href="{html.escape(detail_href)}">'
-            f'<img src="{html.escape(preview_href)}" alt="{html.escape(selector)}">'
-            "</a>"
-        )
-
     def _render_tree_rows(
         node: dict[str, Any], *, parent_group_id: str | None
     ) -> list[str]:
@@ -1083,7 +1264,11 @@ def _render_scenario_sections(
         parent_attr = (
             f' data-parent="{html.escape(parent_group_id)}"' if parent_group_id else ""
         )
-        preview_cell = _render_preview_cell(selector, node.get("representative_run"))
+        preview_cell = _render_run_preview_cell(
+            node.get("representative_run"), bundle_dir=bundle_dir, outputs_root=outputs_root
+        )
+        children = list(node.get("children") or [])
+        show_spread = not children
         rows = [
             (
                 '<tr class="scenario-row"'
@@ -1091,15 +1276,13 @@ def _render_scenario_sections(
                 f' data-group="{html.escape(group_id)}" aria-expanded="false" tabindex="0">'
                 f'<td class="tree-label" style="--depth: {depth};"><span class="expander">+</span>{html.escape(selector)}</td>'
                 f"<td>{html.escape(str(int(summary_data.get('successes', 0) or 0)) + '/' + str(int(summary_data.get('runs', 0) or 0)))}</td>"
-                f"<td>{html.escape(_format_float(summary_data.get('fuel_mean')))}</td>"
-                f"<td>{html.escape(_format_float(summary_data.get('time_mean')))}</td>"
-                f"<td>{html.escape(_format_float(summary_data.get('total_ms_mean')))}</td>"
+                f"<td>{_summary_value_cell_html(summary_data.get('fuel_mean'), summary_data.get('fuel_stddev'), show_spread=show_spread)}</td>"
+                f"<td>{_summary_value_cell_html(summary_data.get('time_mean'), summary_data.get('time_stddev'), show_spread=show_spread)}</td>"
+                f"<td>{_scenario_metric_cell_html(summary_data, show_spread=show_spread)}</td>"
                 f"<td>{preview_cell}</td>"
                 "</tr>"
             )
         ]
-
-        children = list(node.get("children") or [])
         if children:
             for child in children:
                 rows.extend(_render_tree_rows(child, parent_group_id=group_id))
@@ -1127,7 +1310,7 @@ def _render_scenario_sections(
                     f'<img src="{html.escape(preview_href)}" alt="{html.escape(str(run.get("selector") or "run"))}">'
                     "</a>"
                 )
-            metric_text = f"offset={_format_float(record.get('landing_offset'), 3)}"
+            metric_cell = _seed_metric_cell_html(record)
             seed_label = (
                 f"seed {record.get('seed') if record.get('seed') is not None else '-'}"
             )
@@ -1140,7 +1323,7 @@ def _render_scenario_sections(
                 f"<td>{html.escape(str(record.get('state') or ''))}</td>"
                 f"<td>{html.escape(_format_float(record.get('fuel_consumed'), 3))}</td>"
                 f"<td>{html.escape(_format_float(record.get('time'), 3))}</td>"
-                f"<td>{html.escape(metric_text)}</td>"
+                f"<td>{metric_cell}</td>"
                 f"<td>{preview_cell}</td>"
                 "</tr>"
             )
@@ -1156,7 +1339,7 @@ def _render_scenario_sections(
         sections.append(
             "<section>"
             f"<h2>{html.escape(level_name.title())}</h2>"
-            f'<div class="table-controls"><button type="button" class="table-button" data-action="expand" data-target="{html.escape(table_id)}">Expand All</button><button type="button" class="table-button" data-action="collapse" data-target="{html.escape(table_id)}">Collapse All</button></div>'
+            f'<div class="table-controls"><button type="button" class="table-button" data-action="expand-scenarios" data-target="{html.escape(table_id)}">Expand Scenarios</button><button type="button" class="table-button" data-action="collapse-scenarios" data-target="{html.escape(table_id)}">Collapse Scenarios</button><button type="button" class="table-button" data-action="expand" data-target="{html.escape(table_id)}">Expand All</button><button type="button" class="table-button" data-action="collapse" data-target="{html.escape(table_id)}">Collapse All</button></div>'
             '<div class="table-wrap">'
             f'<table class="scenario-table" data-tree-table="{html.escape(table_id)}">'
             "<thead><tr><th>Selector</th><th>Status</th><th>Fuel</th><th>Time</th><th>Metric</th><th>Details</th></tr></thead>"
@@ -1342,13 +1525,22 @@ def _render_bundle_html(
     compare_html = ""
     if compare:
         worst_rows = _render_table(
-            ["Scenario", "Delta Success", "Delta Fuel", "Basis"],
+            [
+                "Scenario",
+                "Delta Success",
+                "Delta Fuel",
+                "Delta Ref Gap",
+                "Delta Ref Peak",
+                "Basis",
+            ],
             [
                 [
                     html.escape(str(row.get("scenario") or "")),
                     _format_float(row.get("delta_success_rate"), 3),
                     _format_float(row.get("delta_fuel_mean"), 3),
-                    html.escape(str(row.get("fuel_basis") or "")),
+                    _format_float(row.get("delta_ref_gap_mean"), 3),
+                    _format_float(row.get("delta_ref_gap_peak_max"), 3),
+                    html.escape(str(row.get("ref_gap_basis") or row.get("fuel_basis") or "")),
                 ]
                 for row in compare.get("worst_scenarios") or []
             ],
@@ -1485,6 +1677,22 @@ def _render_bundle_html(
       font-size: 0.82rem;
       text-transform: uppercase;
       letter-spacing: 0.04em;
+    }}
+    .metric-stack {{
+      display: grid;
+      gap: 4px;
+    }}
+    .metric-line {{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      line-height: 1.35;
+    }}
+    .metric-key {{
+      color: var(--muted);
+      font-size: 0.82rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
     }}
     .value {{
       font-size: 1.15rem;
@@ -1657,16 +1865,17 @@ def _render_bundle_html(
     {intent_html}
     {analysis_html}
 
+    {scenario_sections_html}
+
     <section>
       <h2>Failures</h2>
       {failure_sections_html}
     </section>
-
-    {scenario_sections_html}
   </main>
   <script>
     const rowsForTable = (table) => Array.from(table.querySelectorAll("tr.scenario-row, tr.seed-row"));
     const childRows = (table, group) => Array.from(table.querySelectorAll(`tr[data-parent="${{group}}"]`));
+    const scenarioChildRows = (table, group) => childRows(table, group).filter((row) => row.classList.contains("scenario-row"));
 
     const collapseDescendants = (table, group) => {{
       childRows(table, group).forEach((child) => {{
@@ -1692,6 +1901,31 @@ def _render_bundle_html(
       row.setAttribute("aria-expanded", "true");
       childRows(table, group).forEach((child) => {{
         child.hidden = false;
+      }});
+    }};
+
+    const expandScenarios = (table) => {{
+      rowsForTable(table).forEach((row) => {{
+        if (row.classList.contains("scenario-row")) {{
+          row.hidden = false;
+          row.setAttribute(
+            "aria-expanded",
+            scenarioChildRows(table, row.dataset.group || "").length > 0 ? "true" : "false",
+          );
+          return;
+        }}
+        row.hidden = true;
+      }});
+    }};
+
+    const collapseScenarios = (table) => {{
+      rowsForTable(table).forEach((row) => {{
+        if (row.classList.contains("scenario-row")) {{
+          row.setAttribute("aria-expanded", "false");
+          row.hidden = Boolean(row.dataset.parent);
+          return;
+        }}
+        row.hidden = true;
       }});
     }};
 
@@ -1733,7 +1967,11 @@ def _render_bundle_html(
         if (!target) return;
         const table = document.querySelector(`table[data-tree-table="${{target}}"]`);
         if (!table) return;
-        if (button.dataset.action === "expand") {{
+        if (button.dataset.action === "expand-scenarios") {{
+          expandScenarios(table);
+        }} else if (button.dataset.action === "collapse-scenarios") {{
+          collapseScenarios(table);
+        }} else if (button.dataset.action === "expand") {{
           expandAll(table);
         }} else {{
           collapseAll(table);

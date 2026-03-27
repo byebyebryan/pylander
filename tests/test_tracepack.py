@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
 from matplotlib.axes import Axes
 
 from core.bot import BotAction, BotEvalDecision
@@ -117,6 +118,9 @@ def test_derive_plot_payload_uses_boost_cutoff_for_ballistic_curve(
     }
     assert payload["ballistic_curve"]["source"] == "boost_cutoff"
     assert payload["ballistic_curve"]["xs"] == [40.0, 150.0]
+    assert payload["reference_metrics"]["gap_mean"] >= 0.0
+    assert payload["reference_metrics"]["gap_area"] >= 0.0
+    assert payload["reference_metrics"]["gap_max"] >= 0.0
 
 
 def test_derive_plot_payload_uses_vx_adjusted_ballistic_reference_for_terminal_runs() -> None:
@@ -168,6 +172,9 @@ def test_derive_plot_payload_uses_vx_adjusted_ballistic_reference_for_terminal_r
     assert reference_curve["xs"][-1] == 0.0
     assert reference_curve["ys"][-1] == 0.0
     assert reference_curve["xs"] != payload["ballistic_curve"]["xs"]
+    assert payload["reference_metrics"]["gap_mean"] > 0.0
+    assert payload["reference_metrics"]["gap_area"] > 0.0
+    assert payload["reference_metrics"]["gap_max"] > 0.0
 
 
 def test_derive_plot_payload_expands_bounds_for_target_and_overlay_curves() -> None:
@@ -205,6 +212,56 @@ def test_derive_plot_payload_expands_bounds_for_target_and_overlay_curves() -> N
     bounds = payload["bounds"]
     assert bounds["max_x"] >= 408.0
     assert bounds["upper_y"] >= 808.0
+
+
+def test_reference_gap_metrics_use_reference_projected_cross_track() -> None:
+    metrics = tracepack._reference_gap_metrics(
+        actual_xs=[0.0, 2.0, 5.0, 8.0, 10.0],
+        actual_ys=[0.0, 3.0, 4.0, 3.0, 0.0],
+        reference_curve={"xs": [0.0, 5.0, 10.0], "ys": [0.0, 5.0, 0.0]},
+    )
+
+    assert metrics is not None
+    assert metrics["gap_mean"] > 0.0
+    assert metrics["gap_area"] > metrics["gap_mean"]
+    assert metrics["gap_max"] >= metrics["gap_mean"]
+
+
+def test_derive_plot_payload_uses_success_height_for_plunge_reference_gap() -> None:
+    class _Terrain:
+        def __call__(self, x: float, lod: int = 0) -> float:
+            _ = (x, lod)
+            return 0.0
+
+        def get_resolution(self, lod: int = 0) -> float:
+            _ = lod
+            return 4.0
+
+    payload = tracepack._derive_plot_payload(
+        _Terrain(),
+        samples=[
+            (0.0, 404.0, 10.0, 0.0, 0.0, 0.0, 0.0, -10.0),
+            (0.0, 300.0, 10.0, 0.0, 0.0, 5.0, 0.0, -20.0),
+            (0.0, 4.0, 10.0, 0.0, 0.0, 12.0, 0.0, 0.0),
+        ],
+        events=[
+            {
+                "name": "success",
+                "x": 0.0,
+                "y": 4.0,
+                "time_s": 12.0,
+            }
+        ],
+        target={"x": 0.0, "y": 0.0, "size": 110.0, "label": "landing target"},
+        identity={"level": "plunge"},
+    )
+
+    assert payload is not None
+    reference_curve = payload["reference_curve"]
+    assert reference_curve["ys"][-1] == pytest.approx(4.0)
+    assert payload["reference_metrics"]["gap_mean"] == pytest.approx(0.0, abs=1e-6)
+    assert payload["reference_metrics"]["gap_area"] == pytest.approx(0.0, abs=1e-4)
+    assert payload["reference_metrics"]["gap_max"] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_trace_recorder_samples_current_frame_time_without_backdating(
@@ -247,6 +304,47 @@ def test_trace_recorder_samples_current_frame_time_without_backdating(
         0.3,
         0.9,
     ]
+
+
+def test_trace_recorder_finalize_surfaces_reference_gap_metrics(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    recorder, _actor = _make_trace_recorder(tmp_path, detail="report")
+    recorder.set_identity(
+        level_name="terminal",
+        scenario_name="normal:shallower",
+        seed=0,
+        bot_name="pdg",
+        eval_goal="landing",
+    )
+    recorder.set_target(x=0.0, y=0.0, size=110.0, label="landing target")
+    monkeypatch.setattr(
+        tracepack,
+        "_derive_plot_payload",
+        lambda *_args, **_kwargs: {
+            "reference_metrics": {
+                "gap_mean": 4.5,
+                "gap_area": 21.0,
+                "gap_max": 9.0,
+            }
+        },
+    )
+    monkeypatch.setattr(tracepack, "_write_preview_png", lambda *_args, **_kwargs: None)
+
+    trace_meta = recorder.finalize(
+        result={"state": "landed", "success": True}, elapsed_time_s=0.0
+    )
+    trace_payload = json.loads(
+        Path(str(trace_meta["trace_path"])).read_text(encoding="utf-8")
+    )
+
+    assert trace_meta["trace_ref_gap_mean"] == pytest.approx(4.5)
+    assert trace_meta["trace_ref_gap_area"] == pytest.approx(21.0)
+    assert trace_meta["trace_ref_gap_max"] == pytest.approx(9.0)
+    assert trace_payload["final_result"]["trace_ref_gap_mean"] == pytest.approx(4.5)
+    assert trace_payload["final_result"]["trace_ref_gap_area"] == pytest.approx(21.0)
+    assert trace_payload["final_result"]["trace_ref_gap_max"] == pytest.approx(9.0)
 
 
 def _make_trace_recorder(

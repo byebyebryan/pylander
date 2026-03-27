@@ -38,6 +38,10 @@ def _extract_summary_metrics(payload: dict[str, Any]) -> dict[str, float]:
         row = dict(eff.get(field) or {})
         return float(row.get("count", 0) or 0)
 
+    def _max(eff: dict[str, Any], field: str) -> float:
+        row = dict(eff.get(field) or {})
+        return float(row.get("max", 0.0) or 0.0)
+
     return {
         "runs": float(summary.get("runs", 0) or 0),
         "successes": float(summary.get("successes", 0) or 0),
@@ -50,6 +54,13 @@ def _extract_summary_metrics(payload: dict[str, Any]) -> dict[str, float]:
             efficiency_success, "fuel_per_distance"
         ),
         "fuel_success_count": _count(efficiency_success, "fuel_consumed"),
+        "ref_gap_mean_mean_all": _mean(efficiency_all, "trace_ref_gap_mean"),
+        "ref_gap_mean_mean_success": _mean(efficiency_success, "trace_ref_gap_mean"),
+        "ref_gap_area_mean_all": _mean(efficiency_all, "trace_ref_gap_area"),
+        "ref_gap_area_mean_success": _mean(efficiency_success, "trace_ref_gap_area"),
+        "ref_gap_peak_max_all": _max(efficiency_all, "trace_ref_gap_max"),
+        "ref_gap_peak_max_success": _max(efficiency_success, "trace_ref_gap_max"),
+        "ref_gap_success_count": _count(efficiency_success, "trace_ref_gap_mean"),
     }
 
 
@@ -82,13 +93,19 @@ def _selector_summary_rows(payload: dict[str, Any]) -> dict[str, dict[str, Any]]
 
 
 def _fuel_mean_from_summary(row: dict[str, Any]) -> tuple[float, int, float]:
+    return _metric_stat_from_summary(row, "fuel_consumed")
+
+
+def _metric_stat_from_summary(
+    row: dict[str, Any], field: str, *, stat: str = "mean"
+) -> tuple[float, int, float]:
     eff_success = dict(row.get("efficiency_success") or {})
     eff_all = dict(row.get("efficiency_all") or {})
-    success_stats = dict(eff_success.get("fuel_consumed") or {})
-    all_stats = dict(eff_all.get("fuel_consumed") or {})
-    success_mean = float(success_stats.get("mean", 0.0) or 0.0)
+    success_stats = dict(eff_success.get(field) or {})
+    all_stats = dict(eff_all.get(field) or {})
+    success_mean = float(success_stats.get(stat, 0.0) or 0.0)
     success_count = int(success_stats.get("count", 0) or 0)
-    all_mean = float(all_stats.get("mean", 0.0) or 0.0)
+    all_mean = float(all_stats.get(stat, 0.0) or 0.0)
     return success_mean, success_count, all_mean
 
 
@@ -159,6 +176,9 @@ def run_diag(record: dict[str, Any], *, bot: str) -> dict[str, Any]:
         "avg_speed",
         "score",
         "boost_cutoff_projected_dx",
+        "trace_ref_gap_mean",
+        "trace_ref_gap_area",
+        "trace_ref_gap_max",
         terminal_dx_key,
     )
     out: dict[str, Any] = {}
@@ -282,18 +302,49 @@ def scenario_regressions(
         use_success = b_fuel_success_n > 0 and c_fuel_success_n > 0
         b_fuel = b_fuel_success if use_success else b_fuel_all
         c_fuel = c_fuel_success if use_success else c_fuel_all
+        b_ref_mean_success, b_ref_mean_n, b_ref_mean_all = _metric_stat_from_summary(
+            b_row, "trace_ref_gap_mean"
+        )
+        c_ref_mean_success, c_ref_mean_n, c_ref_mean_all = _metric_stat_from_summary(
+            c_row, "trace_ref_gap_mean"
+        )
+        b_ref_area_success, _b_ref_area_n, b_ref_area_all = _metric_stat_from_summary(
+            b_row, "trace_ref_gap_area"
+        )
+        c_ref_area_success, _c_ref_area_n, c_ref_area_all = _metric_stat_from_summary(
+            c_row, "trace_ref_gap_area"
+        )
+        use_ref_success = b_ref_mean_n > 0 and c_ref_mean_n > 0
+        b_ref_peak_success, _b_ref_peak_n, b_ref_peak_all = _metric_stat_from_summary(
+            b_row, "trace_ref_gap_max", stat="max"
+        )
+        c_ref_peak_success, _c_ref_peak_n, c_ref_peak_all = _metric_stat_from_summary(
+            c_row, "trace_ref_gap_max", stat="max"
+        )
+        b_ref_mean = b_ref_mean_success if use_ref_success else b_ref_mean_all
+        c_ref_mean = c_ref_mean_success if use_ref_success else c_ref_mean_all
+        b_ref_area = b_ref_area_success if use_ref_success else b_ref_area_all
+        c_ref_area = c_ref_area_success if use_ref_success else c_ref_area_all
+        b_ref_peak = b_ref_peak_success if use_ref_success else b_ref_peak_all
+        c_ref_peak = c_ref_peak_success if use_ref_success else c_ref_peak_all
         out.append(
             {
                 "scenario": name,
                 "delta_success_rate": c_sr - b_sr,
                 "delta_fuel_mean": c_fuel - b_fuel,
                 "fuel_basis": ("success_only" if use_success else "all_runs"),
+                "delta_ref_gap_mean": c_ref_mean - b_ref_mean,
+                "delta_ref_gap_area": c_ref_area - b_ref_area,
+                "delta_ref_gap_peak_max": c_ref_peak - b_ref_peak,
+                "ref_gap_basis": ("success_only" if use_ref_success else "all_runs"),
             }
         )
     out.sort(
         key=lambda row: (
             float(row["delta_success_rate"]),
+            -float(row["delta_ref_gap_mean"]),
             -float(row["delta_fuel_mean"]),
+            -float(row["delta_ref_gap_peak_max"]),
         )
     )
     return out
@@ -578,6 +629,40 @@ def print_compare(
             else c["fuel_per_distance_mean_all"]
         )
         primary_basis = "success_only" if use_success_primary else "all_runs"
+        use_ref_success_primary = (
+            b["ref_gap_success_count"] > 0 and c["ref_gap_success_count"] > 0
+        )
+        primary_ref_gap_area_b = (
+            b["ref_gap_area_mean_success"]
+            if use_ref_success_primary
+            else b["ref_gap_area_mean_all"]
+        )
+        primary_ref_gap_area_c = (
+            c["ref_gap_area_mean_success"]
+            if use_ref_success_primary
+            else c["ref_gap_area_mean_all"]
+        )
+        primary_ref_gap_mean_b = (
+            b["ref_gap_mean_mean_success"]
+            if use_ref_success_primary
+            else b["ref_gap_mean_mean_all"]
+        )
+        primary_ref_gap_mean_c = (
+            c["ref_gap_mean_mean_success"]
+            if use_ref_success_primary
+            else c["ref_gap_mean_mean_all"]
+        )
+        primary_ref_gap_peak_b = (
+            b["ref_gap_peak_max_success"]
+            if use_ref_success_primary
+            else b["ref_gap_peak_max_all"]
+        )
+        primary_ref_gap_peak_c = (
+            c["ref_gap_peak_max_success"]
+            if use_ref_success_primary
+            else c["ref_gap_peak_max_all"]
+        )
+        primary_ref_basis = "success_only" if use_ref_success_primary else "all_runs"
 
         print(f"\n# compare_{label}")
         print(f"runs: {int(b['runs'])} -> {int(c['runs'])}")
@@ -599,10 +684,25 @@ def print_compare(
             f"{primary_fuel_dist_b:.4f} -> {primary_fuel_dist_c:.4f} "
             f"(delta {primary_fuel_dist_c - primary_fuel_dist_b:+.4f})"
         )
+        print(
+            f"ref_gap_mean_primary[{primary_ref_basis}]: "
+            f"{primary_ref_gap_mean_b:.3f} -> {primary_ref_gap_mean_c:.3f} "
+            f"(delta {primary_ref_gap_mean_c - primary_ref_gap_mean_b:+.3f})"
+        )
+        print(
+            f"ref_gap_peak_max_primary[{primary_ref_basis}]: "
+            f"{primary_ref_gap_peak_b:.3f} -> {primary_ref_gap_peak_c:.3f} "
+            f"(delta {primary_ref_gap_peak_c - primary_ref_gap_peak_b:+.3f})"
+        )
         if b["fuel_success_count"] <= 0 or c["fuel_success_count"] <= 0:
             print(
                 "warning: success-only fuel aggregate unavailable for one side; "
                 "primary fuel basis fell back to all-runs."
+            )
+        if b["ref_gap_success_count"] <= 0 or c["ref_gap_success_count"] <= 0:
+            print(
+                "warning: success-only reference-gap aggregate unavailable for one side; "
+                "primary reference-gap basis fell back to all-runs."
             )
         print(
             "fuel_mean_success: "
@@ -640,6 +740,11 @@ def print_compare(
                 "fuel_mean_primary": primary_fuel_c - primary_fuel_b,
                 "fuel_per_distance_mean_primary": primary_fuel_dist_c
                 - primary_fuel_dist_b,
+                "ref_gap_basis_primary": primary_ref_basis,
+                "ref_gap_mean_primary": primary_ref_gap_mean_c - primary_ref_gap_mean_b,
+                "ref_gap_area_primary": primary_ref_gap_area_c - primary_ref_gap_area_b,
+                "ref_gap_peak_max_primary": primary_ref_gap_peak_c
+                - primary_ref_gap_peak_b,
                 "fuel_mean_success": c["fuel_mean_success"] - b["fuel_mean_success"],
                 "fuel_per_distance_mean_success": (
                     c["fuel_per_distance_mean_success"]

@@ -454,6 +454,140 @@ def _event_time(event: dict[str, Any]) -> float | None:
     return _safe_float(event.get("elapsed_time_s"))
 
 
+def _polyline_points(xs: list[Any], ys: list[Any]) -> list[tuple[float, float]]:
+    points: list[tuple[float, float]] = []
+    for raw_x, raw_y in zip(xs, ys, strict=False):
+        px = _safe_float(raw_x)
+        py = _safe_float(raw_y)
+        if px is None or py is None:
+            continue
+        point = (float(px), float(py))
+        if points and math.isclose(point[0], points[-1][0], abs_tol=1e-9) and math.isclose(
+            point[1], points[-1][1], abs_tol=1e-9
+        ):
+            continue
+        points.append(point)
+    return points
+
+
+def _polyline_lengths(
+    points: list[tuple[float, float]],
+) -> tuple[list[float], float]:
+    cumulative = [0.0]
+    total = 0.0
+    for idx in range(1, len(points)):
+        seg_len = math.hypot(
+            float(points[idx][0]) - float(points[idx - 1][0]),
+            float(points[idx][1]) - float(points[idx - 1][1]),
+        )
+        total += seg_len
+        cumulative.append(total)
+    return cumulative, total
+
+
+def _project_point_to_segment(
+    *,
+    point: tuple[float, float],
+    start: tuple[float, float],
+    end: tuple[float, float],
+) -> tuple[tuple[float, float], float, float]:
+    seg_dx = float(end[0]) - float(start[0])
+    seg_dy = float(end[1]) - float(start[1])
+    seg_len_sq = (seg_dx * seg_dx) + (seg_dy * seg_dy)
+    if seg_len_sq <= 1e-9:
+        distance = math.hypot(float(point[0]) - float(start[0]), float(point[1]) - float(start[1]))
+        return start, 0.0, distance
+    mix = (
+        ((float(point[0]) - float(start[0])) * seg_dx)
+        + ((float(point[1]) - float(start[1])) * seg_dy)
+    ) / seg_len_sq
+    mix = max(0.0, min(1.0, mix))
+    projected = (
+        float(start[0]) + (seg_dx * mix),
+        float(start[1]) + (seg_dy * mix),
+    )
+    distance = math.hypot(
+        float(point[0]) - float(projected[0]),
+        float(point[1]) - float(projected[1]),
+    )
+    return projected, mix, distance
+
+
+def _project_point_to_polyline(
+    *,
+    point: tuple[float, float],
+    polyline: list[tuple[float, float]],
+) -> tuple[tuple[float, float], float]:
+    best_projection = polyline[0]
+    best_distance = math.hypot(
+        float(point[0]) - float(best_projection[0]),
+        float(point[1]) - float(best_projection[1]),
+    )
+    for idx in range(1, len(polyline)):
+        projection, _mix, distance = _project_point_to_segment(
+            point=point,
+            start=polyline[idx - 1],
+            end=polyline[idx],
+        )
+        if distance < best_distance:
+            best_projection = projection
+            best_distance = distance
+    return best_projection, best_distance
+
+
+def _reference_target_y(
+    *,
+    target_y: float,
+    events: list[dict[str, Any]],
+) -> float:
+    success_event = _find_event(events, name="success")
+    success_y = _safe_float((success_event or {}).get("y"))
+    if success_y is None:
+        return float(target_y)
+    return float(success_y)
+
+
+def _reference_gap_metrics(
+    *,
+    actual_xs: list[Any],
+    actual_ys: list[Any],
+    reference_curve: dict[str, Any] | None,
+) -> dict[str, float] | None:
+    if not isinstance(reference_curve, dict):
+        return None
+    actual_points = _polyline_points(actual_xs, actual_ys)
+    reference_points = _polyline_points(
+        list(reference_curve.get("xs") or []),
+        list(reference_curve.get("ys") or []),
+    )
+    if len(actual_points) < 2 or len(reference_points) < 2:
+        return None
+    actual_cumulative, actual_length = _polyline_lengths(actual_points)
+    if actual_length <= 1e-9:
+        return None
+
+    gaps: list[float] = []
+    for point in actual_points:
+        _projection, distance = _project_point_to_polyline(
+            point=point,
+            polyline=reference_points,
+        )
+        gaps.append(float(distance))
+    if len(gaps) < 2:
+        return None
+
+    gap_area = sum(
+        0.5 * (gaps[idx] + gaps[idx + 1]) * (actual_cumulative[idx + 1] - actual_cumulative[idx])
+        for idx in range(len(gaps) - 1)
+    )
+    gap_mean = gap_area / actual_length
+    return {
+        "gap_mean": float(gap_mean),
+        "gap_area": float(gap_area),
+        "gap_max": float(max(gaps)),
+    }
+
+
 def _derive_plot_payload(
     terrain: Any,
     *,
@@ -495,6 +629,7 @@ def _derive_plot_payload(
     vector_indices = _vector_sample_indices(ctx.sample_times)
     ballistic_curve = None
     reference_curve = None
+    reference_metrics = None
     reference_apex_y = None
     reference_kind = ""
     reference_label = ""
@@ -502,6 +637,10 @@ def _derive_plot_payload(
         target_x = _safe_float(target.get("x"))
         target_y = _safe_float(target.get("y"))
         if target_x is not None and target_y is not None:
+            reference_target_y = _reference_target_y(
+                target_y=float(target_y),
+                events=events,
+            )
             level_name = str((identity or {}).get("level") or "").strip().lower()
             boost_cutoff_event = _find_event(events, name="boost_cutoff")
             if boost_cutoff_event is not None:
@@ -543,7 +682,7 @@ def _derive_plot_payload(
                     vx=float(ctx.vxs[0]),
                     vy_up=float(ctx.vys[0]),
                     target_x=float(target_x),
-                    target_y=float(target_y),
+                    target_y=float(reference_target_y),
                 )
                 if corrected_curve is not None:
                     ref_xs, ref_ys = corrected_curve
@@ -565,7 +704,7 @@ def _derive_plot_payload(
                     start_x=ctx.xs[0],
                     start_y=ctx.ys[0],
                     target_x=float(target_x),
-                    target_y=float(target_y),
+                    target_y=float(reference_target_y),
                     downhill_policy=downhill_policy,
                     min_exit_angle_deg=45.0,
                 )
@@ -573,7 +712,7 @@ def _derive_plot_payload(
                     start_x=ctx.xs[0],
                     start_y=ctx.ys[0],
                     target_x=float(target_x),
-                    target_y=float(target_y),
+                    target_y=float(reference_target_y),
                     apex_y=float(reference_apex_y),
                 )
                 if ref_curve is not None:
@@ -587,6 +726,12 @@ def _derive_plot_payload(
                     }
                     reference_kind = "idealized"
                     reference_label = "idealized reference"
+    if reference_curve is not None:
+        reference_metrics = _reference_gap_metrics(
+            actual_xs=[float(value) for value in ctx.xs],
+            actual_ys=[float(value) for value in ctx.ys],
+            reference_curve=reference_curve,
+        )
 
     overlay_points: list[tuple[float, float]] = []
     if apex_actual is not None:
@@ -642,6 +787,7 @@ def _derive_plot_payload(
         else {"x": float(apex_projected[0]), "y": float(apex_projected[1])},
         "ballistic_curve": ballistic_curve,
         "reference_curve": reference_curve,
+        "reference_metrics": reference_metrics,
         "reference_kind": reference_kind or None,
         "reference_label": reference_label or None,
     }
@@ -1074,11 +1220,28 @@ class TraceRecorder:
             target=self._target,
             identity=self._identity,
         )
+        reference_metrics = dict((plot_payload or {}).get("reference_metrics") or {})
+        trace_metric_extras: dict[str, float] = {}
+        for source_key, result_key in (
+            ("gap_mean", "trace_ref_gap_mean"),
+            ("gap_area", "trace_ref_gap_area"),
+            ("gap_max", "trace_ref_gap_max"),
+        ):
+            metric_value = _safe_float(reference_metrics.get(source_key))
+            if metric_value is None:
+                continue
+            trace_metric_extras[result_key] = float(metric_value)
         terrain_payload = (
             _terrain_payload_from_samples(self.terrain, samples=samples)
             if samples
             else None
         )
+        final_result_payload = {
+            key: value
+            for key, value in result.items()
+            if isinstance(key, str) and not key.startswith("_")
+        }
+        final_result_payload.update(trace_metric_extras)
         trace_payload = {
             "schema": RUN_TRACE_SCHEMA,
             "schema_version": RUN_TRACE_SCHEMA_VERSION,
@@ -1092,11 +1255,7 @@ class TraceRecorder:
             "snapshots": list(self._snapshots),
             "events": list(self._events),
             "plot": plot_payload,
-            "final_result": {
-                key: value
-                for key, value in result.items()
-                if isinstance(key, str) and not key.startswith("_")
-            },
+            "final_result": final_result_payload,
         }
         if self._include_entity_catalog():
             trace_payload["entity_catalog"] = [
@@ -1133,6 +1292,7 @@ class TraceRecorder:
             preview_rel_path = None
 
         return {
+            **trace_metric_extras,
             "trace_path": str(trace_path),
             "trace_rel_path": trace_rel_path,
             "trace_preview_path": str(preview_path) if preview_path.exists() else None,

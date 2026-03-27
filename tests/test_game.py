@@ -369,6 +369,9 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
             "boost_cutoff_burn_fuel_used": 17.0,
             "boost_cutoff_burn_avg_thrust_level": 0.84,
             "transfer_arrived": False,
+            "trace_ref_gap_mean": 6.5,
+            "trace_ref_gap_area": 42.0,
+            "trace_ref_gap_max": 11.25,
             "bot_pdg_terminal_entry_done": True,
             "bot_pdg_terminal_entry_time": 8.6,
             "bot_pdg_terminal_entry_altitude": 72.0,
@@ -399,6 +402,9 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
     assert record["boost_cutoff_burn_duration_s"] == pytest.approx(6.0)
     assert record["boost_cutoff_burn_fuel_used"] == pytest.approx(17.0)
     assert record["transfer_arrived"] is False
+    assert record["trace_ref_gap_mean"] == pytest.approx(6.5)
+    assert record["trace_ref_gap_area"] == pytest.approx(42.0)
+    assert record["trace_ref_gap_max"] == pytest.approx(11.25)
     assert record["bot_pdg_terminal_entry_done"] is True
     assert record["bot_pdg_terminal_entry_time"] == pytest.approx(8.6)
     assert record["bot_pdg_terminal_entry_altitude"] == pytest.approx(72.0)
@@ -451,6 +457,59 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
     assert summary["by_selector"]["boost:downhill:mid:half:boost_cutoff"][
         "success_rate"
     ] == pytest.approx(1.0)
+
+
+def test_eval_aggregate_includes_trace_gap_spread_stats() -> None:
+    records = [
+        normalize_run_result(
+            bot_name="pdg",
+            level_name="terminal",
+            scenario="normal:shallower",
+            seed=0,
+            result={
+                "state": "landed",
+                "success": True,
+                "fuel_consumed": 10.0,
+                "time": 12.0,
+                "landing_offset": 1.0,
+                "trace_ref_gap_mean": 2.0,
+                "trace_ref_gap_area": 20.0,
+                "trace_ref_gap_max": 5.0,
+            },
+        ),
+        normalize_run_result(
+            bot_name="pdg",
+            level_name="terminal",
+            scenario="normal:shallower",
+            seed=1,
+            result={
+                "state": "landed",
+                "success": True,
+                "fuel_consumed": 14.0,
+                "time": 18.0,
+                "landing_offset": 5.0,
+                "trace_ref_gap_mean": 6.0,
+                "trace_ref_gap_area": 44.0,
+                "trace_ref_gap_max": 9.0,
+            },
+        ),
+    ]
+
+    summary = aggregate_eval_records(records)
+    selector_row = summary["by_selector"]["terminal:normal:shallower"]
+    fuel_stats = selector_row["efficiency_success"]["fuel_consumed"]
+    area_stats = selector_row["efficiency_success"]["trace_ref_gap_area"]
+    peak_stats = selector_row["efficiency_success"]["trace_ref_gap_max"]
+
+    assert fuel_stats["mean"] == pytest.approx(12.0)
+    assert fuel_stats["min"] == pytest.approx(10.0)
+    assert fuel_stats["max"] == pytest.approx(14.0)
+    assert fuel_stats["stddev"] == pytest.approx(2.0)
+    assert area_stats["mean"] == pytest.approx(32.0)
+    assert area_stats["min"] == pytest.approx(20.0)
+    assert area_stats["max"] == pytest.approx(44.0)
+    assert area_stats["stddev"] == pytest.approx(12.0)
+    assert peak_stats["max"] == pytest.approx(9.0)
 
 
 def test_parse_seed_spec_keeps_order_and_deduplicates() -> None:

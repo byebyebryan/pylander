@@ -65,6 +65,32 @@ def _measure_evidence(
         f"candidate runs={int(summary.get('runs', 0) or 0)}",
         f"candidate crashed={int(summary.get('crashed', 0) or 0)}",
     ]
+    by_selector = dict(summary.get("by_selector") or {})
+    selector_ref_rows: list[tuple[str, float, float, float]] = []
+    for selector, row in by_selector.items():
+        if not isinstance(row, dict):
+            continue
+        eff_success = dict(row.get("efficiency_success") or {})
+        mean_stats = dict(eff_success.get("trace_ref_gap_mean") or {})
+        peak_stats = dict(eff_success.get("trace_ref_gap_max") or {})
+        count = int(mean_stats.get("count", 0) or 0)
+        if count <= 0:
+            continue
+        selector_ref_rows.append(
+            (
+                str(selector),
+                _coerce_float(mean_stats.get("mean")) or 0.0,
+                _coerce_float(mean_stats.get("stddev")) or 0.0,
+                _coerce_float(peak_stats.get("max")) or 0.0,
+            )
+        )
+    if selector_ref_rows:
+        selector_ref_rows.sort(key=lambda item: (-item[1], -item[2], -item[3], item[0]))
+        selector, gap_mean, gap_stddev, peak_max = selector_ref_rows[0]
+        evidence.append(
+            "candidate worst_ref_gap_selector="
+            f"{selector} mean={gap_mean:.3f} stddev={gap_stddev:.3f} peak_max={peak_max:.3f}"
+        )
     if compare_payload is None:
         return evidence
 
@@ -79,9 +105,18 @@ def _measure_evidence(
             f"global delta crashed={_format_delta(summary_delta.get('crashed'), digits=0)}",
             "global delta fuel_mean_primary="
             f"{_format_delta(summary_delta.get('fuel_mean_primary'))}",
+            "global delta ref_gap_mean_primary="
+            f"{_format_delta(summary_delta.get('ref_gap_mean_primary'))}",
             f"new global crashes={len(crash_block.get('new_crashes') or [])}",
         ]
     )
+    worst_rows = list(global_block.get("worst_scenarios") or [])
+    if worst_rows and isinstance(worst_rows[0], dict):
+        top_row = dict(worst_rows[0])
+        evidence.append(
+            "top worst_scenario_ref_gap_mean_delta="
+            f"{str(top_row.get('scenario') or '')}:{_format_delta(top_row.get('delta_ref_gap_mean'))}"
+        )
     if compute_block.get("available"):
         deltas = dict(compute_block.get("deltas") or {})
         total_avg = dict(deltas.get("bot_profile_total_ms_per_tick") or {})
@@ -167,6 +202,12 @@ def _likely_causes(
     if any(area in touched_areas for area in ("core_runtime", "app_runtime")):
         causes.append(
             "Changed files include runtime or evaluation code, which can affect both outcome metrics and profiling numbers across multiple selectors."
+        )
+    summary_delta = dict(global_block.get("summary_delta") or {})
+    ref_gap_delta = _coerce_float(summary_delta.get("ref_gap_mean_primary")) or 0.0
+    if ref_gap_delta > 0.0:
+        causes.append(
+            "Reference-gap mean increased relative to baseline, which points to worse path tracking against the report reference even where terminal outcomes still land."
         )
     if compute_block.get("notable_regression"):
         causes.append(

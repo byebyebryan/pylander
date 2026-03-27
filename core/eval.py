@@ -11,6 +11,7 @@ from core.eval_schema import (
     EFFICIENCY_METRIC_FIELDS,
     SETUP_GATE_RESULT_FIELDS,
     SETUP_GOAL_RESULT_FIELDS,
+    TRACE_METRIC_RESULT_FIELDS,
 )
 from core.selector_codec import render_record_selector
 
@@ -46,6 +47,7 @@ _OPTIONAL_FLOAT_RESULT_FIELDS: tuple[str, ...] = (
         if field not in {"boost_cutoff_done", "boost_cutoff_has_target_y_solution"}
     ),
     *tuple(field for field in BOT_PROFILE_RESULT_FIELDS if field != "bot_profile_enabled"),
+    *TRACE_METRIC_RESULT_FIELDS,
 )
 
 _OPTIONAL_BOOL_RESULT_FIELDS: tuple[str, ...] = (
@@ -131,14 +133,27 @@ def _metric_summary(records: list[dict[str, Any]], field: str) -> dict[str, Any]
         if isinstance(record.get(field), (int, float))
     ]
     if not values:
-        return {"count": 0, "mean": 0.0, "median": 0.0, "p90": 0.0}
+        return {
+            "count": 0,
+            "mean": 0.0,
+            "median": 0.0,
+            "p90": 0.0,
+            "min": 0.0,
+            "max": 0.0,
+            "stddev": 0.0,
+        }
     values.sort()
     count = len(values)
+    mean = sum(values) / count
+    variance = sum((value - mean) ** 2 for value in values) / count
     return {
         "count": count,
-        "mean": sum(values) / count,
+        "mean": mean,
         "median": _percentile(values, 0.5),
         "p90": _percentile(values, 0.9),
+        "min": values[0],
+        "max": values[-1],
+        "stddev": variance**0.5,
     }
 
 

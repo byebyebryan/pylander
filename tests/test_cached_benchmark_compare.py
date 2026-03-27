@@ -17,6 +17,8 @@ def _record(
     state: str,
     success: bool,
     fuel: float,
+    ref_gap_area: float = 0.0,
+    ref_gap_max: float = 0.0,
 ) -> dict[str, object]:
     return {
         "level": level,
@@ -28,6 +30,9 @@ def _record(
         "fuel_consumed": fuel,
         "fuel_per_distance": fuel / 100.0,
         "time": 10.0,
+        "trace_ref_gap_mean": ref_gap_area / 10.0,
+        "trace_ref_gap_area": ref_gap_area,
+        "trace_ref_gap_max": ref_gap_max,
     }
 
 
@@ -353,6 +358,65 @@ def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
     assert [str(item["scenario"]) for item in rows] == [
         "boost:downhill:mid:half:boost_cutoff"
     ]
+
+
+def test_scenario_regressions_include_reference_gap_deltas() -> None:
+    baseline = {
+        "records": [
+            _record(
+                level="terminal",
+                scenario="normal:shallower",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=20.0,
+                ref_gap_area=10.0,
+                ref_gap_max=4.0,
+            ),
+            _record(
+                level="boost",
+                scenario="flat:mid:half",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=20.0,
+                ref_gap_area=12.0,
+                ref_gap_max=5.0,
+            ),
+        ]
+    }
+    candidate = {
+        "records": [
+            _record(
+                level="terminal",
+                scenario="normal:shallower",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=20.0,
+                ref_gap_area=28.0,
+                ref_gap_max=9.0,
+            ),
+            _record(
+                level="boost",
+                scenario="flat:mid:half",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=20.0,
+                ref_gap_area=12.0,
+                ref_gap_max=5.0,
+            ),
+        ]
+    }
+
+    rows = benchmark_compare.scenario_regressions(baseline, candidate)
+
+    assert rows[0]["scenario"] == "terminal:normal:shallower"
+    assert rows[0]["delta_ref_gap_mean"] == pytest.approx(1.8)
+    assert rows[0]["delta_ref_gap_area"] == pytest.approx(18.0)
+    assert rows[0]["delta_ref_gap_peak_max"] == pytest.approx(5.0)
+    assert rows[0]["ref_gap_basis"] == "success_only"
 
 
 def test_global_compute_regression_marks_notable_regression() -> None:
