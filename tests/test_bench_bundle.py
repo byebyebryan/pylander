@@ -170,18 +170,18 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
             "crashed": 1,
             "success_rate": 0.9,
             "efficiency_all": {
-                "fuel_consumed": {"mean": 13.5},
-                "time": {"mean": 9.25},
-                "bot_profile_total_ms_per_tick": {"mean": 1.5},
-                "bot_profile_total_ms_per_tick_p90": {"mean": 3.25},
-                "bot_profile_total_ms_per_tick_p99": {"mean": 5.0},
+                "fuel_consumed": {"count": 10, "mean": 13.5, "stddev": 2.0},
+                "time": {"count": 10, "mean": 9.25, "stddev": 0.8},
+                "bot_profile_total_ms_per_tick": {"count": 10, "mean": 1.5},
+                "bot_profile_total_ms_per_tick_p90": {"count": 10, "mean": 3.25},
+                "bot_profile_total_ms_per_tick_p99": {"count": 10, "mean": 5.0},
             },
             "efficiency_success": {
-                "fuel_consumed": {"mean": 12.5},
-                "time": {"mean": 8.75},
-                "bot_profile_total_ms_per_tick": {"mean": 1.25},
-                "bot_profile_total_ms_per_tick_p90": {"mean": 3.0},
-                "bot_profile_total_ms_per_tick_p99": {"mean": 4.5},
+                "fuel_consumed": {"count": 9, "mean": 12.5, "stddev": 1.75},
+                "time": {"count": 9, "mean": 8.75, "stddev": 0.65},
+                "bot_profile_total_ms_per_tick": {"count": 9, "mean": 1.25},
+                "bot_profile_total_ms_per_tick_p90": {"count": 9, "mean": 3.0},
+                "bot_profile_total_ms_per_tick_p99": {"count": 9, "mean": 4.5},
             },
             "by_selector": {
                 "boost:climb:high:full": {
@@ -190,9 +190,26 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
                     "crashed": 1,
                     "success_rate": 0.9,
                     "efficiency_success": {
-                        "fuel_consumed": {"mean": 21.0},
-                        "time": {"mean": 14.0},
-                        "bot_profile_total_ms_per_tick": {"mean": 1.75},
+                        "fuel_consumed": {"count": 9, "mean": 21.0, "stddev": 2.5},
+                        "time": {"count": 9, "mean": 14.0, "stddev": 1.25},
+                        "landing_offset": {"count": 9, "mean": 6.25, "stddev": 2.0},
+                        "trace_ref_gap_mean": {
+                            "count": 9,
+                            "mean": 5.0,
+                            "stddev": 1.0,
+                        },
+                        "trace_ref_gap_area": {
+                            "count": 9,
+                            "mean": 18.75,
+                            "stddev": 4.5,
+                        },
+                        "trace_ref_gap_max": {
+                            "count": 9,
+                            "mean": 7.5,
+                            "max": 13.5,
+                            "stddev": 2.25,
+                        },
+                        "bot_profile_total_ms_per_tick": {"count": 9, "mean": 1.75},
                     },
                 }
             },
@@ -208,6 +225,10 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
                 "failure_mode": "crashed",
                 "fuel_consumed": 10.0,
                 "time": 12.1,
+                "landing_offset": 14.25,
+                "trace_ref_gap_mean": 6.0,
+                "trace_ref_gap_area": 22.5,
+                "trace_ref_gap_max": 16.0,
                 "run_key": "boost:climb:high:full:0",
                 "run_instance_id": 1,
                 "trace_path": str(trace_path),
@@ -236,7 +257,11 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
                     "scenario": "boost:climb:high:full",
                     "delta_success_rate": -1.0,
                     "delta_fuel_mean": 4.2,
+                    "delta_ref_gap_mean": 1.2,
+                    "delta_ref_gap_area": 7.8,
+                    "delta_ref_gap_peak_max": 3.5,
                     "fuel_basis": "success",
+                    "ref_gap_basis": "success_only",
                 }
             ],
             "compute": {},
@@ -334,18 +359,33 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     assert "Wall Clock Total" in html_payload
     assert "Fuel Mean Success" in html_payload
     assert "Show commands" in html_payload
+    assert "Expand Scenarios" in html_payload
+    assert "Collapse Scenarios" in html_payload
     assert "Expand All" in html_payload
     assert "Collapse All" in html_payload
     assert "Context" in html_payload
     assert "Baseline" in html_payload
     assert "Outcome" in html_payload
     assert "Analysis" in html_payload
+    assert "Stability" not in html_payload
     assert "intent json" in html_payload
     assert "analysis json" in html_payload
     assert "Check boost climb tuning against the last behavior change" in html_payload
     assert "Boost climb success rate regressed with one new crash." in html_payload
     assert "<th>Details</th>" in html_payload
+    assert "Delta Ref Gap" in html_payload
+    assert "Delta Ref Peak" in html_payload
     assert "boost:climb:high:full" in html_payload
+    assert html_payload.index("Expand Scenarios") < html_payload.index("Expand All")
+    assert html_payload.index("Collapse Scenarios") < html_payload.index("Collapse All")
+    assert "21.00 ± 11.9%" in html_payload
+    assert "14.00 ± 8.9%" in html_payload
+    assert "offset μ/σ" in html_payload
+    assert "ref gap μ/±%" in html_payload
+    assert "5.000 ± 20.0%" in html_payload
+    assert "ref peak max" in html_payload
+    assert "13.500" in html_payload
+    assert html_payload.index("<h2>Boost</h2>") < html_payload.index("<h2>Failures</h2>")
     assert (
         "../../../benchmarks/head/full_pack.tracepack/previews/boost_climb_high_full_0.png"
         in html_payload

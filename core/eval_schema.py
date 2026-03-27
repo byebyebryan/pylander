@@ -100,6 +100,12 @@ BOT_PDG_RESULT_FIELDS: tuple[str, ...] = (
     "bot_pdg_shape_shortfall_ratio",
 )
 
+TRACE_METRIC_RESULT_FIELDS: tuple[str, ...] = (
+    "trace_ref_gap_mean",
+    "trace_ref_gap_area",
+    "trace_ref_gap_max",
+)
+
 TRACE_RESULT_FIELDS: tuple[str, ...] = (
     "trace_path",
     "trace_rel_path",
@@ -123,6 +129,7 @@ FINAL_RESULT_SECTIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("Boost Cutoff", SETUP_GATE_RESULT_FIELDS),
     ("Arrivals", ARRIVAL_RESULT_FIELDS),
     ("Profiler", BOT_PROFILE_RESULT_FIELDS),
+    ("Trace Metrics", TRACE_METRIC_RESULT_FIELDS),
     ("Trace", TRACE_RESULT_FIELDS),
 )
 
@@ -135,6 +142,7 @@ HEADLESS_RESULT_FIELDS: tuple[str, ...] = (
     *SETUP_GATE_RESULT_FIELDS,
     *BOT_PROFILE_RESULT_FIELDS,
     *BOT_PDG_RESULT_FIELDS,
+    *TRACE_METRIC_RESULT_FIELDS,
     *TRACE_RESULT_FIELDS,
 )
 
@@ -167,4 +175,5 @@ EFFICIENCY_METRIC_FIELDS: tuple[str, ...] = (
     "bot_pdg_shape_projected_dx_abs_mean",
     "bot_pdg_shape_projected_dx_abs_max",
     "bot_pdg_shape_shortfall_ratio",
+    *TRACE_METRIC_RESULT_FIELDS,
 )
