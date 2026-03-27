@@ -20,7 +20,7 @@ from utils.tracebundle import (
     rel_to_outputs as _rel_to_outputs,
     sanitize_token as _sanitize_token,
 )
-from utils.traceviewer import ensure_viewer_assets, render_trace_detail_html
+from utils.traceviewer import PLOTLY_FILENAME, ensure_viewer_assets, render_trace_detail_html
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -418,7 +418,7 @@ def _build_case_detail_payload(
     detail_path.parent.mkdir(parents=True, exist_ok=True)
     plotly_href = (
         _href_from(detail_path.parent, outputs_root / plotly_rel)
-        or "../../assets/plotly-basic.min.js"
+        or f"../../assets/{PLOTLY_FILENAME}"
     )
     trace_href = _href_from(detail_path.parent, trace_path)
     detail_html = render_trace_detail_html(
