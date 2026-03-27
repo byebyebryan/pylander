@@ -22,13 +22,16 @@ def test_only_surviving_skill_directories_exist() -> None:
     }
 
 
-def test_surviving_benchmark_wrappers_exist() -> None:
+def test_surviving_skill_docs_and_benchmark_cli_exist() -> None:
     launchers = [
-        ".agents/skills/pylander-benchmark-runner/scripts/build_selector_pack.py",
-        ".agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py",
-        ".agents/skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py",
-        ".agents/skills/pylander-benchmark-runner/scripts/serve_outputs.py",
+        ".agents/skills/pylander-benchmark-runner/SKILL.md",
         ".agents/skills/pylander-commit-manager/SKILL.md",
+        "app/bench.py",
     ]
     for rel in launchers:
         assert (REPO_ROOT / rel).is_file(), rel
+
+
+def test_benchmark_skill_no_longer_uses_local_wrapper_scripts() -> None:
+    scripts_root = REPO_ROOT / ".agents" / "skills" / "pylander-benchmark-runner" / "scripts"
+    assert not any(scripts_root.glob("*.py"))

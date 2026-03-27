@@ -3,11 +3,14 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import shlex
+import subprocess
 import time
+from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-import subprocess
 
 from app.output_viewer import (
     bundle_url,
@@ -37,6 +40,17 @@ from utils.traceviewer import (
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+@dataclass(frozen=True)
+class BundleRenderResult:
+    bundle: dict[str, Any]
+    candidate_json_path: Path
+    candidate_meta_path: Path
+    compare_path: Path | None
+    bundle_page_path: Path
+    bundle_json_path: Path
+    latest_page_path: Path
 
 
 def load_json(path: Path) -> Any:
@@ -1663,7 +1677,159 @@ def _write_bundle_files(
     return html_path, bundle_json_path, latest_path
 
 
-def main() -> None:
+def render_bundle(
+    *,
+    candidate_json_path: Path,
+    candidate_meta_path: Path | None,
+    compare_path: Path | None,
+    benchmark_cmd: list[str] | None,
+    benchmark_exit_code: int,
+    benchmark_wall_clock_s: float,
+    outputs_root: Path,
+    created_at_utc: str | None = None,
+    bundle_id: str | None = None,
+    candidate_cached: str | None = None,
+) -> BundleRenderResult:
+    outputs_root = outputs_root.resolve()
+    candidate_json_path = candidate_json_path.resolve()
+    if not candidate_json_path.exists():
+        raise SystemExit(f"Candidate benchmark JSON not found: {candidate_json_path}")
+
+    resolved_meta_path = (
+        candidate_meta_path.resolve()
+        if candidate_meta_path is not None
+        else _derive_meta_path(candidate_json_path)
+    )
+    resolved_compare_path = compare_path.resolve() if compare_path is not None else None
+    if resolved_compare_path is not None and not resolved_compare_path.exists():
+        raise SystemExit(f"Compare JSON not found: {resolved_compare_path}")
+
+    created_token = created_at_utc or datetime.now(timezone.utc).isoformat()
+    local_bundle_id = _sanitize_token(
+        bundle_id
+        or f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{candidate_json_path.stem}"
+    )
+    viewer_assets = ensure_viewer_assets(outputs_root)
+    candidate_payload = load_json(candidate_json_path)
+    compare_payload = (
+        load_json(resolved_compare_path)
+        if resolved_compare_path is not None
+        else None
+    )
+    bundle = _bundle_payload(
+        bundle_id=local_bundle_id,
+        created_at_utc=created_token,
+        benchmark_cmd=list(benchmark_cmd or []),
+        benchmark_exit_code=int(benchmark_exit_code),
+        benchmark_wall_clock_s=float(benchmark_wall_clock_s),
+        candidate_json_path=candidate_json_path,
+        candidate_meta_path=resolved_meta_path,
+        candidate_payload=candidate_payload,
+        candidate_cached=candidate_cached,
+        compare_path=resolved_compare_path,
+        compare_payload=compare_payload,
+        outputs_root=outputs_root,
+        viewer_assets=viewer_assets,
+    )
+    bundle_page_path, bundle_json_path, latest_page_path = _write_bundle_files(
+        bundle,
+        outputs_root=outputs_root,
+    )
+    return BundleRenderResult(
+        bundle=bundle,
+        candidate_json_path=candidate_json_path,
+        candidate_meta_path=resolved_meta_path,
+        compare_path=resolved_compare_path,
+        bundle_page_path=bundle_page_path,
+        bundle_json_path=bundle_json_path,
+        latest_page_path=latest_page_path,
+    )
+
+
+def _resolve_server_context(
+    *,
+    outputs_root: Path,
+    viewer_base_url: str | None,
+    viewer_hostname: str | None,
+    server_port: int,
+    server_bind_host: str,
+    ensure_server: bool,
+) -> tuple[str, Path | None, str | None]:
+    local_viewer_hostname = (
+        str(viewer_hostname or "").strip() or discover_viewer_hostname()
+    )
+    server_state_path: Path | None = None
+    server_status = "disabled"
+    if ensure_server:
+        server_status, server_state_path = ensure_outputs_server(
+            outputs_root=outputs_root,
+            bind_host=str(server_bind_host),
+            port=int(server_port),
+            viewer_hostname=local_viewer_hostname,
+            repo_root=_REPO_ROOT,
+        )
+    base_url = _viewer_base_url(
+        viewer_base_url=viewer_base_url,
+        viewer_hostname=local_viewer_hostname,
+        server_port=int(server_port),
+        server_status=server_status,
+    )
+    return server_status, server_state_path, base_url
+
+
+def _print_bundle_summary(
+    *,
+    result: BundleRenderResult,
+    outputs_root: Path,
+    server_status: str,
+    server_state_path: Path | None,
+    base_url: str | None,
+    benchmark_wall_clock_s: float,
+) -> None:
+    latest_rel = (
+        _rel_to_outputs(result.latest_page_path, outputs_root=outputs_root)
+        or "viewer/latest/index.html"
+    )
+    bundle_rel = _rel_to_outputs(
+        result.bundle_page_path, outputs_root=outputs_root
+    ) or str(result.bundle.get("bundle_page_path") or "viewer/bundles/")
+    bundle_json_rel = _rel_to_outputs(
+        result.bundle_json_path, outputs_root=outputs_root
+    ) or str(result.bundle.get("bundle_json_path") or "viewer/bundles/")
+    latest_url = bundle_url(base_url, latest_rel)
+    bundle_url_value = bundle_url(base_url, bundle_rel)
+
+    print("# bench_bundle")
+    print(f"server_status={server_status}")
+    if base_url is not None:
+        print(f"viewer_base_url={base_url}")
+    print(f"benchmark_wall_clock_s={benchmark_wall_clock_s:.3f}")
+    timing = dict(result.bundle.get("timing") or {})
+    if timing.get("bundle_render_wall_clock_s") is not None:
+        print(
+            f"bundle_render_wall_clock_s={float(timing['bundle_render_wall_clock_s']):.3f}"
+        )
+    if timing.get("total_wall_clock_s") is not None:
+        print(f"total_wall_clock_s={float(timing['total_wall_clock_s']):.3f}")
+    if server_state_path is not None:
+        print(f"server_state={server_state_path}")
+    print(f"candidate_json={result.candidate_json_path}")
+    print(f"candidate_meta={result.candidate_meta_path}")
+    if result.compare_path is not None:
+        print(f"compare_json={result.compare_path}")
+    print(f"bundle_page={result.bundle_page_path}")
+    print(f"bundle_json={result.bundle_json_path}")
+    print(f"latest_page={result.latest_page_path}")
+    print(f"latest_rel={_root_path(latest_rel) or '/viewer/latest/index.html'}")
+    print(f"bundle_rel={_root_path(bundle_rel) or '/viewer/bundles/'}")
+    print(f"bundle_json_rel={_root_path(bundle_json_rel) or '/viewer/bundles/'}")
+    if bundle_url_value:
+        print(f"bundle_url={bundle_url_value}")
+    if latest_url:
+        print(f"latest_url={latest_url}")
+
+
+def build_bundle_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="Run cached benchmark and write a static HTML bundle"
     )
@@ -1694,23 +1860,83 @@ def main() -> None:
     ap.add_argument(
         "--ensure-server", action=argparse.BooleanOptionalAction, default=True
     )
-    args = ap.parse_args()
+    return ap
+
+
+def build_report_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(
+        description="Write a static HTML bundle from existing benchmark artifacts"
+    )
+    ap.add_argument("--candidate-json", required=True)
+    ap.add_argument("--candidate-meta", default=None)
+    ap.add_argument("--compare-json", default=None)
+    ap.add_argument("--benchmark-command", default=None)
+    ap.add_argument("--benchmark-exit-code", type=int, default=0)
+    ap.add_argument("--benchmark-wall-clock-s", type=float, default=0.0)
+    ap.add_argument("--viewer-base-url", default=None)
+    ap.add_argument("--viewer-hostname", default=None)
+    ap.add_argument("--server-port", type=int, default=8765)
+    ap.add_argument("--server-bind-host", default="0.0.0.0")
+    ap.add_argument(
+        "--ensure-server", action=argparse.BooleanOptionalAction, default=True
+    )
+    return ap
+
+
+def report_main(argv: Sequence[str] | None = None) -> None:
+    args = build_report_parser().parse_args(list(argv) if argv is not None else None)
 
     outputs_root = (_REPO_ROOT / "outputs").resolve()
-    created_at_utc = datetime.now(timezone.utc).isoformat()
-    viewer_hostname = (
-        str(args.viewer_hostname or "").strip() or discover_viewer_hostname()
+    server_status, server_state_path, base_url = _resolve_server_context(
+        outputs_root=outputs_root,
+        viewer_base_url=args.viewer_base_url,
+        viewer_hostname=args.viewer_hostname,
+        server_port=int(args.server_port),
+        server_bind_host=str(args.server_bind_host),
+        ensure_server=bool(args.ensure_server),
     )
-    server_state_path: Path | None = None
-    server_status = "disabled"
-    if args.ensure_server:
-        server_status, server_state_path = ensure_outputs_server(
-            outputs_root=outputs_root,
-            bind_host=str(args.server_bind_host),
-            port=int(args.server_port),
-            viewer_hostname=viewer_hostname,
-            repo_root=_REPO_ROOT,
-        )
+    candidate_json_path = _output_path(args.candidate_json, repo_root=_REPO_ROOT)
+    if candidate_json_path is None:
+        raise SystemExit("--candidate-json is required")
+    candidate_meta_path = _output_path(args.candidate_meta, repo_root=_REPO_ROOT)
+    compare_path = _output_path(args.compare_json, repo_root=_REPO_ROOT)
+    benchmark_cmd = (
+        shlex.split(str(args.benchmark_command))
+        if str(args.benchmark_command or "").strip()
+        else []
+    )
+    result = render_bundle(
+        candidate_json_path=candidate_json_path,
+        candidate_meta_path=candidate_meta_path,
+        compare_path=compare_path,
+        benchmark_cmd=benchmark_cmd,
+        benchmark_exit_code=int(args.benchmark_exit_code),
+        benchmark_wall_clock_s=float(args.benchmark_wall_clock_s),
+        outputs_root=outputs_root,
+    )
+    _print_bundle_summary(
+        result=result,
+        outputs_root=outputs_root,
+        server_status=server_status,
+        server_state_path=server_state_path,
+        base_url=base_url,
+        benchmark_wall_clock_s=float(args.benchmark_wall_clock_s),
+    )
+    raise SystemExit(int(args.benchmark_exit_code))
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    args = build_bundle_parser().parse_args(list(argv) if argv is not None else None)
+
+    outputs_root = (_REPO_ROOT / "outputs").resolve()
+    server_status, server_state_path, base_url = _resolve_server_context(
+        outputs_root=outputs_root,
+        viewer_base_url=args.viewer_base_url,
+        viewer_hostname=args.viewer_hostname,
+        server_port=int(args.server_port),
+        server_bind_host=str(args.server_bind_host),
+        ensure_server=bool(args.ensure_server),
+    )
     benchmark_cmd = _benchmark_command(args)
     benchmark_started = time.perf_counter()
     benchmark_exit_code, benchmark_output = run_command(benchmark_cmd, cwd=_REPO_ROOT)
@@ -1727,92 +1953,40 @@ def main() -> None:
         )
     candidate_meta_path = _output_path(
         candidate_section.get("meta"), repo_root=_REPO_ROOT
-    ) or _derive_meta_path(candidate_json_path)
-
-    candidate_payload = load_json(candidate_json_path)
+    )
     compare_section = _parse_section(benchmark_output, "compare_report")
     compare_path = _output_path(compare_section.get("json"), repo_root=_REPO_ROOT)
-    compare_payload = (
-        load_json(compare_path)
-        if compare_path is not None and compare_path.exists()
-        else None
-    )
-
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    bundle_id = _sanitize_token(f"{ts}_{candidate_json_path.stem}")
-    bundle_dir = (outputs_root / "viewer" / "bundles" / bundle_id).resolve()
-    bundle_dir.mkdir(parents=True, exist_ok=True)
-    viewer_assets = ensure_viewer_assets(outputs_root)
-
-    bundle = _bundle_payload(
-        bundle_id=bundle_id,
-        created_at_utc=created_at_utc,
+    result = render_bundle(
+        candidate_json_path=candidate_json_path,
+        candidate_meta_path=candidate_meta_path,
+        compare_path=compare_path,
         benchmark_cmd=benchmark_cmd,
         benchmark_exit_code=benchmark_exit_code,
         benchmark_wall_clock_s=benchmark_wall_clock_s,
-        candidate_json_path=candidate_json_path,
-        candidate_meta_path=candidate_meta_path,
-        candidate_payload=candidate_payload,
+        outputs_root=outputs_root,
         candidate_cached=candidate_section.get("cached"),
-        compare_path=compare_path,
-        compare_payload=compare_payload,
+    )
+    _print_bundle_summary(
+        result=result,
         outputs_root=outputs_root,
-        viewer_assets=viewer_assets,
-    )
-    bundle_page_path, bundle_json_path, latest_page_path = _write_bundle_files(
-        bundle,
-        outputs_root=outputs_root,
-    )
-
-    latest_rel = (
-        _rel_to_outputs(latest_page_path, outputs_root=outputs_root)
-        or "viewer/latest/index.html"
-    )
-    bundle_rel = _rel_to_outputs(bundle_page_path, outputs_root=outputs_root) or str(
-        bundle["bundle_page_path"]
-    )
-    bundle_json_rel = _rel_to_outputs(
-        bundle_json_path, outputs_root=outputs_root
-    ) or str(bundle["bundle_json_path"])
-    base_url = _viewer_base_url(
-        viewer_base_url=args.viewer_base_url,
-        viewer_hostname=viewer_hostname,
-        server_port=int(args.server_port),
         server_status=server_status,
+        server_state_path=server_state_path,
+        base_url=base_url,
+        benchmark_wall_clock_s=benchmark_wall_clock_s,
     )
-    latest_url = bundle_url(base_url, latest_rel)
-    bundle_url_value = bundle_url(base_url, bundle_rel)
-
-    print("# bench_bundle")
-    print(f"server_status={server_status}")
-    if base_url is not None:
-        print(f"viewer_base_url={base_url}")
-    print(f"benchmark_wall_clock_s={benchmark_wall_clock_s:.3f}")
-    timing = dict(bundle.get("timing") or {})
-    if timing.get("bundle_render_wall_clock_s") is not None:
-        print(
-            f"bundle_render_wall_clock_s={float(timing['bundle_render_wall_clock_s']):.3f}"
-        )
-    if timing.get("total_wall_clock_s") is not None:
-        print(f"total_wall_clock_s={float(timing['total_wall_clock_s']):.3f}")
-    if server_state_path is not None:
-        print(f"server_state={server_state_path}")
-    print(f"candidate_json={candidate_json_path}")
-    print(f"candidate_meta={candidate_meta_path}")
-    if compare_path is not None:
-        print(f"compare_json={compare_path}")
-    print(f"bundle_page={bundle_page_path}")
-    print(f"bundle_json={bundle_json_path}")
-    print(f"latest_page={latest_page_path}")
-    print(f"latest_rel={_root_path(latest_rel) or '/viewer/latest/index.html'}")
-    print(f"bundle_rel={_root_path(bundle_rel) or '/viewer/bundles/'}")
-    print(f"bundle_json_rel={_root_path(bundle_json_rel) or '/viewer/bundles/'}")
-    if bundle_url_value:
-        print(f"bundle_url={bundle_url_value}")
-    if latest_url:
-        print(f"latest_url={latest_url}")
-
     raise SystemExit(benchmark_exit_code)
+
+
+__all__ = [
+    "BundleRenderResult",
+    "build_bundle_parser",
+    "build_report_parser",
+    "load_json",
+    "main",
+    "render_bundle",
+    "report_main",
+    "run_command",
+]
 
 
 if __name__ == "__main__":

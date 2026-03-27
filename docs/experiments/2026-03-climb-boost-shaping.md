@@ -104,7 +104,7 @@ uv run python main.py sim boost_climb:<scenario>:0 --bot pdg --freq 0
 Command used:
 
 ```bash
-uv run python .agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py \
+uv run python -m app.bench run \
   --mode quick \
   --baseline-ref main \
   --bot pdg

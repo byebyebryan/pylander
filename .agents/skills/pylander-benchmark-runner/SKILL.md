@@ -12,24 +12,22 @@ Use this skill when the user asks to:
 - render a shareable HTML report with unified numbers and plots
 - serve `outputs/` for local or remote viewing
 
-The skill scripts are thin wrappers only. Real logic lives in reusable modules:
+Use the unified benchmark CLI directly:
+
+- `uv run python -m app.bench selectors ...`
+- `uv run python -m app.bench run ...`
+- `uv run python -m app.bench report ...`
+- `uv run python -m app.bench serve ...`
+- `uv run python -m app.bench bundle ...`
+
+Implementation still lives in reusable modules:
 
 - `app.selector_pack`
 - `app.run_cached_benchmark`
 - `app.trace_bundle`
 - `app.output_viewer`
 - `app.serve_outputs`
-
-Prefer these entrypoints:
-
-- selector pack preview:
-  `uv run python .agents/skills/pylander-benchmark-runner/scripts/build_selector_pack.py ...`
-- cached benchmark run or baseline compare:
-  `uv run python .agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py ...`
-- unified report bundle:
-  `uv run python .agents/skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py ...`
-- direct outputs server:
-  `uv run python .agents/skills/pylander-benchmark-runner/scripts/serve_outputs.py ...`
+- `app.bench`
 
 ## Inputs
 
@@ -44,11 +42,12 @@ Prefer these entrypoints:
 
 ## Grounded workflow
 
-1. Resolve selectors from benchmark metadata with `build_selector_pack.py`.
-2. Run or reuse the candidate tracepack with `run_cached_benchmark.py`.
+1. Resolve selectors from benchmark metadata with `app.bench selectors`.
+2. Run or reuse the candidate tracepack with `app.bench run`.
 3. If `baseline_ref` is provided, require a seeded local cache for the same pack and compare like-for-like.
-4. If the user wants "report", "bundle", "plots", or a URL, use `gen_bench_bundle.py`.
-5. Use `serve_outputs.py` only when you need to inspect or debug the outputs server directly. The bundle command can ensure the server itself.
+4. If the user already has candidate and compare JSON artifacts, use `app.bench report`.
+5. If the user wants the common run + report flow, use `app.bench bundle`.
+6. Use `app.bench serve` only when you need to inspect or debug the outputs server directly. The report and bundle commands can ensure the server themselves.
 
 When the user says "quick benchmark", default to `--mode quick`.
 When they say "full benchmark and plots", default to `--mode full` plus the bundle workflow.
@@ -111,9 +110,10 @@ Always include:
 
 Examples:
 
-- `uv run python .agents/skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode smoke`
-- `uv run python .agents/skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode focused --selectors @terminal`
-- `uv run python .agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main`
-- `uv run python .agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode focused --selectors boost:flat:far:half --seed-spec 0-4 --bot-config configs/zem_tuning.json`
-- `uv run python .agents/skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py --mode quick --baseline-ref main`
-- `uv run python .agents/skills/pylander-benchmark-runner/scripts/serve_outputs.py --port 8765`
+- `uv run python -m app.bench selectors --mode smoke`
+- `uv run python -m app.bench selectors --mode focused --selectors @terminal`
+- `uv run python -m app.bench run --mode quick --baseline-ref main`
+- `uv run python -m app.bench run --mode focused --selectors boost:flat:far:half --seed-spec 0-4 --bot-config configs/zem_tuning.json`
+- `uv run python -m app.bench report --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json --compare-json outputs/benchmarks/<ref>/<stem>.compare.json`
+- `uv run python -m app.bench bundle --mode quick --baseline-ref main`
+- `uv run python -m app.bench serve --port 8765`
