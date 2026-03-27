@@ -57,9 +57,9 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - Validate downstream impact after focused tuning with a cross-level check (`plunge` / `terminal` / `boost`) before merge.
 
 ## Project skills
-- Keep project skills minimal: `pylander-benchmark-runner` and `pylander-commit-manager`.
-- Use `pylander-benchmark-runner` for quick/focused/full benchmark packs, cache-aware baseline comparison, HTML report rendering from existing artifacts, the bundled run+report path, and direct outputs serving when needed.
-- Prefer `uv run python -m app.bench <selectors|run|report|serve|bundle> ...` for benchmark workflows.
+- Keep project skills minimal: `pylander-benchmark` and `pylander-commit-manager`.
+- Use `pylander-benchmark` for the full benchmark workflow: inspect context, infer or honor scope, resolve a baseline, reuse cache, analyze results, render HTML reports, serve outputs, and promote validated dirty caches after commit.
+- Prefer `uv run python -m app.bench <selectors|inspect|run|analyze|report|bundle|serve|promote> ...` for benchmark workflows.
 - Keep benchmark implementation in reusable app modules; do not add skill-local wrapper scripts.
 - Use `pylander-commit-manager` to plan goal-scoped commits, exact staging boundaries, and standardized commit messages.
 
@@ -86,7 +86,7 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
   - `plunge` is a separate terminal/plunge benchmark and should be included only when explicitly named
 - Prefer explicit selectors in evals/benchmarks for reproducibility.
 - Use `--bot-config <path>` for tuned bot overrides; ensure comparisons use like-for-like bot config.
-- For broad regression checks, prefer `uv run python -m app.bench run --mode quick --baseline-ref main` (cache-aware baseline compare).
+- For broad regression checks, prefer `uv run python -m app.bench bundle --mode quick --baseline-ref auto --missing-baseline seed` so the report records context, baseline rationale, and outcome analysis even when the ancestor cache is cold.
 - Benchmark runs use default worker count; do not pass `--workers`.
 - Benchmark worker behavior is fail-fast when worker pools are unavailable; no implicit sequential fallback.
 
@@ -95,6 +95,6 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - `uv run ruff check .`
 - If behavior changed: run a relevant headless eval and compare metrics to a baseline
  - Example focused eval: `uv run python main.py sim boost:flat:far:half:0 --bot pdg`
- - Example quick regression compare: `uv run python -m app.bench run --mode quick --baseline-ref main --bot pdg`
+ - Example quick regression compare: `uv run python -m app.bench bundle --mode quick --baseline-ref auto --missing-baseline seed --bot pdg`
 - If CLI/defaults/workflows changed: update `README.md`
 - Don’t check in artifacts (`outputs/` stays local/ignored), including benchmark caches and generated trace/viewer artifacts.

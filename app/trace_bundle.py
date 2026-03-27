@@ -12,12 +12,24 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app.benchmark_analyze import build_analysis_payload
+from app.benchmark_context import (
+    analysis_sidecar_path,
+    build_auto_intent,
+    build_inspect_payload,
+    discover_compare_path,
+    inspect_sidecar_path,
+    intent_sidecar_path,
+    load_intent,
+)
+from app.benchmark_cache import tracepack_meta_path, write_json
 from app.output_viewer import (
     bundle_url,
     discover_viewer_hostname,
     ensure_outputs_server,
     normalize_base_url,
 )
+from app.selector_pack import build_selectors
 
 from core.selector_codec import render_record_selector
 from levels.registry import (
@@ -48,6 +60,8 @@ class BundleRenderResult:
     candidate_json_path: Path
     candidate_meta_path: Path
     compare_path: Path | None
+    intent_path: Path | None
+    analysis_path: Path | None
     bundle_page_path: Path
     bundle_json_path: Path
     latest_page_path: Path
@@ -95,7 +109,7 @@ def _parse_section(output: str, section_name: str) -> dict[str, str]:
 
 
 def _derive_meta_path(candidate_json: Path) -> Path:
-    return candidate_json.with_name(f"{candidate_json.stem}.meta.json")
+    return tracepack_meta_path(candidate_json)
 
 
 def _format_float(value: Any, digits: int = 2) -> str:
@@ -226,6 +240,69 @@ def _compare_summary(compare_payload: dict[str, Any]) -> dict[str, Any]:
         "new_global_crashes": list(crash_block.get("new_crashes") or []),
         "worst_scenarios": list(global_block.get("worst_scenarios") or []),
         "compute": dict(global_block.get("compute") or {}),
+    }
+
+
+def _intent_summary(intent_payload: dict[str, Any]) -> dict[str, Any]:
+    repo_context = dict(intent_payload.get("repo_context") or {})
+    baseline_plan = dict(intent_payload.get("baseline_plan") or {})
+    return {
+        "goal_summary": str(intent_payload.get("goal_summary") or ""),
+        "request_source": str(intent_payload.get("request_source") or ""),
+        "conversation_context": [
+            str(item).strip()
+            for item in intent_payload.get("conversation_context") or []
+            if str(item).strip()
+        ],
+        "changed_files": [
+            str(item).strip()
+            for item in repo_context.get("changed_files") or []
+            if str(item).strip()
+        ],
+        "touched_areas": [
+            str(item).strip()
+            for item in repo_context.get("touched_areas") or []
+            if str(item).strip()
+        ],
+        "baseline_strategy": str(baseline_plan.get("strategy") or ""),
+        "baseline_requested_ref": str(baseline_plan.get("requested_ref") or ""),
+        "baseline_missing_policy": str(
+            baseline_plan.get("missing_baseline_policy") or ""
+        ),
+        "baseline_resolved_ref": str(baseline_plan.get("resolved_ref") or ""),
+        "baseline_skipped_commits": [
+            dict(item)
+            for item in baseline_plan.get("skipped_commits") or []
+            if isinstance(item, dict)
+        ],
+        "assumptions": [
+            str(item).strip()
+            for item in intent_payload.get("assumptions") or []
+            if str(item).strip()
+        ],
+    }
+
+
+def _analysis_summary(analysis_payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "verdict": str(analysis_payload.get("verdict") or ""),
+        "summary": str(analysis_payload.get("summary") or ""),
+        "measured_evidence": [
+            str(item).strip()
+            for item in analysis_payload.get("measured_evidence") or []
+            if str(item).strip()
+        ],
+        "likely_causes": [
+            str(item).strip()
+            for item in analysis_payload.get("likely_causes") or []
+            if str(item).strip()
+        ],
+        "confidence": str(analysis_payload.get("confidence") or ""),
+        "follow_ups": [
+            str(item).strip()
+            for item in analysis_payload.get("follow_ups") or []
+            if str(item).strip()
+        ],
     }
 
 
@@ -815,6 +892,155 @@ def _render_metric_card_grid(cards: list[tuple[str, str]]) -> str:
     )
 
 
+def _render_inline_list(items: list[str], *, code: bool = False) -> str:
+    if not items:
+        return '<span class="muted">(none)</span>'
+    rendered: list[str] = []
+    for item in items:
+        token = html.escape(str(item))
+        rendered.append(f"<code>{token}</code>" if code else token)
+    return ", ".join(rendered)
+
+
+def _render_text_list(items: list[str], *, code: bool = False) -> str:
+    if not items:
+        return '<p class="muted">(none)</p>'
+    rows = []
+    for item in items:
+        value = html.escape(str(item))
+        if code:
+            value = f"<code>{value}</code>"
+        rows.append(f"<li>{value}</li>")
+    return f"<ul>{''.join(rows)}</ul>"
+
+
+def _render_context_section(intent: dict[str, Any]) -> str:
+    if not intent:
+        return ""
+    rows = [
+        ["Goal", html.escape(str(intent.get("goal_summary") or "-"))],
+        ["Request Source", html.escape(str(intent.get("request_source") or "-"))],
+        [
+            "Touched Areas",
+            _render_inline_list(list(intent.get("touched_areas") or []), code=True),
+        ],
+        [
+            "Changed Files",
+            _render_inline_list(list(intent.get("changed_files") or [])[:10], code=True),
+        ],
+    ]
+    details = _render_table(["Field", "Value"], rows)
+    conversation = list(intent.get("conversation_context") or [])
+    assumptions = list(intent.get("assumptions") or [])
+    sections = [
+        "<section>",
+        "<h2>Context</h2>",
+        details,
+    ]
+    if conversation:
+        sections.append("<h3>Conversation Context</h3>")
+        sections.append(_render_text_list(conversation))
+    if assumptions:
+        sections.append("<h3>Assumptions</h3>")
+        sections.append(_render_text_list(assumptions))
+    sections.append("</section>")
+    return "".join(sections)
+
+
+def _render_baseline_section(intent: dict[str, Any]) -> str:
+    if not intent:
+        return ""
+    skipped_commits = list(intent.get("baseline_skipped_commits") or [])
+    rows = _render_table(
+        ["Field", "Value"],
+        [
+            ["Strategy", html.escape(str(intent.get("baseline_strategy") or "-"))],
+            [
+                "Requested Ref",
+                html.escape(str(intent.get("baseline_requested_ref") or "-")),
+            ],
+            [
+                "Missing Baseline Policy",
+                html.escape(str(intent.get("baseline_missing_policy") or "-")),
+            ],
+            [
+                "Resolved Ref",
+                html.escape(str(intent.get("baseline_resolved_ref") or "-")),
+            ],
+        ],
+    )
+    sections = [
+        "<section>",
+        "<h2>Baseline</h2>",
+        rows,
+    ]
+    if skipped_commits:
+        sections.append("<h3>Skipped Commits</h3>")
+        sections.append(
+            _render_table(
+                ["Commit", "Reason", "Subject"],
+                [
+                    [
+                        f"<code>{html.escape(str(item.get('commit') or '-'))}</code>",
+                        html.escape(str(item.get("skip_reason") or "-")),
+                        html.escape(str(item.get("subject") or "-")),
+                    ]
+                    for item in skipped_commits
+                    if isinstance(item, dict)
+                ],
+            )
+        )
+    sections.append("</section>")
+    return "".join(sections)
+
+
+def _verdict_banner_class(verdict: str) -> str:
+    verdict_key = str(verdict).strip().lower()
+    if verdict_key == "improvement":
+        return "ok"
+    if verdict_key in {"regression", "investigate"}:
+        return "bad"
+    return "neutral"
+
+
+def _render_outcome_section(analysis: dict[str, Any]) -> str:
+    if not analysis:
+        return ""
+    verdict = str(analysis.get("verdict") or "-")
+    sections = [
+        "<section>",
+        "<h2>Outcome</h2>",
+        f'<p class="banner {_verdict_banner_class(verdict)}">{html.escape(verdict)}</p>',
+        f"<p>{html.escape(str(analysis.get('summary') or '-'))}</p>",
+    ]
+    evidence = list(analysis.get("measured_evidence") or [])
+    if evidence:
+        sections.append("<h3>Measured Evidence</h3>")
+        sections.append(_render_text_list(evidence, code=True))
+    sections.append("</section>")
+    return "".join(sections)
+
+
+def _render_analysis_section(analysis: dict[str, Any]) -> str:
+    if not analysis:
+        return ""
+    likely_causes = list(analysis.get("likely_causes") or [])
+    follow_ups = list(analysis.get("follow_ups") or [])
+    sections = [
+        "<section>",
+        "<h2>Analysis</h2>",
+        f"<p><strong>Confidence:</strong> {html.escape(str(analysis.get('confidence') or '-'))}</p>",
+    ]
+    if likely_causes:
+        sections.append("<h3>Likely Causes</h3>")
+        sections.append(_render_text_list(likely_causes))
+    if follow_ups:
+        sections.append("<h3>Suggested Follow-Ups</h3>")
+        sections.append(_render_text_list(follow_ups, code=True))
+    sections.append("</section>")
+    return "".join(sections)
+
+
 def _render_scenario_sections(
     report: dict[str, Any],
     *,
@@ -1099,6 +1325,8 @@ def _render_bundle_html(
     benchmark = dict(bundle.get("benchmark") or {})
     candidate = dict(benchmark.get("candidate") or {})
     compare = dict(bundle.get("compare") or {})
+    intent = dict(bundle.get("intent") or {})
+    analysis = dict(bundle.get("analysis") or {})
     report = _build_bundle_report_model(bundle, outputs_root=outputs_root)
     summary_sections_html = "".join(
         '<div class="card-group">'
@@ -1113,6 +1341,8 @@ def _render_bundle_html(
         ("candidate json", candidate.get("json_path")),
         ("candidate meta", candidate.get("meta_path")),
         ("compare report", compare.get("json_path")),
+        ("intent json", intent.get("json_path")),
+        ("analysis json", analysis.get("json_path")),
         ("bundle json", bundle.get("bundle_json_path")),
     ):
         href = _href_from(bundle_dir, path_rel, outputs_root=outputs_root)
@@ -1164,6 +1394,10 @@ def _render_bundle_html(
     )
     latest_href = _href_from(
         bundle_dir, bundle.get("latest_page_path"), outputs_root=outputs_root
+    )
+    intent_html = _render_context_section(intent) + _render_baseline_section(intent)
+    analysis_html = _render_outcome_section(analysis) + _render_analysis_section(
+        analysis
     )
     scenario_sections_html = _render_scenario_sections(
         report, bundle_dir=bundle_dir, outputs_root=outputs_root
@@ -1230,6 +1464,7 @@ def _render_bundle_html(
     }}
     .banner.ok {{ background: rgba(14, 107, 96, 0.12); color: var(--accent); }}
     .banner.bad {{ background: rgba(142, 59, 46, 0.12); color: var(--warn); }}
+    .banner.neutral {{ background: rgba(87, 95, 102, 0.12); color: var(--muted); }}
     .card-group + .card-group {{
       margin-top: 18px;
     }}
@@ -1373,6 +1608,13 @@ def _render_bundle_html(
     .muted {{
       color: var(--muted);
     }}
+    ul {{
+      margin: 0;
+      padding-left: 20px;
+    }}
+    li + li {{
+      margin-top: 6px;
+    }}
     @media (max-width: 720px) {{
       main {{ padding: 18px 14px 36px; }}
       section {{ padding: 16px; }}
@@ -1401,6 +1643,8 @@ def _render_bundle_html(
     </header>
 
     {compare_html}
+    {intent_html}
+    {analysis_html}
 
     <section>
       <h2>Failures</h2>
@@ -1491,15 +1735,15 @@ def _render_bundle_html(
 """
 
 
-def _benchmark_command(args: argparse.Namespace) -> list[str]:
+def _benchmark_command(
+    args: argparse.Namespace, *, intent_json_path: Path | None = None
+) -> list[str]:
     cmd = [
         "uv",
         "run",
         "python",
         "-m",
         "app.run_cached_benchmark",
-        "--mode",
-        args.mode,
         "--bot",
         args.bot,
         "--results-dir",
@@ -1507,6 +1751,12 @@ def _benchmark_command(args: argparse.Namespace) -> list[str]:
         "--crash-detail-limit",
         str(max(0, int(args.crash_detail_limit))),
     ]
+    if intent_json_path is not None:
+        cmd.extend(["--intent-json", str(intent_json_path)])
+    elif args.mode:
+        cmd.extend(["--mode", args.mode])
+    if str(getattr(args, "missing_baseline", "") or "").strip():
+        cmd.extend(["--missing-baseline", str(args.missing_baseline)])
     if args.seed_spec:
         cmd.extend(["--seed-spec", args.seed_spec])
     if args.selectors:
@@ -1527,8 +1777,14 @@ def _benchmark_command(args: argparse.Namespace) -> list[str]:
         cmd.append("--bot-profile-logs")
     else:
         cmd.append("--no-bot-profile-logs")
-    if args.baseline_ref:
+    if intent_json_path is None and args.baseline_ref:
         cmd.extend(["--baseline-ref", args.baseline_ref])
+    if intent_json_path is None and str(getattr(args, "goal_summary", "") or "").strip():
+        cmd.extend(["--goal-summary", str(args.goal_summary)])
+    if intent_json_path is None:
+        for note in getattr(args, "context_note", []) or []:
+            if str(note).strip():
+                cmd.extend(["--context-note", str(note)])
     if args.no_reuse:
         cmd.append("--no-reuse")
     return cmd
@@ -1547,6 +1803,10 @@ def _bundle_payload(
     candidate_cached: str | None,
     compare_path: Path | None,
     compare_payload: dict[str, Any] | None,
+    intent_path: Path | None,
+    intent_payload: dict[str, Any] | None,
+    analysis_path: Path | None,
+    analysis_payload: dict[str, Any] | None,
     outputs_root: Path,
     viewer_assets: dict[str, str],
 ) -> dict[str, Any]:
@@ -1598,6 +1858,22 @@ def _bundle_payload(
                 **_compare_summary(compare_payload or {}),
             }
             if compare_path and compare_payload is not None
+            else None
+        ),
+        "intent": (
+            {
+                "json_path": _rel_to_outputs(intent_path, outputs_root=outputs_root),
+                **_intent_summary(intent_payload or {}),
+            }
+            if intent_path and intent_payload is not None
+            else None
+        ),
+        "analysis": (
+            {
+                "json_path": _rel_to_outputs(analysis_path, outputs_root=outputs_root),
+                **_analysis_summary(analysis_payload or {}),
+            }
+            if analysis_path and analysis_payload is not None
             else None
         ),
     }
@@ -1682,6 +1958,8 @@ def render_bundle(
     candidate_json_path: Path,
     candidate_meta_path: Path | None,
     compare_path: Path | None,
+    intent_path: Path | None,
+    analysis_path: Path | None,
     benchmark_cmd: list[str] | None,
     benchmark_exit_code: int,
     benchmark_wall_clock_s: float,
@@ -1700,9 +1978,35 @@ def render_bundle(
         if candidate_meta_path is not None
         else _derive_meta_path(candidate_json_path)
     )
-    resolved_compare_path = compare_path.resolve() if compare_path is not None else None
+    resolved_compare_path = (
+        compare_path.resolve()
+        if compare_path is not None
+        else discover_compare_path(candidate_json_path)
+    )
     if resolved_compare_path is not None and not resolved_compare_path.exists():
         raise SystemExit(f"Compare JSON not found: {resolved_compare_path}")
+    resolved_intent_path = (
+        intent_path.resolve()
+        if intent_path is not None
+        else (
+            local_intent_path
+            if (local_intent_path := intent_sidecar_path(candidate_json_path)).exists()
+            else None
+        )
+    )
+    if resolved_intent_path is not None and not resolved_intent_path.exists():
+        raise SystemExit(f"Intent JSON not found: {resolved_intent_path}")
+    resolved_analysis_path = (
+        analysis_path.resolve()
+        if analysis_path is not None
+        else (
+            local_analysis_path
+            if (local_analysis_path := analysis_sidecar_path(candidate_json_path)).exists()
+            else None
+        )
+    )
+    if resolved_analysis_path is not None and not resolved_analysis_path.exists():
+        raise SystemExit(f"Analysis JSON not found: {resolved_analysis_path}")
 
     created_token = created_at_utc or datetime.now(timezone.utc).isoformat()
     local_bundle_id = _sanitize_token(
@@ -1714,6 +2018,16 @@ def render_bundle(
     compare_payload = (
         load_json(resolved_compare_path)
         if resolved_compare_path is not None
+        else None
+    )
+    intent_payload = (
+        load_intent(resolved_intent_path)
+        if resolved_intent_path is not None
+        else None
+    )
+    analysis_payload = (
+        load_json(resolved_analysis_path)
+        if resolved_analysis_path is not None
         else None
     )
     bundle = _bundle_payload(
@@ -1728,6 +2042,10 @@ def render_bundle(
         candidate_cached=candidate_cached,
         compare_path=resolved_compare_path,
         compare_payload=compare_payload,
+        intent_path=resolved_intent_path,
+        intent_payload=intent_payload,
+        analysis_path=resolved_analysis_path,
+        analysis_payload=analysis_payload,
         outputs_root=outputs_root,
         viewer_assets=viewer_assets,
     )
@@ -1740,6 +2058,8 @@ def render_bundle(
         candidate_json_path=candidate_json_path,
         candidate_meta_path=resolved_meta_path,
         compare_path=resolved_compare_path,
+        intent_path=resolved_intent_path,
+        analysis_path=resolved_analysis_path,
         bundle_page_path=bundle_page_path,
         bundle_json_path=bundle_json_path,
         latest_page_path=latest_page_path,
@@ -1817,6 +2137,10 @@ def _print_bundle_summary(
     print(f"candidate_meta={result.candidate_meta_path}")
     if result.compare_path is not None:
         print(f"compare_json={result.compare_path}")
+    if result.intent_path is not None:
+        print(f"intent_json={result.intent_path}")
+    if result.analysis_path is not None:
+        print(f"analysis_json={result.analysis_path}")
     print(f"bundle_page={result.bundle_page_path}")
     print(f"bundle_json={result.bundle_json_path}")
     print(f"latest_page={result.latest_page_path}")
@@ -1831,11 +2155,9 @@ def _print_bundle_summary(
 
 def build_bundle_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
-        description="Run cached benchmark and write a static HTML bundle"
+        description="Run the full benchmark workflow and write a static HTML bundle"
     )
-    ap.add_argument(
-        "--mode", choices=("smoke", "quick", "full", "focused"), required=True
-    )
+    ap.add_argument("--mode", choices=("smoke", "quick", "full", "focused"), default=None)
     ap.add_argument("--seed-spec", default=None)
     ap.add_argument("--selectors", nargs="*", default=[])
     ap.add_argument("--exclude-levels", nargs="*", default=[])
@@ -1849,7 +2171,15 @@ def build_bundle_parser() -> argparse.ArgumentParser:
     ap.add_argument(
         "--bot-profile-logs", action=argparse.BooleanOptionalAction, default=False
     )
-    ap.add_argument("--baseline-ref", default=None)
+    ap.add_argument("--baseline-ref", default="auto")
+    ap.add_argument(
+        "--missing-baseline",
+        choices=("skip", "seed", "error"),
+        default=None,
+    )
+    ap.add_argument("--intent-json", default=None)
+    ap.add_argument("--goal-summary", default=None)
+    ap.add_argument("--context-note", action="append", default=[])
     ap.add_argument("--results-dir", default="outputs/benchmarks")
     ap.add_argument("--no-reuse", action="store_true")
     ap.add_argument("--crash-detail-limit", type=int, default=8)
@@ -1865,11 +2195,13 @@ def build_bundle_parser() -> argparse.ArgumentParser:
 
 def build_report_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
-        description="Write a static HTML bundle from existing benchmark artifacts"
+        description="Render a static HTML bundle from existing benchmark artifacts"
     )
     ap.add_argument("--candidate-json", required=True)
     ap.add_argument("--candidate-meta", default=None)
     ap.add_argument("--compare-json", default=None)
+    ap.add_argument("--intent-json", default=None)
+    ap.add_argument("--analysis-json", default=None)
     ap.add_argument("--benchmark-command", default=None)
     ap.add_argument("--benchmark-exit-code", type=int, default=0)
     ap.add_argument("--benchmark-wall-clock-s", type=float, default=0.0)
@@ -1881,6 +2213,86 @@ def build_report_parser() -> argparse.ArgumentParser:
         "--ensure-server", action=argparse.BooleanOptionalAction, default=True
     )
     return ap
+
+
+def _repo_path(path_value: str | None) -> Path | None:
+    token = str(path_value or "").strip()
+    if not token:
+        return None
+    path = Path(token).expanduser()
+    if not path.is_absolute():
+        path = (_REPO_ROOT / path).resolve()
+    return path
+
+
+def _prepare_bundle_intent(
+    args: argparse.Namespace,
+) -> tuple[Path, dict[str, Any], Path | None]:
+    intent_path = _repo_path(args.intent_json)
+    if intent_path is not None:
+        if not intent_path.exists():
+            raise SystemExit(f"Intent JSON not found: {intent_path}")
+        return intent_path, load_intent(intent_path), None
+
+    if not args.mode:
+        raise SystemExit("--mode is required unless --intent-json is provided")
+
+    try:
+        pack = build_selectors(
+            mode=str(args.mode),
+            seed_spec=args.seed_spec,
+            focused_selectors=list(args.selectors or []),
+            exclude_levels=list(args.exclude_levels or []),
+            observe_only_levels=list(args.observe_only_levels or []),
+        )
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+
+    results_root = (_REPO_ROOT / str(args.results_dir)).resolve()
+    inspect_payload = build_inspect_payload(
+        mode=str(args.mode),
+        seed_spec=args.seed_spec,
+        selectors=list(args.selectors or []),
+        exclude_levels=list(args.exclude_levels or []),
+        observe_only_levels=list(args.observe_only_levels or []),
+        bot=str(args.bot),
+        trace_detail="report",
+        bot_config_path=args.bot_config,
+        bot_profile_enabled=bool(args.bot_profile),
+        bot_profile_interval_s=args.bot_profile_interval_s,
+        bot_profile_log_lines=bool(args.bot_profile_logs),
+        baseline_ref=args.baseline_ref,
+        results_root=results_root,
+    )
+    preview = dict(inspect_payload.get("pack_preview") or {})
+    candidate_json = _repo_path(str(preview.get("candidate_json") or ""))
+    if candidate_json is None:
+        raise SystemExit("Unable to derive candidate benchmark path for bundle intent.")
+    local_inspect_path = _repo_path(
+        str(preview.get("candidate_inspect") or inspect_sidecar_path(candidate_json))
+    )
+    if local_inspect_path is not None:
+        write_json(local_inspect_path, inspect_payload)
+
+    intent_payload, local_intent_path = build_auto_intent(
+        inspect_payload=inspect_payload,
+        pack=pack,
+        mode=str(args.mode),
+        seed_spec=args.seed_spec,
+        bot=str(args.bot),
+        trace_detail="report",
+        bot_config_path=args.bot_config,
+        bot_profile_enabled=bool(args.bot_profile),
+        bot_profile_interval_s=args.bot_profile_interval_s,
+        bot_profile_log_lines=bool(args.bot_profile_logs),
+        baseline_ref=args.baseline_ref,
+        missing_baseline_policy=args.missing_baseline,
+        results_root=results_root,
+        goal_summary=args.goal_summary,
+        context_notes=list(args.context_note or []),
+    )
+    write_json(local_intent_path, intent_payload)
+    return local_intent_path, intent_payload, local_inspect_path
 
 
 def report_main(argv: Sequence[str] | None = None) -> None:
@@ -1900,6 +2312,8 @@ def report_main(argv: Sequence[str] | None = None) -> None:
         raise SystemExit("--candidate-json is required")
     candidate_meta_path = _output_path(args.candidate_meta, repo_root=_REPO_ROOT)
     compare_path = _output_path(args.compare_json, repo_root=_REPO_ROOT)
+    intent_path = _output_path(args.intent_json, repo_root=_REPO_ROOT)
+    analysis_path = _output_path(args.analysis_json, repo_root=_REPO_ROOT)
     benchmark_cmd = (
         shlex.split(str(args.benchmark_command))
         if str(args.benchmark_command or "").strip()
@@ -1909,6 +2323,8 @@ def report_main(argv: Sequence[str] | None = None) -> None:
         candidate_json_path=candidate_json_path,
         candidate_meta_path=candidate_meta_path,
         compare_path=compare_path,
+        intent_path=intent_path,
+        analysis_path=analysis_path,
         benchmark_cmd=benchmark_cmd,
         benchmark_exit_code=int(args.benchmark_exit_code),
         benchmark_wall_clock_s=float(args.benchmark_wall_clock_s),
@@ -1937,10 +2353,17 @@ def main(argv: Sequence[str] | None = None) -> None:
         server_bind_host=str(args.server_bind_host),
         ensure_server=bool(args.ensure_server),
     )
-    benchmark_cmd = _benchmark_command(args)
+    intent_path, intent_payload, _inspect_path = _prepare_bundle_intent(args)
+    benchmark_cmd = _benchmark_command(args, intent_json_path=intent_path)
     benchmark_started = time.perf_counter()
     benchmark_exit_code, benchmark_output = run_command(benchmark_cmd, cwd=_REPO_ROOT)
     benchmark_wall_clock_s = time.perf_counter() - benchmark_started
+
+    intent_section = _parse_section(benchmark_output, "intent")
+    resolved_intent_path = _output_path(intent_section.get("json"), repo_root=_REPO_ROOT)
+    if resolved_intent_path is not None:
+        intent_path = resolved_intent_path
+        intent_payload = load_intent(intent_path)
 
     candidate_section = _parse_section(benchmark_output, "candidate")
     candidate_json_path = _output_path(
@@ -1956,10 +2379,22 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     compare_section = _parse_section(benchmark_output, "compare_report")
     compare_path = _output_path(compare_section.get("json"), repo_root=_REPO_ROOT)
+    candidate_payload = load_json(candidate_json_path)
+    compare_payload = load_json(compare_path) if compare_path is not None else None
+    analysis_path = analysis_sidecar_path(candidate_json_path)
+    analysis_payload = build_analysis_payload(
+        candidate_payload=candidate_payload,
+        compare_payload=compare_payload,
+        intent_payload=intent_payload,
+        candidate_json_path=candidate_json_path,
+    )
+    write_json(analysis_path, analysis_payload)
     result = render_bundle(
         candidate_json_path=candidate_json_path,
         candidate_meta_path=candidate_meta_path,
         compare_path=compare_path,
+        intent_path=intent_path,
+        analysis_path=analysis_path,
         benchmark_cmd=benchmark_cmd,
         benchmark_exit_code=benchmark_exit_code,
         benchmark_wall_clock_s=benchmark_wall_clock_s,

@@ -3,6 +3,9 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable, Sequence
 
+import app.benchmark_analyze as benchmark_analyze
+import app.benchmark_context as benchmark_context
+import app.benchmark_promote as benchmark_promote
 import app.run_cached_benchmark as run_cached_benchmark
 import app.selector_pack as selector_pack
 import app.serve_outputs as serve_outputs
@@ -13,9 +16,17 @@ _COMMANDS: dict[str, tuple[str, Callable[[Sequence[str] | None], None]]] = {
         "Preview the resolved selector pack and benchmark command",
         selector_pack.main,
     ),
+    "inspect": (
+        "Inspect benchmark context, baseline candidates, and cache state",
+        benchmark_context.main,
+    ),
     "run": (
         "Run or reuse a cached benchmark pack with optional baseline compare",
         run_cached_benchmark.main,
+    ),
+    "analyze": (
+        "Analyze benchmark artifacts and write a structured outcome sidecar",
+        benchmark_analyze.main,
     ),
     "report": (
         "Render a static HTML bundle from existing benchmark artifacts",
@@ -26,8 +37,12 @@ _COMMANDS: dict[str, tuple[str, Callable[[Sequence[str] | None], None]]] = {
         serve_outputs.main,
     ),
     "bundle": (
-        "Run a cached benchmark workflow and render a static HTML bundle",
+        "Run the full inspect, run, analyze, and report benchmark workflow",
         trace_bundle.main,
+    ),
+    "promote": (
+        "Promote a dirty benchmark cache into a clean commit cache key",
+        benchmark_promote.main,
     ),
 }
 
@@ -39,10 +54,13 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Commands:\n"
             "  selectors  Preview resolved selectors and the underlying main.py bench command\n"
+            "  inspect    Gather repo facts, baseline candidates, and cache paths\n"
             "  run        Reuse or run a benchmark pack, with optional baseline compare\n"
-            "  report     Render HTML from existing candidate and compare JSON artifacts\n"
+            "  analyze    Write a structured analysis sidecar from benchmark artifacts\n"
+            "  report     Render HTML from candidate, compare, intent, and analysis artifacts\n"
             "  serve      Serve outputs/ over HTTP\n"
-            "  bundle     Run + report as one convenience workflow\n\n"
+            "  bundle     Run the full inspect, run, analyze, and report workflow\n"
+            "  promote    Promote a dirty cache into a clean commit key after commit\n\n"
             "Use `uv run python -m app.bench <command> --help` for command-specific options."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,

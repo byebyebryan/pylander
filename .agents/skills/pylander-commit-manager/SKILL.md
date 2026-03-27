@@ -51,7 +51,10 @@ Body (for non-trivial commits, and recommended generally):
 - review staged diff
 - commit with drafted message
 
-5. Verify state after each commit:
+5. If the commit finalizes a change that was already benchmarked on a dirty workspace, consider promoting the cached benchmark explicitly:
+- `uv run python -m app.bench promote --candidate-json outputs/benchmarks/<dirty>/<stem>.tracepack.json --target-ref HEAD`
+
+6. Verify state after each commit:
 - `git status --short`
 - if more planned commits remain, repeat
 

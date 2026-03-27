@@ -155,11 +155,13 @@ Focused benchmark-pack selectors also accept explicit group aliases:
 Example:
 
 ```bash
-uv run python -m app.bench run \
+uv run python -m app.bench bundle \
   --mode focused \
   --selectors @terminal \
   --seed-spec 0-9 \
-  --baseline-ref main
+  --baseline-ref auto \
+  --missing-baseline seed \
+  --goal-summary "Validate current terminal changes"
 ```
 
 For remote dev, you can also generate a static HTML bundle that wraps the
@@ -169,9 +171,11 @@ benchmark tracepack and interactive run-detail pages:
 # Serve outputs/ once per tmux session
 uv run python -m app.bench serve --port 8765
 
-# Generate the latest static bundle
+# Generate the latest static bundle with context and analysis
 uv run python -m app.bench bundle \
   --mode full \
+  --baseline-ref auto \
+  --missing-baseline seed \
   --viewer-base-url http://myhost:8765
 ```
 
@@ -191,6 +195,25 @@ Bundle tables use pre-rendered preview PNGs for responsiveness, while run detail
 pages render interactive Plotly charts directly from per-run trace JSON. The
 detail pages load Plotly from a pinned CDN URL rather than a vendored local
 asset.
+
+The benchmark workflow is now phase-based under one CLI:
+
+- `inspect`: gather repo facts, baseline candidates, and cache paths
+- `run`: execute or reuse artifacts from explicit args or an existing intent
+- `analyze`: write a structured outcome sidecar from benchmark artifacts
+- `report`: render HTML from candidate, compare, intent, and analysis artifacts
+- `bundle`: run the default inspect -> run -> analyze -> report path
+- `promote`: copy a validated dirty benchmark cache onto a clean commit key after commit
+
+When `--baseline-ref auto` or an explicit baseline resolves to a commit whose
+cache is missing locally, use `--missing-baseline seed` to seed that baseline
+from a detached temporary worktree and continue the compare. The default policy
+is `skip` for auto baselines, which keeps the run moving but renders a
+candidate-only report, and `error` for explicit baselines so requested compares
+do not silently disappear.
+This assumes the primary benchmark outputs remain comparable across the two
+commits; if older runtime, config, or metric-shape changes alter what the pack
+means, the seeded compare may still be mechanically valid but analytically weak.
 
 ## Key options
 
@@ -265,20 +288,24 @@ Trace-enabled runs emit trace metadata such as `trace_path`,
 
 Local project skills now stay intentionally small:
 
-- `pylander-benchmark-runner`: one benchmark workflow skill covering selector preview, cache-aware benchmark reuse/compare, report rendering from existing artifacts, the bundled run+report path, and direct outputs serving when needed.
+- `pylander-benchmark`: one benchmark workflow skill covering context inspection, baseline resolution, cache-aware benchmark reuse/compare, analysis, report rendering, the bundled default workflow, direct outputs serving, and dirty-cache promotion after commit.
 - `pylander-commit-manager`: prompt-only commit playbook for goal-scoped staging and standardized commit messages.
 
 Benchmark implementation lives in reusable app modules, not skill-local logic:
-`app.selector_pack`, `app.run_cached_benchmark`, `app.trace_bundle`,
-`app.output_viewer`, `app.serve_outputs`, and `app.bench`.
+`app.selector_pack`, `app.benchmark_context`, `app.run_cached_benchmark`,
+`app.benchmark_analyze`, `app.trace_bundle`, `app.output_viewer`,
+`app.serve_outputs`, `app.benchmark_promote`, and `app.bench`.
 
 Benchmark skill entrypoints:
 
 - `uv run python -m app.bench selectors --mode quick`
-- `uv run python -m app.bench run --mode quick --baseline-ref main`
-- `uv run python -m app.bench report --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json --compare-json outputs/benchmarks/<ref>/<stem>.compare.json`
-- `uv run python -m app.bench bundle --mode quick --baseline-ref main`
+- `uv run python -m app.bench inspect --mode quick --baseline-ref auto --output-json auto`
+- `uv run python -m app.bench run --mode quick --baseline-ref auto --missing-baseline seed`
+- `uv run python -m app.bench analyze --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json`
+- `uv run python -m app.bench report --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json --compare-json outputs/benchmarks/<ref>/<stem>.compare_vs_<base>.json`
+- `uv run python -m app.bench bundle --mode quick --baseline-ref auto --missing-baseline seed`
 - `uv run python -m app.bench serve --port 8765`
+- `uv run python -m app.bench promote --candidate-json outputs/benchmarks/<dirty>/<stem>.tracepack.json --target-ref HEAD`
 
 Focused plot-pack generation remains available as an app utility rather than a
 separate skill:
