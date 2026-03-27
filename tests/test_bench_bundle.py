@@ -5,6 +5,9 @@ import json
 import re
 from pathlib import Path
 
+import app.output_viewer as output_viewer
+import app.trace_bundle as trace_bundle
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -22,10 +25,6 @@ def _script(rel: str) -> Path:
     return (REPO_ROOT / rel).resolve()
 
 
-bench_bundle = _load_module(
-    "bench_bundle_script",
-    _script(".agents/skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py"),
-)
 traceviewer = _load_module("traceviewer_module", _script("utils/traceviewer.py"))
 
 
@@ -37,7 +36,7 @@ json=/tmp/candidate.tracepack.json
 meta=/tmp/candidate.meta.json
 cached=False
 """
-    section = bench_bundle._parse_section(output, "candidate")
+    section = trace_bundle._parse_section(output, "candidate")
     assert section == {
         "commit": "8b2f6cd",
         "json": "/tmp/candidate.tracepack.json",
@@ -47,18 +46,18 @@ cached=False
 
 
 def test_discover_viewer_hostname_prefers_lan(monkeypatch) -> None:
-    monkeypatch.setattr(bench_bundle.socket, "gethostname", lambda: "starship")
-    monkeypatch.setattr(bench_bundle.socket, "getfqdn", lambda: "starship")
+    monkeypatch.setattr(output_viewer.socket, "gethostname", lambda: "starship")
+    monkeypatch.setattr(output_viewer.socket, "getfqdn", lambda: "starship")
 
     def _fake_gethostbyname(host: str) -> str:
         if host == "starship.lan":
             return "192.168.1.212"
         raise OSError(host)
 
-    monkeypatch.setattr(bench_bundle.socket, "gethostbyname", _fake_gethostbyname)
-    monkeypatch.setattr(bench_bundle, "_local_ip", lambda: "192.168.1.212")
+    monkeypatch.setattr(output_viewer.socket, "gethostbyname", _fake_gethostbyname)
+    monkeypatch.setattr(output_viewer, "local_ip", lambda: "192.168.1.212")
 
-    assert bench_bundle._discover_viewer_hostname() == "starship.lan"
+    assert output_viewer.discover_viewer_hostname() == "starship.lan"
 
 
 def test_traceviewer_uses_repo_level_vendor_asset(monkeypatch, tmp_path: Path) -> None:
@@ -216,7 +215,7 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     candidate_meta.write_text("{}", encoding="utf-8")
     compare_json.write_text(json.dumps(compare_payload), encoding="utf-8")
 
-    bundle = bench_bundle._bundle_payload(
+    bundle = trace_bundle._bundle_payload(
         bundle_id="bundle_x",
         created_at_utc="2026-03-21T18:00:00+00:00",
         benchmark_cmd=[
@@ -237,7 +236,7 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         viewer_assets={"plotly_rel": "viewer/assets/plotly-basic-2.35.2.min.js"},
     )
 
-    html_path, bundle_json_path, latest_path = bench_bundle._write_bundle_files(
+    html_path, bundle_json_path, latest_path = trace_bundle._write_bundle_files(
         bundle,
         outputs_root=outputs_root,
     )

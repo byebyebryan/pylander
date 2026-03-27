@@ -1,35 +1,14 @@
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
+import sys
 
 import pytest
 
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-
-
-def _load_module(module_name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _script(rel: str) -> Path:
-    return (REPO_ROOT / rel).resolve()
-
-
-plot_pack = _load_module(
-    "plot_pack_builder_script",
-    _script(".agents/skills/pylander-plot-runner/scripts/build_plot_pack.py"),
-)
+import app.plot_pack as plot_pack
 
 
 def test_build_cases_from_records_uses_selected_bot_terminal_metric_namespace() -> None:
-    cases = plot_pack._build_cases_from_records(
+    cases = plot_pack.build_cases_from_records(
         [
             {
                 "level": "launch",
@@ -56,7 +35,7 @@ def test_build_cases_from_records_uses_selected_bot_terminal_metric_namespace() 
 
 
 def test_extract_trace_assets_reads_trace_file_metadata() -> None:
-    payload = plot_pack._extract_trace_assets(
+    payload = plot_pack.extract_trace_assets(
         """
 [Trace Files]
 trace_path            outputs/traces/case_a/traces/case_a.trace.json
@@ -75,7 +54,7 @@ preview_rel_path      traces/case_a/previews/case_a.png
 
 
 def test_assign_case_keys_preserves_unique_selector_instances() -> None:
-    assigned = plot_pack._assign_case_keys(
+    assigned = plot_pack.assign_case_keys(
         [
             {"selector": "plunge:low:half:0"},
             {"selector": "plunge:low:half:0"},
@@ -93,7 +72,7 @@ def test_assign_case_keys_preserves_unique_selector_instances() -> None:
 
 def test_main_compare_mode_requires_compare_json(monkeypatch) -> None:
     monkeypatch.setattr(
-        plot_pack.sys,
+        sys,
         "argv",
         ["build_plot_pack.py", "--mode", "compare"],
     )
@@ -105,13 +84,13 @@ def test_main_compare_mode_requires_compare_json(monkeypatch) -> None:
 def test_resolve_plot_workers_uses_auto_default(monkeypatch) -> None:
     monkeypatch.setattr(plot_pack.os, "cpu_count", lambda: 24)
 
-    assert plot_pack._resolve_plot_workers(0) == 16
-    assert plot_pack._resolve_plot_workers(None) == 16
-    assert plot_pack._resolve_plot_workers(3) == 3
+    assert plot_pack.resolve_plot_workers(0) == 16
+    assert plot_pack.resolve_plot_workers(None) == 16
+    assert plot_pack.resolve_plot_workers(3) == 3
 
 
 def test_plot_command_includes_trace_detail() -> None:
-    cmd = plot_pack._plot_command(
+    cmd = plot_pack.plot_command(
         "plunge:low:half:0",
         bot="pdg",
         trace_sample_period_s=0.25,

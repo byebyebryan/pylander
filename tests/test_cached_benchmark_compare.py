@@ -1,36 +1,12 @@
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-_SCRIPT_PATH = (
-    Path(__file__).resolve().parents[1]
-    / ".agents"
-    / "skills"
-    / "pylander-benchmark-runner"
-    / "scripts"
-    / "run_cached_benchmark.py"
-)
-
-
-def _load_module(module_name: str, path: Path):
-    script_dir = str(path.parent)
-    if script_dir not in sys.path:
-        sys.path.insert(0, script_dir)
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-cached_bench = _load_module("run_cached_benchmark", _SCRIPT_PATH)
+import app.benchmark_cache as benchmark_cache
+import app.benchmark_compare as benchmark_compare
 
 
 def _record(
@@ -200,7 +176,7 @@ def test_observation_only_crash_does_not_mark_notable_regression() -> None:
             ),
         ]
     }
-    report = cached_bench._print_compare(
+    report = benchmark_compare.print_compare(
         baseline_commit="base",
         candidate_commit="cand",
         baseline_payload=baseline,
@@ -240,7 +216,7 @@ def test_normal_crash_marks_notable_regression() -> None:
             ),
         ]
     }
-    report = cached_bench._print_compare(
+    report = benchmark_compare.print_compare(
         baseline_commit="base",
         candidate_commit="cand",
         baseline_payload=baseline,
@@ -279,7 +255,7 @@ def test_boost_climb_crash_now_gates_global_regressions() -> None:
             ),
         ]
     }
-    report = cached_bench._print_compare(
+    report = benchmark_compare.print_compare(
         baseline_commit="base",
         candidate_commit="cand",
         baseline_payload=baseline,
@@ -336,7 +312,7 @@ def test_scenario_regressions_group_by_level_and_scenario() -> None:
         ]
     }
 
-    rows = cached_bench._scenario_regressions(baseline, candidate)
+    rows = benchmark_compare.scenario_regressions(baseline, candidate)
     names = {str(item["scenario"]) for item in rows}
     assert names == {"boost:flat:mid:half", "terminal:error:mid:wide"}
 
@@ -373,7 +349,7 @@ def test_scenario_regressions_separate_non_landing_goal_by_selector() -> None:
         ]
     }
 
-    rows = cached_bench._scenario_regressions(baseline, candidate)
+    rows = benchmark_compare.scenario_regressions(baseline, candidate)
     assert [str(item["scenario"]) for item in rows] == [
         "boost:downhill:mid:half:boost_cutoff"
     ]
@@ -412,7 +388,7 @@ def test_global_compute_regression_marks_notable_regression() -> None:
         ]
     }
 
-    report = cached_bench._print_compare(
+    report = benchmark_compare.print_compare(
         baseline_commit="base",
         candidate_commit="cand",
         baseline_payload=baseline,
@@ -460,7 +436,7 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
         ]
     }
 
-    report = cached_bench._print_compare(
+    report = benchmark_compare.print_compare(
         baseline_commit="base",
         candidate_commit="cand",
         baseline_payload=baseline,
@@ -476,28 +452,31 @@ def test_observation_compute_regression_does_not_gate_global() -> None:
 
 
 def test_selector_pack_stem_changes_with_bot_config_path() -> None:
-    common = dict(
+    no_config = benchmark_cache.selector_pack_stem(
         mode="quick",
         selectors=["boost:flat:mid:half:0-2"],
         bot="pdg",
         trace_detail="report",
+        bot_config_path=None,
         bot_profile_enabled=True,
         bot_profile_interval_s=None,
         bot_profile_log_lines=False,
     )
-    no_config = cached_bench._selector_pack_stem(
-        bot_config_path=None,
-        **common,
-    )
-    with_config = cached_bench._selector_pack_stem(
+    with_config = benchmark_cache.selector_pack_stem(
+        mode="quick",
+        selectors=["boost:flat:mid:half:0-2"],
+        bot="pdg",
+        trace_detail="report",
         bot_config_path="configs/zem_custom.json",
-        **common,
+        bot_profile_enabled=True,
+        bot_profile_interval_s=None,
+        bot_profile_log_lines=False,
     )
     assert no_config != with_config
 
 
 def test_run_diag_uses_selected_bot_terminal_metric_namespace() -> None:
-    diag = cached_bench._run_diag(
+    diag = benchmark_compare.run_diag(
         {
             "state": "landed",
             "boost_cutoff_projected_dx": 12.0,
@@ -519,7 +498,7 @@ def test_validate_cached_tracepack_assets_accepts_complete_pack(tmp_path: Path) 
         _write_cached_tracepack(tmp_path)
     )
 
-    issue = cached_bench._validate_cached_tracepack_assets(
+    issue = benchmark_cache.validate_cached_tracepack_assets(
         json_path,
         outputs_root=results_root.parent.resolve(),
     )
@@ -537,7 +516,7 @@ def test_validate_cached_tracepack_assets_rejects_missing_preview(
         )
     )
 
-    issue = cached_bench._validate_cached_tracepack_assets(
+    issue = benchmark_cache.validate_cached_tracepack_assets(
         json_path,
         outputs_root=results_root.parent.resolve(),
     )
@@ -550,7 +529,7 @@ def test_load_or_run_reuses_complete_cache(tmp_path: Path) -> None:
         _write_cached_tracepack(tmp_path)
     )
 
-    loaded_json, loaded_meta, cached = cached_bench._load_or_run(
+    loaded_json, loaded_meta, cached = benchmark_cache.load_or_run(
         commit="cand",
         stem="quick_boost_n1_deadbeef00",
         mode="quick",
@@ -564,6 +543,7 @@ def test_load_or_run_reuses_complete_cache(tmp_path: Path) -> None:
         results_root=results_root,
         reuse=True,
         allow_run=True,
+        command_builder=lambda **_kwargs: ["bench"],
     )
 
     assert cached is True
@@ -584,7 +564,7 @@ def test_load_or_run_rejects_incomplete_cache_when_rerun_is_disallowed(
     with pytest.raises(
         SystemExit, match="Incomplete cache for commit cand: missing trace json"
     ):
-        cached_bench._load_or_run(
+        benchmark_cache.load_or_run(
             commit="cand",
             stem="quick_boost_n1_deadbeef00",
             mode="quick",
@@ -598,6 +578,7 @@ def test_load_or_run_rejects_incomplete_cache_when_rerun_is_disallowed(
             results_root=results_root,
             reuse=True,
             allow_run=False,
+            command_builder=lambda **_kwargs: ["bench"],
         )
 
     assert not trace_path.exists()
@@ -615,18 +596,14 @@ def test_load_or_run_reruns_when_cached_trace_assets_are_missing(
         )
     )
 
-    monkeypatch.setattr(
-        cached_bench, "build_bench_command", lambda **_kwargs: ["bench"]
-    )
-
     def _fake_run_command(_cmd: list[str]) -> tuple[int, str]:
         trace_path.write_text("{}", encoding="utf-8")
         preview_path.write_bytes(b"png")
         return 0, ""
 
-    monkeypatch.setattr(cached_bench, "_run_command", _fake_run_command)
+    monkeypatch.setattr(benchmark_cache, "run_command", _fake_run_command)
 
-    loaded_json, loaded_meta, cached = cached_bench._load_or_run(
+    loaded_json, loaded_meta, cached = benchmark_cache.load_or_run(
         commit="cand",
         stem="quick_boost_n1_deadbeef00",
         mode="quick",
@@ -640,6 +617,7 @@ def test_load_or_run_reruns_when_cached_trace_assets_are_missing(
         results_root=results_root,
         reuse=True,
         allow_run=True,
+        command_builder=lambda **_kwargs: ["bench"],
     )
 
     assert cached is False
