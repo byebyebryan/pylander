@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import argparse
 import json
 import re
 from pathlib import Path
@@ -43,6 +44,59 @@ cached=False
         "meta": "/tmp/candidate.meta.json",
         "cached": "False",
     }
+
+
+def test_benchmark_command_uses_app_module_entrypoint() -> None:
+    cmd = trace_bundle._benchmark_command(
+        argparse.Namespace(
+            mode="quick",
+            bot="pdg",
+            results_dir="outputs/benchmarks",
+            crash_detail_limit=8,
+            seed_spec=None,
+            selectors=[],
+            exclude_levels=[],
+            observe_only_levels=[],
+            bot_config=None,
+            bot_profile=True,
+            bot_profile_interval_s=None,
+            bot_profile_logs=False,
+            baseline_ref=None,
+            no_reuse=False,
+        )
+    )
+
+    assert cmd[:5] == ["uv", "run", "python", "-m", "app.run_cached_benchmark"]
+
+
+def test_viewer_base_url_requires_running_server_without_explicit_base_url() -> None:
+    assert (
+        trace_bundle._viewer_base_url(
+            viewer_base_url=None,
+            viewer_hostname="starship.lan",
+            server_port=8765,
+            server_status="disabled",
+        )
+        is None
+    )
+    assert (
+        trace_bundle._viewer_base_url(
+            viewer_base_url=None,
+            viewer_hostname="starship.lan",
+            server_port=8765,
+            server_status="reused",
+        )
+        == "http://starship.lan:8765"
+    )
+    assert (
+        trace_bundle._viewer_base_url(
+            viewer_base_url="http://example.test/base/",
+            viewer_hostname="starship.lan",
+            server_port=8765,
+            server_status="disabled",
+        )
+        == "http://example.test/base"
+    )
 
 
 def test_discover_viewer_hostname_prefers_lan(monkeypatch) -> None:

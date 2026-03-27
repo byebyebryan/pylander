@@ -9,6 +9,7 @@ from typing import Any
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _ASSETS_ROOT = (_REPO_ROOT / "assets" / "viewer").resolve()
 _PLOTLY_FILENAME = "plotly-basic-2.35.2.min.js"
+PLOTLY_FILENAME = _PLOTLY_FILENAME
 
 
 def _resolve_plotly_vendor_path() -> Path:

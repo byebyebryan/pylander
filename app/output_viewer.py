@@ -120,14 +120,18 @@ def write_server_state(
     return state_path
 
 
+def default_server_command() -> list[str]:
+    return [sys.executable, "-m", "app.serve_outputs"]
+
+
 def ensure_outputs_server(
     *,
     outputs_root: Path,
     bind_host: str,
     port: int,
     viewer_hostname: str,
-    server_script: Path,
     repo_root: Path,
+    server_script: Path | None = None,
 ) -> tuple[str, Path]:
     existing = server_health(port)
     state_path = write_server_state(
@@ -143,18 +147,22 @@ def ensure_outputs_server(
 
     log_path = (outputs_root / "viewer" / "server.log").resolve()
     log_path.parent.mkdir(parents=True, exist_ok=True)
+    command = default_server_command()
+    if server_script is not None:
+        command = [sys.executable, str(server_script)]
+    command.extend(
+        [
+            "--host",
+            bind_host,
+            "--port",
+            str(int(port)),
+            "--root",
+            str(outputs_root),
+        ]
+    )
     with log_path.open("ab") as log_fh:
         proc = subprocess.Popen(
-            [
-                sys.executable,
-                str(server_script),
-                "--host",
-                bind_host,
-                "--port",
-                str(int(port)),
-                "--root",
-                str(outputs_root),
-            ],
+            command,
             cwd=str(repo_root),
             stdout=log_fh,
             stderr=subprocess.STDOUT,
@@ -194,6 +202,7 @@ __all__ = [
     "HEALTH_PATH",
     "SERVICE_NAME",
     "bundle_url",
+    "default_server_command",
     "discover_viewer_hostname",
     "ensure_outputs_server",
     "local_ip",

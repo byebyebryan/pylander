@@ -31,16 +31,9 @@ from utils.tracebundle import (
     sanitize_token as _sanitize_token,
 )
 from utils.traceviewer import ensure_viewer_assets, render_trace_detail_html
+from utils.traceviewer import PLOTLY_FILENAME
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_SERVER_SCRIPT = (
-    _REPO_ROOT
-    / ".agents"
-    / "skills"
-    / "pylander-benchmark-runner"
-    / "scripts"
-    / "serve_outputs.py"
-).resolve()
 
 
 def load_json(path: Path) -> Any:
@@ -223,6 +216,21 @@ def _root_path(path_rel: str | None) -> str | None:
     if not path_rel:
         return None
     return "/" + path_rel.lstrip("/")
+
+
+def _viewer_base_url(
+    *,
+    viewer_base_url: str | None,
+    viewer_hostname: str,
+    server_port: int,
+    server_status: str,
+) -> str | None:
+    explicit = normalize_base_url(viewer_base_url)
+    if explicit is not None:
+        return explicit
+    if server_status in {"started", "reused"}:
+        return f"http://{viewer_hostname}:{int(server_port)}"
+    return None
 
 
 def _summary_card_sections(
@@ -1027,7 +1035,7 @@ def _render_run_detail_html(
             str(dict(bundle.get("viewer_assets") or {}).get("plotly_rel") or ""),
             outputs_root=outputs_root,
         )
-        or "../../assets/plotly-basic.min.js"
+        or f"../../assets/{PLOTLY_FILENAME}"
     )
 
     scenario_selector = str(run.get("scenario_selector") or "")
@@ -1476,7 +1484,8 @@ def _benchmark_command(args: argparse.Namespace) -> list[str]:
         "uv",
         "run",
         "python",
-        ".agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py",
+        "-m",
+        "app.run_cached_benchmark",
         "--mode",
         args.mode,
         "--bot",
@@ -1700,7 +1709,6 @@ def main() -> None:
             bind_host=str(args.server_bind_host),
             port=int(args.server_port),
             viewer_hostname=viewer_hostname,
-            server_script=_SERVER_SCRIPT,
             repo_root=_REPO_ROOT,
         )
     benchmark_cmd = _benchmark_command(args)
@@ -1766,16 +1774,19 @@ def main() -> None:
     bundle_json_rel = _rel_to_outputs(
         bundle_json_path, outputs_root=outputs_root
     ) or str(bundle["bundle_json_path"])
-    base_url = (
-        normalize_base_url(args.viewer_base_url)
-        or f"http://{viewer_hostname}:{int(args.server_port)}"
+    base_url = _viewer_base_url(
+        viewer_base_url=args.viewer_base_url,
+        viewer_hostname=viewer_hostname,
+        server_port=int(args.server_port),
+        server_status=server_status,
     )
     latest_url = bundle_url(base_url, latest_rel)
     bundle_url_value = bundle_url(base_url, bundle_rel)
 
     print("# bench_bundle")
     print(f"server_status={server_status}")
-    print(f"viewer_base_url={base_url}")
+    if base_url is not None:
+        print(f"viewer_base_url={base_url}")
     print(f"benchmark_wall_clock_s={benchmark_wall_clock_s:.3f}")
     timing = dict(bundle.get("timing") or {})
     if timing.get("bundle_render_wall_clock_s") is not None:
