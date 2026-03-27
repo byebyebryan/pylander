@@ -1,35 +1,8 @@
 from __future__ import annotations
 
-import importlib.util
-import sys
-from pathlib import Path
-
 import pytest
 
-_SCRIPT_PATH = (
-    Path(__file__).resolve().parents[1]
-    / ".agents"
-    / "skills"
-    / "pylander-benchmark-runner"
-    / "scripts"
-    / "build_selector_pack.py"
-)
-
-
-def _load_module(module_name: str, path: Path):
-    script_dir = str(path.parent)
-    if script_dir not in sys.path:
-        sys.path.insert(0, script_dir)
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[module_name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-selector_pack = _load_module("build_selector_pack", _SCRIPT_PATH)
+import app.selector_pack as selector_pack
 
 
 def test_smoke_pack_uses_profile_policies() -> None:

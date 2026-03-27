@@ -56,23 +56,11 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - Use metric gates for bot changes: require measurable improvement or document explicit tradeoffs.
 - Validate downstream impact after focused tuning with a cross-level check (`plunge` / `terminal` / `boost`) before merge.
 
-## Skill-driven workflow
-- Preferred loop:
-  - `pylander-goal-builder` to define/build the new goal level/scenarios.
-  - `pylander-goal-analyzer` to diagnose current failure modes and propose strategies.
-  - `pylander-strategy-orchestrator` + `pylander-arena-branch-runner` to run parallel strategy experiments.
-  - `pylander-tune-routing-planner` to choose route:
-    - `pylander-tune-orchestrator` -> `pylander-tune-loop-manager` -> `pylander-regression-analyzer`, or
-    - `pylander-tune-loop-manager` -> `pylander-regression-analyzer`.
-  - `pylander-regression-analyzer` for broad regression decisioning.
-- Use `pylander-benchmark-runner` / `pylander-benchmark-analyzer` for metric-grounded tracepack execution and diagnosis.
-- Use `pylander-plot-runner` / `pylander-plot-analyzer` for focused trace-view extraction and visual trajectory/thrust anomaly triage from shared trace artifacts.
-- Use `pylander-telemetry-analyzer` for log/data-first crash/perf triage.
-- Use `pylander-telemetry-builder` when diagnosis needs additional focused probes; default to plan-first, then implement probes only when explicitly requested.
-- Use `pylander-docs-sync-planner` for drift checks and patch planning across README/docs/AGENTS.
-- Use `pylander-maintenance-planner` for recurring test/benchmark maintenance planning (`test|bench|both`).
-- Use `pylander-refactor-planner` for phased refactor plans and optional patch-set specs before execution.
-- Use `pylander-commit-manager` to plan task-scoped commits and standardize commit messages.
+## Project skills
+- Keep project skills minimal: `pylander-benchmark-runner` and `pylander-commit-manager`.
+- Use `pylander-benchmark-runner` for quick/focused/full benchmark packs, cache-aware baseline comparison, unified HTML bundle rendering from tracepack data, and direct outputs serving when needed.
+- Keep benchmark implementation in reusable app modules; skill scripts under `.agents/skills/pylander-benchmark-runner/scripts/` should stay thin wrappers.
+- Use `pylander-commit-manager` to plan goal-scoped commits, exact staging boundaries, and standardized commit messages.
 
 ## Commit hygiene
 - Treat each commit as PR scope: one problem/goal/task per commit.

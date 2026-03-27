@@ -188,7 +188,9 @@ is omitted, it prefers the machine's `.lan` hostname when available (for
 example `http://starship.lan:8765/viewer/latest/index.html`).
 
 Bundle tables use pre-rendered preview PNGs for responsiveness, while run detail
-pages render interactive Plotly charts directly from per-run trace JSON.
+pages render interactive Plotly charts directly from per-run trace JSON. The
+detail pages load Plotly from a pinned CDN URL rather than a vendored local
+asset.
 
 ## Key options
 
@@ -261,58 +263,26 @@ Trace-enabled runs emit trace metadata such as `trace_path`,
 
 ## Project skills
 
-Local project workflows live under `.agents/skills/`:
+Local project skills now stay intentionally small:
 
-- `pylander-goal-builder`: define/build new eval levels with benchmark profile coverage.
-- `pylander-goal-analyzer`: diagnose level-goal failures and produce ranked strategies.
-- `pylander-strategy-orchestrator`: run parallel strategy branches and pick a winner.
-- `pylander-tune-routing-planner`: decide whether tuning should run through tune-arena or direct tune-loop.
-- `pylander-tune-orchestrator`: run parallel tuning branches on the selected strategy winner.
-- `pylander-arena-branch-runner`: execute one focused strategy/tuning branch.
-- `pylander-tune-loop-manager`: profile-based tuning loop (`light|standard|extensive`) for direct tuning or post-arena polish.
-- `pylander-regression-analyzer`: quick/full regression diagnosis before merge.
-- `pylander-benchmark-runner` / `pylander-benchmark-analyzer`: benchmark execution and diagnosis.
-- `pylander-plot-runner` / `pylander-plot-analyzer`: focused trace-case bundle/view generation and visual diagnosis.
-- `pylander-telemetry-analyzer`: crash/perf triage from benchmark tracepacks/viewer bundles and sim/debug logs.
-- `pylander-telemetry-builder`: plan-first focused telemetry/probe design when existing signals are insufficient.
-- `pylander-docs-sync-planner`: detect docs drift and produce a minimal docs patch plan.
-- `pylander-maintenance-planner`: plan test/benchmark maintenance with `mode=test|bench|both`.
-- `pylander-refactor-planner`: decision-complete refactor planning with optional patch-set specification.
-- `pylander-commit-manager`: plan and execute task-scoped commits with standardized message format.
+- `pylander-benchmark-runner`: thin wrapper commands for quick/focused/full selector packs, cache-aware benchmark reuse/compare, unified HTML bundle rendering from the same tracepack data, and direct outputs serving when needed.
+- `pylander-commit-manager`: prompt-only commit playbook for goal-scoped staging and standardized commit messages.
 
-Workflow this skill set is built for:
+Benchmark implementation lives in reusable app modules, not skill-local logic:
+`app.selector_pack`, `app.run_cached_benchmark`, `app.trace_bundle`,
+`app.output_viewer`, and `app.serve_outputs`.
 
-1. Define or adjust goal surface with `pylander-goal-builder`.
-2. Diagnose failures and produce ranked strategies with `pylander-goal-analyzer`.
-3. Run parallel strategy evaluation with `pylander-strategy-orchestrator` and `pylander-arena-branch-runner`.
-4. Route tuning depth with `pylander-tune-routing-planner`.
-5. Tune via either `pylander-tune-orchestrator` + `pylander-arena-branch-runner` then `pylander-tune-loop-manager`, or direct `pylander-tune-loop-manager`.
-6. Run broad gate decision with `pylander-regression-analyzer`.
-7. Use `pylander-benchmark-runner` / `pylander-benchmark-analyzer` and
-   `pylander-plot-runner` / `pylander-plot-analyzer` at any stage for focused diagnosis from shared tracepack/viewer artifacts.
-8. Use `pylander-telemetry-analyzer` for log/data triage and hand off to
-   `pylander-telemetry-builder` when additional focused instrumentation is needed.
-9. Use `pylander-docs-sync-planner`, `pylander-maintenance-planner`, and
-   `pylander-refactor-planner` as cross-cutting planning tools for recurring maintenance work.
-10. Use `pylander-commit-manager` to split work into goal-based commits and keep message quality consistent.
+Benchmark skill entrypoints:
 
-For the full skill map (including intent, artifacts, and contracts), see:
-[`docs/skills_workflow.md`](docs/skills_workflow.md).
+- `uv run python .agents/skills/pylander-benchmark-runner/scripts/build_selector_pack.py --mode quick`
+- `uv run python .agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main`
+- `uv run python .agents/skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py --mode quick --baseline-ref main`
+- `uv run python .agents/skills/pylander-benchmark-runner/scripts/serve_outputs.py --port 8765`
 
-Core orchestration executors:
+Focused plot-pack generation remains available as an app utility rather than a
+separate skill:
 
-- `uv run python .agents/skills/pylander-tune-routing-planner/scripts/route_tuning.py --input <in.json> --output <out.json>`
-- `uv run python .agents/skills/pylander-arena-branch-runner/scripts/run_arena_branch.py --input <in.json> --output <out.json> --no-execute-validation`
-- `uv run python .agents/skills/pylander-strategy-orchestrator/scripts/run_strategy_arena.py --input <in.json> --output <out.json> --no-execute-workers`
-- `uv run python .agents/skills/pylander-tune-orchestrator/scripts/run_tune_arena.py --input <in.json> --output <out.json> --no-execute-workers`
-- `uv run python .agents/skills/pylander-tune-loop-manager/scripts/run_tune_loop.py --input <in.json> --output <out.json>`
-- `uv run python .agents/skills/pylander-regression-analyzer/scripts/gate_regression.py --input <in.json> --output <out.json> --no-execute`
-
-Telemetry diagnostics executors:
-
-- `uv run python .agents/skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py --compare-json <path> --output-report <out.json>`
-- `uv run python .agents/skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py --benchmark-json <path> --sim-log <sim.log> --output-report <out.json>`
-- `uv run python .agents/skills/pylander-telemetry-builder/scripts/plan_telemetry.py --triage-report <triage.json> --output-plan <plan.json>`
+- `uv run python -m app.plot_pack --help`
 
 ## Bot profiling
 

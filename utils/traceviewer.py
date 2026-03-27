@@ -2,30 +2,14 @@ from __future__ import annotations
 
 import html
 import json
-import shutil
 from pathlib import Path
 from typing import Any
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-_ASSETS_ROOT = (_REPO_ROOT / "assets" / "viewer").resolve()
-_PLOTLY_FILENAME = "plotly-basic-2.35.2.min.js"
-PLOTLY_FILENAME = _PLOTLY_FILENAME
+PLOTLY_CDN_URL = "https://cdn.plot.ly/plotly-basic-2.35.2.min.js"
 
 
-def _resolve_plotly_vendor_path() -> Path:
-    primary = (_ASSETS_ROOT / _PLOTLY_FILENAME).resolve()
-    if primary.exists():
-        return primary
-    raise SystemExit(f"Missing vendored Plotly asset: {primary}")
-
-
-def ensure_viewer_assets(outputs_root: Path) -> dict[str, str]:
-    assets_dir = (outputs_root / "viewer" / "assets").resolve()
-    assets_dir.mkdir(parents=True, exist_ok=True)
-    plotly_target = (assets_dir / _PLOTLY_FILENAME).resolve()
-    plotly_vendor_path = _resolve_plotly_vendor_path()
-    shutil.copy2(plotly_vendor_path, plotly_target)
-    return {"plotly_rel": plotly_target.relative_to(outputs_root).as_posix()}
+def ensure_viewer_assets(_outputs_root: Path) -> dict[str, str]:
+    return {"plotly_href": PLOTLY_CDN_URL}
 
 
 def _json_html(value: Any) -> str:
