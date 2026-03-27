@@ -111,6 +111,13 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
 
 
+def tracepack_meta_path(json_path: Path) -> Path:
+    name = json_path.name
+    if name.endswith(".tracepack.json"):
+        return json_path.with_name(name[: -len(".tracepack.json")] + ".meta.json")
+    return json_path.with_name(f"{json_path.stem}.meta.json")
+
+
 def _trace_entry_label(entry: dict[str, Any], *, index: int) -> str:
     selector = str(entry.get("run_key") or entry.get("selector") or "").strip()
     if selector:
@@ -179,12 +186,12 @@ def validate_cached_tracepack_assets(
     return None
 
 
-def run_command(cmd: list[str]) -> tuple[int, str]:
+def run_command(cmd: list[str], *, repo_root: Path | None = None) -> tuple[int, str]:
     print("# run")
     print(" ".join(cmd))
     proc = subprocess.run(
         cmd,
-        cwd=_REPO_ROOT,
+        cwd=(repo_root or _REPO_ROOT),
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -211,6 +218,7 @@ def load_or_run(
     reuse: bool,
     allow_run: bool,
     command_builder: Callable[..., list[str]],
+    repo_root: Path | None = None,
 ) -> tuple[Path, Path, bool]:
     out_dir = results_root / commit
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -268,7 +276,10 @@ def load_or_run(
         bot_profile_interval_s=bot_profile_interval_s,
         bot_profile_log_lines=bool(bot_profile_log_lines),
     )
-    code, output = run_command(cmd)
+    if repo_root is None:
+        code, output = run_command(cmd)
+    else:
+        code, output = run_command(cmd, repo_root=repo_root)
     if code not in (0, 1):
         worker_error_markers = (
             "Batch workers unavailable",

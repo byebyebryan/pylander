@@ -21,6 +21,3 @@ dev = [
 
 [tool.pytest.ini_options]
 addopts = "-n auto --dist load"
-markers = [
-    "skills: tests that exercise surviving skill docs and benchmark CLI entrypoints",
-]

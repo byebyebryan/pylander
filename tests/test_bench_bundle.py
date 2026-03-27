@@ -114,6 +114,8 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     candidate_json = outputs_root / "benchmarks" / "head" / "full_pack.tracepack.json"
     candidate_meta = outputs_root / "benchmarks" / "head" / "full_pack.meta.json"
     compare_json = outputs_root / "benchmarks" / "head" / "full_pack.compare.json"
+    intent_json = outputs_root / "benchmarks" / "head" / "full_pack.tracepack.intent.json"
+    analysis_json = outputs_root / "benchmarks" / "head" / "full_pack.tracepack.analysis.json"
     trace_path = trace_dir / "boost_climb_high_full_0.trace.json"
     preview_path = preview_dir / "boost_climb_high_full_0.png"
 
@@ -238,10 +240,50 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
             "compute": {},
         },
     }
+    intent_payload = {
+        "schema": "pylander.benchmark.intent.v1",
+        "goal_summary": "Check boost climb tuning against the last behavior change",
+        "request_source": "mixed",
+        "conversation_context": ["User asked for a full regression pass after boost tuning."],
+        "repo_context": {
+            "changed_files": ["bots/pdg.py", "README.md"],
+            "touched_areas": ["bot_logic", "docs"],
+        },
+        "baseline_plan": {
+            "strategy": "auto",
+            "requested_ref": "auto",
+            "resolved_ref": "8b2f6cd",
+            "skipped_commits": [
+                {
+                    "commit": "aa11bb2",
+                    "skip_reason": "changed files are limited to docs, skills, tests, or benchmark tooling",
+                    "subject": "docs: clarify benchmark workflow",
+                }
+            ],
+        },
+    }
+    analysis_payload = {
+        "schema": "pylander.benchmark.analysis.v1",
+        "verdict": "regression",
+        "summary": "Boost climb success rate regressed with one new crash.",
+        "measured_evidence": [
+            "candidate success_rate=0.900",
+            "global delta success_rate=-1.000",
+        ],
+        "likely_causes": [
+            "Changed files include bot logic, so guidance behavior is the most likely cause."
+        ],
+        "confidence": "high",
+        "follow_ups": [
+            "uv run python main.py plot boost:climb:high:full:0 --bot pdg"
+        ],
+    }
 
     candidate_json.write_text(json.dumps(candidate_payload), encoding="utf-8")
     candidate_meta.write_text("{}", encoding="utf-8")
     compare_json.write_text(json.dumps(compare_payload), encoding="utf-8")
+    intent_json.write_text(json.dumps(intent_payload), encoding="utf-8")
+    analysis_json.write_text(json.dumps(analysis_payload), encoding="utf-8")
 
     bundle = trace_bundle._bundle_payload(
         bundle_id="bundle_x",
@@ -261,6 +303,10 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         candidate_cached="False",
         compare_path=compare_json,
         compare_payload=compare_payload,
+        intent_path=intent_json,
+        intent_payload=intent_payload,
+        analysis_path=analysis_json,
+        analysis_payload=analysis_payload,
         outputs_root=outputs_root,
         viewer_assets={"plotly_href": "https://cdn.plot.ly/plotly-basic-2.35.2.min.js"},
     )
@@ -288,6 +334,14 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     assert "Show commands" in html_payload
     assert "Expand All" in html_payload
     assert "Collapse All" in html_payload
+    assert "Context" in html_payload
+    assert "Baseline" in html_payload
+    assert "Outcome" in html_payload
+    assert "Analysis" in html_payload
+    assert "intent json" in html_payload
+    assert "analysis json" in html_payload
+    assert "Check boost climb tuning against the last behavior change" in html_payload
+    assert "Boost climb success rate regressed with one new crash." in html_payload
     assert "<th>Details</th>" in html_payload
     assert "boost:climb:high:full" in html_payload
     assert (
@@ -309,6 +363,8 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         bundle_json_payload["viewer_assets"]["plotly_href"]
         == "https://cdn.plot.ly/plotly-basic-2.35.2.min.js"
     )
+    assert bundle_json_payload["intent"]["baseline_resolved_ref"] == "8b2f6cd"
+    assert bundle_json_payload["analysis"]["verdict"] == "regression"
     assert bundle_json_payload["timing"]["benchmark_wall_clock_s"] == 12.5
     assert bundle_json_payload["timing"]["bundle_render_wall_clock_s"] is not None
     assert bundle_json_payload["timing"]["total_wall_clock_s"] is not None
@@ -383,6 +439,8 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         candidate_json_path=candidate_json,
         candidate_meta_path=candidate_meta,
         compare_path=compare_json,
+        intent_path=None,
+        analysis_path=None,
         benchmark_cmd=[
             "uv",
             "run",
@@ -407,3 +465,5 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         == "benchmarks/head/full_pack.compare.json"
     )
     assert rendered_payload["benchmark"]["candidate"]["cached"] == "True"
+    assert rendered_payload["intent"]["goal_summary"].startswith("Check boost climb")
+    assert rendered_payload["analysis"]["verdict"] == "regression"

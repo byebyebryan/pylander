@@ -106,7 +106,8 @@ Command used:
 ```bash
 uv run python -m app.bench run \
   --mode quick \
-  --baseline-ref main \
+  --baseline-ref auto \
+  --missing-baseline seed \
   --bot pdg
 ```
 
