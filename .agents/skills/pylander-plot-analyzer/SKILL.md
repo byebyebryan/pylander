@@ -1,11 +1,11 @@
 ---
 name: pylander-plot-analyzer
-description: Analyze Pylander plot bundles from a plot-pack manifest, rank visual anomalies, and map them to likely control/phase issues.
+description: Analyze Pylander trace-backed detail/preview views from a focused manifest, rank visual anomalies, and map them to likely control/phase issues.
 ---
 
 # Pylander Plot Analyzer
 
-Use this skill to interpret generated plot bundles.
+Use this skill to interpret generated trace-backed detail and preview views.
 
 ## Input
 
@@ -14,8 +14,8 @@ Use this skill to interpret generated plot bundles.
 
 ## Workflow
 
-1. Read pack manifest and enumerate bundle files per case.
-2. Analyze split panels first (`spatial_*`, `timeseries_*`), then use combined overview for context.
+1. Read the focused manifest and enumerate trace/detail artifacts per case.
+2. Analyze per-case trace-backed detail pages and previews first, then use overview context when available.
 3. Produce ranked findings with evidence:
 - trajectory undershoot/overshoot patterns
 - late correction burden

@@ -26,6 +26,7 @@ bench_bundle = _load_module(
     "bench_bundle_script",
     _script(".agents/skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py"),
 )
+traceviewer = _load_module("traceviewer_module", _script("utils/traceviewer.py"))
 
 
 def test_parse_section_reads_key_value_block() -> None:
@@ -58,6 +59,20 @@ def test_discover_viewer_hostname_prefers_lan(monkeypatch) -> None:
     monkeypatch.setattr(bench_bundle, "_local_ip", lambda: "192.168.1.212")
 
     assert bench_bundle._discover_viewer_hostname() == "starship.lan"
+
+
+def test_traceviewer_uses_repo_level_vendor_asset(monkeypatch, tmp_path: Path) -> None:
+    repo_asset = tmp_path / "assets" / "viewer" / traceviewer._PLOTLY_FILENAME
+    repo_asset.parent.mkdir(parents=True, exist_ok=True)
+    repo_asset.write_text("repo-level", encoding="utf-8")
+
+    monkeypatch.setattr(traceviewer, "_ASSETS_ROOT", repo_asset.parent)
+
+    outputs_root = tmp_path / "outputs"
+    viewer_assets = traceviewer.ensure_viewer_assets(outputs_root)
+
+    copied_asset = outputs_root / viewer_assets["plotly_rel"]
+    assert copied_asset.read_text(encoding="utf-8") == "repo-level"
 
 
 def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:

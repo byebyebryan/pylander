@@ -272,8 +272,8 @@ Local project workflows live under `.agents/skills/`:
 - `pylander-tune-loop-manager`: profile-based tuning loop (`light|standard|extensive`) for direct tuning or post-arena polish.
 - `pylander-regression-analyzer`: quick/full regression diagnosis before merge.
 - `pylander-benchmark-runner` / `pylander-benchmark-analyzer`: benchmark execution and diagnosis.
-- `pylander-plot-runner` / `pylander-plot-analyzer`: plot pack generation and visual diagnosis.
-- `pylander-telemetry-analyzer`: crash/perf triage from benchmark artifacts and sim/debug logs.
+- `pylander-plot-runner` / `pylander-plot-analyzer`: focused trace-case bundle/view generation and visual diagnosis.
+- `pylander-telemetry-analyzer`: crash/perf triage from benchmark tracepacks/viewer bundles and sim/debug logs.
 - `pylander-telemetry-builder`: plan-first focused telemetry/probe design when existing signals are insufficient.
 - `pylander-docs-sync-planner`: detect docs drift and produce a minimal docs patch plan.
 - `pylander-maintenance-planner`: plan test/benchmark maintenance with `mode=test|bench|both`.
@@ -289,7 +289,7 @@ Workflow this skill set is built for:
 5. Tune via either `pylander-tune-orchestrator` + `pylander-arena-branch-runner` then `pylander-tune-loop-manager`, or direct `pylander-tune-loop-manager`.
 6. Run broad gate decision with `pylander-regression-analyzer`.
 7. Use `pylander-benchmark-runner` / `pylander-benchmark-analyzer` and
-   `pylander-plot-runner` / `pylander-plot-analyzer` at any stage for focused diagnosis.
+   `pylander-plot-runner` / `pylander-plot-analyzer` at any stage for focused diagnosis from shared tracepack/viewer artifacts.
 8. Use `pylander-telemetry-analyzer` for log/data triage and hand off to
    `pylander-telemetry-builder` when additional focused instrumentation is needed.
 9. Use `pylander-docs-sync-planner`, `pylander-maintenance-planner`, and

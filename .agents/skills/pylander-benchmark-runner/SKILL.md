@@ -7,7 +7,7 @@ description: Run reproducible Pylander benchmark packs using selector syntax (sm
 
 Use this skill when the user asks to run benchmarks, compare a change against a baseline, or check regressions after bot/controller tuning.
 
-If the user asks for plots, a clickable report, or something they can open from
+If the user asks for trace views, a clickable report, or something they can open from
 another machine, prefer the static bundle workflow:
 
 `uv run python .agents/skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py ...`
@@ -17,7 +17,7 @@ interactive run-detail pages from trace JSON, checks whether the outputs server
 is already running, starts it in the background if not, and prints the stable
 latest URL.
 
-When the user says "full bench and plots", interpret that as:
+When the user says "full bench and plots", interpret that as a full benchmark plus trace-bundle report:
 - `--mode full`
 - current full-pack coverage across `plunge`, `boost`, and `terminal`
 - interactive detail pages for every run in the pack
@@ -114,7 +114,7 @@ Policy behavior:
 
 Remote-share variant:
 
-5. When the request implies "show me the plots/report", use
+5. When the request implies "show me the trace views/report", use
 `gen_bench_bundle.py` instead of only `run_cached_benchmark.py`, and return the
 latest reachable URL rather than just filesystem paths.
 
