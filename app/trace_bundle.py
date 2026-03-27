@@ -1255,14 +1255,6 @@ def _render_run_detail_html(
     selector = str(run.get("selector") or "unknown")
     trace_payload = _load_trace_payload(run, outputs_root=outputs_root)
     detail_dir = (outputs_root / str(run["detail_rel"])).parent
-    index_href = (
-        _href_from(
-            detail_dir,
-            str(bundle.get("bundle_page_path") or ""),
-            outputs_root=outputs_root,
-        )
-        or "../index.html"
-    )
     latest_href = _href_from(
         detail_dir, str(bundle.get("latest_page_path") or ""), outputs_root=outputs_root
     )
@@ -1304,10 +1296,7 @@ def _render_run_detail_html(
         record=record,
         trace_payload=trace_payload,
         plotly_href=plotly_href,
-        top_links=[
-            ("bundle report", index_href),
-            ("latest page", latest_href),
-        ],
+        top_links=[("home", latest_href)],
         raw_links=[
             ("candidate json", candidate_href),
             ("trace json", trace_href),
@@ -1535,6 +1524,28 @@ def _render_bundle_html(
       text-decoration: none;
     }}
     a:hover {{ text-decoration: underline; }}
+    .nav-button {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      background: rgba(14, 107, 96, 0.08);
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font: inherit;
+      font-weight: 700;
+      text-decoration: none;
+    }}
+    .nav-button:hover {{
+      background: rgba(14, 107, 96, 0.14);
+      text-decoration: none;
+    }}
+    .header-actions {{
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }}
     .links {{
       color: var(--muted);
       font-size: 0.92rem;
@@ -1629,13 +1640,13 @@ def _render_bundle_html(
     }}
   </style>
 </head>
-<body>
+  <body>
   <main>
     <header>
+      {f'<div class="header-actions"><a class="nav-button" href="{html.escape(latest_href)}">home</a></div>' if latest_href else ""}
       <h1>{html.escape(str(bundle.get("title") or "Pylander Bench Bundle"))}</h1>
       {summary_sections_html}
       <p class="links">{" | ".join(raw_links)}</p>
-      <p class="links">{f'<a href="{html.escape(latest_href)}">latest page</a>' if latest_href else ""}</p>
       <details>
         <summary>Show commands</summary>
         <p><code>{benchmark_cmd}</code></p>

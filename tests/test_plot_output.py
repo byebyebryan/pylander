@@ -17,11 +17,13 @@ from utils.plot import (
     _combined_spatial_arrangement,
     _compute_figure_size,
     _idealized_reference_apex_y,
+    _idealized_reference_exit_angle_deg,
     _idealized_reference_curve,
     _idealized_reference_impact_angle_deg,
     _projected_apex_point,
     _projected_intercept_from_state,
     _spatial_limits_with_target,
+    _vx_corrected_ballistic_reference_curve,
     _sorted_gate_events,
     Plotter,
     save_trajectory_plots,
@@ -307,6 +309,28 @@ def test_idealized_reference_apex_y_keeps_downhill_peak_at_start_height_when_ent
     assert apex_y == pytest.approx(120.0)
 
 
+def test_idealized_reference_apex_y_raises_downhill_peak_for_exit_angle_policy() -> None:
+    apex_y = _idealized_reference_apex_y(
+        start_x=0.0,
+        start_y=4.0,
+        target_x=400.0,
+        target_y=-800.0,
+        downhill_policy="exit_angle",
+        min_exit_angle_deg=45.0,
+    )
+    exit_angle_deg = _idealized_reference_exit_angle_deg(
+        start_x=0.0,
+        start_y=4.0,
+        target_x=400.0,
+        target_y=-800.0,
+        apex_y=apex_y,
+    )
+
+    assert apex_y > 4.0
+    assert exit_angle_deg is not None
+    assert exit_angle_deg >= 45.0
+
+
 def test_idealized_reference_apex_y_handles_near_vertical_transfer() -> None:
     apex_y = _idealized_reference_apex_y(
         start_x=0.0,
@@ -343,6 +367,44 @@ def test_idealized_reference_curve_exists_when_actual_samples_peak_below_target(
 
     assert apex_y > 400.0
     assert curve is not None
+
+
+def test_vx_corrected_ballistic_reference_curve_lands_at_target_center() -> None:
+    curve = _vx_corrected_ballistic_reference_curve(
+        start_x=524.9060006069626,
+        start_y=620.670373906408,
+        vx=-56.43182235213426,
+        vy_up=-0.051971032748025926,
+        target_x=0.0,
+        target_y=0.0,
+    )
+
+    assert curve is not None
+    xs, ys = curve
+    assert xs[0] == pytest.approx(524.9060006069626)
+    assert ys[0] == pytest.approx(620.670373906408)
+    assert xs[-1] == pytest.approx(0.0)
+    assert ys[-1] == pytest.approx(0.0)
+    assert xs[1] - xs[0] == pytest.approx(xs[2] - xs[1], rel=1e-6, abs=1e-6)
+
+
+def test_spatial_limits_expand_to_include_overlay_curves() -> None:
+    ctx = _build_plot_context(FlatTerrain(), _samples())
+    min_x, max_x, lower_y, upper_y = _spatial_limits_with_target(
+        ctx,
+        target={"x": 120.0, "y": 0.0, "size": 110.0, "label": "landing target"},
+        overlay_curves=[
+            {
+                "xs": [240.0, 420.0],
+                "ys": [60.0, 520.0],
+            }
+        ],
+    )
+
+    assert max_x >= 428.0
+    assert upper_y >= 528.0
+    assert min_x <= ctx.min_x
+    assert lower_y <= ctx.lower_y
 
 
 def test_ballistic_projection_series_uses_apex_while_climbing_and_current_height_while_descending() -> None:

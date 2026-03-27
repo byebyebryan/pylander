@@ -493,6 +493,7 @@ def _spatial_limits_with_target(
     *,
     target: dict[str, float | str | None] | None,
     extra_points: list[tuple[float, float]] | None = None,
+    overlay_curves: list[dict[str, Any] | None] | None = None,
 ) -> tuple[float, float, float, float]:
     min_x = float(ctx.min_x)
     max_x = float(ctx.max_x)
@@ -516,6 +517,24 @@ def _spatial_limits_with_target(
         max_x = max(max_x, target_x + half_width + x_pad)
         lower_y = min(lower_y, target_y - cap_height - y_pad)
         upper_y = max(upper_y, target_y + cap_height + y_pad)
+    if overlay_curves:
+        curve_x_pad = max(8.0, 0.02 * max(max_x - min_x, 1.0))
+        curve_y_pad = max(8.0, 0.03 * max(upper_y - lower_y, 1.0))
+        for curve in overlay_curves:
+            if not isinstance(curve, dict):
+                continue
+            xs = list(curve.get("xs") or [])
+            ys = list(curve.get("ys") or [])
+            for point_x, point_y in zip(xs, ys, strict=False):
+                try:
+                    px = float(point_x)
+                    py = float(point_y)
+                except (TypeError, ValueError):
+                    continue
+                min_x = min(min_x, px - curve_x_pad)
+                max_x = max(max_x, px + curve_x_pad)
+                lower_y = min(lower_y, py - curve_y_pad)
+                upper_y = max(upper_y, py + curve_y_pad)
     if extra_points:
         point_x_pad = max(8.0, 0.02 * max(max_x - min_x, 1.0))
         point_y_pad = max(8.0, 0.03 * max(upper_y - lower_y, 1.0))
@@ -715,6 +734,47 @@ def _ballistic_curve_from_state(
     return xs, ys, intercept.has_target_y_solution
 
 
+def _vx_corrected_ballistic_reference_curve(
+    *,
+    start_x: float,
+    start_y: float,
+    vx: float,
+    vy_up: float,
+    target_x: float,
+    target_y: float,
+    gravity_mag: float = 9.8,
+) -> tuple[list[float], list[float]] | None:
+    import numpy as np
+
+    intercept = _projected_intercept_from_state(
+        x=start_x,
+        y=start_y,
+        vx=vx,
+        vy_up=vy_up,
+        target_x=target_x,
+        target_y=target_y,
+        gravity_mag=gravity_mag,
+    )
+    if not intercept.has_target_y_solution or intercept.t_end <= 1e-6:
+        return None
+
+    flight_t = float(intercept.t_end)
+    point_count = max(24, min(80, int(16 + (flight_t * 10.0))))
+    t_vals = np.linspace(0.0, flight_t, point_count)
+    corrected_vx = (float(target_x) - float(start_x)) / flight_t
+    xs: list[float] = []
+    ys: list[float] = []
+    for t_val in t_vals:
+        raw_x = float(start_x + (corrected_vx * t_val))
+        raw_y = float(start_y + (vy_up * t_val) - (0.5 * gravity_mag * t_val * t_val))
+        xs.append(raw_x)
+        ys.append(raw_y)
+    if xs:
+        xs[-1] = float(target_x)
+        ys[-1] = float(target_y)
+    return xs, ys
+
+
 def _idealized_reference_curve(
     *,
     start_x: float,
@@ -802,6 +862,29 @@ def _idealized_reference_impact_angle_deg(
     return math.degrees(math.atan2(descent_speed, abs(float(solution.vx))))
 
 
+def _idealized_reference_exit_angle_deg(
+    *,
+    start_x: float,
+    start_y: float,
+    target_x: float,
+    target_y: float,
+    apex_y: float,
+    gravity_mag: float = 9.8,
+) -> float | None:
+    solution = _idealized_reference_kinematics(
+        start_x=start_x,
+        start_y=start_y,
+        target_x=target_x,
+        target_y=target_y,
+        apex_y=apex_y,
+        gravity_mag=gravity_mag,
+    )
+    if solution is None:
+        return None
+    ascent_speed = max(0.0, float(solution.vy_up))
+    return math.degrees(math.atan2(ascent_speed, abs(float(solution.vx))))
+
+
 def _idealized_reference_apex_y(
     *,
     start_x: float,
@@ -809,6 +892,8 @@ def _idealized_reference_apex_y(
     target_x: float,
     target_y: float,
     min_descent_angle_deg: float = 45.0,
+    min_exit_angle_deg: float = 45.0,
+    downhill_policy: Literal["descent_angle", "exit_angle"] = "descent_angle",
     gravity_mag: float = 9.8,
 ) -> float:
     start_x = float(start_x)
@@ -816,6 +901,7 @@ def _idealized_reference_apex_y(
     target_x = float(target_x)
     target_y = float(target_y)
     min_descent_angle_deg = float(min_descent_angle_deg)
+    min_exit_angle_deg = float(min_exit_angle_deg)
     dx = target_x - start_x
     dy = target_y - start_y
     if target_y > start_y:
@@ -826,6 +912,17 @@ def _idealized_reference_apex_y(
         return base_peak
 
     def meets_angle_floor(peak_y: float) -> bool:
+        if target_y < start_y and downhill_policy == "exit_angle":
+            exit_angle_deg = _idealized_reference_exit_angle_deg(
+                start_x=start_x,
+                start_y=start_y,
+                target_x=target_x,
+                target_y=target_y,
+                apex_y=peak_y,
+                gravity_mag=gravity_mag,
+            )
+            return exit_angle_deg is not None and exit_angle_deg >= min_exit_angle_deg
+
         impact_angle_deg = _idealized_reference_impact_angle_deg(
             start_x=start_x,
             start_y=start_y,
@@ -876,6 +973,7 @@ def _draw_spatial_common(
     events,
     target,
     extra_points: list[tuple[float, float]] | None = None,
+    overlay_curves: list[dict[str, Any] | None] | None = None,
     title: str,
     legend_ax=None,
     show_xlabel: bool = True,
@@ -886,6 +984,7 @@ def _draw_spatial_common(
         ctx,
         target=target,
         extra_points=extra_points,
+        overlay_curves=overlay_curves,
     )
     ax.set_xlim(min_x, max_x)
     ax.set_ylim(lower_y, upper_y)
@@ -1112,6 +1211,7 @@ def _draw_trajectory_comparison_spatial_panel(
     _draw_apex_marker(ax, point=actual_apex, label="actual apex", color="#1b263b")
 
     boost_cutoff_event = _find_event(events, name="boost_cutoff")
+    overlay_curves: list[dict[str, Any]] = []
     if target is None:
         if cax is not None:
             cax.axis("off")
@@ -1121,6 +1221,7 @@ def _draw_trajectory_comparison_spatial_panel(
             events=events,
             target=target,
             extra_points=overlay_points or None,
+            overlay_curves=overlay_curves or None,
             title=title,
             legend_ax=legend_ax,
             show_xlabel=show_xlabel,
@@ -1155,6 +1256,12 @@ def _draw_trajectory_comparison_spatial_panel(
         ref_apex = _curve_apex_point(ref_xs, ref_ys)
         if ref_apex is not None:
             overlay_points.append(ref_apex)
+        overlay_curves.append(
+            {
+                "xs": [float(value) for value in ref_xs],
+                "ys": [float(value) for value in ref_ys],
+            }
+        )
         ref_line = ax.plot(
             ref_xs,
             ref_ys,
@@ -1186,6 +1293,12 @@ def _draw_trajectory_comparison_spatial_panel(
                 boost_apex = _curve_apex_point(boost_curve_xs, boost_curve_ys)
                 if boost_apex is not None:
                     overlay_points.append(boost_apex)
+                overlay_curves.append(
+                    {
+                        "xs": [float(value) for value in boost_curve_xs],
+                        "ys": [float(value) for value in boost_curve_ys],
+                    }
+                )
                 boost_line = ax.plot(
                     boost_curve_xs,
                     boost_curve_ys,
@@ -1219,6 +1332,7 @@ def _draw_trajectory_comparison_spatial_panel(
         events=events,
         target=target,
         extra_points=overlay_points or None,
+        overlay_curves=overlay_curves or None,
         title=title,
         legend_ax=legend_ax,
         show_xlabel=show_xlabel,

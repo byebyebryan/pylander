@@ -108,8 +108,8 @@ def render_trace_detail_html(
     events = list(plot_payload.get("events") or trace_payload.get("events") or [])
     trace_plot_json = _json_html(plot_payload)
     cards = _render_metric_card_grid(_run_metric_cards(record))
-    top_links_html = " | ".join(
-        f'<a href="{html.escape(href)}">{html.escape(label)}</a>'
+    top_links_html = "".join(
+        f'<a class="nav-button" href="{html.escape(href)}">{html.escape(label)}</a>'
         for label, href in top_links
         if href
     )
@@ -147,6 +147,11 @@ def render_trace_detail_html(
     header, section {{ padding: 18px 20px; margin-bottom: 18px; }}
     h1, h2, h3 {{ margin: 0 0 10px; font-family: "Palatino Linotype", "Book Antiqua", Palatino, serif; }}
     .meta, .links, .muted {{ color: var(--muted); }}
+    .header-actions {{
+      display: flex;
+      gap: 10px;
+      margin-bottom: 10px;
+    }}
     .banner {{ display: inline-block; padding: 8px 12px; border-radius: 999px; font-weight: 700; background: rgba(14, 107, 96, 0.12); color: var(--accent); }}
     .banner.bad {{ background: rgba(142, 59, 46, 0.12); color: var(--warn); }}
     .cards {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-top: 16px; }}
@@ -166,13 +171,30 @@ def render_trace_detail_html(
     .plot-toolbar button.active {{ background: var(--accent); color: #fffaf0; border-color: var(--accent); }}
     .plot-frame .chart {{ width: 100%; height: 380px; border: 1px solid var(--line); border-radius: 12px; background: #fbf8f1; }}
     code {{ font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; font-size: 0.9rem; white-space: pre-wrap; word-break: break-word; }}
+    .nav-button {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid var(--line);
+      background: rgba(14, 107, 96, 0.08);
+      color: var(--accent);
+      border-radius: 999px;
+      padding: 8px 14px;
+      font: inherit;
+      font-weight: 700;
+      text-decoration: none;
+    }}
+    .nav-button:hover {{
+      background: rgba(14, 107, 96, 0.14);
+      text-decoration: none;
+    }}
   </style>
   <script src="{html.escape(plotly_href)}"></script>
 </head>
 <body>
   <main>
     <header>
-      <p class="links">{top_links_html}</p>
+      <div class="header-actions">{top_links_html}</div>
       <h1>{html.escape(selector)}</h1>
       <p class="meta">scenario={html.escape(str(scenario_selector or ""))}</p>
       <p class="banner {"bad" if not bool(record.get("success", False)) else ""}">{html.escape(str(record.get("state") or "-"))} / failure={html.escape(str(record.get("failure_mode") or "-"))}</p>
@@ -551,7 +573,7 @@ def render_trace_detail_html(
     const referenceTrace = Array.isArray(reference.xs) ? {{
       type: "scatter",
       mode: "lines",
-      name: "reference",
+      name: String(reference.label || plotPayload.reference_label || "reference"),
       x: reference.xs,
       y: reference.ys,
       line: {{color: "#5b73c6", width: 2, dash: "dash"}},

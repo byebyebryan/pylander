@@ -150,6 +150,8 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
                 "xs": [-20.0, -8.0, 0.0],
                 "ys": [48.0, 30.0, 0.0],
                 "apex_y": 52.0,
+                "kind": "ballistic_vx_adjusted",
+                "label": "ballistic ref (vx adjusted)",
             },
         },
     }
@@ -350,7 +352,8 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     )
     assert "plot pack" not in html_payload.lower()
     assert "Bench Id" in latest_payload
-    assert "latest page" in latest_payload
+    assert 'class="nav-button"' in latest_payload
+    assert ">home<" in latest_payload
     assert "../bundles/bundle_x/runs/boost_climb_high_full_0.html" in latest_payload
     assert (
         bundle_json_payload["benchmark"]["candidate"]["schema"]
@@ -423,6 +426,11 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         'return eventName === "success" || eventName === "crash" ? 16.5 : 15;'
         in detail_html
     )
+    assert 'name: String(reference.label || plotPayload.reference_label || "reference")' in detail_html
+    assert "ballistic ref (vx adjusted)" in detail_html
+    assert "bundle report" not in detail_html
+    assert "latest page" not in detail_html
+    assert ">home<" in detail_html
     assert "trace json" in detail_html
     assert "plot manifest" not in detail_html
     assert 'https://cdn.plot.ly/plotly-basic-2.35.2.min.js' in detail_html
