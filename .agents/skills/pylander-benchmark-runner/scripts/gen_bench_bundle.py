@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import html
 import json
-import os
 import socket
 import subprocess
 import sys
@@ -27,8 +26,15 @@ from levels.registry import (  # noqa: E402
     selector_children,
     selector_path_looks_like_seed,
 )
-from skills.lib.trace_report import ensure_viewer_assets, render_trace_detail_html  # noqa: E402
 from skills.lib.orchestration import load_json, run_command  # noqa: E402
+from utils.tracebundle import (  # noqa: E402
+    artifact_path as _artifact_path,
+    href_from_outputs as _href_from,
+    output_path as _output_path,
+    rel_to_outputs as _rel_to_outputs,
+    sanitize_token as _sanitize_token,
+)
+from utils.traceviewer import ensure_viewer_assets, render_trace_detail_html  # noqa: E402
 
 _SERVER_SCRIPT = (
     _REPO_ROOT
@@ -40,23 +46,6 @@ _SERVER_SCRIPT = (
 ).resolve()
 _SERVER_SERVICE_NAME = "pylander_outputs_server"
 _SERVER_HEALTH_PATH = "/__pylander_viewer_health__"
-
-
-def _sanitize_token(value: str) -> str:
-    out = []
-    prev_us = False
-    for ch in str(value).lower().strip():
-        if ch.isalnum() or ch in ("-", "."):
-            out.append(ch)
-            prev_us = False
-        else:
-            if not prev_us:
-                out.append("_")
-                prev_us = True
-    token = "".join(out).strip("._")
-    while "__" in token:
-        token = token.replace("__", "_")
-    return token or "run"
 
 
 def _parse_section(output: str, section_name: str) -> dict[str, str]:
@@ -82,47 +71,8 @@ def _parse_section(output: str, section_name: str) -> dict[str, str]:
     return {}
 
 
-def _output_path(path_value: str | None) -> Path | None:
-    if not path_value:
-        return None
-    path = Path(path_value.strip())
-    if not path.is_absolute():
-        path = (_REPO_ROOT / path).resolve()
-    return path
-
-
-def _artifact_path(path_value: str | None, *, outputs_root: Path) -> Path | None:
-    if not path_value:
-        return None
-    path = Path(str(path_value).strip())
-    if path.is_absolute():
-        return path.resolve()
-    if path.parts and path.parts[0] == "outputs":
-        return (outputs_root.parent / path).resolve()
-    return (outputs_root / path).resolve()
-
-
 def _derive_meta_path(candidate_json: Path) -> Path:
     return candidate_json.with_name(f"{candidate_json.stem}.meta.json")
-
-
-def _rel_to_outputs(path: Path | None, *, outputs_root: Path) -> str | None:
-    if path is None:
-        return None
-    try:
-        return path.resolve().relative_to(outputs_root).as_posix()
-    except ValueError:
-        return None
-
-
-def _href_from(
-    bundle_dir: Path, target_rel: str | None, *, outputs_root: Path
-) -> str | None:
-    if not target_rel:
-        return None
-    target = outputs_root / target_rel
-    rel = os.path.relpath(target, bundle_dir)
-    return rel.replace(os.sep, "/")
 
 
 def _format_float(value: Any, digits: int = 2) -> str:
@@ -176,47 +126,6 @@ def _scenario_representative_sort_key(
     success_rank = 1 if bool(record.get("success", False)) else 0
     crash_rank = 0 if str(record.get("state") or "").strip().lower() == "crashed" else 1
     return (success_rank, crash_rank, _record_seed_sort_key(record))
-
-
-def _scenario_plot_selectors(candidate_payload: dict[str, Any]) -> list[str]:
-    grouped: dict[str, dict[str, Any]] = {}
-    for raw_record in candidate_payload.get("records") or []:
-        if not isinstance(raw_record, dict):
-            continue
-        record = dict(raw_record)
-        scenario_selector = render_record_selector(record, include_seed=False)
-        if not scenario_selector:
-            continue
-        current = grouped.get(scenario_selector)
-        if current is None or _scenario_representative_sort_key(
-            record
-        ) < _scenario_representative_sort_key(current):
-            grouped[scenario_selector] = record
-
-    selectors: list[str] = []
-    for scenario_selector in sorted(grouped):
-        selectors.append(render_record_selector(grouped[scenario_selector]))
-    return selectors
-
-
-def _all_run_plot_selectors(candidate_payload: dict[str, Any]) -> list[str]:
-    records = [
-        dict(item)
-        for item in candidate_payload.get("records") or []
-        if isinstance(item, dict)
-    ]
-    records.sort(
-        key=lambda record: (
-            _selector_sort_key(_scenario_selector_for_record(record)),
-            _record_seed_sort_key(record),
-        )
-    )
-    selectors: list[str] = []
-    for record in records:
-        selector = render_record_selector(record)
-        if selector:
-            selectors.append(selector)
-    return selectors
 
 
 def _summary_metric(
@@ -438,74 +347,6 @@ def _render_table(headers: list[str], rows: list[list[str]]) -> str:
     )
 
 
-def _render_plot_cases(
-    plot_pack: dict[str, Any] | None,
-    *,
-    bundle_dir: Path,
-    outputs_root: Path,
-) -> str:
-    if not plot_pack:
-        return "<p>No plots generated.</p>"
-
-    cards: list[str] = []
-    for case in plot_pack.get("cases") or []:
-        if not isinstance(case, dict):
-            continue
-        selector = html.escape(str(case.get("selector") or "unknown"))
-        reason = html.escape(str(case.get("reason") or ""))
-        severity = html.escape(str(case.get("severity") or ""))
-        command = " ".join(str(part) for part in (case.get("command") or []))
-        preview_href = None
-        plot_links: list[str] = []
-        for raw_path in case.get("plot_paths") or []:
-            target_rel = _rel_to_outputs(
-                _artifact_path(str(raw_path), outputs_root=outputs_root),
-                outputs_root=outputs_root,
-            )
-            href = _href_from(bundle_dir, target_rel, outputs_root=outputs_root)
-            if href is None:
-                continue
-            label = html.escape(Path(str(raw_path)).name)
-            if preview_href is None:
-                preview_href = href
-            plot_links.append(f'<a href="{html.escape(href)}">{label}</a>')
-        meta_links: list[str] = []
-        for label, raw_path in (
-            ("manifest", case.get("plot_manifest_path")),
-            ("bundle_dir", case.get("plot_bundle_dir")),
-        ):
-            target_rel = _rel_to_outputs(
-                _artifact_path(str(raw_path), outputs_root=outputs_root)
-                if raw_path
-                else None,
-                outputs_root=outputs_root,
-            )
-            href = _href_from(bundle_dir, target_rel, outputs_root=outputs_root)
-            if href is None:
-                continue
-            meta_links.append(f'<a href="{html.escape(href)}">{html.escape(label)}</a>')
-
-        preview_html = (
-            f'<a href="{html.escape(preview_href)}"><img src="{html.escape(preview_href)}" alt="{selector}"></a>'
-            if preview_href
-            else ""
-        )
-        cards.append(
-            '<article class="plot-card">'
-            f"<h3>{selector}</h3>"
-            f'<p class="meta">severity={severity} reason={reason}</p>'
-            f"{preview_html}"
-            f'<p class="cmd"><code>{html.escape(command)}</code></p>'
-            f'<p class="links">{" | ".join(plot_links + meta_links) if (plot_links or meta_links) else "(no plot links)"}</p>'
-            "</article>"
-        )
-    return (
-        '<div class="plot-grid">' + "".join(cards) + "</div>"
-        if cards
-        else "<p>No plots generated.</p>"
-    )
-
-
 def _selector_sort_key(selector: str) -> tuple[tuple[int, int | str], ...]:
     parts = [part for part in str(selector).split(":") if part]
     key: list[tuple[int, int | str]] = []
@@ -662,27 +503,6 @@ def _load_plot_case_assets(
         "events": list(manifest_payload.get("events") or []),
         "target": dict(manifest_payload.get("target") or {}),
     }
-
-
-def _run_metric_cards(record: dict[str, Any]) -> list[tuple[str, str]]:
-    cards: list[tuple[str, str]] = [
-        ("State", str(record.get("state") or "-")),
-        ("Failure", str(record.get("failure_mode") or "-")),
-        ("Fuel", _format_float(record.get("fuel_consumed"), 3)),
-        ("Time", _format_float(record.get("time"), 3)),
-    ]
-    if record.get("landing_offset") is not None:
-        cards.append(("Offset", _format_float(record.get("landing_offset"), 3)))
-    if record.get("avg_speed") is not None:
-        cards.append(("Avg Speed", _format_float(record.get("avg_speed"), 3)))
-    if record.get("bot_profile_total_ms_per_tick") is not None:
-        cards.append(
-            (
-                "Bot ms/tick",
-                _format_float(record.get("bot_profile_total_ms_per_tick"), 3),
-            )
-        )
-    return cards
 
 
 def _mean(values: list[float]) -> float | None:
@@ -955,23 +775,6 @@ def _render_metric_card_grid(cards: list[tuple[str, str]]) -> str:
         "</div>"
         for label, value in cards
     )
-
-
-def _render_events_table(events: list[dict[str, Any]]) -> str:
-    rows = []
-    for event in events:
-        if not isinstance(event, dict):
-            continue
-        rows.append(
-            [
-                html.escape(str(event.get("name") or "")),
-                html.escape(str(event.get("label") or "")),
-                _format_float(event.get("time_s"), 3),
-                _format_float(event.get("x"), 3),
-                _format_float(event.get("y"), 3),
-            ]
-        )
-    return _render_table(["Name", "Label", "Time", "X", "Y"], rows)
 
 
 def _render_scenario_sections(
@@ -1655,22 +1458,6 @@ def _render_bundle_html(
 """
 
 
-def _redirect_html(target_href: str) -> str:
-    escaped = html.escape(target_href)
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta http-equiv="refresh" content="0; url={escaped}">
-  <title>Latest Pylander Bundle</title>
-</head>
-<body>
-  <p>Redirecting to <a href="{escaped}">{escaped}</a>.</p>
-</body>
-</html>
-"""
-
-
 def _benchmark_command(args: argparse.Namespace) -> list[str]:
     cmd = [
         "uv",
@@ -1710,58 +1497,6 @@ def _benchmark_command(args: argparse.Namespace) -> list[str]:
         cmd.extend(["--baseline-ref", args.baseline_ref])
     if args.no_reuse:
         cmd.append("--no-reuse")
-    return cmd
-
-
-def _plot_pack_command(
-    *,
-    benchmark_json: Path,
-    candidate_payload: dict[str, Any],
-    compare_json: Path | None,
-    bundle_plot_manifest: Path,
-    args: argparse.Namespace,
-) -> list[str]:
-    mode = "triage" if compare_json is not None else "health"
-    cmd = [
-        "uv",
-        "run",
-        "python",
-        ".agents/skills/pylander-plot-runner/scripts/build_plot_pack.py",
-        "--mode",
-        mode,
-        "--benchmark-json",
-        str(benchmark_json),
-        "--bot",
-        args.bot,
-        "--top-n",
-        str(max(1, int(args.top_plots))),
-        "--plot-mode",
-        args.plot_mode,
-        "--plot-output",
-        args.plot_output,
-        "--plot-max-side-px",
-        str(max(256, int(args.plot_max_side_px))),
-        "--plot-workers",
-        str(int(args.plot_workers)),
-        "--output-manifest",
-        str(bundle_plot_manifest),
-    ]
-    plot_scope = str(args.plot_scope).strip().lower()
-    selectors: list[str] | None = None
-    if plot_scope == "per-scenario":
-        selectors = _scenario_plot_selectors(candidate_payload)
-    elif plot_scope == "per-run":
-        selectors = _all_run_plot_selectors(candidate_payload)
-    if selectors is not None:
-        if not selectors:
-            raise SystemExit(
-                f"Unable to resolve {plot_scope} plot selectors from benchmark records."
-            )
-        cmd[cmd.index("--mode") + 1] = "focus"
-        cmd[cmd.index("--top-n") + 1] = str(len(selectors))
-        cmd.extend(["--selectors", *selectors])
-    if compare_json is not None:
-        cmd.extend(["--compare-json", str(compare_json)])
     return cmd
 
 
@@ -2132,19 +1867,21 @@ def main() -> None:
     benchmark_wall_clock_s = time.perf_counter() - benchmark_started
 
     candidate_section = _parse_section(benchmark_output, "candidate")
-    candidate_json_path = _output_path(candidate_section.get("json"))
+    candidate_json_path = _output_path(
+        candidate_section.get("json"), repo_root=_REPO_ROOT
+    )
     if candidate_json_path is None or not candidate_json_path.exists():
         raise SystemExit(
             "Unable to resolve candidate benchmark JSON from run_cached_benchmark output.\n"
             f"exit_code={benchmark_exit_code}\n{benchmark_output}"
         )
     candidate_meta_path = _output_path(
-        candidate_section.get("meta")
+        candidate_section.get("meta"), repo_root=_REPO_ROOT
     ) or _derive_meta_path(candidate_json_path)
 
     candidate_payload = load_json(candidate_json_path)
     compare_section = _parse_section(benchmark_output, "compare_report")
-    compare_path = _output_path(compare_section.get("json"))
+    compare_path = _output_path(compare_section.get("json"), repo_root=_REPO_ROOT)
     compare_payload = (
         load_json(compare_path)
         if compare_path is not None and compare_path.exists()

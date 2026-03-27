@@ -65,8 +65,8 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
     - `pylander-tune-orchestrator` -> `pylander-tune-loop-manager` -> `pylander-regression-analyzer`, or
     - `pylander-tune-loop-manager` -> `pylander-regression-analyzer`.
   - `pylander-regression-analyzer` for broad regression decisioning.
-- Use `pylander-benchmark-runner` / `pylander-benchmark-analyzer` for metric-grounded benchmark execution and diagnosis.
-- Use `pylander-plot-runner` / `pylander-plot-analyzer` for visual trajectory/thrust analysis and anomaly triage.
+- Use `pylander-benchmark-runner` / `pylander-benchmark-analyzer` for metric-grounded tracepack execution and diagnosis.
+- Use `pylander-plot-runner` / `pylander-plot-analyzer` for focused trace-view extraction and visual trajectory/thrust anomaly triage from shared trace artifacts.
 - Use `pylander-telemetry-analyzer` for log/data-first crash/perf triage.
 - Use `pylander-telemetry-builder` when diagnosis needs additional focused probes; default to plan-first, then implement probes only when explicitly requested.
 - Use `pylander-docs-sync-planner` for drift checks and patch planning across README/docs/AGENTS.
@@ -108,4 +108,4 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
  - Example focused eval: `uv run python main.py sim boost:flat:far:half:0 --bot pdg`
  - Example quick regression compare: `uv run python .agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py --mode quick --baseline-ref main --bot pdg`
 - If CLI/defaults/workflows changed: update `README.md`
-- Don’t check in artifacts (`outputs/` stays local/ignored), including benchmark caches and generated plots.
+- Don’t check in artifacts (`outputs/` stays local/ignored), including benchmark caches and generated trace/viewer artifacts.

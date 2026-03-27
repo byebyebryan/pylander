@@ -1,18 +1,18 @@
 ---
 name: pylander-benchmark-analyzer
-description: Diagnose Pylander benchmark outcomes (health and regressions), rank likely root causes, and generate reproducible sim/plot commands for investigation.
+description: Diagnose Pylander benchmark outcomes (health and regressions), rank likely root causes, and generate reproducible sim/plot repro commands plus trace-bundle follow-ups.
 ---
 
 # Pylander Benchmark Analyzer
 
 Use this skill when the user wants diagnosis, not just benchmark execution.
 
-If the user asks for plots or a report they can open remotely, prefer the
+If the user asks for trace views or a report they can open remotely, prefer the
 static bundle workflow and return the latest URL:
 
 `uv run python .agents/skills/pylander-benchmark-runner/scripts/gen_bench_bundle.py ...`
 
-When the user says "full bench and plots", interpret that as:
+When the user says "full bench and plots", interpret that as a full benchmark plus trace-bundle report:
 - `--mode full`
 - current full-pack coverage across `plunge`, `boost`, and `terminal`
 - interactive detail pages for every run in the pack
@@ -98,7 +98,7 @@ Remote-share report:
 - high boost/coast projected-dx error
 - compute spike risk (`p99` notably above baseline norms for that pack)
 4. Emit top suspect runs and repro commands.
-5. If the user asked to "give me the plots", emit the latest HTML bundle URL
+5. If the user asked to "give me the plots", emit the latest HTML trace-bundle URL
 instead of raw image paths.
 
 ### `compare`
@@ -126,8 +126,8 @@ instead of raw image paths.
 - notable compute regression (`avg` or `p99`)
 - trajectory-shape anomalies
 3. Return an investigation order and first-fix recommendation.
-4. Hybrid auto plot policy:
-- auto-generate plots for top 3 critical cases
+4. Hybrid auto trace-view policy:
+- auto-generate focused trace views/detail pages for top 3 critical cases
 - provide manual plot commands for remaining cases
 
 ## Diagnostic Heuristics

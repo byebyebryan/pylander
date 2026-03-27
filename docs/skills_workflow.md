@@ -50,10 +50,10 @@ Cross-cutting skills usable at any stage:
 | `pylander-tune-orchestrator` | Compare tune branches and hand off winner/no-winner | Script-backed: `.agents/skills/pylander-tune-orchestrator/scripts/run_tune_arena.py` | `arena_scoreboard.v1` |
 | `pylander-tune-loop-manager` | Bounded tuning loop (`light/standard/extensive`) | Script-backed: `.agents/skills/pylander-tune-loop-manager/scripts/run_tune_loop.py` | `tune_loop_report.v1` |
 | `pylander-regression-analyzer` | Broad quick/full regression gate | Script-backed: `.agents/skills/pylander-regression-analyzer/scripts/gate_regression.py` | `regression_gate_report.v1` |
-| `pylander-benchmark-runner` | Pack construction + cached benchmark execution/compare | Script-backed: `.agents/skills/pylander-benchmark-runner/scripts/*` | Bench JSON/CSV and optional compare report |
+| `pylander-benchmark-runner` | Pack construction + cached benchmark execution/compare | Script-backed: `.agents/skills/pylander-benchmark-runner/scripts/*` | Tracepack manifest/CSV, optional compare report, and optional static viewer bundle |
 | `pylander-benchmark-analyzer` | Benchmark triage and root-cause ranking | Playbook (`SKILL.md`) | Diagnostic verdict (`doctor_verdict`), ranked findings, repro bundle |
-| `pylander-plot-runner` | Plot-pack case selection and plot command execution | Script-backed: `.agents/skills/pylander-plot-runner/scripts/build_plot_pack.py` | Plot pack manifest |
-| `pylander-plot-analyzer` | Plot interpretation and anomaly diagnosis | Playbook (`SKILL.md`) | Diagnostic verdict (`doctor_verdict`), ranked visual findings, follow-ups |
+| `pylander-plot-runner` | Focused trace-case selection and plot command execution | Script-backed: `.agents/skills/pylander-plot-runner/scripts/build_plot_pack.py` | Focused trace-case manifest |
+| `pylander-plot-analyzer` | Trace-view interpretation and anomaly diagnosis | Playbook (`SKILL.md`) | Diagnostic verdict (`doctor_verdict`), ranked visual findings, follow-ups |
 | `pylander-telemetry-analyzer` | Log/data crash+perf triage and reproducible repro bundle generation | Script-backed: `.agents/skills/pylander-telemetry-analyzer/scripts/analyze_telemetry.py` | `telemetry_triage_report.v1` |
 | `pylander-telemetry-builder` | Plan-first focused telemetry/probe design from triage gaps | Script-backed: `.agents/skills/pylander-telemetry-builder/scripts/plan_telemetry.py` | `telemetry_probe_plan.v1` |
 | `pylander-docs-sync-planner` | Docs drift analysis and patch planning | Playbook (`SKILL.md`) | Drift report and docs patch plan |
@@ -76,8 +76,10 @@ Script-backed orchestration contracts live under `.agents/skills/contracts/`:
 Common artifact locations:
 
 - `outputs/arena/<arena_id>/<branch_id>/` branch notes and report artifacts
-- `outputs/benchmarks/<commit-or-dirty-key>/` benchmark cache and compare reports
-- `outputs/plots/` plot packs and generated plot bundles
+- `outputs/benchmarks/<commit-or-dirty-key>/` canonical tracepack caches and compare reports
+- `outputs/viewer/bundles/<bundle-id>/` static viewer bundles and run detail pages
+- `outputs/viewer/latest/` stable latest bundle page
+- `outputs/viewer/plot-packs/<pack-id>/` focused trace-case manifests and detail pages
 - `outputs/diagnostics/` telemetry triage reports and probe plans
 
 ## Practical notes

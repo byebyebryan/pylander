@@ -1,11 +1,11 @@
 ---
 name: pylander-plot-runner
-description: Select and generate Pylander trace-first focused galleries from benchmark outputs or manual selectors, then write a manifest for downstream analysis.
+description: Select and generate Pylander focused trace-case views from benchmark outputs or manual selectors, then write a manifest for downstream analysis.
 ---
 
 # Pylander Plot Runner
 
-Use this skill to generate plot artifacts for human and AI analysis.
+Use this skill to generate focused trace views for human and AI analysis.
 
 If the user asks for "the plots" or wants something clickable/openable remotely,
 default to the static HTML bundle workflow instead of returning raw PNG paths.
@@ -26,7 +26,7 @@ When the user says "full bench and plots", interpret that as:
 - interactive detail pages for every run in the pack
 
 Use raw `build_plot_pack.py` directly only when the caller explicitly wants a
-plot-pack manifest or a focused manual selector gallery without benchmark
+focused trace-case manifest (plot-pack compatibility path) or a focused manual selector trace-view set without benchmark
 summary context.
 
 ## Inputs
@@ -57,10 +57,10 @@ Preferred remote-sharing command for benchmark-backed requests:
 - `focus`: use explicit selectors only
 2. Generate plot command(s) per case:
 - `main.py plot <selector> --trace-sample-period-s <seconds> --trace-detail debug`
-3. Write pack manifest under `outputs/viewer/plot-packs/pack_<ts>/manifest.json` with:
+3. Write focused trace-case manifest under `outputs/viewer/plot-packs/pack_<ts>/manifest.json` with:
 - case reasons/severity
 - executed commands
-- trace paths, preview paths, and HTML detail/gallery metadata
+- trace paths, preview paths, and HTML detail/viewer metadata
 
 Remote-share default:
 

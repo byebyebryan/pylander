@@ -20,7 +20,13 @@ for candidate in (_AGENTS_ROOT, _REPO_ROOT):
         sys.path.insert(0, str(candidate))
 
 from core.selector_codec import render_record_selector, render_selector  # noqa: E402
-from skills.lib.trace_report import ensure_viewer_assets, render_trace_detail_html  # noqa: E402
+from utils.tracebundle import (  # noqa: E402
+    href_from as _href_from,
+    output_path as _output_path,
+    rel_to_outputs as _rel_to_outputs,
+    sanitize_token as _sanitize_token,
+)
+from utils.traceviewer import ensure_viewer_assets, render_trace_detail_html  # noqa: E402
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -141,7 +147,9 @@ def _build_cases_from_records(
     return deduped
 
 
-def _build_cases_from_compare(compare: dict[str, Any], *, top_n: int) -> list[dict[str, Any]]:
+def _build_cases_from_compare(
+    compare: dict[str, Any], *, top_n: int
+) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
 
     global_block = dict(compare.get("global") or {})
@@ -346,7 +354,9 @@ def _assign_case_keys(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
             continue
         instance_id = seen.get(selector, 0) + 1
         seen[selector] = instance_id
-        run_key = selector if totals.get(selector, 0) <= 1 else f"{selector}#{instance_id}"
+        run_key = (
+            selector if totals.get(selector, 0) <= 1 else f"{selector}#{instance_id}"
+        )
         assigned.append(
             {
                 **case,
@@ -362,30 +372,6 @@ def _default_pack_dir() -> Path:
     return (_REPO_ROOT / "outputs" / "viewer" / "plot-packs" / f"pack_{ts}").resolve()
 
 
-def _rel_to_outputs(path: Path | None, *, outputs_root: Path) -> str | None:
-    if path is None:
-        return None
-    try:
-        return path.resolve().relative_to(outputs_root).as_posix()
-    except ValueError:
-        return None
-
-
-def _output_path(path_value: str | None) -> Path | None:
-    if not path_value:
-        return None
-    path = Path(str(path_value).strip())
-    if not path.is_absolute():
-        path = (_REPO_ROOT / path).resolve()
-    return path
-
-
-def _href_from(base_dir: Path, target: Path | None) -> str | None:
-    if target is None:
-        return None
-    return os.path.relpath(target, base_dir).replace(os.sep, "/")
-
-
 def _scenario_selector(selector: str) -> str:
     parts = [part for part in str(selector).split(":") if part]
     if len(parts) >= 2 and re.fullmatch(r"-?\d+", parts[-1]):
@@ -399,14 +385,17 @@ def _validate_case_runs(case_runs: list[dict[str, Any]]) -> None:
         exit_code = run.get("exit_code")
         if exit_code is None:
             continue
-        trace_path = _output_path(run.get("trace_path"))
+        trace_path = _output_path(run.get("trace_path"), repo_root=_REPO_ROOT)
         if int(exit_code) > 1:
             failures.append(f"{run.get('selector')}: exit {exit_code}")
             continue
         if trace_path is None or not trace_path.exists():
             failures.append(f"{run.get('selector')}: missing trace json")
     if failures:
-        raise SystemExit("Trace plot-pack generation failed:\n" + "\n".join(f"- {item}" for item in failures))
+        raise SystemExit(
+            "Trace plot-pack generation failed:\n"
+            + "\n".join(f"- {item}" for item in failures)
+        )
 
 
 def _build_case_detail_payload(
@@ -418,8 +407,10 @@ def _build_case_detail_payload(
 ) -> tuple[dict[str, Any], str]:
     selector = str(run.get("selector") or "unknown")
     run_key = str(run.get("run_key") or selector).strip() or selector
-    trace_path = _output_path(run.get("trace_path"))
-    trace_payload = _load_json(trace_path) if trace_path is not None and trace_path.exists() else {}
+    trace_path = _output_path(run.get("trace_path"), repo_root=_REPO_ROOT)
+    trace_payload = (
+        _load_json(trace_path) if trace_path is not None and trace_path.exists() else {}
+    )
     final_result = dict(trace_payload.get("final_result") or {})
     record = {
         "bot": final_result.get("bot", "pdg"),
@@ -430,15 +421,16 @@ def _build_case_detail_payload(
         "time": final_result.get("time"),
         "landing_offset": final_result.get("landing_offset"),
         "avg_speed": final_result.get("avg_speed"),
-        "bot_profile_total_ms_per_tick": final_result.get("bot_profile_total_ms_per_tick"),
+        "bot_profile_total_ms_per_tick": final_result.get(
+            "bot_profile_total_ms_per_tick"
+        ),
     }
-    detail_path = (
-        pack_dir
-        / "runs"
-        / f"{re.sub(r'[^a-z0-9_.-]+', '_', run_key.lower()).strip('._') or 'run'}.html"
-    ).resolve()
+    detail_path = (pack_dir / "runs" / f"{_sanitize_token(run_key)}.html").resolve()
     detail_path.parent.mkdir(parents=True, exist_ok=True)
-    plotly_href = _href_from(detail_path.parent, outputs_root / plotly_rel) or "../../assets/plotly-basic.min.js"
+    plotly_href = (
+        _href_from(detail_path.parent, outputs_root / plotly_rel)
+        or "../../assets/plotly-basic.min.js"
+    )
     trace_href = _href_from(detail_path.parent, trace_path)
     detail_html = render_trace_detail_html(
         title=f"{selector} • Pylander Plot Detail",
@@ -447,7 +439,9 @@ def _build_case_detail_payload(
         record=record,
         trace_payload=trace_payload,
         plotly_href=plotly_href,
-        top_links=[("plot pack", _href_from(detail_path.parent, pack_dir / "index.html"))],
+        top_links=[
+            ("plot pack", _href_from(detail_path.parent, pack_dir / "index.html"))
+        ],
         raw_links=[("trace json", trace_href)],
         repro_commands=[" ".join(str(part) for part in (run.get("command") or []))],
     )
@@ -478,33 +472,41 @@ def _render_index_html(
         selector = html.escape(selector_value)
         reason = html.escape(str(case.get("reason") or ""))
         severity = html.escape(str(case.get("severity") or ""))
-        duplicate_count = sum(1 for item in cases if str(item.get("selector") or "") == selector_value)
+        duplicate_count = sum(
+            1 for item in cases if str(item.get("selector") or "") == selector_value
+        )
         instance_id = int(case.get("run_instance_id", 1) or 1)
         display_selector = selector
         if duplicate_count > 1:
             display_selector = f"{selector} #{instance_id}"
-        detail_path = _output_path(case.get("detail_path"))
+        detail_path = _output_path(case.get("detail_path"), repo_root=_REPO_ROOT)
         detail_href = _href_from(pack_dir, detail_path)
-        preview_path = _output_path(case.get("trace_preview_path"))
+        preview_path = _output_path(
+            case.get("trace_preview_path"), repo_root=_REPO_ROOT
+        )
         preview_href = _href_from(pack_dir, preview_path)
-        trace_path = _output_path(case.get("trace_path"))
+        trace_path = _output_path(case.get("trace_path"), repo_root=_REPO_ROOT)
         trace_href = _href_from(pack_dir, trace_path)
         state = html.escape(str(case.get("state") or "-"))
         cards.append(
-            "<article class=\"card\">"
+            '<article class="card">'
             f"<h3>{display_selector}</h3>"
-            f"<p class=\"meta\">severity={severity} reason={reason} state={state}</p>"
+            f'<p class="meta">severity={severity} reason={reason} state={state}</p>'
             + (
                 f'<a class="preview" href="{html.escape(detail_href or "#")}"><img src="{html.escape(preview_href)}" alt="{selector}"></a>'
                 if preview_href and detail_href
                 else '<p class="muted">No preview image</p>'
             )
-            + "<p class=\"links\">"
+            + '<p class="links">'
             + " | ".join(
                 link
                 for link in [
-                    f'<a href="{html.escape(detail_href)}">detail</a>' if detail_href else "",
-                    f'<a href="{html.escape(trace_href)}">trace json</a>' if trace_href else "",
+                    f'<a href="{html.escape(detail_href)}">detail</a>'
+                    if detail_href
+                    else "",
+                    f'<a href="{html.escape(trace_href)}">trace json</a>'
+                    if trace_href
+                    else "",
                 ]
                 if link
             )
@@ -549,7 +551,7 @@ def _render_index_html(
       <p class="meta">pack={html.escape(pack_id)} cases={len(cases)}</p>
     </header>
     <section class="grid">
-      {''.join(cards) if cards else '<p class="muted">No cases.</p>'}
+      {"".join(cards) if cards else '<p class="muted">No cases.</p>'}
     </section>
   </main>
 </body>
@@ -558,21 +560,29 @@ def _render_index_html(
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="Build and optionally execute Pylander trace-first plot packs")
-    ap.add_argument("--mode", choices=("health", "compare", "focus", "triage"), required=True)
+    ap = argparse.ArgumentParser(
+        description="Build and optionally execute Pylander trace-first plot packs"
+    )
+    ap.add_argument(
+        "--mode", choices=("health", "compare", "focus", "triage"), required=True
+    )
     ap.add_argument("--benchmark-json", type=str, default=None)
     ap.add_argument("--compare-json", type=str, default=None)
     ap.add_argument("--selectors", nargs="*", default=[])
     ap.add_argument("--bot", default="pdg")
     ap.add_argument("--top-n", type=int, default=8)
     ap.add_argument("--trace-sample-period-s", type=float, default=0.25)
-    ap.add_argument("--trace-detail", choices=("report", "replay", "debug"), default="debug")
+    ap.add_argument(
+        "--trace-detail", choices=("report", "replay", "debug"), default="debug"
+    )
     ap.add_argument("--plot-workers", type=int, default=0)
     ap.add_argument("--execute", action=argparse.BooleanOptionalAction, default=True)
     ap.add_argument("--output-manifest", type=str, default=None)
     args = ap.parse_args()
 
-    benchmark_payload = _load_json(Path(args.benchmark_json)) if args.benchmark_json else None
+    benchmark_payload = (
+        _load_json(Path(args.benchmark_json)) if args.benchmark_json else None
+    )
     compare_payload = _load_json(Path(args.compare_json)) if args.compare_json else None
     if args.mode == "compare" and compare_payload is None:
         raise SystemExit("compare mode requires --compare-json")
@@ -597,9 +607,17 @@ def main() -> None:
         if compare_payload is not None:
             cases.extend(_build_cases_from_compare(compare_payload, top_n=top_n))
         if benchmark_payload is not None and len(cases) < top_n:
-            records = [dict(r) for r in (benchmark_payload.get("records") or []) if isinstance(r, dict)]
-            for case in _build_cases_from_records(records, top_n=top_n, bot=str(args.bot)):
-                if any(str(c.get("selector")) == str(case.get("selector")) for c in cases):
+            records = [
+                dict(r)
+                for r in (benchmark_payload.get("records") or [])
+                if isinstance(r, dict)
+            ]
+            for case in _build_cases_from_records(
+                records, top_n=top_n, bot=str(args.bot)
+            ):
+                if any(
+                    str(c.get("selector")) == str(case.get("selector")) for c in cases
+                ):
                     continue
                 cases.append(case)
                 if len(cases) >= top_n:
@@ -607,7 +625,11 @@ def main() -> None:
     else:
         if benchmark_payload is None:
             raise SystemExit("health mode requires --benchmark-json")
-        records = [dict(r) for r in (benchmark_payload.get("records") or []) if isinstance(r, dict)]
+        records = [
+            dict(r)
+            for r in (benchmark_payload.get("records") or [])
+            if isinstance(r, dict)
+        ]
         cases = _build_cases_from_records(records, top_n=top_n, bot=str(args.bot))
 
     if not cases:
@@ -637,7 +659,9 @@ def main() -> None:
             )
     else:
         indexed_runs: dict[int, dict[str, Any]] = {}
-        with concurrent.futures.ThreadPoolExecutor(max_workers=min(plot_workers, len(filtered_cases))) as executor:
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(plot_workers, len(filtered_cases))
+        ) as executor:
             future_map = {
                 executor.submit(
                     _case_run,
@@ -660,7 +684,11 @@ def main() -> None:
 
     wall_clock_s = time.perf_counter() - started
     outputs_root = (_REPO_ROOT / "outputs").resolve()
-    manifest_path = Path(args.output_manifest).resolve() if args.output_manifest else (_default_pack_dir() / "manifest.json")
+    manifest_path = (
+        Path(args.output_manifest).resolve()
+        if args.output_manifest
+        else (_default_pack_dir() / "manifest.json")
+    )
     pack_dir = manifest_path.parent
     pack_dir.mkdir(parents=True, exist_ok=True)
     index_path = (pack_dir / "index.html").resolve()
@@ -670,7 +698,7 @@ def main() -> None:
     enriched_runs: list[dict[str, Any]] = []
     for run in case_runs:
         case_payload = dict(run)
-        trace_path = _output_path(case_payload.get("trace_path"))
+        trace_path = _output_path(case_payload.get("trace_path"), repo_root=_REPO_ROOT)
         if trace_path is not None and trace_path.exists():
             detail_meta, _detail_html = _build_case_detail_payload(
                 case_payload,
@@ -705,7 +733,9 @@ def main() -> None:
         "viewer_assets": dict(viewer_assets),
         "cases": enriched_runs,
     }
-    manifest_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+    )
 
     print(
         "# plot_pack\n"
