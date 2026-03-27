@@ -5,31 +5,14 @@ description: Plan and execute task-scoped commits with standardized messages and
 
 # Pylander Commit Manager
 
-Use this skill when preparing commits for local history quality.
+Use this skill when preparing one or more commits from an existing working tree.
 
-Commit policy for this repo: each commit should map to one problem/goal/task (PR-like scope), not split by file type.
+Keep it grounded in the current repo state:
 
-## Inputs
-
-- `goal_summary`: what this commit set should solve
-- optional `validation_scope`: `targeted | full` (default `targeted`)
-- optional `split_preference`: default task/goal-based split
-
-## Required outputs
-
-1. `commit_plan`
-- ordered commit boundaries by goal/task
-- include rationale for each split
-
-2. `staging_plan`
-- exact file list per commit
-- explicit note if coupling forces a combined commit
-
-3. `message_drafts`
-- one message draft per commit using repo template
-
-4. `execution_steps`
-- exact non-interactive git commands to stage, review, and commit
+- inspect the working tree before proposing commit boundaries
+- split by goal or behavior change, not by file category
+- keep code, tests, and docs together when they serve the same change
+- prefer one commit per reviewable task unless the working tree clearly contains multiple independent goals
 
 ## Message template
 
@@ -57,14 +40,13 @@ Body (for non-trivial commits, and recommended generally):
 - `git diff --name-only`
 - `git diff --staged --name-only`
 
-2. Build a task/goal split plan:
+2. Choose commit boundaries:
 - split only when goals are genuinely distinct
-- keep code/tests/docs together when they support the same goal
-- do not split by file category alone
+- if one file couples multiple edits inseparably, keep them in the same commit
 
-3. Draft commit messages using the template.
+3. Draft the commit message for each boundary.
 
-4. Execute each commit (non-interactive):
+4. Execute each commit non-interactively:
 - stage only files for one planned boundary
 - review staged diff
 - commit with drafted message
@@ -73,9 +55,9 @@ Body (for non-trivial commits, and recommended generally):
 - `git status --short`
 - if more planned commits remain, repeat
 
-## Execution command pattern
+## Execution pattern
 
-Use non-interactive commands:
+Use plain git commands:
 
 - `git add <paths...>`
 - `git diff --staged`
@@ -84,6 +66,5 @@ Use non-interactive commands:
 ## Guardrails
 
 - Avoid interactive staging workflows.
-- If one file contains inseparable work across goals, keep it in one commit and explain coupling in `Why`.
 - Keep commit scope meaningful and reviewable.
 - Do not commit generated local artifacts under `outputs/`.

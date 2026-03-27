@@ -20,7 +20,7 @@ from utils.tracebundle import (
     rel_to_outputs as _rel_to_outputs,
     sanitize_token as _sanitize_token,
 )
-from utils.traceviewer import PLOTLY_FILENAME, ensure_viewer_assets, render_trace_detail_html
+from utils.traceviewer import PLOTLY_CDN_URL, ensure_viewer_assets, render_trace_detail_html
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -392,7 +392,7 @@ def _build_case_detail_payload(
     *,
     pack_dir: Path,
     outputs_root: Path,
-    plotly_rel: str,
+    plotly_href: str,
 ) -> tuple[dict[str, Any], str]:
     selector = str(run.get("selector") or "unknown")
     run_key = str(run.get("run_key") or selector).strip() or selector
@@ -416,10 +416,6 @@ def _build_case_detail_payload(
     }
     detail_path = (pack_dir / "runs" / f"{_sanitize_token(run_key)}.html").resolve()
     detail_path.parent.mkdir(parents=True, exist_ok=True)
-    plotly_href = (
-        _href_from(detail_path.parent, outputs_root / plotly_rel)
-        or f"../../assets/{PLOTLY_FILENAME}"
-    )
     trace_href = _href_from(detail_path.parent, trace_path)
     detail_html = render_trace_detail_html(
         title=f"{selector} • Pylander Plot Detail",
@@ -693,7 +689,7 @@ def main() -> None:
                 case_payload,
                 pack_dir=pack_dir,
                 outputs_root=outputs_root,
-                plotly_rel=str(viewer_assets.get("plotly_rel") or ""),
+                plotly_href=str(viewer_assets.get("plotly_href") or PLOTLY_CDN_URL),
             )
             case_payload.update(detail_meta)
         enriched_runs.append(case_payload)
@@ -745,3 +741,7 @@ __all__ = [
     "plot_command",
     "resolve_plot_workers",
 ]
+
+
+if __name__ == "__main__":
+    main()

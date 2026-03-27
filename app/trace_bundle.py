@@ -30,8 +30,11 @@ from utils.tracebundle import (
     rel_to_outputs as _rel_to_outputs,
     sanitize_token as _sanitize_token,
 )
-from utils.traceviewer import ensure_viewer_assets, render_trace_detail_html
-from utils.traceviewer import PLOTLY_FILENAME
+from utils.traceviewer import (
+    PLOTLY_CDN_URL,
+    ensure_viewer_assets,
+    render_trace_detail_html,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -1029,13 +1032,8 @@ def _render_run_detail_html(
     trace_href = _href_from(
         detail_dir, str(run.get("trace_path_rel") or ""), outputs_root=outputs_root
     )
-    plotly_href = (
-        _href_from(
-            detail_dir,
-            str(dict(bundle.get("viewer_assets") or {}).get("plotly_rel") or ""),
-            outputs_root=outputs_root,
-        )
-        or f"../../assets/{PLOTLY_FILENAME}"
+    plotly_href = str(
+        dict(bundle.get("viewer_assets") or {}).get("plotly_href") or PLOTLY_CDN_URL
     )
 
     scenario_selector = str(run.get("scenario_selector") or "")
@@ -1597,7 +1595,9 @@ def _write_bundle_files(
     outputs_root: Path,
 ) -> tuple[Path, Path, Path]:
     render_started = time.perf_counter()
-    viewer_assets = ensure_viewer_assets(outputs_root)
+    viewer_assets = dict(bundle.get("viewer_assets") or {}) or ensure_viewer_assets(
+        outputs_root
+    )
     bundle["viewer_assets"] = dict(viewer_assets)
     bundle_page_rel = Path(str(bundle["bundle_page_path"]))
     bundle_dir = (outputs_root / bundle_page_rel).parent

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib.util
 import argparse
 import json
 import re
@@ -8,25 +7,7 @@ from pathlib import Path
 
 import app.output_viewer as output_viewer
 import app.trace_bundle as trace_bundle
-
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-
-
-def _load_module(module_name: str, path: Path):
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _script(rel: str) -> Path:
-    return (REPO_ROOT / rel).resolve()
-
-
-traceviewer = _load_module("traceviewer_module", _script("utils/traceviewer.py"))
+import utils.traceviewer as traceviewer
 
 
 def test_parse_section_reads_key_value_block() -> None:
@@ -114,18 +95,11 @@ def test_discover_viewer_hostname_prefers_lan(monkeypatch) -> None:
     assert output_viewer.discover_viewer_hostname() == "starship.lan"
 
 
-def test_traceviewer_uses_repo_level_vendor_asset(monkeypatch, tmp_path: Path) -> None:
-    repo_asset = tmp_path / "assets" / "viewer" / traceviewer._PLOTLY_FILENAME
-    repo_asset.parent.mkdir(parents=True, exist_ok=True)
-    repo_asset.write_text("repo-level", encoding="utf-8")
-
-    monkeypatch.setattr(traceviewer, "_ASSETS_ROOT", repo_asset.parent)
-
-    outputs_root = tmp_path / "outputs"
-    viewer_assets = traceviewer.ensure_viewer_assets(outputs_root)
-
-    copied_asset = outputs_root / viewer_assets["plotly_rel"]
-    assert copied_asset.read_text(encoding="utf-8") == "repo-level"
+def test_traceviewer_uses_pinned_plotly_cdn() -> None:
+    viewer_assets = traceviewer.ensure_viewer_assets(Path("/tmp/outputs"))
+    assert viewer_assets == {
+        "plotly_href": "https://cdn.plot.ly/plotly-basic-2.35.2.min.js"
+    }
 
 
 def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
@@ -276,7 +250,8 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
             "uv",
             "run",
             "python",
-            ".agents/skills/pylander-benchmark-runner/scripts/run_cached_benchmark.py",
+            "-m",
+            "app.run_cached_benchmark",
         ],
         benchmark_exit_code=1,
         benchmark_wall_clock_s=12.5,
@@ -287,7 +262,7 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         compare_path=compare_json,
         compare_payload=compare_payload,
         outputs_root=outputs_root,
-        viewer_assets={"plotly_rel": "viewer/assets/plotly-basic-2.35.2.min.js"},
+        viewer_assets={"plotly_href": "https://cdn.plot.ly/plotly-basic-2.35.2.min.js"},
     )
 
     html_path, bundle_json_path, latest_path = trace_bundle._write_bundle_files(
@@ -331,8 +306,8 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         trace_root
     )
     assert (
-        bundle_json_payload["viewer_assets"]["plotly_rel"]
-        == "viewer/assets/plotly-basic-2.35.2.min.js"
+        bundle_json_payload["viewer_assets"]["plotly_href"]
+        == "https://cdn.plot.ly/plotly-basic-2.35.2.min.js"
     )
     assert bundle_json_payload["timing"]["benchmark_wall_clock_s"] == 12.5
     assert bundle_json_payload["timing"]["bundle_render_wall_clock_s"] is not None
@@ -394,7 +369,7 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     )
     assert "trace json" in detail_html
     assert "plot manifest" not in detail_html
-    assert "plotly-basic-2.35.2.min.js" in detail_html
+    assert 'https://cdn.plot.ly/plotly-basic-2.35.2.min.js' in detail_html
     match = re.search(
         r'<script id="trace-plot-json" type="application/json">(.*?)</script>',
         detail_html,
