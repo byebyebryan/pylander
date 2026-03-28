@@ -303,6 +303,8 @@ Benchmark skill entrypoints:
 - `uv run python -m app.bench run --mode quick --baseline-ref auto --missing-baseline seed`
 - `uv run python -m app.bench analyze --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json`
 - `uv run python -m app.bench report --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json --compare-json outputs/benchmarks/<ref>/<stem>.compare_vs_<base>.json`
+- `uv run python -m app.bench report --candidate-json outputs/benchmarks/<new-ref>/<new-stem>.tracepack.json --compare-json outputs/benchmarks/<new-ref>/<new-stem>.compare_vs_<base>.json --baseline-json outputs/benchmarks/<old-ref>/<old-stem>.tracepack.json`
+- compare renders fall back to shared runs only when the two tracepacks cover different selector/seed sets, so full-vs-partial reports stay on the actual intersection
 - `uv run python -m app.bench bundle --mode quick --baseline-ref auto --missing-baseline seed`
 - `uv run python -m app.bench serve --port 8765`
 - `uv run python -m app.bench promote --candidate-json outputs/benchmarks/<dirty>/<stem>.tracepack.json --target-ref HEAD`

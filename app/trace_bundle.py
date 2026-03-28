@@ -125,26 +125,6 @@ def _format_percent(value: Any) -> str:
         return "-"
 
 
-def _format_seconds(value: Any, digits: int = 1) -> str:
-    try:
-        return f"{float(value):.{digits}f}s"
-    except (TypeError, ValueError):
-        return "-"
-
-
-def _format_timestamp(value: Any) -> str:
-    token = str(value or "").strip()
-    if not token:
-        return "-"
-    try:
-        dt = datetime.fromisoformat(token)
-    except ValueError:
-        return token
-    if dt.tzinfo is None:
-        return dt.strftime("%Y-%m-%d %H:%M:%S")
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-
-
 def _record_seed_sort_key(record: dict[str, Any]) -> tuple[int, int | str]:
     seed = record.get("seed")
     if seed is None:
@@ -239,6 +219,11 @@ def _compare_summary(compare_payload: dict[str, Any]) -> dict[str, Any]:
         "new_global_crashes": list(crash_block.get("new_crashes") or []),
         "worst_scenarios": list(global_block.get("worst_scenarios") or []),
         "compute": dict(global_block.get("compute") or {}),
+        "summary_available": bool(global_block.get("summary_available", True)),
+        "summary_baseline": dict(global_block.get("summary_baseline") or {}),
+        "summary_candidate": dict(global_block.get("summary_candidate") or {}),
+        "summary_delta": dict(global_block.get("summary_delta") or {}),
+        "compare_basis": dict(global_block.get("compare_basis") or {}),
     }
 
 
@@ -326,125 +311,6 @@ def _viewer_base_url(
     return None
 
 
-def _summary_card_sections(
-    bundle: dict[str, Any],
-) -> list[tuple[str, list[tuple[str, str]]]]:
-    benchmark = dict(bundle.get("benchmark") or {})
-    candidate = dict(benchmark.get("candidate") or {})
-    summary = dict(candidate.get("summary") or {})
-    timing = dict(bundle.get("timing") or {})
-    runs = int(summary.get("runs", 0) or 0)
-    successes = int(summary.get("successes", 0) or 0)
-    failures = max(0, runs - successes)
-    cached_value = str(candidate.get("cached") or "").strip()
-    cached_label = (
-        "-" if not cached_value else ("yes" if cached_value.lower() == "true" else "no")
-    )
-    wall_breakdown = (
-        " / ".join(
-            part
-            for part in (
-                f"bench {_format_seconds(timing.get('benchmark_wall_clock_s'))}"
-                if timing.get("benchmark_wall_clock_s") is not None
-                else "",
-                f"render {_format_seconds(timing.get('bundle_render_wall_clock_s'))}"
-                if timing.get("bundle_render_wall_clock_s") is not None
-                else "",
-            )
-            if part
-        )
-        or "-"
-    )
-    return [
-        (
-            "Bench",
-            [
-                ("Bench Id", str(bundle.get("bundle_id") or "-")),
-                ("Time", _format_timestamp(bundle.get("created_at_utc"))),
-                ("Cached", cached_label),
-            ],
-        ),
-        (
-            "Wall Clock",
-            [
-                ("Wall Clock Total", _format_seconds(timing.get("total_wall_clock_s"))),
-                ("Wall Clock Breakdown", wall_breakdown),
-            ],
-        ),
-        (
-            "Outcome",
-            [
-                ("Runs", str(runs)),
-                ("Success", str(successes)),
-                ("Success Rate", _format_percent(summary.get("success_rate"))),
-                ("Failure", str(failures)),
-            ],
-        ),
-        (
-            "Efficiency",
-            [
-                (
-                    "Fuel Mean",
-                    _format_float(
-                        _summary_metric(summary, "fuel_consumed", scope="all").get(
-                            "mean"
-                        )
-                    ),
-                ),
-                (
-                    "Fuel Mean Success",
-                    _format_float(
-                        _summary_metric(summary, "fuel_consumed", scope="success").get(
-                            "mean"
-                        )
-                    ),
-                ),
-                (
-                    "Time Mean",
-                    _format_float(
-                        _summary_metric(summary, "time", scope="all").get("mean")
-                    ),
-                ),
-                (
-                    "Time Mean Success",
-                    _format_float(
-                        _summary_metric(summary, "time", scope="success").get("mean")
-                    ),
-                ),
-            ],
-        ),
-        (
-            "Bot Tick",
-            [
-                (
-                    "Bot Tick Mean",
-                    _format_float(
-                        _summary_metric(
-                            summary, "bot_profile_total_ms_per_tick", scope="all"
-                        ).get("mean")
-                    ),
-                ),
-                (
-                    "Bot Tick P90",
-                    _format_float(
-                        _summary_metric(
-                            summary, "bot_profile_total_ms_per_tick_p90", scope="all"
-                        ).get("mean")
-                    ),
-                ),
-                (
-                    "Bot Tick P99",
-                    _format_float(
-                        _summary_metric(
-                            summary, "bot_profile_total_ms_per_tick_p99", scope="all"
-                        ).get("mean")
-                    ),
-                ),
-            ],
-        ),
-    ]
-
-
 def _render_table(headers: list[str], rows: list[list[str]]) -> str:
     head_html = "".join(f"<th>{html.escape(item)}</th>" for item in headers)
     body_rows = []
@@ -455,6 +321,29 @@ def _render_table(headers: list[str], rows: list[list[str]]) -> str:
         body_rows.append(f'<tr><td colspan="{len(headers)}">(none)</td></tr>')
     return (
         "<table>"
+        f"<thead><tr>{head_html}</tr></thead>"
+        f"<tbody>{''.join(body_rows)}</tbody>"
+        "</table>"
+    )
+
+
+def _render_table_with_row_classes(
+    headers: list[str],
+    rows: list[tuple[str, list[str]]],
+    *,
+    table_class: str = "",
+) -> str:
+    table_class_attr = f' class="{html.escape(table_class)}"' if table_class else ""
+    head_html = "".join(f"<th>{html.escape(item)}</th>" for item in headers)
+    body_rows = []
+    for row_class, row in rows:
+        class_attr = f' class="{html.escape(row_class)}"' if row_class else ""
+        cols = "".join(f"<td>{cell}</td>" for cell in row)
+        body_rows.append(f"<tr{class_attr}>{cols}</tr>")
+    if not body_rows:
+        body_rows.append(f'<tr><td colspan="{len(headers)}">(none)</td></tr>')
+    return (
+        f"<table{table_class_attr}>"
         f"<thead><tr>{head_html}</tr></thead>"
         f"<tbody>{''.join(body_rows)}</tbody>"
         "</table>"
@@ -499,11 +388,54 @@ def _scenario_selector_for_record(record: dict[str, Any]) -> str:
     return render_record_selector(record, include_seed=False)
 
 
-def _record_detail_rel_path(bundle_id: str, record: dict[str, Any]) -> str:
+def _record_detail_rel_path(
+    bundle_id: str,
+    record: dict[str, Any],
+    *,
+    source: str = "candidate",
+) -> str:
     run_key = str(record.get("run_key") or "").strip()
     if not run_key:
         run_key = render_record_selector(record)
-    return f"viewer/bundles/{bundle_id}/runs/{_sanitize_token(run_key)}.html"
+    source_prefix = "runs" if source == "candidate" else f"runs/{_sanitize_token(source)}"
+    return f"viewer/bundles/{bundle_id}/{source_prefix}/{_sanitize_token(run_key)}.html"
+
+
+def _baseline_candidate_json_path(bundle: dict[str, Any], *, outputs_root: Path) -> Path | None:
+    compare = dict(bundle.get("compare") or {})
+    explicit_rel = str(compare.get("baseline_json_path") or "").strip()
+    if explicit_rel:
+        explicit_path = (outputs_root / explicit_rel).resolve()
+        return explicit_path
+    benchmark = dict(bundle.get("benchmark") or {})
+    candidate = dict(benchmark.get("candidate") or {})
+    baseline_commit = str(compare.get("baseline_commit") or "").strip()
+    candidate_json_rel = str(candidate.get("json_path") or "").strip()
+    if not baseline_commit or not candidate_json_rel:
+        return None
+    candidate_json_path = outputs_root / candidate_json_rel
+    return (
+        outputs_root / "benchmarks" / baseline_commit / candidate_json_path.name
+    ).resolve()
+
+
+def _compare_tracepack_path(path_value: Any, *, outputs_root: Path) -> Path | None:
+    token = str(path_value or "").strip()
+    if not token:
+        return None
+    path = Path(token).expanduser()
+    if not path.is_absolute():
+        path = (outputs_root / token).resolve()
+    return path.resolve()
+
+
+def _tracepack_ref_from_path(path: Path | None) -> str | None:
+    if path is None:
+        return None
+    try:
+        return path.parent.name or None
+    except (AttributeError, TypeError, ValueError):
+        return None
 
 
 def _load_trace_asset_paths(
@@ -874,73 +806,116 @@ def _build_scenario_trees(
 def _build_bundle_report_model(
     bundle: dict[str, Any], *, outputs_root: Path
 ) -> dict[str, Any]:
-    benchmark = dict(bundle.get("benchmark") or {})
-    candidate = dict(benchmark.get("candidate") or {})
-    summary = dict(candidate.get("summary") or {})
-    bundle_id = str(bundle.get("bundle_id") or "bundle")
-
-    records = [
-        dict(item) for item in benchmark.get("records") or [] if isinstance(item, dict)
-    ]
-    records.sort(
-        key=lambda record: (
-            _selector_sort_key(_scenario_selector_for_record(record)),
-            _record_seed_sort_key(record),
-            int(record.get("run_instance_id", 1) or 1),
+    def _build_report_block(
+        payload: dict[str, Any],
+        *,
+        source: str,
+    ) -> dict[str, Any]:
+        summary = dict(payload.get("summary") or {})
+        records = [dict(item) for item in payload.get("records") or [] if isinstance(item, dict)]
+        records.sort(
+            key=lambda record: (
+                _selector_sort_key(_scenario_selector_for_record(record)),
+                _record_seed_sort_key(record),
+                int(record.get("run_instance_id", 1) or 1),
+            )
         )
-    )
 
-    runs_by_scenario: dict[str, list[dict[str, Any]]] = {}
-    runs: list[dict[str, Any]] = []
-    failures: list[dict[str, Any]] = []
-    duplicate_counts: dict[str, int] = {}
-    for record in records:
-        selector = render_record_selector(record)
-        duplicate_counts[selector] = duplicate_counts.get(selector, 0) + 1
+        runs_by_scenario: dict[str, list[dict[str, Any]]] = {}
+        runs: list[dict[str, Any]] = []
+        failures: list[dict[str, Any]] = []
+        duplicate_counts: dict[str, int] = {}
+        for record in records:
+            selector = render_record_selector(record)
+            duplicate_counts[selector] = duplicate_counts.get(selector, 0) + 1
 
-    for record in records:
-        run_selector = render_record_selector(record)
-        scenario_selector = _scenario_selector_for_record(record)
-        detail_rel = _record_detail_rel_path(bundle_id, record)
-        trace_assets = _load_trace_asset_paths(record, outputs_root=outputs_root)
-        run_info = {
-            "selector": run_selector,
-            "scenario_selector": scenario_selector,
-            "record": record,
-            "detail_rel": detail_rel,
-            "run_key": str(record.get("run_key") or run_selector),
-            "run_instance_id": int(record.get("run_instance_id", 1) or 1),
-            "duplicate_count": duplicate_counts.get(run_selector, 1),
-            **trace_assets,
+        for record in records:
+            run_selector = render_record_selector(record)
+            scenario_selector = _scenario_selector_for_record(record)
+            detail_rel = _record_detail_rel_path(bundle_id, record, source=source)
+            trace_assets = _load_trace_asset_paths(record, outputs_root=outputs_root)
+            run_info = {
+                "selector": run_selector,
+                "scenario_selector": scenario_selector,
+                "record": record,
+                "detail_rel": detail_rel,
+                "run_key": str(record.get("run_key") or run_selector),
+                "run_instance_id": int(record.get("run_instance_id", 1) or 1),
+                "duplicate_count": duplicate_counts.get(run_selector, 1),
+                "report_source": source,
+                **trace_assets,
+            }
+            runs_by_scenario.setdefault(scenario_selector, []).append(run_info)
+            runs.append(run_info)
+            if not bool(record.get("success", False)):
+                failures.append(run_info)
+
+        return {
+            "scenario_trees_by_level": _build_scenario_trees(
+                runs_by_scenario=runs_by_scenario,
+                summary=summary,
+            ),
+            "failures": sorted(
+                failures,
+                key=lambda item: _selector_sort_key(str(item.get("selector") or "")),
+            ),
+            "runs": runs,
         }
-        runs_by_scenario.setdefault(scenario_selector, []).append(run_info)
-        runs.append(run_info)
-        if not bool(record.get("success", False)):
-            failures.append(run_info)
 
-    scenario_trees_by_level = _build_scenario_trees(
-        runs_by_scenario=runs_by_scenario, summary=summary
+    def _index_scenario_trees(
+        trees_by_level: dict[str, list[dict[str, Any]]]
+    ) -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
+
+        def _visit(node: dict[str, Any]) -> None:
+            selector = str(node.get("selector") or "")
+            if selector:
+                out[selector] = node
+            for child in node.get("children") or []:
+                if isinstance(child, dict):
+                    _visit(child)
+
+        for nodes in trees_by_level.values():
+            for node in nodes:
+                if isinstance(node, dict):
+                    _visit(node)
+        return out
+
+    benchmark = dict(bundle.get("benchmark") or {})
+    bundle_id = str(bundle.get("bundle_id") or "bundle")
+    candidate_payload = {
+        "summary": dict(dict(benchmark.get("candidate") or {}).get("summary") or {}),
+        "records": [
+            dict(item) for item in benchmark.get("records") or [] if isinstance(item, dict)
+        ],
+    }
+    candidate_report = _build_report_block(candidate_payload, source="candidate")
+
+    baseline_payload: dict[str, Any] | None = None
+    baseline_json_path = _baseline_candidate_json_path(bundle, outputs_root=outputs_root)
+    if baseline_json_path is not None and baseline_json_path.exists():
+        loaded_payload = load_json(baseline_json_path)
+        if isinstance(loaded_payload, dict):
+            baseline_payload = loaded_payload
+
+    baseline_report = (
+        _build_report_block(baseline_payload, source="baseline")
+        if baseline_payload is not None
+        else None
     )
     return {
-        "scenario_trees_by_level": scenario_trees_by_level,
-        "failures": sorted(
-            failures,
-            key=lambda item: _selector_sort_key(str(item.get("selector") or "")),
+        "scenario_trees_by_level": candidate_report["scenario_trees_by_level"],
+        "baseline_scenario_index": (
+            _index_scenario_trees(
+                dict(baseline_report.get("scenario_trees_by_level") or {})
+            )
+            if baseline_report is not None
+            else {}
         ),
-        "runs": runs,
+        "failures": list(candidate_report.get("failures") or []),
+        "runs": list(candidate_report.get("runs") or [])
+        + list((baseline_report or {}).get("runs") or []),
     }
-
-
-def _render_metric_card_grid(cards: list[tuple[str, str]]) -> str:
-    return "".join(
-        '<div class="card">'
-        f'<div class="label">{html.escape(label)}</div>'
-        f'<div class="value">{html.escape(value)}</div>'
-        "</div>"
-        for label, value in cards
-    )
-
-
 def _render_inline_list(items: list[str], *, code: bool = False) -> str:
     if not items:
         return '<span class="muted">(none)</span>'
@@ -1118,12 +1093,508 @@ def _seed_metric_cell_html(record: dict[str, Any]) -> str:
     )
 
 
-def _render_context_section(intent: dict[str, Any]) -> str:
-    if not intent:
+def _tracepack_ref_label(path_rel: Any, *, fallback: Any = "") -> str:
+    fallback_text = str(fallback or "").strip()
+    if fallback_text:
+        return fallback_text
+    path_text = str(path_rel or "").strip()
+    if not path_text:
+        return "-"
+    try:
+        return Path(path_text).parent.name or "-"
+    except (TypeError, ValueError):
+        return "-"
+
+
+def _humanize_pack_label(candidate_json_path: Path) -> str:
+    stem = candidate_json_path.stem
+    if stem.endswith(".tracepack"):
+        stem = stem[: -len(".tracepack")]
+    parts = [part for part in stem.split("_") if part]
+    if not parts:
+        return "Benchmark"
+    mode = parts[0].replace("-", " ").title()
+    if len(parts) == 1:
+        return f"{mode} Benchmark"
+    pack_token = parts[1]
+    pack_label = " / ".join(
+        token.replace("-", " ").title()
+        for token in pack_token.split("-")
+        if token.strip()
+    )
+    if not pack_label:
+        return f"{mode} Benchmark"
+    return f"{mode} {pack_label} Benchmark"
+
+
+def _bundle_title(candidate_json_path: Path, *, compare: bool) -> str:
+    suffix = "Compare" if compare else "Report"
+    return f"{_humanize_pack_label(candidate_json_path)} {suffix}"
+
+
+def _summary_success_text(summary: dict[str, Any]) -> str:
+    runs = int(summary.get("runs", 0) or 0)
+    successes = int(summary.get("successes", 0) or 0)
+    if runs <= 0:
+        return "-"
+    return f"{successes}/{runs} ({_format_percent(summary.get('success_rate'))})"
+
+
+def _summary_metric_value(
+    summary: dict[str, Any],
+    field: str,
+    *,
+    scope: str = "success",
+    stat: str = "mean",
+) -> Any:
+    return _summary_metric(summary, field, scope=scope).get(stat)
+
+
+def _summary_like_metric_value(
+    summary: dict[str, Any],
+    *,
+    flat_key: str,
+    field: str,
+    scope: str = "success",
+    stat: str = "mean",
+) -> Any:
+    if "efficiency_all" in summary or "efficiency_success" in summary:
+        return _summary_metric_value(summary, field, scope=scope, stat=stat)
+    return summary.get(flat_key)
+
+
+def _summary_compare_delta(
+    candidate_value: Any,
+    baseline_value: Any,
+    *,
+    digits: int = 2,
+) -> str:
+    try:
+        return f"{float(candidate_value) - float(baseline_value):+.{digits}f}"
+    except (TypeError, ValueError):
+        return "-"
+
+
+def _summary_compare_delta_percent_points(
+    candidate_value: Any,
+    baseline_value: Any,
+    *,
+    digits: int = 2,
+) -> str:
+    try:
+        return f"{(float(candidate_value) - float(baseline_value)) * 100.0:+.{digits}f} pp"
+    except (TypeError, ValueError):
+        return "-"
+
+
+def _summary_compare_delta_count(
+    candidate_value: Any,
+    baseline_value: Any,
+) -> str:
+    try:
+        return f"{int(candidate_value) - int(baseline_value):+d}"
+    except (TypeError, ValueError):
+        return "-"
+
+
+def _load_baseline_payload(
+    bundle: dict[str, Any], *, outputs_root: Path
+) -> tuple[Path | None, dict[str, Any] | None]:
+    baseline_json_path = _baseline_candidate_json_path(bundle, outputs_root=outputs_root)
+    if baseline_json_path is None or not baseline_json_path.is_file():
+        return baseline_json_path, None
+    loaded = load_json(baseline_json_path)
+    return baseline_json_path, loaded if isinstance(loaded, dict) else None
+
+
+def _overview_diff_unavailable_cell() -> str:
+    return _render_metric_stack([("status", "unavailable")])
+
+
+def _overview_result_cell(summary: dict[str, Any]) -> str:
+    runs = int(summary.get("runs", 0) or 0)
+    successes = int(summary.get("successes", 0) or 0)
+    crashes = int(summary.get("crashed", 0) or 0)
+    return _render_metric_stack(
+        [
+            ("success", f"{successes}/{runs} ({_format_percent(summary.get('success_rate'))})"),
+            ("crashes", str(crashes)),
+        ]
+    )
+
+
+def _overview_efficiency_cell(summary: dict[str, Any]) -> str:
+    return _render_metric_stack(
+        [
+            ("fuel all", _format_float(_summary_metric_value(summary, "fuel_consumed", scope="all"))),
+            ("fuel success", _format_float(_summary_metric_value(summary, "fuel_consumed", scope="success"))),
+            ("time all", _format_float(_summary_metric_value(summary, "time", scope="all"))),
+            ("time success", _format_float(_summary_metric_value(summary, "time", scope="success"))),
+        ]
+    )
+
+
+def _overview_tracking_cell(summary: dict[str, Any]) -> str:
+    return _render_metric_stack(
+        [
+            ("gap mean", _format_float(_summary_metric_value(summary, "trace_ref_gap_mean", scope="success"), 3)),
+            ("gap peak", _format_float(_summary_metric_value(summary, "trace_ref_gap_max", scope="success", stat="max"), 3)),
+        ]
+    )
+
+
+def _overview_compute_cell(summary: dict[str, Any]) -> str:
+    return _render_metric_stack(
+        [
+            ("bot mean", _format_float(_summary_metric_value(summary, "bot_profile_total_ms_per_tick", scope="all"), 3)),
+            ("bot p99", _format_float(_summary_metric_value(summary, "bot_profile_total_ms_per_tick_p99", scope="all"), 3)),
+        ]
+    )
+
+
+def _overview_diff_ref_cell(compare_basis: dict[str, Any]) -> str:
+    if not compare_basis:
+        return '<span class="muted">current - baseline</span>'
+    return _render_metric_stack(
+        [
+            ("basis", str(compare_basis.get("mode") or "-")),
+            (
+                "shared runs",
+                str(int(compare_basis.get("shared_runs", 0) or 0)),
+            ),
+            (
+                "cur-only",
+                str(int(compare_basis.get("candidate_only_runs", 0) or 0)),
+            ),
+            (
+                "base-only",
+                str(int(compare_basis.get("baseline_only_runs", 0) or 0)),
+            ),
+        ]
+    )
+
+
+def _compare_compute_delta(compare: dict[str, Any], metric: str) -> Any:
+    compute = dict(compare.get("compute") or {})
+    deltas = dict(compute.get("deltas") or {})
+    return dict(deltas.get(metric) or {}).get("delta_abs")
+
+
+def _overview_diff_result_cell(
+    candidate_summary: dict[str, Any], baseline_summary: dict[str, Any]
+) -> str:
+    return _render_metric_stack(
+        [
+            (
+                "success rate",
+                _summary_compare_delta_percent_points(
+                    candidate_summary.get("success_rate"),
+                    baseline_summary.get("success_rate"),
+                ),
+            ),
+            (
+                "crashes",
+                _summary_compare_delta_count(
+                    candidate_summary.get("crashed", 0),
+                    baseline_summary.get("crashed", 0),
+                ),
+            ),
+        ]
+    )
+
+
+def _overview_diff_efficiency_cell(
+    candidate_summary: dict[str, Any], baseline_summary: dict[str, Any]
+) -> str:
+    return _render_metric_stack(
+        [
+            (
+                "fuel all",
+                _summary_compare_delta(
+                    _summary_like_metric_value(
+                        candidate_summary,
+                        flat_key="fuel_mean_all",
+                        field="fuel_consumed",
+                        scope="all",
+                    ),
+                    _summary_like_metric_value(
+                        baseline_summary,
+                        flat_key="fuel_mean_all",
+                        field="fuel_consumed",
+                        scope="all",
+                    ),
+                ),
+            ),
+            (
+                "fuel success",
+                _summary_compare_delta(
+                    _summary_like_metric_value(
+                        candidate_summary,
+                        flat_key="fuel_mean_success",
+                        field="fuel_consumed",
+                        scope="success",
+                    ),
+                    _summary_like_metric_value(
+                        baseline_summary,
+                        flat_key="fuel_mean_success",
+                        field="fuel_consumed",
+                        scope="success",
+                    ),
+                ),
+            ),
+            (
+                "time all",
+                _summary_compare_delta(
+                    _summary_like_metric_value(
+                        candidate_summary,
+                        flat_key="time_mean_all",
+                        field="time",
+                        scope="all",
+                    ),
+                    _summary_like_metric_value(
+                        baseline_summary,
+                        flat_key="time_mean_all",
+                        field="time",
+                        scope="all",
+                    ),
+                ),
+            ),
+            (
+                "time success",
+                _summary_compare_delta(
+                    _summary_like_metric_value(
+                        candidate_summary,
+                        flat_key="time_mean_success",
+                        field="time",
+                        scope="success",
+                    ),
+                    _summary_like_metric_value(
+                        baseline_summary,
+                        flat_key="time_mean_success",
+                        field="time",
+                        scope="success",
+                    ),
+                ),
+            ),
+        ]
+    )
+
+
+def _overview_diff_tracking_cell(
+    candidate_summary: dict[str, Any], baseline_summary: dict[str, Any]
+) -> str:
+    return _render_metric_stack(
+        [
+            (
+                "gap mean",
+                _summary_compare_delta(
+                    _summary_like_metric_value(
+                        candidate_summary,
+                        flat_key="ref_gap_mean_mean_success",
+                        field="trace_ref_gap_mean",
+                        scope="success",
+                    ),
+                    _summary_like_metric_value(
+                        baseline_summary,
+                        flat_key="ref_gap_mean_mean_success",
+                        field="trace_ref_gap_mean",
+                        scope="success",
+                    ),
+                    digits=3,
+                ),
+            ),
+            (
+                "gap peak",
+                _summary_compare_delta(
+                    _summary_like_metric_value(
+                        candidate_summary,
+                        flat_key="ref_gap_peak_max_success",
+                        field="trace_ref_gap_max",
+                        scope="success",
+                        stat="max",
+                    ),
+                    _summary_like_metric_value(
+                        baseline_summary,
+                        flat_key="ref_gap_peak_max_success",
+                        field="trace_ref_gap_max",
+                        scope="success",
+                        stat="max",
+                    ),
+                    digits=3,
+                ),
+            ),
+        ]
+    )
+
+
+def _overview_diff_compute_cell(
+    candidate_summary: dict[str, Any],
+    baseline_summary: dict[str, Any],
+    compare: dict[str, Any],
+) -> str:
+    mean_delta = _compare_compute_delta(compare, "bot_profile_total_ms_per_tick")
+    p99_delta = _compare_compute_delta(compare, "bot_profile_total_ms_per_tick_p99")
+    if mean_delta is None:
+        candidate_mean = _summary_metric_value(
+            candidate_summary, "bot_profile_total_ms_per_tick", scope="all"
+        )
+        baseline_mean = _summary_metric_value(
+            baseline_summary, "bot_profile_total_ms_per_tick", scope="all"
+        )
+        if candidate_mean is not None and baseline_mean is not None:
+            mean_delta = float(candidate_mean) - float(baseline_mean)
+    if p99_delta is None:
+        candidate_p99 = _summary_metric_value(
+            candidate_summary, "bot_profile_total_ms_per_tick_p99", scope="all"
+        )
+        baseline_p99 = _summary_metric_value(
+            baseline_summary, "bot_profile_total_ms_per_tick_p99", scope="all"
+        )
+        if candidate_p99 is not None and baseline_p99 is not None:
+            p99_delta = float(candidate_p99) - float(baseline_p99)
+    return _render_metric_stack(
+        [
+            ("bot mean", _format_float(mean_delta, 3) if mean_delta is not None else "-"),
+            ("bot p99", _format_float(p99_delta, 3) if p99_delta is not None else "-"),
+        ]
+    )
+
+
+def _render_overview_section(
+    bundle: dict[str, Any], *, outputs_root: Path
+) -> str:
+    benchmark = dict(bundle.get("benchmark") or {})
+    candidate = dict(benchmark.get("candidate") or {})
+    compare = dict(bundle.get("compare") or {})
+    candidate_summary = dict(candidate.get("summary") or {})
+    candidate_json_rel = str(candidate.get("json_path") or "")
+
+    rows: list[tuple[str, list[str]]] = [
+        (
+            "summary-row",
+            [
+                '<span class="row-tag candidate">current</span>',
+                f"<code>{html.escape(_tracepack_ref_label(candidate_json_rel, fallback=compare.get('candidate_commit')))}</code>",
+                _overview_result_cell(candidate_summary),
+                _overview_efficiency_cell(candidate_summary),
+                _overview_tracking_cell(candidate_summary),
+                _overview_compute_cell(candidate_summary),
+            ],
+        )
+    ]
+
+    baseline_json_path, baseline_payload = _load_baseline_payload(
+        bundle, outputs_root=outputs_root
+    )
+    if compare and baseline_payload is not None:
+        baseline_summary = dict(baseline_payload.get("summary") or {})
+        compare_candidate_summary = dict(compare.get("summary_candidate") or {})
+        compare_baseline_summary = dict(compare.get("summary_baseline") or {})
+        compare_basis = dict(compare.get("compare_basis") or {})
+        compare_available = (
+            str(compare_basis.get("mode") or "").strip() != "no_shared_runs"
+            and bool(compare.get("summary_available", True))
+        )
+        baseline_json_rel = _rel_to_outputs(baseline_json_path, outputs_root=outputs_root)
+        rows.append(
+            (
+                "baseline-summary-row baseline-row",
+                [
+                    '<span class="row-tag baseline">baseline</span>',
+                    f"<code>{html.escape(_tracepack_ref_label(baseline_json_rel, fallback=compare.get('baseline_commit')))}</code>",
+                    _overview_result_cell(baseline_summary),
+                    _overview_efficiency_cell(baseline_summary),
+                    _overview_tracking_cell(baseline_summary),
+                    _overview_compute_cell(baseline_summary),
+                ],
+            )
+        )
+        rows.append(
+            (
+                "diff-summary-row",
+                [
+                    '<span class="row-tag diff">diff</span>',
+                    _overview_diff_ref_cell(compare_basis),
+                    (
+                        _overview_diff_result_cell(
+                            compare_candidate_summary or candidate_summary,
+                            compare_baseline_summary or baseline_summary,
+                        )
+                        if compare_available
+                        else _overview_diff_unavailable_cell()
+                    ),
+                    (
+                        _overview_diff_efficiency_cell(
+                            compare_candidate_summary or candidate_summary,
+                            compare_baseline_summary or baseline_summary,
+                        )
+                        if compare_available
+                        else _overview_diff_unavailable_cell()
+                    ),
+                    (
+                        _overview_diff_tracking_cell(
+                            compare_candidate_summary or candidate_summary,
+                            compare_baseline_summary or baseline_summary,
+                        )
+                        if compare_available
+                        else _overview_diff_unavailable_cell()
+                    ),
+                    (
+                        _overview_diff_compute_cell(
+                            compare_candidate_summary or candidate_summary,
+                            compare_baseline_summary or baseline_summary,
+                            compare,
+                        )
+                        if compare_available
+                        else _overview_diff_unavailable_cell()
+                    ),
+                ],
+            )
+        )
+
+    return (
+        '<div class="header-overview">'
+        "<h2>Overview</h2>"
+        '<div class="table-wrap">'
+        + _render_table_with_row_classes(
+            ["Pack", "Ref", "Result", "Efficiency", "Tracking", "Compute"],
+            rows,
+            table_class="summary-table",
+        )
+        + "</div>"
+        "</div>"
+    )
+
+
+def _render_context_section(
+    intent: dict[str, Any],
+    *,
+    candidate: dict[str, Any],
+    compare: dict[str, Any],
+) -> str:
+    if not intent and not candidate and not compare:
         return ""
+    compare_basis = dict(compare.get("compare_basis") or {})
+    compare_basis_text = ""
+    if compare_basis:
+        compare_basis_text = (
+            f"{str(compare_basis.get('mode') or '-')} "
+            f"(shared {int(compare_basis.get('shared_runs', 0) or 0)}, "
+            f"current-only {int(compare_basis.get('candidate_only_runs', 0) or 0)}, "
+            f"baseline-only {int(compare_basis.get('baseline_only_runs', 0) or 0)})"
+        )
     rows = [
         ["Goal", html.escape(str(intent.get("goal_summary") or "-"))],
         ["Request Source", html.escape(str(intent.get("request_source") or "-"))],
+        [
+            "Tracepack Mode",
+            html.escape("compare" if compare else "single"),
+        ],
+        *(
+            [["Compare Basis", html.escape(compare_basis_text)]]
+            if compare_basis_text
+            else []
+        ),
         [
             "Touched Areas",
             _render_inline_list(list(intent.get("touched_areas") or []), code=True),
@@ -1147,53 +1618,6 @@ def _render_context_section(intent: dict[str, Any]) -> str:
     if assumptions:
         sections.append("<h3>Assumptions</h3>")
         sections.append(_render_text_list(assumptions))
-    sections.append("</section>")
-    return "".join(sections)
-
-
-def _render_baseline_section(intent: dict[str, Any]) -> str:
-    if not intent:
-        return ""
-    skipped_commits = list(intent.get("baseline_skipped_commits") or [])
-    rows = _render_table(
-        ["Field", "Value"],
-        [
-            ["Strategy", html.escape(str(intent.get("baseline_strategy") or "-"))],
-            [
-                "Requested Ref",
-                html.escape(str(intent.get("baseline_requested_ref") or "-")),
-            ],
-            [
-                "Missing Baseline Policy",
-                html.escape(str(intent.get("baseline_missing_policy") or "-")),
-            ],
-            [
-                "Resolved Ref",
-                html.escape(str(intent.get("baseline_resolved_ref") or "-")),
-            ],
-        ],
-    )
-    sections = [
-        "<section>",
-        "<h2>Baseline</h2>",
-        rows,
-    ]
-    if skipped_commits:
-        sections.append("<h3>Skipped Commits</h3>")
-        sections.append(
-            _render_table(
-                ["Commit", "Reason", "Subject"],
-                [
-                    [
-                        f"<code>{html.escape(str(item.get('commit') or '-'))}</code>",
-                        html.escape(str(item.get("skip_reason") or "-")),
-                        html.escape(str(item.get("subject") or "-")),
-                    ]
-                    for item in skipped_commits
-                    if isinstance(item, dict)
-                ],
-            )
-        )
     sections.append("</section>")
     return "".join(sections)
 
@@ -1252,6 +1676,98 @@ def _render_scenario_sections(
     outputs_root: Path,
 ) -> str:
     table_counter = 0
+    baseline_scenario_index = dict(report.get("baseline_scenario_index") or {})
+
+    def _summary_row_html(
+        selector: str,
+        summary_data: dict[str, Any],
+        *,
+        depth: int,
+        parent_group_id: str | None,
+        group_id: str | None,
+        expandable: bool,
+        show_spread: bool,
+        representative_run: dict[str, Any] | None,
+        tone: str,
+        label: str,
+    ) -> str:
+        hidden_attr = " hidden" if parent_group_id else ""
+        parent_attr = (
+            f' data-parent="{html.escape(parent_group_id)}"' if parent_group_id else ""
+        )
+        group_attr = f' data-group="{html.escape(group_id)}"' if group_id else ""
+        expanded_attr = ' aria-expanded="false"' if expandable else ""
+        tabindex_attr = ' tabindex="0"' if expandable else ""
+        row_class = (
+            "scenario-row"
+            if tone == "candidate"
+            else "baseline-scenario-row"
+        )
+        preview_cell = _render_run_preview_cell(
+            representative_run, bundle_dir=bundle_dir, outputs_root=outputs_root
+        )
+        expander_html = (
+            '<span class="expander">+</span>'
+            if expandable
+            else '<span class="expander muted">•</span>'
+        )
+        return (
+            f'<tr class="{row_class} {tone}-row"'
+            f"{hidden_attr}{parent_attr}{group_attr}{expanded_attr}{tabindex_attr}>"
+            f'<td class="tree-label" style="--depth: {depth};"><span class="row-tag {tone}">{html.escape(label)}</span>{expander_html}{html.escape(selector)}</td>'
+            f"<td>{html.escape(str(int(summary_data.get('successes', 0) or 0)) + '/' + str(int(summary_data.get('runs', 0) or 0)))}</td>"
+            f"<td>{_summary_value_cell_html(summary_data.get('fuel_mean'), summary_data.get('fuel_stddev'), show_spread=show_spread)}</td>"
+            f"<td>{_summary_value_cell_html(summary_data.get('time_mean'), summary_data.get('time_stddev'), show_spread=show_spread)}</td>"
+            f"<td>{_scenario_metric_cell_html(summary_data, show_spread=show_spread)}</td>"
+            f"<td>{preview_cell}</td>"
+            "</tr>"
+        )
+
+    def _seed_row_html(
+        run: dict[str, Any],
+        *,
+        depth: int,
+        group_id: str,
+        tone: str,
+        label: str,
+    ) -> str:
+        record = dict(run.get("record") or {})
+        detail_href = (
+            _href_from(
+                bundle_dir,
+                str(run.get("detail_rel") or ""),
+                outputs_root=outputs_root,
+            )
+            or "#"
+        )
+        preview_href = _href_from(
+            bundle_dir,
+            str(run.get("preview_path_rel") or ""),
+            outputs_root=outputs_root,
+        )
+        preview_cell = '<span class="muted">no plot</span>'
+        if preview_href:
+            preview_cell = (
+                f'<a class="table-preview" href="{html.escape(detail_href)}">'
+                f'<img src="{html.escape(preview_href)}" alt="{html.escape(str(run.get("selector") or "run"))}">'
+                "</a>"
+            )
+        metric_cell = _seed_metric_cell_html(record)
+        seed_label = f"seed {record.get('seed') if record.get('seed') is not None else '-'}"
+        if int(run.get("duplicate_count", 1) or 1) > 1:
+            seed_label = f"{seed_label} #{int(run.get('run_instance_id', 1) or 1)}"
+        row_class = "seed-row" if tone == "candidate" else "seed-row baseline-seed-row"
+        return (
+            f'<tr class="{row_class} {"baseline-row" if tone == "baseline" else ""}" hidden'
+            f' data-parent="{html.escape(group_id)}">'
+            f'<td class="tree-label seed-label" style="--depth: {depth + 1};"><span class="row-tag {tone}">{html.escape(label)}</span>{html.escape(str(seed_label))}</td>'
+            f"<td>{html.escape(str(record.get('state') or ''))}</td>"
+            f"<td>{html.escape(_format_float(record.get('fuel_consumed'), 3))}</td>"
+            f"<td>{html.escape(_format_float(record.get('time'), 3))}</td>"
+            f"<td>{metric_cell}</td>"
+            f"<td>{preview_cell}</td>"
+            "</tr>"
+        )
 
     def _render_tree_rows(
         node: dict[str, Any], *, parent_group_id: str | None
@@ -1260,72 +1776,104 @@ def _render_scenario_sections(
         group_id = _sanitize_token(selector)
         depth = int(node.get("depth", 0) or 0)
         summary_data = dict(node.get("summary") or {})
-        hidden_attr = " hidden" if parent_group_id else ""
-        parent_attr = (
-            f' data-parent="{html.escape(parent_group_id)}"' if parent_group_id else ""
-        )
-        preview_cell = _render_run_preview_cell(
-            node.get("representative_run"), bundle_dir=bundle_dir, outputs_root=outputs_root
-        )
         children = list(node.get("children") or [])
         show_spread = not children
         rows = [
-            (
-                '<tr class="scenario-row"'
-                f"{hidden_attr}{parent_attr}"
-                f' data-group="{html.escape(group_id)}" aria-expanded="false" tabindex="0">'
-                f'<td class="tree-label" style="--depth: {depth};"><span class="expander">+</span>{html.escape(selector)}</td>'
-                f"<td>{html.escape(str(int(summary_data.get('successes', 0) or 0)) + '/' + str(int(summary_data.get('runs', 0) or 0)))}</td>"
-                f"<td>{_summary_value_cell_html(summary_data.get('fuel_mean'), summary_data.get('fuel_stddev'), show_spread=show_spread)}</td>"
-                f"<td>{_summary_value_cell_html(summary_data.get('time_mean'), summary_data.get('time_stddev'), show_spread=show_spread)}</td>"
-                f"<td>{_scenario_metric_cell_html(summary_data, show_spread=show_spread)}</td>"
-                f"<td>{preview_cell}</td>"
-                "</tr>"
+            _summary_row_html(
+                selector,
+                summary_data,
+                depth=depth,
+                parent_group_id=parent_group_id,
+                group_id=group_id,
+                expandable=bool(children) or bool(node.get("runs") or []),
+                show_spread=show_spread,
+                representative_run=(
+                    node.get("representative_run")
+                    if isinstance(node.get("representative_run"), dict)
+                    else None
+                ),
+                tone="candidate",
+                label="cur",
             )
         ]
+        baseline_node = baseline_scenario_index.get(selector)
+        if isinstance(baseline_node, dict):
+            rows.append(
+                _summary_row_html(
+                    selector,
+                    dict(baseline_node.get("summary") or {}),
+                    depth=depth,
+                    parent_group_id=parent_group_id,
+                    group_id=None,
+                    expandable=False,
+                    show_spread=show_spread,
+                    representative_run=(
+                        baseline_node.get("representative_run")
+                        if isinstance(baseline_node.get("representative_run"), dict)
+                        else None
+                    ),
+                    tone="baseline",
+                    label="base",
+                )
+            )
         if children:
             for child in children:
                 rows.extend(_render_tree_rows(child, parent_group_id=group_id))
             return rows
 
+        baseline_runs_by_key: dict[tuple[str, int], dict[str, Any]] = {}
+        if isinstance(baseline_node, dict):
+            for baseline_run in baseline_node.get("runs") or []:
+                if not isinstance(baseline_run, dict):
+                    continue
+                key = (
+                    str(baseline_run.get("selector") or ""),
+                    int(baseline_run.get("run_instance_id", 1) or 1),
+                )
+                baseline_runs_by_key[key] = baseline_run
+        matched_baseline_keys: set[tuple[str, int]] = set()
+
         for run in node.get("runs") or []:
-            record = dict(run.get("record") or {})
-            detail_href = (
-                _href_from(
-                    bundle_dir,
-                    str(run.get("detail_rel") or ""),
-                    outputs_root=outputs_root,
-                )
-                or "#"
-            )
-            preview_href = _href_from(
-                bundle_dir,
-                str(run.get("preview_path_rel") or ""),
-                outputs_root=outputs_root,
-            )
-            preview_cell = '<span class="muted">no plot</span>'
-            if preview_href:
-                preview_cell = (
-                    f'<a class="table-preview" href="{html.escape(detail_href)}">'
-                    f'<img src="{html.escape(preview_href)}" alt="{html.escape(str(run.get("selector") or "run"))}">'
-                    "</a>"
-                )
-            metric_cell = _seed_metric_cell_html(record)
-            seed_label = (
-                f"seed {record.get('seed') if record.get('seed') is not None else '-'}"
-            )
-            if int(run.get("duplicate_count", 1) or 1) > 1:
-                seed_label = f"{seed_label} #{int(run.get('run_instance_id', 1) or 1)}"
+            if not isinstance(run, dict):
+                continue
             rows.append(
-                '<tr class="seed-row" hidden'
-                f' data-parent="{html.escape(group_id)}">'
-                f'<td class="tree-label seed-label" style="--depth: {depth + 1};">{html.escape(str(seed_label))}</td>'
-                f"<td>{html.escape(str(record.get('state') or ''))}</td>"
-                f"<td>{html.escape(_format_float(record.get('fuel_consumed'), 3))}</td>"
-                f"<td>{html.escape(_format_float(record.get('time'), 3))}</td>"
-                f"<td>{metric_cell}</td>"
-                f"<td>{preview_cell}</td>"
-                "</tr>"
+                _seed_row_html(
+                    run,
+                    depth=depth,
+                    group_id=group_id,
+                    tone="candidate",
+                    label="cur",
+                )
+            )
+            baseline_key = (
+                str(run.get("selector") or ""),
+                int(run.get("run_instance_id", 1) or 1),
+            )
+            baseline_run = baseline_runs_by_key.get(baseline_key)
+            if baseline_run is not None:
+                matched_baseline_keys.add(baseline_key)
+                rows.append(
+                    _seed_row_html(
+                        baseline_run,
+                        depth=depth,
+                        group_id=group_id,
+                        tone="baseline",
+                        label="base",
+                    )
+                )
+
+        for baseline_key in sorted(
+            (key for key in baseline_runs_by_key if key not in matched_baseline_keys),
+            key=lambda item: (_selector_sort_key(item[0]), item[1]),
+        ):
+            rows.append(
+                _seed_row_html(
+                    baseline_runs_by_key[baseline_key],
+                    depth=depth,
+                    group_id=group_id,
+                    tone="baseline",
+                    label="base",
+                )
             )
         return rows
 
@@ -1336,10 +1884,23 @@ def _render_scenario_sections(
         row_blocks: list[str] = []
         for node in report["scenario_trees_by_level"][level_name]:
             row_blocks.extend(_render_tree_rows(node, parent_group_id=None))
+        controls: list[str] = []
+        if baseline_scenario_index:
+            controls.append(
+                f'<button type="button" class="table-button" data-action="toggle-baseline" data-target="{html.escape(table_id)}">Hide Baseline</button>'
+            )
+        controls.extend(
+            [
+                f'<button type="button" class="table-button" data-action="expand-scenarios" data-target="{html.escape(table_id)}">Expand Scenarios</button>',
+                f'<button type="button" class="table-button" data-action="collapse-scenarios" data-target="{html.escape(table_id)}">Collapse Scenarios</button>',
+                f'<button type="button" class="table-button" data-action="expand" data-target="{html.escape(table_id)}">Expand All</button>',
+                f'<button type="button" class="table-button" data-action="collapse" data-target="{html.escape(table_id)}">Collapse All</button>',
+            ]
+        )
         sections.append(
             "<section>"
             f"<h2>{html.escape(level_name.title())}</h2>"
-            f'<div class="table-controls"><button type="button" class="table-button" data-action="expand-scenarios" data-target="{html.escape(table_id)}">Expand Scenarios</button><button type="button" class="table-button" data-action="collapse-scenarios" data-target="{html.escape(table_id)}">Collapse Scenarios</button><button type="button" class="table-button" data-action="expand" data-target="{html.escape(table_id)}">Expand All</button><button type="button" class="table-button" data-action="collapse" data-target="{html.escape(table_id)}">Collapse All</button></div>'
+            f'<div class="table-controls">{"".join(controls)}</div>'
             '<div class="table-wrap">'
             f'<table class="scenario-table" data-tree-table="{html.escape(table_id)}">'
             "<thead><tr><th>Selector</th><th>Status</th><th>Fuel</th><th>Time</th><th>Metric</th><th>Details</th></tr></thead>"
@@ -1434,16 +1995,21 @@ def _render_run_detail_html(
 ) -> str:
     benchmark = dict(bundle.get("benchmark") or {})
     candidate = dict(benchmark.get("candidate") or {})
+    source = str(run.get("report_source") or "candidate")
     record = dict(run.get("record") or {})
     selector = str(run.get("selector") or "unknown")
     trace_payload = _load_trace_payload(run, outputs_root=outputs_root)
     detail_dir = (outputs_root / str(run["detail_rel"])).parent
-    latest_href = _href_from(
-        detail_dir, str(bundle.get("latest_page_path") or ""), outputs_root=outputs_root
+    bundle_overview_href = _href_from(
+        detail_dir, str(bundle.get("bundle_page_path") or ""), outputs_root=outputs_root
     )
-    candidate_href = _href_from(
-        detail_dir, candidate.get("json_path"), outputs_root=outputs_root
-    )
+    source_json_rel = candidate.get("json_path")
+    source_json_label = "candidate json"
+    if source == "baseline":
+        baseline_json_path = _baseline_candidate_json_path(bundle, outputs_root=outputs_root)
+        source_json_rel = _rel_to_outputs(baseline_json_path, outputs_root=outputs_root)
+        source_json_label = "baseline json"
+    candidate_href = _href_from(detail_dir, source_json_rel, outputs_root=outputs_root)
     trace_href = _href_from(
         detail_dir, str(run.get("trace_path_rel") or ""), outputs_root=outputs_root
     )
@@ -1458,6 +2024,7 @@ def _render_run_detail_html(
             item
             for item in scenario_runs
             if str(item.get("scenario_selector") or "") == scenario_selector
+            and str(item.get("report_source") or "candidate") == source
             and (item.get("trace_path_rel") or item.get("trace_path"))
         ),
         None,
@@ -1479,9 +2046,9 @@ def _render_run_detail_html(
         record=record,
         trace_payload=trace_payload,
         plotly_href=plotly_href,
-        top_links=[("home", latest_href)],
+        top_links=[("back", bundle_overview_href)],
         raw_links=[
-            ("candidate json", candidate_href),
+            (source_json_label, candidate_href),
             ("trace json", trace_href),
             ("scenario representative detail", representative_href),
         ],
@@ -1500,83 +2067,11 @@ def _render_bundle_html(
     intent = dict(bundle.get("intent") or {})
     analysis = dict(bundle.get("analysis") or {})
     report = _build_bundle_report_model(bundle, outputs_root=outputs_root)
-    summary_sections_html = "".join(
-        '<div class="card-group">'
-        f"<h2>{html.escape(title)}</h2>"
-        f'<div class="cards">{_render_metric_card_grid(cards)}</div>'
-        "</div>"
-        for title, cards in _summary_card_sections(bundle)
-    )
-
-    raw_links: list[str] = []
-    for label, path_rel in (
-        ("candidate json", candidate.get("json_path")),
-        ("candidate meta", candidate.get("meta_path")),
-        ("compare report", compare.get("json_path")),
-        ("intent json", intent.get("json_path")),
-        ("analysis json", analysis.get("json_path")),
-        ("bundle json", bundle.get("bundle_json_path")),
-    ):
-        href = _href_from(bundle_dir, path_rel, outputs_root=outputs_root)
-        if href is None:
-            continue
-        raw_links.append(f'<a href="{html.escape(href)}">{html.escape(label)}</a>')
-
-    compare_html = ""
-    if compare:
-        worst_rows = _render_table(
-            [
-                "Scenario",
-                "Delta Success",
-                "Delta Fuel",
-                "Delta Ref Gap",
-                "Delta Ref Peak",
-                "Basis",
-            ],
-            [
-                [
-                    html.escape(str(row.get("scenario") or "")),
-                    _format_float(row.get("delta_success_rate"), 3),
-                    _format_float(row.get("delta_fuel_mean"), 3),
-                    _format_float(row.get("delta_ref_gap_mean"), 3),
-                    _format_float(row.get("delta_ref_gap_peak_max"), 3),
-                    html.escape(str(row.get("ref_gap_basis") or row.get("fuel_basis") or "")),
-                ]
-                for row in compare.get("worst_scenarios") or []
-            ],
-        )
-        crash_rows = _render_table(
-            ["Level", "Scenario", "Seed", "Failure", "Baseline State"],
-            [
-                [
-                    html.escape(str(item.get("level") or "")),
-                    html.escape(str(item.get("scenario") or "")),
-                    html.escape(str(item.get("seed") or "")),
-                    html.escape(str(item.get("candidate_failure_mode") or "")),
-                    html.escape(str(item.get("baseline_state") or "")),
-                ]
-                for item in compare.get("new_global_crashes") or []
-            ],
-        )
-        compare_html = (
-            "<section>"
-            "<h2>Compare</h2>"
-            f'<p class="banner {"bad" if compare.get("notable_regression") else "ok"}">'
-            f"notable_regression={html.escape(str(compare.get('notable_regression')))}</p>"
-            "<h3>New Global Crashes</h3>"
-            f"{crash_rows}"
-            "<h3>Worst Scenarios</h3>"
-            f"{worst_rows}"
-            "</section>"
-        )
-
-    benchmark_cmd = html.escape(
-        " ".join(str(item) for item in benchmark.get("command") or [])
-    )
     latest_href = _href_from(
         bundle_dir, bundle.get("latest_page_path"), outputs_root=outputs_root
     )
-    intent_html = _render_context_section(intent) + _render_baseline_section(intent)
+    overview_html = _render_overview_section(bundle, outputs_root=outputs_root)
+    intent_html = _render_context_section(intent, candidate=candidate, compare=compare)
     analysis_html = _render_outcome_section(analysis) + _render_analysis_section(
         analysis
     )
@@ -1632,6 +2127,9 @@ def _render_bundle_html(
       padding: 20px 22px;
       margin-bottom: 20px;
     }}
+    .header-overview {{
+      margin-top: 18px;
+    }}
     .meta {{
       color: var(--muted);
       font-size: 0.95rem;
@@ -1646,41 +2144,41 @@ def _render_bundle_html(
     .banner.ok {{ background: rgba(14, 107, 96, 0.12); color: var(--accent); }}
     .banner.bad {{ background: rgba(142, 59, 46, 0.12); color: var(--warn); }}
     .banner.neutral {{ background: rgba(87, 95, 102, 0.12); color: var(--muted); }}
-    .card-group + .card-group {{
-      margin-top: 18px;
-    }}
-    .card-group h2 {{
-      margin: 0 0 10px;
-      font-size: 1rem;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-    }}
-    .cards {{
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-      gap: 12px;
-      margin: 0;
-    }}
-    .card, section, .plot-card {{
+    section, .plot-card {{
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 16px;
       box-shadow: 0 8px 24px var(--shadow);
     }}
-    .card {{
-      padding: 14px;
-      min-width: 0;
-    }}
-    .label {{
-      color: var(--muted);
-      font-size: 0.82rem;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }}
     .metric-stack {{
       display: grid;
       gap: 4px;
+    }}
+    .row-tag {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 2.8rem;
+      margin-right: 8px;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      line-height: 1.2;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }}
+    .row-tag.candidate {{
+      background: rgba(14, 107, 96, 0.12);
+      color: var(--accent);
+    }}
+    .row-tag.baseline {{
+      background: rgba(87, 95, 102, 0.12);
+      color: var(--muted);
+    }}
+    .row-tag.diff {{
+      background: rgba(199, 160, 84, 0.18);
+      color: #7a5611;
     }}
     .metric-line {{
       display: flex;
@@ -1752,13 +2250,22 @@ def _render_bundle_html(
     .header-actions {{
       display: flex;
       gap: 10px;
-      margin-top: 14px;
-    }}
-    .links {{
-      color: var(--muted);
-      font-size: 0.92rem;
+      margin-bottom: 12px;
     }}
     .table-wrap {{ overflow-x: auto; }}
+    .summary-table {{
+      width: 100%;
+      min-width: 920px;
+    }}
+    .summary-row {{
+      background: rgba(14, 107, 96, 0.10);
+    }}
+    .baseline-summary-row {{
+      background: rgba(87, 95, 102, 0.16);
+    }}
+    .diff-summary-row {{
+      background: rgba(199, 160, 84, 0.12);
+    }}
     .table-controls {{
       display: flex;
       gap: 10px;
@@ -1782,15 +2289,24 @@ def _render_bundle_html(
     }}
     .scenario-row {{
       cursor: pointer;
-      background: rgba(14, 107, 96, 0.04);
+      background: rgba(14, 107, 96, 0.10);
+    }}
+    .baseline-scenario-row {{
+      background: rgba(87, 95, 102, 0.16);
     }}
     .failure-row {{
       background: rgba(142, 59, 46, 0.05);
     }}
     .scenario-row:hover {{
-      background: rgba(14, 107, 96, 0.08);
+      background: rgba(14, 107, 96, 0.16);
+    }}
+    .baseline-scenario-row:hover {{
+      background: rgba(87, 95, 102, 0.22);
     }}
     .scenario-row td:first-child {{
+      font-weight: 700;
+    }}
+    .baseline-scenario-row td:first-child {{
       font-weight: 700;
     }}
     .tree-label {{
@@ -1806,7 +2322,13 @@ def _render_bundle_html(
       transform: rotate(45deg);
     }}
     .seed-row {{
-      background: rgba(255, 250, 240, 0.55);
+      background: rgba(255, 248, 233, 0.92);
+    }}
+    .baseline-seed-row {{
+      background: rgba(219, 225, 230, 0.78);
+    }}
+    .scenario-table.baseline-hidden .baseline-row {{
+      display: none;
     }}
     .seed-label {{
       color: var(--muted);
@@ -1851,17 +2373,11 @@ def _render_bundle_html(
   <body>
   <main>
     <header>
-      {f'<div class="header-actions"><a class="nav-button" href="{html.escape(latest_href)}">home</a></div>' if latest_href else ""}
+      {f'<div class="header-actions"><a class="nav-button" href="{html.escape(latest_href)}">latest</a></div>' if latest_href else ""}
       <h1>{html.escape(str(bundle.get("title") or "Pylander Bench Bundle"))}</h1>
-      {summary_sections_html}
-      <p class="links">{" | ".join(raw_links)}</p>
-      <details>
-        <summary>Show commands</summary>
-        <p><code>{benchmark_cmd}</code></p>
-      </details>
+      {overview_html}
     </header>
 
-    {compare_html}
     {intent_html}
     {analysis_html}
 
@@ -1873,7 +2389,7 @@ def _render_bundle_html(
     </section>
   </main>
   <script>
-    const rowsForTable = (table) => Array.from(table.querySelectorAll("tr.scenario-row, tr.seed-row"));
+    const rowsForTable = (table) => Array.from(table.querySelectorAll("tr.scenario-row, tr.baseline-scenario-row, tr.seed-row"));
     const childRows = (table, group) => Array.from(table.querySelectorAll(`tr[data-parent="${{group}}"]`));
     const scenarioChildRows = (table, group) => childRows(table, group).filter((row) => row.classList.contains("scenario-row"));
 
@@ -1906,12 +2422,14 @@ def _render_bundle_html(
 
     const expandScenarios = (table) => {{
       rowsForTable(table).forEach((row) => {{
-        if (row.classList.contains("scenario-row")) {{
+        if (row.classList.contains("scenario-row") || row.classList.contains("baseline-scenario-row")) {{
           row.hidden = false;
-          row.setAttribute(
-            "aria-expanded",
-            scenarioChildRows(table, row.dataset.group || "").length > 0 ? "true" : "false",
-          );
+          if (row.classList.contains("scenario-row")) {{
+            row.setAttribute(
+              "aria-expanded",
+              scenarioChildRows(table, row.dataset.group || "").length > 0 ? "true" : "false",
+            );
+          }}
           return;
         }}
         row.hidden = true;
@@ -1920,8 +2438,10 @@ def _render_bundle_html(
 
     const collapseScenarios = (table) => {{
       rowsForTable(table).forEach((row) => {{
-        if (row.classList.contains("scenario-row")) {{
-          row.setAttribute("aria-expanded", "false");
+        if (row.classList.contains("scenario-row") || row.classList.contains("baseline-scenario-row")) {{
+          if (row.classList.contains("scenario-row")) {{
+            row.setAttribute("aria-expanded", "false");
+          }}
           row.hidden = Boolean(row.dataset.parent);
           return;
         }}
@@ -1967,7 +2487,12 @@ def _render_bundle_html(
         if (!target) return;
         const table = document.querySelector(`table[data-tree-table="${{target}}"]`);
         if (!table) return;
-        if (button.dataset.action === "expand-scenarios") {{
+        if (button.dataset.action === "toggle-baseline") {{
+          table.classList.toggle("baseline-hidden");
+          button.textContent = table.classList.contains("baseline-hidden")
+            ? "Show Baseline"
+            : "Hide Baseline";
+        }} else if (button.dataset.action === "expand-scenarios") {{
           expandScenarios(table);
         }} else if (button.dataset.action === "collapse-scenarios") {{
           collapseScenarios(table);
@@ -1978,7 +2503,39 @@ def _render_bundle_html(
         }}
       }});
     }});
+
+    document.querySelectorAll(".scenario-table").forEach((table) => {{
+      expandScenarios(table);
+    }});
   </script>
+</body>
+</html>
+"""
+
+
+def _render_latest_redirect_html(
+    bundle: dict[str, Any], *, latest_path: Path, outputs_root: Path
+) -> str:
+    bundle_href = _href_from(
+        latest_path.parent,
+        str(bundle.get("bundle_page_path") or ""),
+        outputs_root=outputs_root,
+    )
+    target_href = bundle_href or "../bundles/"
+    escaped_target = html.escape(target_href, quote=True)
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pylander Latest Report</title>
+  <meta http-equiv="refresh" content="0; url={escaped_target}">
+  <script>
+    window.location.replace({json.dumps(target_href)});
+  </script>
+</head>
+<body>
+  <p>Redirecting to the latest report: <a href="{escaped_target}">{escaped_target}</a></p>
 </body>
 </html>
 """
@@ -2052,6 +2609,7 @@ def _bundle_payload(
     candidate_cached: str | None,
     compare_path: Path | None,
     compare_payload: dict[str, Any] | None,
+    baseline_json_path: Path | None,
     intent_path: Path | None,
     intent_payload: dict[str, Any] | None,
     analysis_path: Path | None,
@@ -2065,7 +2623,9 @@ def _bundle_payload(
     return {
         "bundle_id": bundle_id,
         "created_at_utc": created_at_utc,
-        "title": f"Pylander Bench Bundle {bundle_id}",
+        "title": _bundle_title(
+            candidate_json_path, compare=compare_path is not None and compare_payload is not None
+        ),
         "latest_page_path": latest_page,
         "bundle_page_path": bundle_page,
         "bundle_json_path": bundle_json,
@@ -2104,6 +2664,11 @@ def _bundle_payload(
         "compare": (
             {
                 "json_path": _rel_to_outputs(compare_path, outputs_root=outputs_root),
+                "baseline_json_path": _rel_to_outputs(
+                    baseline_json_path, outputs_root=outputs_root
+                ),
+                "baseline_commit": str(compare_payload.get("baseline_commit") or ""),
+                "candidate_commit": str(compare_payload.get("candidate_commit") or ""),
                 **_compare_summary(compare_payload or {}),
             }
             if compare_path and compare_payload is not None
@@ -2194,8 +2759,8 @@ def _write_bundle_files(
     latest_path = outputs_root / str(bundle["latest_page_path"])
     latest_path.parent.mkdir(parents=True, exist_ok=True)
     latest_path.write_text(
-        _render_bundle_html(
-            bundle, bundle_dir=latest_path.parent, outputs_root=outputs_root
+        _render_latest_redirect_html(
+            bundle, latest_path=latest_path, outputs_root=outputs_root
         ),
         encoding="utf-8",
     )
@@ -2207,6 +2772,7 @@ def render_bundle(
     candidate_json_path: Path,
     candidate_meta_path: Path | None,
     compare_path: Path | None,
+    baseline_json_path: Path | None,
     intent_path: Path | None,
     analysis_path: Path | None,
     benchmark_cmd: list[str] | None,
@@ -2234,6 +2800,13 @@ def render_bundle(
     )
     if resolved_compare_path is not None and not resolved_compare_path.exists():
         raise SystemExit(f"Compare JSON not found: {resolved_compare_path}")
+    resolved_baseline_json_path = (
+        baseline_json_path.resolve() if baseline_json_path is not None else None
+    )
+    if resolved_baseline_json_path is not None and not resolved_baseline_json_path.exists():
+        raise SystemExit(
+            f"Baseline benchmark JSON not found: {resolved_baseline_json_path}"
+        )
     resolved_intent_path = (
         intent_path.resolve()
         if intent_path is not None
@@ -2269,6 +2842,66 @@ def render_bundle(
         if resolved_compare_path is not None
         else None
     )
+    if isinstance(compare_payload, dict):
+        compare_candidate_json_path = _compare_tracepack_path(
+            compare_payload.get("candidate_json_path"),
+            outputs_root=outputs_root,
+        )
+        if (
+            compare_candidate_json_path is not None
+            and compare_candidate_json_path != candidate_json_path
+        ):
+            raise SystemExit(
+                "Candidate benchmark JSON does not match compare JSON candidate: "
+                f"{candidate_json_path} != {compare_candidate_json_path}"
+            )
+        if resolved_baseline_json_path is None:
+            resolved_baseline_json_path = _compare_tracepack_path(
+                compare_payload.get("baseline_json_path"),
+                outputs_root=outputs_root,
+            )
+        compare_baseline_json_path = _compare_tracepack_path(
+            compare_payload.get("baseline_json_path"),
+            outputs_root=outputs_root,
+        )
+        if (
+            compare_baseline_json_path is not None
+            and resolved_baseline_json_path is not None
+            and compare_baseline_json_path != resolved_baseline_json_path
+        ):
+            raise SystemExit(
+                "Explicit baseline benchmark JSON does not match compare JSON baseline: "
+                f"{resolved_baseline_json_path} != {compare_baseline_json_path}"
+            )
+        expected_candidate_ref = str(compare_payload.get("candidate_commit") or "").strip()
+        actual_candidate_ref = _tracepack_ref_from_path(candidate_json_path)
+        if (
+            compare_candidate_json_path is None
+            and expected_candidate_ref
+            and actual_candidate_ref
+            and expected_candidate_ref != actual_candidate_ref
+        ):
+            raise SystemExit(
+                "Candidate benchmark JSON ref does not match compare JSON candidate ref: "
+                f"{actual_candidate_ref} != {expected_candidate_ref}"
+            )
+        expected_baseline_ref = str(compare_payload.get("baseline_commit") or "").strip()
+        actual_baseline_ref = _tracepack_ref_from_path(resolved_baseline_json_path)
+        if (
+            compare_baseline_json_path is None
+            and resolved_baseline_json_path is not None
+            and expected_baseline_ref
+            and actual_baseline_ref
+            and expected_baseline_ref != actual_baseline_ref
+        ):
+            raise SystemExit(
+                "Baseline benchmark JSON ref does not match compare JSON baseline ref: "
+                f"{actual_baseline_ref} != {expected_baseline_ref}"
+            )
+    if resolved_baseline_json_path is not None and not resolved_baseline_json_path.exists():
+        raise SystemExit(
+            f"Baseline benchmark JSON not found: {resolved_baseline_json_path}"
+        )
     intent_payload = (
         load_intent(resolved_intent_path)
         if resolved_intent_path is not None
@@ -2291,6 +2924,7 @@ def render_bundle(
         candidate_cached=candidate_cached,
         compare_path=resolved_compare_path,
         compare_payload=compare_payload,
+        baseline_json_path=resolved_baseline_json_path,
         intent_path=resolved_intent_path,
         intent_payload=intent_payload,
         analysis_path=resolved_analysis_path,
@@ -2449,6 +3083,7 @@ def build_report_parser() -> argparse.ArgumentParser:
     ap.add_argument("--candidate-json", required=True)
     ap.add_argument("--candidate-meta", default=None)
     ap.add_argument("--compare-json", default=None)
+    ap.add_argument("--baseline-json", default=None)
     ap.add_argument("--intent-json", default=None)
     ap.add_argument("--analysis-json", default=None)
     ap.add_argument("--benchmark-command", default=None)
@@ -2561,6 +3196,7 @@ def report_main(argv: Sequence[str] | None = None) -> None:
         raise SystemExit("--candidate-json is required")
     candidate_meta_path = _output_path(args.candidate_meta, repo_root=_REPO_ROOT)
     compare_path = _output_path(args.compare_json, repo_root=_REPO_ROOT)
+    baseline_json_path = _output_path(args.baseline_json, repo_root=_REPO_ROOT)
     intent_path = _output_path(args.intent_json, repo_root=_REPO_ROOT)
     analysis_path = _output_path(args.analysis_json, repo_root=_REPO_ROOT)
     benchmark_cmd = (
@@ -2572,6 +3208,7 @@ def report_main(argv: Sequence[str] | None = None) -> None:
         candidate_json_path=candidate_json_path,
         candidate_meta_path=candidate_meta_path,
         compare_path=compare_path,
+        baseline_json_path=baseline_json_path,
         intent_path=intent_path,
         analysis_path=analysis_path,
         benchmark_cmd=benchmark_cmd,
@@ -2626,6 +3263,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     candidate_meta_path = _output_path(
         candidate_section.get("meta"), repo_root=_REPO_ROOT
     )
+    baseline_section = _parse_section(benchmark_output, "baseline")
+    baseline_json_path = _output_path(
+        baseline_section.get("json"), repo_root=_REPO_ROOT
+    )
     compare_section = _parse_section(benchmark_output, "compare_report")
     compare_path = _output_path(compare_section.get("json"), repo_root=_REPO_ROOT)
     candidate_payload = load_json(candidate_json_path)
@@ -2642,6 +3283,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         candidate_json_path=candidate_json_path,
         candidate_meta_path=candidate_meta_path,
         compare_path=compare_path,
+        baseline_json_path=baseline_json_path,
         intent_path=intent_path,
         analysis_path=analysis_path,
         benchmark_cmd=benchmark_cmd,

@@ -147,5 +147,7 @@ Examples:
 - `uv run python -m app.bench bundle --mode focused --selectors boost:flat:far:half --seed-spec 0-4 --context-note "Testing boost flare retune"`
 - `uv run python -m app.bench analyze --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json`
 - `uv run python -m app.bench report --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json --compare-json outputs/benchmarks/<ref>/<stem>.compare_vs_<base>.json`
+- `uv run python -m app.bench report --candidate-json outputs/benchmarks/<new-ref>/<new-stem>.tracepack.json --compare-json outputs/benchmarks/<new-ref>/<new-stem>.compare_vs_<base>.json --baseline-json outputs/benchmarks/<old-ref>/<old-stem>.tracepack.json`
+- when candidate and baseline tracepacks do not cover the same selector/seed set, compare output uses shared runs only rather than treating missing selectors as zero
 - `uv run python -m app.bench serve --port 8765`
 - `uv run python -m app.bench promote --candidate-json outputs/benchmarks/<dirty>/<stem>.tracepack.json --target-ref HEAD`

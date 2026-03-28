@@ -113,11 +113,20 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
 
     candidate_json = outputs_root / "benchmarks" / "head" / "full_pack.tracepack.json"
     candidate_meta = outputs_root / "benchmarks" / "head" / "full_pack.meta.json"
+    baseline_root = outputs_root / "benchmarks" / "base" / "full_pack.tracepack"
+    baseline_trace_dir = baseline_root / "traces"
+    baseline_preview_dir = baseline_root / "previews"
+    baseline_trace_dir.mkdir(parents=True)
+    baseline_preview_dir.mkdir(parents=True)
+    baseline_json = outputs_root / "benchmarks" / "base" / "full_pack.tracepack.json"
+    baseline_meta = outputs_root / "benchmarks" / "base" / "full_pack.meta.json"
     compare_json = outputs_root / "benchmarks" / "head" / "full_pack.compare.json"
     intent_json = outputs_root / "benchmarks" / "head" / "full_pack.tracepack.intent.json"
     analysis_json = outputs_root / "benchmarks" / "head" / "full_pack.tracepack.analysis.json"
     trace_path = trace_dir / "boost_climb_high_full_0.trace.json"
     preview_path = preview_dir / "boost_climb_high_full_0.png"
+    baseline_trace_path = baseline_trace_dir / "boost_climb_high_full_0.trace.json"
+    baseline_preview_path = baseline_preview_dir / "boost_climb_high_full_0.png"
 
     trace_payload = {
         "schema": "pylander.run_trace.v1",
@@ -157,6 +166,8 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     }
     trace_path.write_text(json.dumps(trace_payload), encoding="utf-8")
     preview_path.write_bytes(b"png")
+    baseline_trace_path.write_text(json.dumps(trace_payload), encoding="utf-8")
+    baseline_preview_path.write_bytes(b"png")
 
     candidate_payload = {
         "schema": "pylander.tracepack.v1",
@@ -239,8 +250,51 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         ],
     }
     compare_payload = {
+        "baseline_json_path": str(baseline_json.resolve()),
+        "candidate_json_path": str(candidate_json.resolve()),
+        "baseline_commit": "base",
+        "candidate_commit": "head",
         "notable_regression": True,
         "global": {
+            "summary_available": True,
+            "summary_baseline": {
+                "runs": 10.0,
+                "successes": 10.0,
+                "success_rate": 1.0,
+                "crashed": 0.0,
+                "fuel_mean_all": 18.5,
+                "fuel_mean_success": 18.5,
+                "time_mean_all": 12.8,
+                "time_mean_success": 12.8,
+                "ref_gap_mean_mean_success": 3.8,
+                "ref_gap_peak_max_success": 9.8,
+            },
+            "summary_candidate": {
+                "runs": 10.0,
+                "successes": 9.0,
+                "success_rate": 0.9,
+                "crashed": 1.0,
+                "fuel_mean_all": 13.5,
+                "fuel_mean_success": 21.0,
+                "time_mean_all": 9.25,
+                "time_mean_success": 14.0,
+                "ref_gap_mean_mean_success": 5.0,
+                "ref_gap_peak_max_success": 13.5,
+            },
+            "summary_delta": {
+                "success_rate": -0.1,
+                "crashed": 1.0,
+                "fuel_mean_all": -5.0,
+                "fuel_mean_success": 2.5,
+                "time_mean_all": -3.55,
+                "time_mean_success": 1.2,
+            },
+            "compare_basis": {
+                "mode": "aligned_runs",
+                "shared_runs": 10,
+                "candidate_only_runs": 0,
+                "baseline_only_runs": 0,
+            },
             "crash": {
                 "new_crashes": [
                     {
@@ -308,6 +362,58 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
 
     candidate_json.write_text(json.dumps(candidate_payload), encoding="utf-8")
     candidate_meta.write_text("{}", encoding="utf-8")
+    baseline_payload = {
+        **candidate_payload,
+        "trace_root_path": str(baseline_root),
+        "trace_root_rel": "benchmarks/base/full_pack.tracepack",
+        "summary": {
+            **candidate_payload["summary"],
+            "successes": 10,
+            "crashed": 0,
+            "success_rate": 1.0,
+            "by_selector": {
+                "boost:climb:high:full": {
+                    "runs": 10,
+                    "successes": 10,
+                    "crashed": 0,
+                    "success_rate": 1.0,
+                    "efficiency_success": {
+                        "fuel_consumed": {"count": 10, "mean": 18.5, "stddev": 1.2},
+                        "time": {"count": 10, "mean": 12.8, "stddev": 0.75},
+                        "landing_offset": {"count": 10, "mean": 4.25, "stddev": 1.25},
+                        "trace_ref_gap_mean": {"count": 10, "mean": 3.8, "stddev": 0.6},
+                        "trace_ref_gap_area": {"count": 10, "mean": 11.2, "stddev": 2.4},
+                        "trace_ref_gap_max": {
+                            "count": 10,
+                            "mean": 5.4,
+                            "max": 9.8,
+                            "stddev": 1.2,
+                        },
+                    },
+                }
+            },
+        },
+        "records": [
+            {
+                **candidate_payload["records"][0],
+                "success": True,
+                "state": "landed",
+                "failure_mode": "none",
+                "fuel_consumed": 9.0,
+                "time": 11.5,
+                "landing_offset": 4.0,
+                "trace_ref_gap_mean": 3.5,
+                "trace_ref_gap_area": 10.5,
+                "trace_ref_gap_max": 8.5,
+                "trace_path": str(baseline_trace_path),
+                "trace_rel_path": "benchmarks/base/full_pack.tracepack/traces/boost_climb_high_full_0.trace.json",
+                "trace_preview_path": str(baseline_preview_path),
+                "trace_preview_rel_path": "benchmarks/base/full_pack.tracepack/previews/boost_climb_high_full_0.png",
+            }
+        ],
+    }
+    baseline_json.write_text(json.dumps(baseline_payload), encoding="utf-8")
+    baseline_meta.write_text("{}", encoding="utf-8")
     compare_json.write_text(json.dumps(compare_payload), encoding="utf-8")
     intent_json.write_text(json.dumps(intent_payload), encoding="utf-8")
     analysis_json.write_text(json.dumps(analysis_payload), encoding="utf-8")
@@ -330,6 +436,7 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         candidate_cached="False",
         compare_path=compare_json,
         compare_payload=compare_payload,
+        baseline_json_path=baseline_json,
         intent_path=intent_json,
         intent_payload=intent_payload,
         analysis_path=analysis_json,
@@ -354,47 +461,106 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         / "runs"
         / "boost_climb_high_full_0.html"
     ).read_text(encoding="utf-8")
+    baseline_detail_html = (
+        outputs_root
+        / "viewer"
+        / "bundles"
+        / "bundle_x"
+        / "runs"
+        / "baseline"
+        / "boost_climb_high_full_0.html"
+    ).read_text(encoding="utf-8")
 
-    assert "Bench Id" in html_payload
-    assert "Wall Clock Total" in html_payload
-    assert "Fuel Mean Success" in html_payload
-    assert "Show commands" in html_payload
+    assert "Overview" in html_payload
+    assert "<h2>Comparison</h2>" not in html_payload
+    assert "<title>Full Pack Benchmark Compare</title>" in html_payload
+    assert "<h1>Full Pack Benchmark Compare</h1>" in html_payload
+    assert "fuel success" in html_payload
+    assert "time success" in html_payload
+    assert "gap mean" in html_payload
+    assert "bot p99" in html_payload
+    assert "Tracepack Mode" in html_payload
     assert "Expand Scenarios" in html_payload
     assert "Collapse Scenarios" in html_payload
     assert "Expand All" in html_payload
     assert "Collapse All" in html_payload
     assert "Context" in html_payload
-    assert "Baseline" in html_payload
     assert "Outcome" in html_payload
     assert "Analysis" in html_payload
+    assert "Compare Basis" in html_payload
+    assert "aligned_runs (shared 10, current-only 0, baseline-only 0)" in html_payload
+    assert "<h2>Compare</h2>" not in html_payload
+    assert "<h2>Baseline</h2>" not in html_payload
     assert "Stability" not in html_payload
-    assert "intent json" in html_payload
-    assert "analysis json" in html_payload
+    assert "candidate json" not in html_payload
+    assert "intent json" not in html_payload
+    assert "analysis json" not in html_payload
+    assert "baseline json" not in html_payload
+    assert "Compared Refs" not in html_payload
+    assert "Compared Tracepacks" not in html_payload
+    assert "<th>Tracepack</th>" not in html_payload
+    assert "<th>Efficiency</th>" in html_payload
+    assert "<th>Tracking</th>" in html_payload
+    assert "<th>Compute</th>" in html_payload
+    assert "<code>head</code>" in html_payload
+    assert "<code>base</code>" in html_payload
+    assert "9/10 (90.00%)" in html_payload
+    assert "10/10 (100.00%)" in html_payload
+    assert '<span class="row-tag candidate">current</span>' in html_payload
+    assert '<span class="row-tag baseline">baseline</span>' in html_payload
+    assert '<span class="row-tag diff">diff</span>' in html_payload
+    assert 'class="summary-row"' in html_payload
+    assert 'class="baseline-summary-row baseline-row"' in html_payload
+    assert 'class="diff-summary-row"' in html_payload
     assert "Check boost climb tuning against the last behavior change" in html_payload
     assert "Boost climb success rate regressed with one new crash." in html_payload
     assert "<th>Details</th>" in html_payload
-    assert "Delta Ref Gap" in html_payload
-    assert "Delta Ref Peak" in html_payload
+    assert "Delta Ref Gap" not in html_payload
+    assert "Delta Ref Peak" not in html_payload
     assert "boost:climb:high:full" in html_payload
+    assert "Hide Baseline" in html_payload
+    assert 'data-action="toggle-baseline"' in html_payload
+    assert html_payload.index("Hide Baseline") < html_payload.index("Expand Scenarios")
     assert html_payload.index("Expand Scenarios") < html_payload.index("Expand All")
     assert html_payload.index("Collapse Scenarios") < html_payload.index("Collapse All")
+    assert ">cur<" in html_payload
+    assert ">base<" in html_payload
+    assert 'class="baseline-scenario-row baseline-row"' in html_payload
+    assert 'class="seed-row baseline-seed-row baseline-row"' in html_payload
+    assert ">base</span>seed 0" in html_payload
     assert "21.00 ± 11.9%" in html_payload
+    assert "18.50 ± 6.5%" in html_payload
     assert "14.00 ± 8.9%" in html_payload
+    assert "12.80 ± 5.9%" in html_payload
     assert "offset μ/σ" in html_payload
     assert "ref gap μ/±%" in html_payload
     assert "5.000 ± 20.0%" in html_payload
+    assert "3.800 ± 15.8%" in html_payload
     assert "ref peak max" in html_payload
     assert "13.500" in html_payload
+    assert "9.800" in html_payload
     assert html_payload.index("<h2>Boost</h2>") < html_payload.index("<h2>Failures</h2>")
+    assert '>latest</a>' in html_payload
+    assert 'href="../../latest/index.html"' in html_payload
+    assert 'document.querySelectorAll(".scenario-table").forEach((table) => {' in html_payload
+    assert 'expandScenarios(table);' in html_payload
     assert (
         "../../../benchmarks/head/full_pack.tracepack/previews/boost_climb_high_full_0.png"
         in html_payload
     )
+    assert (
+        "../../../benchmarks/base/full_pack.tracepack/previews/boost_climb_high_full_0.png"
+        in html_payload
+    )
+    assert 'table.classList.toggle("baseline-hidden");' in html_payload
+    assert 'button.textContent = table.classList.contains("baseline-hidden")' in html_payload
+    assert "compare-stack" not in html_payload
     assert "plot pack" not in html_payload.lower()
-    assert "Bench Id" in latest_payload
-    assert 'class="nav-button"' in latest_payload
-    assert ">home<" in latest_payload
-    assert "../bundles/bundle_x/runs/boost_climb_high_full_0.html" in latest_payload
+    assert "Tracepacks" not in latest_payload
+    assert "Redirecting to the latest report" in latest_payload
+    assert 'window.location.replace("../bundles/bundle_x/index.html")' in latest_payload
+    assert 'content="0; url=../bundles/bundle_x/index.html"' in latest_payload
+    assert "../bundles/bundle_x/runs/boost_climb_high_full_0.html" not in latest_payload
     assert (
         bundle_json_payload["benchmark"]["candidate"]["schema"]
         == "pylander.tracepack.v1"
@@ -405,6 +571,10 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     assert (
         bundle_json_payload["viewer_assets"]["plotly_href"]
         == "https://cdn.plot.ly/plotly-basic-2.35.2.min.js"
+    )
+    assert (
+        bundle_json_payload["compare"]["baseline_json_path"]
+        == "benchmarks/base/full_pack.tracepack.json"
     )
     assert bundle_json_payload["intent"]["baseline_resolved_ref"] == "8b2f6cd"
     assert bundle_json_payload["analysis"]["verdict"] == "regression"
@@ -470,10 +640,13 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     assert "ballistic ref (vx adjusted)" in detail_html
     assert "bundle report" not in detail_html
     assert "latest page" not in detail_html
-    assert ">home<" in detail_html
+    assert ">back<" in detail_html
+    assert 'href="../index.html"' in detail_html
     assert "trace json" in detail_html
     assert "plot manifest" not in detail_html
     assert 'https://cdn.plot.ly/plotly-basic-2.35.2.min.js' in detail_html
+    assert "baseline json" in baseline_detail_html
+    assert "../../../../../benchmarks/base/full_pack.tracepack.json" in baseline_detail_html
     match = re.search(
         r'<script id="trace-plot-json" type="application/json">(.*?)</script>',
         detail_html,
@@ -487,6 +660,7 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         candidate_json_path=candidate_json,
         candidate_meta_path=candidate_meta,
         compare_path=compare_json,
+        baseline_json_path=baseline_json,
         intent_path=None,
         analysis_path=None,
         benchmark_cmd=[
@@ -512,6 +686,83 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         rendered_payload["compare"]["json_path"]
         == "benchmarks/head/full_pack.compare.json"
     )
+    assert (
+        rendered_payload["compare"]["baseline_json_path"]
+        == "benchmarks/base/full_pack.tracepack.json"
+    )
     assert rendered_payload["benchmark"]["candidate"]["cached"] == "True"
     assert rendered_payload["intent"]["goal_summary"].startswith("Check boost climb")
     assert rendered_payload["analysis"]["verdict"] == "regression"
+
+    single_rendered = trace_bundle.render_bundle(
+        candidate_json_path=candidate_json,
+        candidate_meta_path=candidate_meta,
+        compare_path=None,
+        baseline_json_path=None,
+        intent_path=None,
+        analysis_path=None,
+        benchmark_cmd=[
+            "uv",
+            "run",
+            "python",
+            "-m",
+            "app.run_cached_benchmark",
+            "--mode",
+            "full",
+        ],
+        benchmark_exit_code=0,
+        benchmark_wall_clock_s=1.0,
+        outputs_root=outputs_root,
+        bundle_id="bundle_single_x",
+        candidate_cached="True",
+    )
+    single_html = single_rendered.bundle_page_path.read_text(encoding="utf-8")
+    assert 'data-action="toggle-baseline"' not in single_html
+    assert 'class="baseline-scenario-row baseline-row"' not in single_html
+    assert ">base<" not in single_html
+
+
+def test_render_bundle_rejects_mismatched_explicit_baseline_json(tmp_path: Path) -> None:
+    outputs_root = tmp_path / "outputs"
+    outputs_root.mkdir()
+    candidate_json = outputs_root / "benchmarks" / "head" / "pack.tracepack.json"
+    baseline_json = outputs_root / "benchmarks" / "base" / "pack.tracepack.json"
+    other_baseline_json = outputs_root / "benchmarks" / "other" / "pack.tracepack.json"
+    compare_json = outputs_root / "benchmarks" / "head" / "pack.compare.json"
+    for path in (candidate_json, baseline_json, other_baseline_json, compare_json):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"schema": "pylander.tracepack.v1", "summary": {}, "records": []}
+    candidate_json.write_text(json.dumps(payload), encoding="utf-8")
+    baseline_json.write_text(json.dumps(payload), encoding="utf-8")
+    other_baseline_json.write_text(json.dumps(payload), encoding="utf-8")
+    compare_json.write_text(
+        json.dumps(
+            {
+                "baseline_commit": "base",
+                "candidate_commit": "head",
+                "baseline_json_path": str(baseline_json.resolve()),
+                "candidate_json_path": str(candidate_json.resolve()),
+                "global": {"compare_basis": {"mode": "aligned_runs", "shared_runs": 0}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        trace_bundle.render_bundle(
+            candidate_json_path=candidate_json,
+            candidate_meta_path=None,
+            compare_path=compare_json,
+            baseline_json_path=other_baseline_json,
+            intent_path=None,
+            analysis_path=None,
+            benchmark_cmd=[],
+            benchmark_exit_code=0,
+            benchmark_wall_clock_s=0.0,
+            outputs_root=outputs_root,
+            bundle_id="bundle_bad",
+        )
+    except SystemExit as exc:
+        assert "does not match compare JSON baseline" in str(exc)
+    else:
+        raise AssertionError("expected mismatched baseline json to raise SystemExit")
