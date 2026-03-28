@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, is_dataclass, replace
+from types import SimpleNamespace
 
 from bots.common_ballistics import (
     BallisticProjection,
@@ -12,6 +13,11 @@ from core.bot import Sensors
 from core.config import GRAVITY
 
 _GRAVITY_MAG = abs(float(GRAVITY))
+_ASSIST_READY_MIN_PROJECTED_DX = 60.0
+_ASSIST_READY_TARGET_HALF_SCALE = 1.1
+_ASSIST_READY_MIN_HEIGHT_TO_TARGET = 70.0
+_ASSIST_READY_MIN_MARGIN_S = 1.0
+_ASSIST_READY_MAX_REQUIRED_ACCEL_RATIO = 0.45
 
 
 @dataclass(frozen=True)
@@ -45,6 +51,15 @@ class TerminalGateEvaluation:
     nominal_ready_ticks: int
     state_ready_ticks: int
     required_accel_ratio: float
+
+
+@dataclass(frozen=True)
+class PredictedTerminalHandoff:
+    mode: str
+    time_to_entry_s: float | None
+    entry_altitude: float
+    entry_projected_dx: float
+    required_accel_ratio: float | None
 
 
 def _required_control_accel(
@@ -328,6 +343,7 @@ def _evaluate_terminal_gate_core(
     max_thrust_accel: float,
     nominal_thrust_accel: float,
     thrust_ramp_up: float,
+    boost_cutoff_done: bool | None = None,
 ) -> TerminalGateEvaluation:
     latest_safe_state = _latest_safe_state(
         bot,
@@ -394,15 +410,32 @@ def _evaluate_terminal_gate_core(
             latest_safe_margin_s=latest_safe_margin_s,
             required_accel_ratio=best_nominal.required_accel_ratio,
         )
-    elif latest_safe_margin_s <= 0.0:
-        state_ready_ticks = 0
-        required_accel_ratio = latest_safe_state.best_candidate.required_accel_ratio
-        decision = TerminalGateDecision(
-            mode="latest_safe",
-            burn_time_s=latest_safe_state.best_candidate.burn_time_s,
-            latest_safe_margin_s=latest_safe_margin_s,
-            required_accel_ratio=latest_safe_state.best_candidate.required_accel_ratio,
+    else:
+        assist_ready = _assist_ready_decision(
+            bot,
+            passive=passive,
+            dy=dy,
+            projected_dx=projected_dx,
+            latest_safe_state=latest_safe_state,
+            boost_cutoff_done=(
+                bool(bot.state._boost_cutoff_done)
+                if boost_cutoff_done is None
+                else bool(boost_cutoff_done)
+            ),
         )
+        if assist_ready is not None:
+            state_ready_ticks = 0
+            required_accel_ratio = assist_ready.required_accel_ratio
+            decision = assist_ready
+        elif latest_safe_margin_s <= 0.0:
+            state_ready_ticks = 0
+            required_accel_ratio = latest_safe_state.best_candidate.required_accel_ratio
+            decision = TerminalGateDecision(
+                mode="latest_safe",
+                burn_time_s=latest_safe_state.best_candidate.burn_time_s,
+                latest_safe_margin_s=latest_safe_margin_s,
+                required_accel_ratio=latest_safe_state.best_candidate.required_accel_ratio,
+            )
 
     return TerminalGateEvaluation(
         decision=decision,
@@ -411,6 +444,51 @@ def _evaluate_terminal_gate_core(
         nominal_ready_ticks=nominal_ready_ticks,
         state_ready_ticks=state_ready_ticks,
         required_accel_ratio=required_accel_ratio,
+    )
+
+
+def _assist_ready_decision(
+    bot,
+    *,
+    passive: Sensors,
+    dy: float,
+    projected_dx: float | None,
+    latest_safe_state: LatestSafeState,
+    boost_cutoff_done: bool,
+) -> TerminalGateDecision | None:
+    if not boost_cutoff_done or projected_dx is None:
+        return None
+
+    projected_dx_abs = abs(float(projected_dx))
+    x_tol = float(bot._phase_terminal_x_tol("terminal"))
+    if projected_dx_abs <= x_tol:
+        return None
+
+    target_half = max(0.0, float(getattr(bot, "_last_target_half", 0.0)))
+    projected_dx_min = max(
+        _ASSIST_READY_MIN_PROJECTED_DX,
+        _ASSIST_READY_TARGET_HALF_SCALE * target_half,
+    )
+    if projected_dx_abs < projected_dx_min:
+        return None
+    if float(passive.vy_up) <= 0.0:
+        return None
+    if _height_to_target(dy=dy) < _ASSIST_READY_MIN_HEIGHT_TO_TARGET:
+        return None
+    if latest_safe_state.margin_s <= _ASSIST_READY_MIN_MARGIN_S:
+        return None
+
+    best_candidate = latest_safe_state.best_candidate
+    if (not best_candidate.tilt_feasible) or (
+        best_candidate.required_accel_ratio > _ASSIST_READY_MAX_REQUIRED_ACCEL_RATIO
+    ):
+        return None
+
+    return TerminalGateDecision(
+        mode="assist_ready",
+        burn_time_s=best_candidate.burn_time_s,
+        latest_safe_margin_s=latest_safe_state.margin_s,
+        required_accel_ratio=best_candidate.required_accel_ratio,
     )
 
 
@@ -423,16 +501,40 @@ def _passive_coast_step(passive: Sensors, *, dt: float) -> Sensors:
         - (0.5 * _GRAVITY_MAG * step_dt * step_dt)
     )
     delta_y = next_y - float(passive.y)
-    return replace(
-        passive,
+    altitude = max(
+        0.0,
+        float(getattr(passive, "altitude", float(passive.y))) + delta_y,
+    )
+    if is_dataclass(passive) and not isinstance(passive, type):
+        return replace(
+            passive,
+            x=next_x,
+            y=next_y,
+            altitude=altitude,
+            vx=float(passive.vx),
+            vy_up=float(passive.vy_up) - (_GRAVITY_MAG * step_dt),
+            ax=0.0,
+            ay_up=-_GRAVITY_MAG,
+            thrust_level=0.0,
+        )
+    return SimpleNamespace(
         x=next_x,
         y=next_y,
-        altitude=max(0.0, float(passive.altitude) + delta_y),
+        altitude=altitude,
+        terrain_y=float(getattr(passive, "terrain_y", 0.0)),
+        terrain_slope=float(getattr(passive, "terrain_slope", 0.0)),
         vx=float(passive.vx),
         vy_up=float(passive.vy_up) - (_GRAVITY_MAG * step_dt),
+        angle=float(getattr(passive, "angle", 0.0)),
         ax=0.0,
         ay_up=-_GRAVITY_MAG,
+        mass=float(getattr(passive, "mass", 1.0)),
         thrust_level=0.0,
+        fuel=float(getattr(passive, "fuel", 0.0)),
+        max_fuel=float(getattr(passive, "max_fuel", 0.0)),
+        state=str(getattr(passive, "state", "flying")),
+        radar_contacts=list(getattr(passive, "radar_contacts", [])),
+        proximity=getattr(passive, "proximity", None),
     )
 
 
@@ -453,6 +555,74 @@ def _lookahead_projection(
         y=float(passive.y),
     )
     return dx, dy, projection
+
+
+def predict_terminal_handoff(
+    bot,
+    *,
+    dt: float,
+    passive: Sensors,
+    dx: float,
+    dy: float,
+    max_thrust_accel: float,
+    nominal_thrust_accel: float,
+    thrust_ramp_up: float,
+    boost_cutoff_done: bool = False,
+) -> PredictedTerminalHandoff:
+    target_x = float(passive.x) + float(dx)
+    target_y = float(passive.y) + float(dy)
+    predicted_passive = passive
+    predicted_ready_ticks = 0
+    elapsed_s = 0.0
+    step_dt = max(1e-3, float(dt))
+
+    while True:
+        pred_dx, pred_dy, predicted_projection = _lookahead_projection(
+            passive=predicted_passive,
+            target_x=target_x,
+            target_y=target_y,
+        )
+        pred_alt = _height_to_target(dy=pred_dy)
+        evaluation = _evaluate_terminal_gate_core(
+            bot,
+            current_ready_ticks=predicted_ready_ticks,
+            passive=predicted_passive,
+            dx=pred_dx,
+            projected_dx=float(predicted_projection.projected_dx),
+            dy=pred_dy,
+            alt=pred_alt,
+            max_thrust_accel=max_thrust_accel,
+            nominal_thrust_accel=nominal_thrust_accel,
+            thrust_ramp_up=thrust_ramp_up,
+            boost_cutoff_done=boost_cutoff_done,
+        )
+        if evaluation.decision is not None:
+            return PredictedTerminalHandoff(
+                mode=evaluation.decision.mode,
+                time_to_entry_s=elapsed_s,
+                entry_altitude=pred_alt,
+                entry_projected_dx=float(predicted_projection.projected_dx),
+                required_accel_ratio=evaluation.decision.required_accel_ratio,
+            )
+
+        time_to_impact = estimate_ground_time_to_impact(
+            altitude=pred_alt,
+            vy_up=float(predicted_passive.vy_up),
+            min_t_fall=0.0,
+        )
+        if time_to_impact <= 0.0:
+            return PredictedTerminalHandoff(
+                mode="impact",
+                time_to_entry_s=None,
+                entry_altitude=pred_alt,
+                entry_projected_dx=float(predicted_projection.projected_dx),
+                required_accel_ratio=None,
+            )
+
+        coast_dt = min(step_dt, float(time_to_impact))
+        predicted_passive = _passive_coast_step(predicted_passive, dt=coast_dt)
+        predicted_ready_ticks = evaluation.nominal_ready_ticks
+        elapsed_s += coast_dt
 
 
 def _should_defer_latest_safe_entry(

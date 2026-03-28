@@ -381,6 +381,241 @@ def test_should_defer_latest_safe_entry_when_future_latest_safe_becomes_feasible
     )
 
 
+def test_predict_terminal_handoff_returns_first_terminal_decision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = cast(Any, create_bot("pdg"))
+    passive = _sensors(vx=6.0, vy_up=10.0, altitude=120.0)
+    evaluations = iter(
+        (
+            terminal_gate.TerminalGateEvaluation(
+                decision=None,
+                latest_safe_state=terminal_gate.LatestSafeState(
+                    margin_s=1.5,
+                    best_candidate=terminal_gate.TerminalGateCandidate(
+                        burn_time_s=4.0,
+                        required_accel_ratio=0.28,
+                        upward_accel=1.0,
+                        tilt_feasible=True,
+                        ready=False,
+                    ),
+                ),
+                best_nominal=None,
+                nominal_ready_ticks=0,
+                state_ready_ticks=0,
+                required_accel_ratio=0.28,
+            ),
+            terminal_gate.TerminalGateEvaluation(
+                decision=terminal_gate.TerminalGateDecision(
+                    mode="latest_safe",
+                    burn_time_s=4.0,
+                    latest_safe_margin_s=-0.2,
+                    required_accel_ratio=0.24,
+                ),
+                latest_safe_state=terminal_gate.LatestSafeState(
+                    margin_s=-0.2,
+                    best_candidate=terminal_gate.TerminalGateCandidate(
+                        burn_time_s=4.0,
+                        required_accel_ratio=0.24,
+                        upward_accel=1.0,
+                        tilt_feasible=True,
+                        ready=False,
+                    ),
+                ),
+                best_nominal=None,
+                nominal_ready_ticks=0,
+                state_ready_ticks=0,
+                required_accel_ratio=0.24,
+            ),
+        )
+    )
+
+    monkeypatch.setattr(
+        terminal_gate,
+        "_evaluate_terminal_gate_core",
+        lambda *args, **kwargs: next(evaluations),
+    )
+    monkeypatch.setattr(
+        terminal_gate,
+        "_lookahead_projection",
+        lambda **kwargs: (
+            0.0,
+            -100.0,
+            terminal_gate.BallisticProjection(
+                projected_dx=72.0,
+                t_fall=2.0,
+                target_x=0.0,
+                impact_x=72.0,
+            ),
+        ),
+    )
+
+    handoff = terminal_gate.predict_terminal_handoff(
+        bot,
+        dt=0.25,
+        passive=passive,
+        dx=0.0,
+        dy=-120.0,
+        max_thrust_accel=22.0,
+        nominal_thrust_accel=18.0,
+        thrust_ramp_up=2.0,
+        boost_cutoff_done=True,
+    )
+
+    assert handoff.mode == "latest_safe"
+    assert handoff.time_to_entry_s == pytest.approx(0.25)
+    assert handoff.entry_altitude == pytest.approx(100.0)
+    assert handoff.entry_projected_dx == pytest.approx(72.0)
+    assert handoff.required_accel_ratio == pytest.approx(0.24)
+
+
+def test_assist_ready_triggers_on_large_miss_rising_post_boost_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = cast(Any, create_bot("pdg"))
+    bot.state._boost_cutoff_done = True
+    passive = _sensors(vx=12.0, vy_up=9.0, altitude=160.0)
+
+    monkeypatch.setattr(
+        terminal_gate,
+        "_latest_safe_state",
+        lambda *args, **kwargs: terminal_gate.LatestSafeState(
+            margin_s=1.4,
+            best_candidate=terminal_gate.TerminalGateCandidate(
+                burn_time_s=4.0,
+                required_accel_ratio=0.40,
+                upward_accel=1.0,
+                tilt_feasible=True,
+                ready=False,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        terminal_gate,
+        "_burn_time_candidates",
+        lambda *args, **kwargs: ([3.0], 0.4, -8.0),
+    )
+    monkeypatch.setattr(
+        terminal_gate,
+        "_evaluate_candidate",
+        lambda **kwargs: terminal_gate.TerminalGateCandidate(
+            burn_time_s=float(kwargs["burn_time_s"]),
+            required_accel_ratio=0.60,
+            upward_accel=1.0,
+            tilt_feasible=True,
+            ready=False,
+        ),
+    )
+
+    evaluation = terminal_gate._evaluate_terminal_gate_core(
+        bot,
+        current_ready_ticks=0,
+        passive=passive,
+        dx=180.0,
+        projected_dx=130.0,
+        dy=-160.0,
+        alt=160.0,
+        max_thrust_accel=22.0,
+        nominal_thrust_accel=18.0,
+        thrust_ramp_up=2.0,
+    )
+
+    assert evaluation.decision is not None
+    assert evaluation.decision.mode == "assist_ready"
+
+
+def test_assist_ready_does_not_trigger_when_aligned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = cast(Any, create_bot("pdg"))
+    bot.state._boost_cutoff_done = True
+    passive = _sensors(vx=12.0, vy_up=9.0, altitude=160.0)
+
+    monkeypatch.setattr(
+        terminal_gate,
+        "_latest_safe_state",
+        lambda *args, **kwargs: terminal_gate.LatestSafeState(
+            margin_s=1.4,
+            best_candidate=terminal_gate.TerminalGateCandidate(
+                burn_time_s=4.0,
+                required_accel_ratio=0.40,
+                upward_accel=1.0,
+                tilt_feasible=True,
+                ready=False,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        terminal_gate,
+        "_burn_time_candidates",
+        lambda *args, **kwargs: ([3.0], 0.4, -8.0),
+    )
+    monkeypatch.setattr(
+        terminal_gate,
+        "_evaluate_candidate",
+        lambda **kwargs: terminal_gate.TerminalGateCandidate(
+            burn_time_s=float(kwargs["burn_time_s"]),
+            required_accel_ratio=0.60,
+            upward_accel=1.0,
+            tilt_feasible=True,
+            ready=False,
+        ),
+    )
+
+    evaluation = terminal_gate._evaluate_terminal_gate_core(
+        bot,
+        current_ready_ticks=0,
+        passive=passive,
+        dx=12.0,
+        projected_dx=6.0,
+        dy=-160.0,
+        alt=160.0,
+        max_thrust_accel=22.0,
+        nominal_thrust_accel=18.0,
+        thrust_ramp_up=2.0,
+    )
+
+    assert evaluation.decision is None or evaluation.decision.mode != "assist_ready"
+
+
+def test_assist_ready_does_not_trigger_when_latest_safe_is_too_hard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = cast(Any, create_bot("pdg"))
+    bot.state._boost_cutoff_done = True
+    passive = _sensors(vx=12.0, vy_up=9.0, altitude=160.0)
+
+    monkeypatch.setattr(
+        terminal_gate,
+        "_latest_safe_state",
+        lambda *args, **kwargs: terminal_gate.LatestSafeState(
+            margin_s=1.4,
+            best_candidate=terminal_gate.TerminalGateCandidate(
+                burn_time_s=4.0,
+                required_accel_ratio=0.62,
+                upward_accel=1.0,
+                tilt_feasible=True,
+                ready=False,
+            ),
+        ),
+    )
+
+    evaluation = terminal_gate._evaluate_terminal_gate_core(
+        bot,
+        current_ready_ticks=0,
+        passive=passive,
+        dx=180.0,
+        projected_dx=130.0,
+        dy=-160.0,
+        alt=160.0,
+        max_thrust_accel=22.0,
+        nominal_thrust_accel=18.0,
+        thrust_ramp_up=2.0,
+    )
+
+    assert evaluation.decision is None or evaluation.decision.mode != "assist_ready"
+
+
 def test_flare_dynamic_tilt_relaxes_when_vertical_state_has_recovery_margin() -> None:
     bot = cast(Any, create_bot("pdg"))
 
@@ -495,7 +730,11 @@ def test_terminal_error_wide_triggers_terminal_gate_before_impact() -> None:
     assert result["bot_pdg_terminal_entry_done"] is True
     assert result["bot_pdg_terminal_entry_time"] is not None
     assert result["bot_pdg_terminal_probe_count"] == 0
-    assert result["bot_pdg_terminal_gate_mode"] in {"nominal_ready", "latest_safe"}
+    assert result["bot_pdg_terminal_gate_mode"] in {
+        "assist_ready",
+        "nominal_ready",
+        "latest_safe",
+    }
     assert result["bot_pdg_solve_count"] > 0
 
 
