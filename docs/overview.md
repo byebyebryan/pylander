@@ -11,6 +11,21 @@ Repo shorthand keeps the terminal selector root (`terminal:normal:*`, `terminal:
 
 The in-flight path is a single owner with internal stages (`boost -> coast -> terminal -> touchdown`), not inter-bot runtime handoffs. In `pdg`, `coast` remains passive in actuation: zero thrust, retrograde attitude hold, and low-rate terminal-gate probing until terminal ignition.
 
+## Default Vehicle Profile
+
+Bots should assume the stock lander starts from these default vehicle limits:
+
+- dry mass `7200 kg`
+- fuel tank `140` units at `45 kg/unit`
+- max cargo `6000 kg`
+- nominal thrust power `240000 N`
+- throttle range `0.25 .. 1.6`
+- overdrive burn multiplier `8.0`
+
+That budget keeps the fully loaded mass at roughly `19.5 t` while shifting more
+of the discretionary load into fuel, so long-haul boost runs can be range
+feasible without turning overdrive into a default cruise mode.
+
 ## How to iterate
 
 - Prefer headless mode while tuning:

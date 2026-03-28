@@ -46,13 +46,13 @@ class PhysicsState:
     """Component representing physical properties."""
     vel: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
     acc: Vector2 = field(default_factory=lambda: Vector2(0.0, 0.0))
-    mass: float = 9000.0  # Dry mass (kg), includes hull + installed systems
+    mass: float = 7200.0  # Dry mass (kg), includes hull + installed systems
 
 @dataclass
 class FuelTank:
     """Component representing fuel storage."""
-    fuel: float = 100.0
-    max_fuel: float = 100.0
+    fuel: float = 140.0
+    max_fuel: float = 140.0
     density: float = 45.0   # Mass per fuel unit (kg/unit)
     _mass_dirty: bool = True  # Cleared after engine mass sync; set on fuel change
 
@@ -74,9 +74,9 @@ class Engine:
     target_thrust: float = 0.0          # Desired output (0..max_thrust, 0=off)
     min_thrust: float = 0.25            # Ignited minimum throttle floor
     max_thrust: float = 1.6             # Allows overdrive above nominal 1.0
-    max_power: float = 230000.0         # Force at nominal thrust=1.0 (N)
+    max_power: float = 240000.0         # Force at nominal thrust=1.0 (N)
     base_burn_rate: float = 1.10        # Fuel units/sec at nominal thrust=1.0
-    overdrive_burn_multiplier: float = 9.0  # Extra burn slope above nominal
+    overdrive_burn_multiplier: float = 8.0  # Extra burn slope above nominal
     
     # Control characteristics
     increase_rate: float = 1.1          # Throttle units/sec
