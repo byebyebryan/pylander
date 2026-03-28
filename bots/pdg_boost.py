@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import cast
 
 from bots.common_ballistics import (
     ballistic_apex_from_state,
@@ -297,6 +296,43 @@ def evaluate_boost_quality_after_settle(
     dx_anchor_abs: float,
     settle_angle_target: float | None = None,
 ) -> BoostQualityStatus:
+    settled_passive = settled_passive_after_cut(
+        bot,
+        passive=passive,
+        settle_s=settle_s,
+        settle_angle_target=settle_angle_target,
+    )
+    target_x = float(passive.x) + float(dx)
+    target_y = float(passive.y) + float(dy)
+    dx_settle = target_x - float(settled_passive.x)
+    dy_settle = target_y - float(settled_passive.y)
+    projection = estimate_target_y_projection(
+        dx=dx_settle,
+        dy=dy_settle,
+        vx=float(settled_passive.vx),
+        vy_up=float(settled_passive.vy_up),
+        x=float(settled_passive.x),
+        y=float(settled_passive.y),
+        min_t_fall=0.0,
+        gravity_mag=_GRAVITY_MAG,
+    )
+    return evaluate_boost_quality(
+        bot,
+        passive=settled_passive,
+        dx=dx_settle,
+        dy=dy_settle,
+        projection=projection,
+        dx_anchor_abs=dx_anchor_abs,
+    )
+
+
+def settled_passive_after_cut(
+    bot,
+    *,
+    passive: Sensors,
+    settle_s: float,
+    settle_angle_target: float | None = None,
+) -> Sensors:
     settle_dt = max(0.0, float(settle_s))
     max_power, _min_throttle, _max_throttle, _ramp_up = engine_profile(
         getattr(bot, "vehicle_info", None)
@@ -305,8 +341,6 @@ def evaluate_boost_quality_after_settle(
     vehicle_info = getattr(bot, "vehicle_info", None)
     if vehicle_info is not None:
         thrust_down_rate = max(0.0, float(vehicle_info.thrust_decrease_rate))
-    target_x = float(passive.x) + float(dx)
-    target_y = float(passive.y) + float(dy)
     x_settle = float(passive.x)
     y_settle = float(passive.y)
     vx_settle = float(passive.vx)
@@ -340,31 +374,23 @@ def evaluate_boost_quality_after_settle(
         angle_settle += angle_step
         thrust_settle = thrust_next
         time_remaining -= step_dt
-    dx_settle = target_x - x_settle
-    dy_settle = target_y - y_settle
-    settled_passive = SimpleNamespace(
+
+    altitude = max(
+        0.0,
+        float(getattr(passive, "altitude", float(passive.y)))
+        + (y_settle - float(passive.y)),
+    )
+    return SimpleNamespace(
         x=x_settle,
         y=y_settle,
+        altitude=altitude,
         vx=vx_settle,
         vy_up=vy_settle,
-    )
-    projection = estimate_target_y_projection(
-        dx=dx_settle,
-        dy=dy_settle,
-        vx=vx_settle,
-        vy_up=vy_settle,
-        x=x_settle,
-        y=y_settle,
-        min_t_fall=0.0,
-        gravity_mag=_GRAVITY_MAG,
-    )
-    return evaluate_boost_quality(
-        bot,
-        passive=cast(Sensors, settled_passive),
-        dx=dx_settle,
-        dy=dy_settle,
-        projection=projection,
-        dx_anchor_abs=dx_anchor_abs,
+        angle=angle_settle,
+        ax=0.0,
+        ay_up=-_GRAVITY_MAG,
+        thrust_level=thrust_settle,
+        mass=mass,
     )
 
 
@@ -402,5 +428,6 @@ __all__ = [
     "boost_cut_wind_down_s",
     "boost_dx_limit",
     "boost_objective_geometry",
+    "settled_passive_after_cut",
     "transfer_dy_for_boost",
 ]
