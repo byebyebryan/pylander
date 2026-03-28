@@ -379,9 +379,6 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
             "bot_pdg_terminal_post_entry_apex_gain": 28.0,
             "bot_pdg_terminal_post_entry_time_to_apex": 1.8,
             "bot_pdg_terminal_post_entry_peak_abs_dx": 33.0,
-            "bot_pdg_boost_release_predicted_terminal_entry_projected_dx": 12.0,
-            "bot_pdg_boost_release_predicted_terminal_required_accel_ratio": 0.22,
-            "bot_pdg_boost_release_mode": "latest_safe",
             "bot_pdg_solve_count": 32,
             "bot_pdg_solve_ms_mean": 3.2,
             "bot_pdg_solve_ms_p90": 7.4,
@@ -418,13 +415,6 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
     assert record["bot_pdg_terminal_post_entry_apex_gain"] == pytest.approx(28.0)
     assert record["bot_pdg_terminal_post_entry_time_to_apex"] == pytest.approx(1.8)
     assert record["bot_pdg_terminal_post_entry_peak_abs_dx"] == pytest.approx(33.0)
-    assert record["bot_pdg_boost_release_predicted_terminal_entry_projected_dx"] == pytest.approx(
-        12.0
-    )
-    assert record[
-        "bot_pdg_boost_release_predicted_terminal_required_accel_ratio"
-    ] == pytest.approx(0.22)
-    assert record["bot_pdg_boost_release_mode"] == "latest_safe"
     assert record["bot_pdg_solve_count"] == pytest.approx(32.0)
     assert record["bot_pdg_solve_ms_mean"] == pytest.approx(3.2)
     assert record["bot_pdg_solve_ms_p90"] == pytest.approx(7.4)
@@ -442,9 +432,6 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
     assert summary["efficiency_success"]["bot_pdg_terminal_post_entry_peak_abs_dx"][
         "mean"
     ] == pytest.approx(33.0)
-    assert summary["efficiency_success"][
-        "bot_pdg_boost_release_predicted_terminal_entry_projected_dx"
-    ]["mean"] == pytest.approx(12.0)
 
 
 def test_boost_flat_run_merges_bot_telemetry_fields_into_result() -> None:

@@ -26,7 +26,6 @@ from bots.pdg_boost import (
     boost_cut_wind_down_s as _boost_cut_wind_down_s_impl,
     evaluate_boost_quality as _evaluate_boost_quality_impl,
     evaluate_boost_quality_after_settle as _evaluate_boost_quality_after_settle_impl,
-    settled_passive_after_cut as _settled_passive_after_cut_impl,
     transfer_dy_for_boost as _transfer_dy_for_boost_impl,
 )
 from bots.pdg_config import PDGConfig
@@ -51,7 +50,6 @@ from bots.pdg_stages import (
 )
 from bots.pdg_terminal_gate import (
     evaluate_terminal_gate as _evaluate_terminal_gate_impl,
-    predict_terminal_handoff as _predict_terminal_handoff_impl,
 )
 from bots.pdg_tracking import (
     apply_boost_cutoff_metrics as _apply_boost_cutoff_metrics_impl,
@@ -80,8 +78,6 @@ _TERMINAL_OPT_PATH_X_WEIGHT = 0.030
 _TERMINAL_OPT_PATH_Y_WEIGHT = 0.015
 _TERMINAL_OPT_UPWARD_VY_WEIGHT = 1.20
 _TERMINAL_OPT_ALTITUDE_PROGRESS_WEIGHT = 0.00
-_BOOST_RELEASE_ENTRY_DX_IMPROVE_M = 6.0
-_BOOST_RELEASE_RATIO_IMPROVE = 0.02
 
 
 @dataclass(frozen=True)
@@ -130,18 +126,12 @@ class PDGState:
     _boost_burn_started: bool = False
     _boost_burn_start_time: float | None = None
     _boost_burn_idle_since: float | None = None
-    _boost_release_best_entry_projected_dx_abs: float | None = None
-    _boost_release_best_entry_required_accel_ratio: float | None = None
-    _boost_release_last_improve_time: float | None = None
     _boost_cut_latched: bool = False
     _boost_cut_hold_angle: float | None = None
     _boost_settle_start_time: float | None = None
     _boost_quality_verdict: str | None = None
     _boost_cutoff_quality_pass: bool | None = None
     _boost_cutoff_quality_verdict: str | None = None
-    _boost_release_predicted_terminal_entry_projected_dx: float | None = None
-    _boost_release_predicted_terminal_required_accel_ratio: float | None = None
-    _boost_release_mode: str | None = None
     _terminal_entry_done: bool = False
     _terminal_entry_time: float | None = None
     _terminal_entry_altitude: float | None = None
@@ -1241,137 +1231,6 @@ class PDGBot(Bot):
             minimum_s=minimum_s,
         )
 
-    @staticmethod
-    def _boost_release_entry_projected_dx_abs(handoff: Any) -> float | None:
-        entry_projected_dx = getattr(handoff, "entry_projected_dx", None)
-        if entry_projected_dx is None:
-            return None
-        entry_projected_dx_abs = abs(float(entry_projected_dx))
-        if not math.isfinite(entry_projected_dx_abs):
-            return None
-        return entry_projected_dx_abs
-
-    @staticmethod
-    def _boost_release_required_accel_ratio(handoff: Any) -> float | None:
-        required_accel_ratio = getattr(handoff, "required_accel_ratio", None)
-        if required_accel_ratio is None:
-            return None
-        required_accel_ratio = float(required_accel_ratio)
-        if not math.isfinite(required_accel_ratio):
-            return None
-        return required_accel_ratio
-
-    def _update_boost_release_progress(self, *, handoff: Any) -> None:
-        entry_projected_dx_abs = self._boost_release_entry_projected_dx_abs(handoff)
-        if entry_projected_dx_abs is None:
-            return
-        state = self._state
-        required_accel_ratio = self._boost_release_required_accel_ratio(handoff)
-        best_projected_dx_abs = state._boost_release_best_entry_projected_dx_abs
-        best_required_accel_ratio = state._boost_release_best_entry_required_accel_ratio
-        improved = False
-        if best_projected_dx_abs is None or entry_projected_dx_abs <= (
-            float(best_projected_dx_abs) - _BOOST_RELEASE_ENTRY_DX_IMPROVE_M
-        ):
-            improved = True
-        elif (
-            required_accel_ratio is not None
-            and best_required_accel_ratio is not None
-            and entry_projected_dx_abs
-            <= (float(best_projected_dx_abs) + _BOOST_RELEASE_ENTRY_DX_IMPROVE_M)
-            and required_accel_ratio
-            <= (float(best_required_accel_ratio) - _BOOST_RELEASE_RATIO_IMPROVE)
-        ):
-            improved = True
-        elif best_required_accel_ratio is None and required_accel_ratio is not None:
-            improved = True
-        if improved:
-            state._boost_release_best_entry_projected_dx_abs = entry_projected_dx_abs
-            state._boost_release_best_entry_required_accel_ratio = (
-                required_accel_ratio
-            )
-            state._boost_release_last_improve_time = state._elapsed_time_s
-
-    def _boost_release_handoff_stalled(self) -> bool:
-        state = self._state
-        last_improve_time = state._boost_release_last_improve_time
-        if last_improve_time is None:
-            return False
-        stall_s = max(0.0, float(self._cfg.boost_failure_cut_idle_s))
-        return (state._elapsed_time_s - float(last_improve_time)) >= stall_s
-
-    def _predict_boost_release_handoff(
-        self,
-        *,
-        ctx: UpdateContext,
-        settle_s: float,
-        settle_angle_target: float | None,
-    ):
-        settled_passive = _settled_passive_after_cut_impl(
-            self,
-            passive=ctx.passive,
-            settle_s=settle_s,
-            settle_angle_target=settle_angle_target,
-        )
-        target_x = float(ctx.passive.x) + float(ctx.dx)
-        target_y = float(ctx.passive.y) + float(ctx.dy)
-        settled_dx = target_x - float(settled_passive.x)
-        settled_dy = target_y - float(settled_passive.y)
-        return _predict_terminal_handoff_impl(
-            self,
-            dt=ctx.dt,
-            passive=settled_passive,
-            dx=settled_dx,
-            dy=settled_dy,
-            max_thrust_accel=ctx.max_thrust_accel,
-            nominal_thrust_accel=ctx.nominal_thrust_accel,
-            thrust_ramp_up=ctx.ramp_up,
-            boost_cutoff_done=True,
-        )
-
-    def _record_boost_release_handoff(self, *, handoff: Any) -> None:
-        state = self._state
-        entry_projected_dx = getattr(handoff, "entry_projected_dx", None)
-        state._boost_release_predicted_terminal_entry_projected_dx = (
-            float(entry_projected_dx) if entry_projected_dx is not None else None
-        )
-        state._boost_release_predicted_terminal_required_accel_ratio = (
-            self._boost_release_required_accel_ratio(handoff)
-        )
-        state._boost_release_mode = (
-            str(getattr(handoff, "mode")) if getattr(handoff, "mode", None) else None
-        )
-
-    def _begin_boost_cutoff(
-        self,
-        *,
-        ctx: UpdateContext,
-        verdict: str,
-        quality_pass: bool,
-        summary: str,
-        handoff: Any | None = None,
-    ) -> StageTickResult:
-        state = self._state
-        state._boost_cut_latched = True
-        state._boost_settle_start_time = state._elapsed_time_s
-        state._boost_cut_hold_angle = self._boost_settle_hold_angle(dy=ctx.dy)
-        state._boost_cutoff_quality_pass = quality_pass
-        state._boost_cutoff_quality_verdict = verdict
-        if handoff is not None:
-            self._record_boost_release_handoff(handoff=handoff)
-        settle_action = self._command_boost_settle(dt=ctx.dt, passive=ctx.passive)
-        settle_action.status = (
-            "pdg settle/boost pass"
-            if quality_pass
-            else f"pdg settle/boost {verdict}"
-        )
-        self._set_display_state(
-            mode="passive",
-            phase="boost",
-            summary=summary,
-        )
-        return StageTickResult(action=settle_action)
-
     def _boost_settle_hold_angle(
         self,
         *,
@@ -1442,18 +1301,11 @@ class PDGBot(Bot):
                 (1.0 - distance_alpha) * float(self._cfg.boost_active_thrust_floor_near)
             ) + (distance_alpha * float(self._cfg.boost_active_thrust_floor_far))
         if (not quality.passed) and abs(float(ctx.dx)) > 1e-3:
-            if not state._boost_burn_started:
-                state._boost_release_best_entry_projected_dx_abs = None
-                state._boost_release_best_entry_required_accel_ratio = None
-                state._boost_release_last_improve_time = None
             state._boost_burn_started = True
             state._boost_burn_idle_since = None
             if state._boost_burn_start_time is None:
                 state._boost_burn_start_time = state._elapsed_time_s
         settled_quality = quality
-        predicted_release_handoff = None
-        settle_s = 0.0
-        settle_angle_target = None
         if state._boost_burn_started:
             settle_s = self._boost_cut_wind_down_s(
                 passive=ctx.passive,
@@ -1467,83 +1319,62 @@ class PDGBot(Bot):
                 settle_s=settle_s,
                 settle_angle_target=settle_angle_target,
             )
-            if quality.verdict == "dx":
-                predicted_release_handoff = self._predict_boost_release_handoff(
-                    ctx=ctx,
-                    settle_s=settle_s,
-                    settle_angle_target=settle_angle_target,
-                )
-                self._update_boost_release_progress(handoff=predicted_release_handoff)
         overshot_target_direction = (
             quality.projected_dx is not None
             and abs(float(ctx.dx)) > 1e-3
             and (float(quality.projected_dx) * float(ctx.dx)) < 0.0
         )
         if settled_quality.passed and state._boost_burn_started:
-            if predicted_release_handoff is None:
-                predicted_release_handoff = self._predict_boost_release_handoff(
-                    ctx=ctx,
-                    settle_s=settle_s,
-                    settle_angle_target=settle_angle_target,
-                )
-            return self._begin_boost_cutoff(
-                ctx=ctx,
-                verdict=settled_quality.verdict,
-                quality_pass=True,
-                summary="cut pass",
-                handoff=predicted_release_handoff,
-            )
+            state._boost_cut_latched = True
+            state._boost_settle_start_time = state._elapsed_time_s
+            state._boost_cut_hold_angle = self._boost_settle_hold_angle(dy=ctx.dy)
+            state._boost_cutoff_quality_pass = True
+            state._boost_cutoff_quality_verdict = settled_quality.verdict
+            settle_action = self._command_boost_settle(dt=ctx.dt, passive=ctx.passive)
+            settle_action.status = "pdg settle/boost pass"
+            self._set_display_state(mode="passive", phase="boost", summary="cut pass")
+            return StageTickResult(action=settle_action)
         if state._boost_burn_started and (not quality.passed):
             burn_elapsed = state._elapsed_time_s - float(
                 state._boost_burn_start_time or state._elapsed_time_s
             )
             if quality.verdict != "no_target_y_solution":
-                if (
-                    quality.verdict == "dx"
-                    and burn_elapsed >= float(self._cfg.boost_failure_cut_idle_s)
-                    and self._boost_release_handoff_stalled()
-                ):
-                    if predicted_release_handoff is None:
-                        predicted_release_handoff = self._predict_boost_release_handoff(
-                            ctx=ctx,
-                            settle_s=settle_s,
-                            settle_angle_target=settle_angle_target,
-                        )
-                    return self._begin_boost_cutoff(
-                        ctx=ctx,
-                        verdict=quality.verdict,
-                        quality_pass=False,
-                        summary=f"cut {quality.verdict}",
-                        handoff=predicted_release_handoff,
-                    )
                 if overshot_target_direction and burn_elapsed >= 0.75:
-                    if predicted_release_handoff is None:
-                        predicted_release_handoff = self._predict_boost_release_handoff(
-                            ctx=ctx,
-                            settle_s=settle_s,
-                            settle_angle_target=settle_angle_target,
-                        )
-                    return self._begin_boost_cutoff(
-                        ctx=ctx,
-                        verdict=quality.verdict,
-                        quality_pass=False,
-                        summary=f"cut {quality.verdict}",
-                        handoff=predicted_release_handoff,
+                    state._boost_cut_latched = True
+                    state._boost_settle_start_time = state._elapsed_time_s
+                    state._boost_cut_hold_angle = self._boost_settle_hold_angle(
+                        dy=ctx.dy
                     )
+                    state._boost_cutoff_quality_pass = False
+                    state._boost_cutoff_quality_verdict = quality.verdict
+                    settle_action = self._command_boost_settle(
+                        dt=ctx.dt, passive=ctx.passive
+                    )
+                    settle_action.status = f"pdg settle/boost {quality.verdict}"
+                    self._set_display_state(
+                        mode="passive",
+                        phase="boost",
+                        summary=f"cut {quality.verdict}",
+                    )
+                    return StageTickResult(action=settle_action)
                 if burn_elapsed >= float(self._cfg.boost_burn_max_s):
-                    if predicted_release_handoff is None:
-                        predicted_release_handoff = self._predict_boost_release_handoff(
-                            ctx=ctx,
-                            settle_s=settle_s,
-                            settle_angle_target=settle_angle_target,
-                        )
-                    return self._begin_boost_cutoff(
-                        ctx=ctx,
-                        verdict=quality.verdict,
-                        quality_pass=False,
-                        summary=f"cut {quality.verdict}",
-                        handoff=predicted_release_handoff,
+                    state._boost_cut_latched = True
+                    state._boost_settle_start_time = state._elapsed_time_s
+                    state._boost_cut_hold_angle = self._boost_settle_hold_angle(
+                        dy=ctx.dy
                     )
+                    state._boost_cutoff_quality_pass = False
+                    state._boost_cutoff_quality_verdict = quality.verdict
+                    settle_action = self._command_boost_settle(
+                        dt=ctx.dt, passive=ctx.passive
+                    )
+                    settle_action.status = f"pdg settle/boost {quality.verdict}"
+                    self._set_display_state(
+                        mode="passive",
+                        phase="boost",
+                        summary=f"cut {quality.verdict}",
+                    )
+                    return StageTickResult(action=settle_action)
                 state._boost_burn_idle_since = None
             else:
                 if planner_target_thrust < boost_cut_thrust and burn_elapsed >= 0.75:
@@ -1560,19 +1391,23 @@ class PDGBot(Bot):
                     state._boost_burn_idle_since is not None
                     and idle_elapsed >= float(self._cfg.boost_failure_cut_idle_s)
                 ):
-                    if predicted_release_handoff is None:
-                        predicted_release_handoff = self._predict_boost_release_handoff(
-                            ctx=ctx,
-                            settle_s=settle_s,
-                            settle_angle_target=settle_angle_target,
-                        )
-                    return self._begin_boost_cutoff(
-                        ctx=ctx,
-                        verdict=quality.verdict,
-                        quality_pass=False,
-                        summary=f"cut {quality.verdict}",
-                        handoff=predicted_release_handoff,
+                    state._boost_cut_latched = True
+                    state._boost_settle_start_time = state._elapsed_time_s
+                    state._boost_cut_hold_angle = self._boost_settle_hold_angle(
+                        dy=ctx.dy
                     )
+                    state._boost_cutoff_quality_pass = False
+                    state._boost_cutoff_quality_verdict = quality.verdict
+                    settle_action = self._command_boost_settle(
+                        dt=ctx.dt, passive=ctx.passive
+                    )
+                    settle_action.status = f"pdg settle/boost {quality.verdict}"
+                    self._set_display_state(
+                        mode="passive",
+                        phase="boost",
+                        summary=f"cut {quality.verdict}",
+                    )
+                    return StageTickResult(action=settle_action)
             thrust_floor = min(
                 float(ctx.max_throttle),
                 boost_thrust_floor_ratio * float(ctx.max_throttle),
@@ -1638,12 +1473,6 @@ class PDGBot(Bot):
             state._boost_settle_start_time = None
             state._boost_quality_verdict = None
             state._boost_burn_start_time = None
-            state._boost_release_best_entry_projected_dx_abs = None
-            state._boost_release_best_entry_required_accel_ratio = None
-            state._boost_release_last_improve_time = None
-            state._boost_release_predicted_terminal_entry_projected_dx = None
-            state._boost_release_predicted_terminal_required_accel_ratio = None
-            state._boost_release_mode = None
         if stage in self._controllers:
             self._controllers[stage].enter(self, ctx)
 

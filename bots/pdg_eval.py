@@ -54,18 +54,12 @@ def reset_evaluation_state(
     state._boost_burn_started = False
     state._boost_burn_start_time = None
     state._boost_burn_idle_since = None
-    state._boost_release_best_entry_projected_dx_abs = None
-    state._boost_release_best_entry_required_accel_ratio = None
-    state._boost_release_last_improve_time = None
     state._boost_cut_latched = False
     state._boost_cut_hold_angle = None
     state._boost_settle_start_time = None
     state._boost_quality_verdict = None
     state._boost_cutoff_quality_pass = None
     state._boost_cutoff_quality_verdict = None
-    state._boost_release_predicted_terminal_entry_projected_dx = None
-    state._boost_release_predicted_terminal_required_accel_ratio = None
-    state._boost_release_mode = None
     state._terminal_entry_done = False
     state._terminal_entry_time = None
     state._terminal_entry_altitude = None
@@ -144,13 +138,6 @@ def build_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | None]
         "fallback_frames": bot._fallback_frames,
         "boost_quality_verdict": state._boost_cutoff_quality_verdict
         or state._boost_quality_verdict,
-        "boost_release_predicted_terminal_entry_projected_dx": (
-            state._boost_release_predicted_terminal_entry_projected_dx
-        ),
-        "boost_release_predicted_terminal_required_accel_ratio": (
-            state._boost_release_predicted_terminal_required_accel_ratio
-        ),
-        "boost_release_mode": state._boost_release_mode,
         "shape_apex_error": shape_apex_error,
         "shape_curve_rmse": shape_curve_rmse,
         "shape_projected_dx_abs_mean": shape_projected_dx_abs_mean,
