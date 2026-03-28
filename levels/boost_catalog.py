@@ -42,19 +42,19 @@ _BOOST_GEOMETRIES: tuple[_BoostGeometry, ...] = (
     _BoostGeometry(
         family="flat",
         route_tier="near",
-        route_dx=SampleRange(150.0, 250.0),
-        route_dy=0.0,
-    ),
-    _BoostGeometry(
-        family="flat",
-        route_tier="mid",
         route_dx=SampleRange(300.0, 500.0),
         route_dy=0.0,
     ),
     _BoostGeometry(
         family="flat",
-        route_tier="far",
+        route_tier="mid",
         route_dx=SampleRange(600.0, 1000.0),
+        route_dy=0.0,
+    ),
+    _BoostGeometry(
+        family="flat",
+        route_tier="far",
+        route_dx=SampleRange(1200.0, 2000.0),
         route_dy=0.0,
     ),
     _BoostGeometry(
@@ -67,6 +67,12 @@ _BOOST_GEOMETRIES: tuple[_BoostGeometry, ...] = (
         family="downhill",
         route_tier="mid",
         route_dx=SampleRange(300.0, 500.0),
+        route_dy=-400.0,
+    ),
+    _BoostGeometry(
+        family="downhill",
+        route_tier="mid_long",
+        route_dx=SampleRange(600.0, 1000.0),
         route_dy=-400.0,
     ),
     _BoostGeometry(
@@ -85,6 +91,12 @@ _BOOST_GEOMETRIES: tuple[_BoostGeometry, ...] = (
         family="climb",
         route_tier="mid",
         route_dx=SampleRange(300.0, 500.0),
+        route_dy=400.0,
+    ),
+    _BoostGeometry(
+        family="climb",
+        route_tier="mid_long",
+        route_dx=SampleRange(600.0, 1000.0),
         route_dy=400.0,
     ),
     _BoostGeometry(

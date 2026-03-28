@@ -7,8 +7,8 @@ catalog and transfer helpers in `levels/boost_*`.
 ## Selector layers
 
 - `boost:flat:{near|mid|far}:{empty|half|full}`
-- `boost:downhill:{low|mid|high}:{empty|half|full}`
-- `boost:climb:{low|mid|high}:{empty|half|full}`
+- `boost:downhill:{low|mid|mid_long|high}:{empty|half|full}`
+- `boost:climb:{low|mid|mid_long|high}:{empty|half|full}`
 
 Defaults:
 
@@ -20,9 +20,11 @@ Defaults:
 
 - All boost route families sample destination distance ranges from the active
   seed and share the sampled route across weight tiers for the same seed.
-- Flat routes vary `dx` only; downhill and climb keep their fixed `dy` tiers
-  while sampling `dx` from the same `300..500` band centered on the old `400`
-  route distance.
+- Flat routes vary `dx` only and are now spaced around `400`, `800`, and
+  `1600` distance medians for `near`, `mid`, and `far`.
+- Downhill and climb keep their fixed `dy` tiers while sampling `dx`; the
+  `mid_long` route holds the same `mid` vertical delta and stretches the
+  transfer into the longer `600..1000` `dx` band.
 - All boost scenarios end with the same transfer result fields:
   `transfer_source_site_uid`, `transfer_target_site_uid`,
   `transfer_landed_site_uid`, `transfer_arrived`.

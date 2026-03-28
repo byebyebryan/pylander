@@ -362,8 +362,18 @@ def _build_leaves() -> tuple[SelectorLeaf, ...]:
 
     boost_families = (
         ("flat", ("near", "mid", "far"), {"mid"}, {"mid"}),
-        ("downhill", ("low", "mid", "high"), {"low", "mid", "high"}, {"mid"}),
-        ("climb", ("low", "mid", "high"), {"low", "mid", "high"}, {"mid"}),
+        (
+            "downhill",
+            ("low", "mid", "mid_long", "high"),
+            {"low", "mid", "high"},
+            {"mid"},
+        ),
+        (
+            "climb",
+            ("low", "mid", "mid_long", "high"),
+            {"low", "mid", "high"},
+            {"mid"},
+        ),
     )
     weight_tiers = ("empty", "half", "full")
     for family, route_tiers, quick_routes, smoke_routes in boost_families:
@@ -442,9 +452,10 @@ def _build_default_child_map() -> dict[tuple[str, ...], str]:
         out[("boost", family)] = "mid"
     for route in ("near", "mid", "far"):
         out[("boost", "flat", route)] = "half"
-    for route in ("low", "mid", "high"):
+    for route in ("low", "mid", "mid_long", "high"):
         out[("boost", "downhill", route)] = "half"
         out[("boost", "climb", route)] = "half"
+    for route in ("low", "mid", "high"):
         out[("plunge", route)] = "half"
     out[("terminal", "normal")] = "mid"
     out[("terminal", "error")] = "mid"
