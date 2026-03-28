@@ -60,37 +60,37 @@ _BOOST_GEOMETRIES: tuple[_BoostGeometry, ...] = (
     _BoostGeometry(
         family="downhill",
         route_tier="low",
-        route_dx=400.0,
+        route_dx=SampleRange(300.0, 500.0),
         route_dy=-200.0,
     ),
     _BoostGeometry(
         family="downhill",
         route_tier="mid",
-        route_dx=400.0,
+        route_dx=SampleRange(300.0, 500.0),
         route_dy=-400.0,
     ),
     _BoostGeometry(
         family="downhill",
         route_tier="high",
-        route_dx=400.0,
+        route_dx=SampleRange(300.0, 500.0),
         route_dy=-800.0,
     ),
     _BoostGeometry(
         family="climb",
         route_tier="low",
-        route_dx=400.0,
+        route_dx=SampleRange(300.0, 500.0),
         route_dy=200.0,
     ),
     _BoostGeometry(
         family="climb",
         route_tier="mid",
-        route_dx=400.0,
+        route_dx=SampleRange(300.0, 500.0),
         route_dy=400.0,
     ),
     _BoostGeometry(
         family="climb",
         route_tier="high",
-        route_dx=400.0,
+        route_dx=SampleRange(300.0, 500.0),
         route_dy=800.0,
     ),
 )
@@ -128,4 +128,3 @@ BOOST_QUICK_SCENARIOS: tuple[str, ...] = (
     boost_scenario_name("climb", "mid", "half"),
     boost_scenario_name("climb", "high", "half"),
 )
-

@@ -99,6 +99,7 @@ class BoostTransferLevel(ScenarioCatalogMixin, PresetLevel):
         rng = _random.Random(seed ^ (scenario_name_hash << 1))
 
         dest_x = self._resolve_dest_x(scenario, rng)
+        setattr(self, "_sampled_dest_x", float(dest_x))
         self.site_specs = (
             SiteSpec(
                 uid=SOURCE_SITE_UID,
