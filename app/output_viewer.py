@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import signal
 import socket
 import subprocess
 import sys
@@ -93,6 +95,78 @@ def server_health(port: int) -> dict[str, Any] | None:
     return payload
 
 
+def _server_root(payload: dict[str, Any] | None) -> Path | None:
+    if not isinstance(payload, dict):
+        return None
+    token = str(payload.get("root") or "").strip()
+    if not token:
+        return None
+    return Path(token).expanduser().resolve()
+
+
+def _listener_pid_for_port(port: int) -> int | None:
+    try:
+        proc = subprocess.run(
+            [
+                "lsof",
+                f"-tiTCP:{int(port)}",
+                "-sTCP:LISTEN",
+            ],
+            check=False,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+    except OSError:
+        return None
+    if int(proc.returncode) not in {0, 1}:
+        return None
+    for line in str(proc.stdout or "").splitlines():
+        token = line.strip()
+        if not token:
+            continue
+        try:
+            return int(token)
+        except ValueError:
+            continue
+    return None
+
+
+def _stop_existing_server(root: Path, port: int) -> bool:
+    state_path = (root / "viewer" / "server.json").resolve()
+    payload: dict[str, Any] | None = None
+    if state_path.exists():
+        try:
+            loaded = json.loads(state_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError):
+            loaded = None
+        if isinstance(loaded, dict) and str(loaded.get("service") or "") == SERVICE_NAME:
+            payload = loaded
+    pid = None if payload is None else payload.get("pid")
+    try:
+        pid_int = int(pid)
+    except (TypeError, ValueError):
+        pid_int = _listener_pid_for_port(port)
+    if pid_int is None:
+        return False
+
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.kill(pid_int, sig)
+        except ProcessLookupError:
+            break
+        except OSError:
+            return False
+
+        deadline = time.time() + 5.0
+        while time.time() < deadline:
+            if server_health(port) is None:
+                return True
+            time.sleep(0.1)
+
+    return server_health(port) is None
+
+
 def write_server_state(
     *,
     outputs_root: Path,
@@ -134,18 +208,35 @@ def ensure_outputs_server(
     server_script: Path | None = None,
 ) -> tuple[str, Path]:
     existing = server_health(port)
+    desired_root = outputs_root.resolve()
+    existing_root = _server_root(existing)
+    if existing is not None and existing_root == desired_root:
+        state_path = write_server_state(
+            outputs_root=desired_root,
+            status="running",
+            port=port,
+            bind_host=bind_host,
+            viewer_hostname=viewer_hostname,
+            pid=None,
+        )
+        return "reused", state_path
+    if existing is not None and existing_root is not None:
+        if not _stop_existing_server(existing_root, port):
+            raise SystemExit(
+                "Outputs server on "
+                f"http://127.0.0.1:{int(port)}{HEALTH_PATH} serves "
+                f"{existing_root}, not {desired_root}, and could not be replaced automatically."
+            )
     state_path = write_server_state(
-        outputs_root=outputs_root,
-        status=("running" if existing else "starting"),
+        outputs_root=desired_root,
+        status="starting",
         port=port,
         bind_host=bind_host,
         viewer_hostname=viewer_hostname,
         pid=None,
     )
-    if existing is not None:
-        return "reused", state_path
 
-    log_path = (outputs_root / "viewer" / "server.log").resolve()
+    log_path = (desired_root / "viewer" / "server.log").resolve()
     log_path.parent.mkdir(parents=True, exist_ok=True)
     command = default_server_command()
     if server_script is not None:
@@ -157,7 +248,7 @@ def ensure_outputs_server(
             "--port",
             str(int(port)),
             "--root",
-            str(outputs_root),
+            str(desired_root),
         ]
     )
     with log_path.open("ab") as log_fh:
@@ -169,7 +260,7 @@ def ensure_outputs_server(
             start_new_session=True,
         )
     write_server_state(
-        outputs_root=outputs_root,
+        outputs_root=desired_root,
         status="starting",
         port=port,
         bind_host=bind_host,
@@ -181,7 +272,7 @@ def ensure_outputs_server(
     while time.time() < deadline:
         if server_health(port) is not None:
             write_server_state(
-                outputs_root=outputs_root,
+                outputs_root=desired_root,
                 status="running",
                 port=port,
                 bind_host=bind_host,
