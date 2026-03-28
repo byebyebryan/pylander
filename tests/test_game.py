@@ -117,6 +117,9 @@ def test_boost_level_scenario_names_are_canonical() -> None:
         "downhill:mid:empty",
         "downhill:mid:half",
         "downhill:mid:full",
+        "downhill:mid_long:empty",
+        "downhill:mid_long:half",
+        "downhill:mid_long:full",
         "downhill:high:empty",
         "downhill:high:half",
         "downhill:high:full",
@@ -126,6 +129,9 @@ def test_boost_level_scenario_names_are_canonical() -> None:
         "climb:mid:empty",
         "climb:mid:half",
         "climb:mid:full",
+        "climb:mid_long:empty",
+        "climb:mid_long:half",
+        "climb:mid_long:full",
         "climb:high:empty",
         "climb:high:half",
         "climb:high:full",
@@ -226,6 +232,17 @@ def _target_site_x(level_name: str, scenario: str, seed: int) -> float:
     return float(target.x)
 
 
+def _boost_scenario_params(
+    scenario: str, seed: int, *, benchmark_mode: str | None = None
+) -> dict[str, float | str]:
+    level = create_level_by_name("boost")
+    if benchmark_mode is not None:
+        level.set_benchmark_mode(benchmark_mode)
+    level.set_eval_scenario(scenario)
+    _game = LanderGame(level=level, seed=seed, bot=create_bot("pdg"), headless=True)
+    return dict(level._scenario_params)
+
+
 def test_setup_and_terminal_error_scenarios_are_seed_deterministic() -> None:
     setup_a = _spawn_state("boost", "downhill:mid:half", 42)
     setup_b = _spawn_state("boost", "downhill:mid:half", 42)
@@ -271,11 +288,39 @@ def test_setup_levels_apply_weight_tier_mass_and_params(
 
 
 @pytest.mark.parametrize(
+    ("scenario_name", "expected_dx", "expected_dy"),
+    (
+        ("flat:near:half", 400.0, 0.0),
+        ("flat:mid:half", 800.0, 0.0),
+        ("flat:far:half", 1600.0, 0.0),
+        ("downhill:mid:half", 400.0, -400.0),
+        ("downhill:mid_long:half", 800.0, -400.0),
+        ("climb:mid:half", 400.0, 400.0),
+        ("climb:mid_long:half", 800.0, 400.0),
+    ),
+)
+def test_boost_route_tiers_expose_expected_median_geometry(
+    scenario_name: str, expected_dx: float, expected_dy: float
+) -> None:
+    scenario_params = _boost_scenario_params(
+        scenario_name, 0, benchmark_mode="median"
+    )
+    assert scenario_params["dx"] == pytest.approx(expected_dx)
+    assert scenario_params["dy"] == pytest.approx(expected_dy)
+
+
+@pytest.mark.parametrize(
     "scenario_names",
     (
         ("flat:far:empty", "flat:far:half", "flat:far:full"),
         ("downhill:mid:empty", "downhill:mid:half", "downhill:mid:full"),
+        (
+            "downhill:mid_long:empty",
+            "downhill:mid_long:half",
+            "downhill:mid_long:full",
+        ),
         ("climb:mid:empty", "climb:mid:half", "climb:mid:full"),
+        ("climb:mid_long:empty", "climb:mid_long:half", "climb:mid_long:full"),
     ),
 )
 def test_boost_weight_tiers_share_same_sampled_route_for_same_seed(
@@ -299,7 +344,9 @@ def test_boost_weight_tiers_share_same_sampled_route_for_same_seed(
     (
         "flat:mid:half",
         "downhill:mid:half",
+        "downhill:mid_long:half",
         "climb:mid:half",
+        "climb:mid_long:half",
     ),
 )
 def test_boost_routes_sample_new_target_x_across_seeds(scenario_name: str) -> None:
@@ -706,7 +753,12 @@ def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
 
 @pytest.mark.parametrize(
     "scenario_path",
-    (("downhill", "mid", "half"), ("climb", "mid", "half")),
+    (
+        ("downhill", "mid", "half"),
+        ("downhill", "mid_long", "half"),
+        ("climb", "mid", "half"),
+        ("climb", "mid_long", "half"),
+    ),
 )
 def test_resolve_batch_plan_auto_expands_seeded_boost_slope_scenarios(
     scenario_path: tuple[str, str, str],
