@@ -65,7 +65,7 @@ def vehicle_limits(passive: Sensors, max_force: float) -> tuple[float, float]:
 def engine_profile(vehicle_info: VehicleInfo | None) -> tuple[float, float, float, float]:
     if vehicle_info is None:
         # Keep fallback aligned with Engine defaults in SI-like units.
-        return 230000.0, 0.25, 1.6, 1.1
+        return 240000.0, 0.25, 1.6, 1.1
     max_power = max(1e-3, float(vehicle_info.max_thrust_power))
     max_throttle = max(0.0, float(vehicle_info.max_thrust))
     min_throttle = max(0.0, min(float(vehicle_info.min_thrust), max_throttle))
@@ -85,4 +85,3 @@ def rate_limit_angle_command(
     limited_delta = clamp(delta, -max_delta, max_delta)
     limited = prev_angle + limited_delta
     return (limited + math.pi) % (2.0 * math.pi) - math.pi
-

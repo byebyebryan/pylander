@@ -18,6 +18,20 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 - Unified optimizer bot (`pdg`) for full-envelope flight
 - Terminal benchmark bot (`plunge`)
 
+## Default Vehicle Profile
+
+The stock lander is tuned around a `19.5 t` fully loaded vehicle:
+
+- dry mass `7200 kg`
+- tank capacity `140` fuel units at `45 kg/unit` (`6300 kg` full-fuel mass)
+- max cargo `6000 kg`
+- nominal thrust `240 kN`
+- overdrive ceiling `1.6x` nominal thrust with burn multiplier `8.0`
+
+This keeps fuel and cargo near `1:1` by mass, preserves full-load thrust
+margin, and makes long flat boost transfers range-feasible without making
+overdrive cheap.
+
 ## Setup
 
 ```bash

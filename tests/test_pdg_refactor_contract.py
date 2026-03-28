@@ -296,7 +296,7 @@ def test_boost_controller_honors_touchdown_stage_suggestion_before_boost_cutoff(
             impact_x=0.0,
             has_target_y_solution=True,
         ),
-        max_power=230000.0,
+        max_power=240000.0,
         min_throttle=0.25,
         max_throttle=1.6,
         ramp_up=1.1,
