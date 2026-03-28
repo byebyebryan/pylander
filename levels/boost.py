@@ -13,7 +13,11 @@ from levels.boost_transfer import (
     BoostTransferLevel,
     build_boost_weight_params,
 )
-from levels.common_scenarios import has_randomized_values, resolve_sample_value
+from levels.common_scenarios import (
+    has_randomized_values,
+    is_ranged_value,
+    resolve_sample_value,
+)
 
 
 class BoostLevel(BoostTransferLevel):
@@ -29,15 +33,25 @@ class BoostLevel(BoostTransferLevel):
         return has_randomized_values((scenario.route_dx,))
 
     @staticmethod
-    def _scenario_slope(scenario) -> float:  # noqa: ANN001
+    def _scenario_dx(scenario, *, dest_x: float | None = None) -> float:  # noqa: ANN001
+        if dest_x is not None:
+            return max(1e-6, float(dest_x) - float(SOURCE_PAD_X))
+        route_dx = scenario.route_dx
+        if is_ranged_value(route_dx):
+            return max(1e-6, route_dx.median())
+        return max(1e-6, float(route_dx))
+
+    @classmethod
+    def _scenario_slope(cls, scenario, *, dest_x: float | None = None) -> float:  # noqa: ANN001
         if scenario.family == "flat":
             return 0.0
-        return float(scenario.route_dy) / max(1e-6, float(scenario.route_dx))
+        return float(scenario.route_dy) / cls._scenario_dx(scenario, dest_x=dest_x)
 
     def _build_base_terrain(self, seed: int):
         _ = seed
         scenario = self._active_scenario()
-        slope = self._scenario_slope(scenario)
+        dest_x = getattr(self, "_sampled_dest_x", None)
+        slope = self._scenario_slope(scenario, dest_x=dest_x)
         return _terrain.LodGridGenerator(lambda x: slope * x)
 
     def _resolve_dest_x(self, scenario, rng) -> float:  # noqa: ANN001
@@ -49,7 +63,7 @@ class BoostLevel(BoostTransferLevel):
         return SOURCE_PAD_X + dest_dx
 
     def _build_scenario_params(self, scenario, dest_x: float) -> dict:  # noqa: ANN001
-        slope = self._scenario_slope(scenario)
+        slope = self._scenario_slope(scenario, dest_x=dest_x)
         return {
             "family": scenario.family,
             "route_tier": scenario.route_tier,

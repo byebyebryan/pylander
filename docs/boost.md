@@ -18,10 +18,11 @@ Defaults:
 
 ## Behavior
 
-- Flat routes sample destination distance ranges and share the sampled route
-  across weight tiers for the same seed.
-- Downhill and climb routes use fixed slope families with fixed destination `dx`
-  / `dy` geometry.
+- All boost route families sample destination distance ranges from the active
+  seed and share the sampled route across weight tiers for the same seed.
+- Flat routes vary `dx` only; downhill and climb keep their fixed `dy` tiers
+  while sampling `dx` from the same `300..500` band centered on the old `400`
+  route distance.
 - All boost scenarios end with the same transfer result fields:
   `transfer_source_site_uid`, `transfer_target_site_uid`,
   `transfer_landed_site_uid`, `transfer_arrived`.
@@ -34,4 +35,3 @@ uv run python main.py sim boost:flat:near:half:0 --bot pdg
 uv run python main.py sim boost:downhill:mid:half:boost_cutoff:0 --bot pdg
 uv run python main.py bench boost:* --bot pdg
 ```
-

@@ -218,6 +218,14 @@ def _spawn_state(
     )
 
 
+def _target_site_x(level_name: str, scenario: str, seed: int) -> float:
+    level = create_level_by_name(level_name)
+    level.set_eval_scenario(scenario)
+    _game = LanderGame(level=level, seed=seed, bot=create_bot("pdg"), headless=True)
+    target = next(spec for spec in level.site_specs if spec.uid == "transfer_target")
+    return float(target.x)
+
+
 def test_setup_and_terminal_error_scenarios_are_seed_deterministic() -> None:
     setup_a = _spawn_state("boost", "downhill:mid:half", 42)
     setup_b = _spawn_state("boost", "downhill:mid:half", 42)
@@ -262,23 +270,43 @@ def test_setup_levels_apply_weight_tier_mass_and_params(
     )
 
 
-def test_boost_flat_weight_tiers_share_same_sampled_route_for_same_seed() -> None:
+@pytest.mark.parametrize(
+    "scenario_names",
+    (
+        ("flat:far:empty", "flat:far:half", "flat:far:full"),
+        ("downhill:mid:empty", "downhill:mid:half", "downhill:mid:full"),
+        ("climb:mid:empty", "climb:mid:half", "climb:mid:full"),
+    ),
+)
+def test_boost_weight_tiers_share_same_sampled_route_for_same_seed(
+    scenario_names: tuple[str, str, str],
+) -> None:
     target_x_by_weight: dict[str, float] = {}
-    for scenario_name in ("flat:far:empty", "flat:far:half", "flat:far:full"):
-        level = create_level_by_name("boost")
-        level.set_eval_scenario(scenario_name)
-        _game = LanderGame(level=level, seed=19, bot=create_bot("pdg"), headless=True)
-        target_site = next(
-            spec for spec in level.site_specs if spec.uid == "transfer_target"
-        )
-        target_x_by_weight[scenario_name] = float(target_site.x)
+    for scenario_name in scenario_names:
+        target_x_by_weight[scenario_name] = _target_site_x("boost", scenario_name, 19)
 
-    assert target_x_by_weight["flat:far:empty"] == pytest.approx(
-        target_x_by_weight["flat:far:half"]
+    first, second, third = scenario_names
+    assert target_x_by_weight[first] == pytest.approx(
+        target_x_by_weight[second]
     )
-    assert target_x_by_weight["flat:far:half"] == pytest.approx(
-        target_x_by_weight["flat:far:full"]
+    assert target_x_by_weight[second] == pytest.approx(
+        target_x_by_weight[third]
     )
+
+
+@pytest.mark.parametrize(
+    "scenario_name",
+    (
+        "flat:mid:half",
+        "downhill:mid:half",
+        "climb:mid:half",
+    ),
+)
+def test_boost_routes_sample_new_target_x_across_seeds(scenario_name: str) -> None:
+    target_xs = {
+        _target_site_x("boost", scenario_name, seed) for seed in (0, 1, 2)
+    }
+    assert len(target_xs) == 3
 
 
 def test_pdg_boost_goal_ends_headless_run_early() -> None:
@@ -674,6 +702,41 @@ def test_resolve_batch_plan_honors_selector_seed_spec(monkeypatch) -> None:
             run_key="boost:flat:far:half:2",
         ),
     ]
+
+
+@pytest.mark.parametrize(
+    "scenario_path",
+    (("downhill", "mid", "half"), ("climb", "mid", "half")),
+)
+def test_resolve_batch_plan_auto_expands_seeded_boost_slope_scenarios(
+    scenario_path: tuple[str, str, str],
+) -> None:
+    scenario_name = ":".join(scenario_path)
+    config = BenchSettings(
+        bot_name=None,
+        bot_config_path=None,
+        selectors=(
+            BenchTarget(
+                level_name="boost",
+                scenario_name=scenario_name,
+                scenario_path=scenario_path,
+                seed_spec=None,
+            ),
+        ),
+        lander_name=None,
+        workers=1,
+        max_time=300.0,
+        max_steps=None,
+        trace_enabled=True,
+        trace_sample_period_s=0.25,
+        trace_detail="report",
+        json_path=None,
+    )
+
+    plan = resolve_benchmark_plan(config)
+
+    assert [target.seed for target in plan] == list(range(10))
+    assert all(target.scenario_name == scenario_name for target in plan)
 
 
 def test_resolve_batch_plan_assigns_unique_run_keys_for_duplicate_selectors(monkeypatch) -> None:
