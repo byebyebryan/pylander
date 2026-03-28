@@ -42,6 +42,7 @@ def finalize_terminal_entry_metrics(
     passive: Sensors,
     alt: float,
     projected_dx: float,
+    dx: float | None = None,
 ) -> None:
     state = bot.state
     runtime_state = bot.state
@@ -50,6 +51,11 @@ def finalize_terminal_entry_metrics(
     state._terminal_entry_altitude = float(alt)
     state._terminal_entry_projected_dx = float(projected_dx)
     _capture_terminal_entry_state(bot, passive=passive)
+    state._terminal_post_entry_apex_gain = 0.0
+    state._terminal_post_entry_time_to_apex = 0.0
+    state._terminal_post_entry_peak_abs_dx = (
+        abs(float(dx)) if dx is not None else None
+    )
 
 
 def finalize_boost_cutoff_metrics(
@@ -223,6 +229,35 @@ def refresh_stage_tracking(
             f"thrust={float(passive.thrust_level):5.2f}"
         )
     return next_stage
+
+
+def update_terminal_post_entry_metrics(
+    bot,
+    *,
+    passive: Sensors,
+    dx: float,
+) -> None:
+    state = bot.state
+    if not state._terminal_entry_done:
+        return
+
+    peak_abs_dx = abs(float(dx))
+    current_peak_abs_dx = state._terminal_post_entry_peak_abs_dx
+    if current_peak_abs_dx is None or peak_abs_dx > float(current_peak_abs_dx):
+        state._terminal_post_entry_peak_abs_dx = peak_abs_dx
+
+    entry_y = state._terminal_entry_y
+    entry_time = state._terminal_entry_time
+    if entry_y is None or entry_time is None:
+        return
+
+    apex_gain = max(0.0, float(passive.y) - float(entry_y))
+    best_apex_gain = state._terminal_post_entry_apex_gain
+    if best_apex_gain is None or apex_gain > float(best_apex_gain):
+        state._terminal_post_entry_apex_gain = apex_gain
+        state._terminal_post_entry_time_to_apex = max(
+            0.0, float(state._elapsed_time_s) - float(entry_time)
+        )
 
 
 def maybe_start_shape_window(

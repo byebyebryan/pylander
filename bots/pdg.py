@@ -57,6 +57,7 @@ from bots.pdg_tracking import (
     finalize_terminal_entry_metrics as _finalize_terminal_entry_metrics_impl,
     maybe_start_shape_window as _maybe_start_shape_window_impl,
     refresh_stage_tracking as _refresh_stage_tracking_impl,
+    update_terminal_post_entry_metrics as _update_terminal_post_entry_metrics_impl,
     update_shape_window_metrics as _update_shape_window_metrics_impl,
 )
 from core.bot import (
@@ -73,6 +74,10 @@ from core.config import GRAVITY
 from core.eval_goals import EVAL_GOAL_BOOST_CUTOFF, EVAL_GOAL_LANDING
 
 _GRAVITY_MAG = abs(float(GRAVITY))
+_TERMINAL_OPT_PATH_X_WEIGHT = 0.030
+_TERMINAL_OPT_PATH_Y_WEIGHT = 0.015
+_TERMINAL_OPT_UPWARD_VY_WEIGHT = 1.20
+_TERMINAL_OPT_ALTITUDE_PROGRESS_WEIGHT = 0.00
 
 
 @dataclass(frozen=True)
@@ -133,6 +138,9 @@ class PDGState:
     _terminal_entry_projected_dx: float | None = None
     _terminal_entry_x: float | None = None
     _terminal_entry_y: float | None = None
+    _terminal_post_entry_apex_gain: float | None = None
+    _terminal_post_entry_time_to_apex: float | None = None
+    _terminal_post_entry_peak_abs_dx: float | None = None
     _terminal_gate_ready_ticks: int = 0
     _terminal_probe_count: int = 0
     _terminal_probe_ms_sum: float = 0.0
@@ -250,11 +258,14 @@ class PDGBot(Bot):
             )
         )
 
-    @staticmethod
-    def _build_terminal_optimizer() -> PDGOptimizer:
+    def _build_terminal_optimizer(self) -> PDGOptimizer:
         return PDGOptimizer(
             PDGOptimizerConfig(
                 horizon_steps=28,
+                w_path_x=_TERMINAL_OPT_PATH_X_WEIGHT,
+                w_path_y=_TERMINAL_OPT_PATH_Y_WEIGHT,
+                w_upward_vy=_TERMINAL_OPT_UPWARD_VY_WEIGHT,
+                w_altitude_progress=_TERMINAL_OPT_ALTITUDE_PROGRESS_WEIGHT,
                 w_boost_projected_dx=0.0,
                 w_boost_target_y_cross=0.0,
                 w_boost_apex=0.0,
@@ -300,6 +311,18 @@ class PDGBot(Bot):
             state._terminal_entry_y = (
                 float(boost_cutoff.y) if boost_cutoff.y is not None else None
             )
+            state._terminal_post_entry_apex_gain = 0.0
+            state._terminal_post_entry_time_to_apex = 0.0
+            if boost_cutoff.projected_impact_dx is not None:
+                state._terminal_post_entry_peak_abs_dx = abs(
+                    float(boost_cutoff.projected_impact_dx)
+                )
+            elif boost_cutoff.projected_dx is not None:
+                state._terminal_post_entry_peak_abs_dx = abs(
+                    float(boost_cutoff.projected_dx)
+                )
+            else:
+                state._terminal_post_entry_peak_abs_dx = None
             self._transition_to(FlightStage.TERMINAL, None)
         else:
             self._transition_to(FlightStage.COAST, None)
@@ -998,6 +1021,18 @@ class PDGBot(Bot):
             projection=projection,
         )
 
+    def _update_terminal_post_entry_metrics(
+        self,
+        *,
+        passive: Sensors,
+        dx: float,
+    ) -> None:
+        _update_terminal_post_entry_metrics_impl(
+            self,
+            passive=passive,
+            dx=dx,
+        )
+
     def _shape_curve_rmse(self) -> float | None:
         state = self._state
         if state._shape_curve_count <= 0:
@@ -1026,6 +1061,7 @@ class PDGBot(Bot):
         self,
         *,
         passive: Sensors,
+        dx: float | None,
         alt: float,
         projected_dx: float,
         mode: str,
@@ -1042,6 +1078,7 @@ class PDGBot(Bot):
             passive=passive,
             alt=alt,
             projected_dx=projected_dx,
+            dx=dx,
         )
         state._terminal_gate_mode = mode
         state._terminal_gate_horizon_s = horizon_s
@@ -1734,6 +1771,7 @@ class PDGBot(Bot):
             raise RuntimeError(
                 f"pdg stage '{self._state._active_phase}' did not produce an action"
             )
+        self._update_terminal_post_entry_metrics(passive=passive, dx=dx)
         self.status = action.status
         self._last_flight_snapshot = self._build_evaluation_snapshot()
         return action

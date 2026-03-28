@@ -84,6 +84,7 @@ class BallisticCoastController(StageController):
         if terminal_gate is not None:
             bot._finalize_terminal_entry(
                 passive=ctx.passive,
+                dx=ctx.dx,
                 alt=ctx.alt,
                 projected_dx=float(ctx.projection.projected_dx),
                 mode=terminal_gate.mode,

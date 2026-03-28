@@ -40,6 +40,9 @@ class _Bot:
         self._terminal_entry_time = 7.0
         self._terminal_entry_altitude = 80.0
         self._terminal_entry_projected_dx = 4.0
+        self._terminal_post_entry_apex_gain = 18.0
+        self._terminal_post_entry_time_to_apex = 1.5
+        self._terminal_post_entry_peak_abs_dx = 26.0
         self._solve_count = 3
         self._solve_ms_sum = 12.0
         self._solve_ms_samples = [2.0, 4.0, 6.0]
@@ -114,6 +117,9 @@ class _Bot:
             _terminal_entry_projected_dx=self._terminal_entry_projected_dx,
             _terminal_entry_x=None,
             _terminal_entry_y=None,
+            _terminal_post_entry_apex_gain=self._terminal_post_entry_apex_gain,
+            _terminal_post_entry_time_to_apex=self._terminal_post_entry_time_to_apex,
+            _terminal_post_entry_peak_abs_dx=self._terminal_post_entry_peak_abs_dx,
             _terminal_gate_ready_ticks=0,
             _terminal_probe_count=self._terminal_probe_count,
             _terminal_probe_ms_sum=self._terminal_probe_ms_sum,
@@ -255,6 +261,9 @@ def test_reset_evaluation_state_preserves_or_clears_last_snapshot() -> None:
     assert bot.state._active_phase == "boost"
     assert bot.state._boost_cutoff_done is False
     assert bot.state._terminal_entry_done is False
+    assert bot.state._terminal_post_entry_apex_gain is None
+    assert bot.state._terminal_post_entry_time_to_apex is None
+    assert bot.state._terminal_post_entry_peak_abs_dx is None
     assert bot.state._boost_cut_latched is False
     assert bot.state._boost_burn_start_time is None
     assert bot.state._boost_settle_start_time is None
@@ -292,6 +301,9 @@ def test_build_evaluation_snapshot_prefers_explicit_state_container() -> None:
         _terminal_entry_time=9.0,
         _terminal_entry_altitude=70.0,
         _terminal_entry_projected_dx=3.25,
+        _terminal_post_entry_apex_gain=22.0,
+        _terminal_post_entry_time_to_apex=1.75,
+        _terminal_post_entry_peak_abs_dx=18.0,
         _terminal_probe_count=4,
         _terminal_probe_ms_sum=14.0,
         _terminal_probe_ms_samples=[2.0, 3.0, 4.0, 5.0],
@@ -309,6 +321,9 @@ def test_build_evaluation_snapshot_prefers_explicit_state_container() -> None:
     assert snapshot["terminal_entry_done"] is True
     assert snapshot["terminal_entry_time"] == 9.0
     assert snapshot["terminal_entry_projected_dx"] == 3.25
+    assert snapshot["terminal_post_entry_apex_gain"] == 22.0
+    assert snapshot["terminal_post_entry_time_to_apex"] == 1.75
+    assert snapshot["terminal_post_entry_peak_abs_dx"] == 18.0
     assert snapshot["terminal_probe_count"] == 4
     assert snapshot["terminal_gate_mode"] == "nominal_ready"
     assert snapshot["boost_quality_verdict"] == "pass"
@@ -390,6 +405,9 @@ def test_reset_evaluation_state_prefers_explicit_runtime_state_container() -> No
         _terminal_entry_projected_dx=None,
         _terminal_entry_x=None,
         _terminal_entry_y=None,
+        _terminal_post_entry_apex_gain=None,
+        _terminal_post_entry_time_to_apex=None,
+        _terminal_post_entry_peak_abs_dx=None,
         _terminal_gate_ready_ticks=0,
         _terminal_probe_count=0,
         _terminal_probe_ms_sum=0.0,
@@ -422,3 +440,6 @@ def test_reset_evaluation_state_prefers_explicit_runtime_state_container() -> No
     assert bot.state._clearance_margin == 0.0
     assert bot.state._clearance_scale == 0.0
     assert bot.state._clearance_active is False
+    assert bot.state._terminal_post_entry_apex_gain is None
+    assert bot.state._terminal_post_entry_time_to_apex is None
+    assert bot.state._terminal_post_entry_peak_abs_dx is None

@@ -61,6 +61,36 @@ def _extract_summary_metrics(payload: dict[str, Any]) -> dict[str, float]:
         "ref_gap_peak_max_all": _max(efficiency_all, "trace_ref_gap_max"),
         "ref_gap_peak_max_success": _max(efficiency_success, "trace_ref_gap_max"),
         "ref_gap_success_count": _count(efficiency_success, "trace_ref_gap_mean"),
+        "terminal_post_entry_apex_gain_mean_all": _mean(
+            efficiency_all, "bot_pdg_terminal_post_entry_apex_gain"
+        ),
+        "terminal_post_entry_apex_gain_mean_success": _mean(
+            efficiency_success, "bot_pdg_terminal_post_entry_apex_gain"
+        ),
+        "terminal_post_entry_apex_gain_success_count": _count(
+            efficiency_success, "bot_pdg_terminal_post_entry_apex_gain"
+        ),
+        "terminal_post_entry_apex_gain_all_count": _count(
+            efficiency_all, "bot_pdg_terminal_post_entry_apex_gain"
+        ),
+        "terminal_post_entry_time_to_apex_mean_all": _mean(
+            efficiency_all, "bot_pdg_terminal_post_entry_time_to_apex"
+        ),
+        "terminal_post_entry_time_to_apex_mean_success": _mean(
+            efficiency_success, "bot_pdg_terminal_post_entry_time_to_apex"
+        ),
+        "terminal_post_entry_time_to_apex_all_count": _count(
+            efficiency_all, "bot_pdg_terminal_post_entry_time_to_apex"
+        ),
+        "terminal_post_entry_peak_abs_dx_mean_all": _mean(
+            efficiency_all, "bot_pdg_terminal_post_entry_peak_abs_dx"
+        ),
+        "terminal_post_entry_peak_abs_dx_mean_success": _mean(
+            efficiency_success, "bot_pdg_terminal_post_entry_peak_abs_dx"
+        ),
+        "terminal_post_entry_peak_abs_dx_all_count": _count(
+            efficiency_all, "bot_pdg_terminal_post_entry_peak_abs_dx"
+        ),
     }
 
 
@@ -107,6 +137,17 @@ def _metric_stat_from_summary(
     success_count = int(success_stats.get("count", 0) or 0)
     all_mean = float(all_stats.get(stat, 0.0) or 0.0)
     return success_mean, success_count, all_mean
+
+
+def _metric_counts_from_summary(row: dict[str, Any], field: str) -> tuple[int, int]:
+    eff_success = dict(row.get("efficiency_success") or {})
+    eff_all = dict(row.get("efficiency_all") or {})
+    success_stats = dict(eff_success.get(field) or {})
+    all_stats = dict(eff_all.get(field) or {})
+    return (
+        int(success_stats.get("count", 0) or 0),
+        int(all_stats.get("count", 0) or 0),
+    )
 
 
 def _record_level_policy(
@@ -165,6 +206,9 @@ def _to_float(value: Any, default: float = 0.0) -> float:
 
 def run_diag(record: dict[str, Any], *, bot: str) -> dict[str, Any]:
     terminal_dx_key = bot_metric_key(bot, "terminal_entry_projected_dx")
+    terminal_apex_gain_key = bot_metric_key(bot, "terminal_post_entry_apex_gain")
+    terminal_time_to_apex_key = bot_metric_key(bot, "terminal_post_entry_time_to_apex")
+    terminal_peak_abs_dx_key = bot_metric_key(bot, "terminal_post_entry_peak_abs_dx")
     keys = (
         "state",
         "failure_mode",
@@ -180,6 +224,9 @@ def run_diag(record: dict[str, Any], *, bot: str) -> dict[str, Any]:
         "trace_ref_gap_area",
         "trace_ref_gap_max",
         terminal_dx_key,
+        terminal_apex_gain_key,
+        terminal_time_to_apex_key,
+        terminal_peak_abs_dx_key,
     )
     out: dict[str, Any] = {}
     for key in keys:
@@ -187,6 +234,12 @@ def run_diag(record: dict[str, Any], *, bot: str) -> dict[str, Any]:
             out[key] = record.get(key)
     out["bot_terminal_entry_projected_dx_field"] = terminal_dx_key
     out["bot_terminal_entry_projected_dx"] = record.get(terminal_dx_key)
+    out["bot_terminal_post_entry_apex_gain_field"] = terminal_apex_gain_key
+    out["bot_terminal_post_entry_apex_gain"] = record.get(terminal_apex_gain_key)
+    out["bot_terminal_post_entry_time_to_apex_field"] = terminal_time_to_apex_key
+    out["bot_terminal_post_entry_time_to_apex"] = record.get(terminal_time_to_apex_key)
+    out["bot_terminal_post_entry_peak_abs_dx_field"] = terminal_peak_abs_dx_key
+    out["bot_terminal_post_entry_peak_abs_dx"] = record.get(terminal_peak_abs_dx_key)
     return out
 
 
@@ -327,6 +380,60 @@ def scenario_regressions(
         c_ref_area = c_ref_area_success if use_ref_success else c_ref_area_all
         b_ref_peak = b_ref_peak_success if use_ref_success else b_ref_peak_all
         c_ref_peak = c_ref_peak_success if use_ref_success else c_ref_peak_all
+        b_terminal_apex_gain_success, b_terminal_apex_gain_n, b_terminal_apex_gain_all = (
+            _metric_stat_from_summary(b_row, "bot_pdg_terminal_post_entry_apex_gain")
+        )
+        c_terminal_apex_gain_success, c_terminal_apex_gain_n, c_terminal_apex_gain_all = (
+            _metric_stat_from_summary(c_row, "bot_pdg_terminal_post_entry_apex_gain")
+        )
+        b_terminal_time_to_apex_success, _b_terminal_time_to_apex_n, b_terminal_time_to_apex_all = (
+            _metric_stat_from_summary(b_row, "bot_pdg_terminal_post_entry_time_to_apex")
+        )
+        c_terminal_time_to_apex_success, _c_terminal_time_to_apex_n, c_terminal_time_to_apex_all = (
+            _metric_stat_from_summary(c_row, "bot_pdg_terminal_post_entry_time_to_apex")
+        )
+        b_terminal_peak_abs_dx_success, _b_terminal_peak_abs_dx_n, b_terminal_peak_abs_dx_all = (
+            _metric_stat_from_summary(b_row, "bot_pdg_terminal_post_entry_peak_abs_dx")
+        )
+        c_terminal_peak_abs_dx_success, _c_terminal_peak_abs_dx_n, c_terminal_peak_abs_dx_all = (
+            _metric_stat_from_summary(c_row, "bot_pdg_terminal_post_entry_peak_abs_dx")
+        )
+        _b_terminal_apex_gain_success_n, b_terminal_apex_gain_all_n = (
+            _metric_counts_from_summary(b_row, "bot_pdg_terminal_post_entry_apex_gain")
+        )
+        _c_terminal_apex_gain_success_n, c_terminal_apex_gain_all_n = (
+            _metric_counts_from_summary(c_row, "bot_pdg_terminal_post_entry_apex_gain")
+        )
+        use_terminal_success = (
+            b_terminal_apex_gain_n > 0 and c_terminal_apex_gain_n > 0
+        )
+        use_terminal_all = (
+            b_terminal_apex_gain_all_n > 0 and c_terminal_apex_gain_all_n > 0
+        )
+        if use_terminal_success:
+            b_terminal_apex_gain = b_terminal_apex_gain_success
+            c_terminal_apex_gain = c_terminal_apex_gain_success
+            b_terminal_time_to_apex = b_terminal_time_to_apex_success
+            c_terminal_time_to_apex = c_terminal_time_to_apex_success
+            b_terminal_peak_abs_dx = b_terminal_peak_abs_dx_success
+            c_terminal_peak_abs_dx = c_terminal_peak_abs_dx_success
+            terminal_basis = "success_only"
+        elif use_terminal_all:
+            b_terminal_apex_gain = b_terminal_apex_gain_all
+            c_terminal_apex_gain = c_terminal_apex_gain_all
+            b_terminal_time_to_apex = b_terminal_time_to_apex_all
+            c_terminal_time_to_apex = c_terminal_time_to_apex_all
+            b_terminal_peak_abs_dx = b_terminal_peak_abs_dx_all
+            c_terminal_peak_abs_dx = c_terminal_peak_abs_dx_all
+            terminal_basis = "all_runs"
+        else:
+            b_terminal_apex_gain = None
+            c_terminal_apex_gain = None
+            b_terminal_time_to_apex = None
+            c_terminal_time_to_apex = None
+            b_terminal_peak_abs_dx = None
+            c_terminal_peak_abs_dx = None
+            terminal_basis = "unavailable"
         out.append(
             {
                 "scenario": name,
@@ -337,6 +444,22 @@ def scenario_regressions(
                 "delta_ref_gap_area": c_ref_area - b_ref_area,
                 "delta_ref_gap_peak_max": c_ref_peak - b_ref_peak,
                 "ref_gap_basis": ("success_only" if use_ref_success else "all_runs"),
+                "delta_terminal_post_entry_apex_gain": (
+                    None
+                    if b_terminal_apex_gain is None or c_terminal_apex_gain is None
+                    else c_terminal_apex_gain - b_terminal_apex_gain
+                ),
+                "delta_terminal_post_entry_time_to_apex": (
+                    None
+                    if b_terminal_time_to_apex is None or c_terminal_time_to_apex is None
+                    else c_terminal_time_to_apex - b_terminal_time_to_apex
+                ),
+                "delta_terminal_post_entry_peak_abs_dx": (
+                    None
+                    if b_terminal_peak_abs_dx is None or c_terminal_peak_abs_dx is None
+                    else c_terminal_peak_abs_dx - b_terminal_peak_abs_dx
+                ),
+                "terminal_post_entry_basis": terminal_basis,
             }
         )
     out.sort(
@@ -663,6 +786,54 @@ def print_compare(
             else c["ref_gap_peak_max_all"]
         )
         primary_ref_basis = "success_only" if use_ref_success_primary else "all_runs"
+        use_terminal_success_primary = (
+            b["terminal_post_entry_apex_gain_success_count"] > 0
+            and c["terminal_post_entry_apex_gain_success_count"] > 0
+        )
+        use_terminal_all_primary = (
+            b["terminal_post_entry_apex_gain_all_count"] > 0
+            and c["terminal_post_entry_apex_gain_all_count"] > 0
+        )
+        if use_terminal_success_primary:
+            primary_terminal_apex_gain_b = b["terminal_post_entry_apex_gain_mean_success"]
+            primary_terminal_apex_gain_c = c["terminal_post_entry_apex_gain_mean_success"]
+            primary_terminal_time_to_apex_b = (
+                b["terminal_post_entry_time_to_apex_mean_success"]
+            )
+            primary_terminal_time_to_apex_c = (
+                c["terminal_post_entry_time_to_apex_mean_success"]
+            )
+            primary_terminal_peak_abs_dx_b = (
+                b["terminal_post_entry_peak_abs_dx_mean_success"]
+            )
+            primary_terminal_peak_abs_dx_c = (
+                c["terminal_post_entry_peak_abs_dx_mean_success"]
+            )
+            primary_terminal_basis = "success_only"
+        elif use_terminal_all_primary:
+            primary_terminal_apex_gain_b = b["terminal_post_entry_apex_gain_mean_all"]
+            primary_terminal_apex_gain_c = c["terminal_post_entry_apex_gain_mean_all"]
+            primary_terminal_time_to_apex_b = (
+                b["terminal_post_entry_time_to_apex_mean_all"]
+            )
+            primary_terminal_time_to_apex_c = (
+                c["terminal_post_entry_time_to_apex_mean_all"]
+            )
+            primary_terminal_peak_abs_dx_b = (
+                b["terminal_post_entry_peak_abs_dx_mean_all"]
+            )
+            primary_terminal_peak_abs_dx_c = (
+                c["terminal_post_entry_peak_abs_dx_mean_all"]
+            )
+            primary_terminal_basis = "all_runs"
+        else:
+            primary_terminal_apex_gain_b = None
+            primary_terminal_apex_gain_c = None
+            primary_terminal_time_to_apex_b = None
+            primary_terminal_time_to_apex_c = None
+            primary_terminal_peak_abs_dx_b = None
+            primary_terminal_peak_abs_dx_c = None
+            primary_terminal_basis = "unavailable"
 
         print(f"\n# compare_{label}")
         print(f"runs: {int(b['runs'])} -> {int(c['runs'])}")
@@ -694,6 +865,39 @@ def print_compare(
             f"{primary_ref_gap_peak_b:.3f} -> {primary_ref_gap_peak_c:.3f} "
             f"(delta {primary_ref_gap_peak_c - primary_ref_gap_peak_b:+.3f})"
         )
+        if (
+            primary_terminal_apex_gain_b is not None
+            and primary_terminal_apex_gain_c is not None
+            and primary_terminal_time_to_apex_b is not None
+            and primary_terminal_time_to_apex_c is not None
+            and primary_terminal_peak_abs_dx_b is not None
+            and primary_terminal_peak_abs_dx_c is not None
+        ):
+            print(
+                f"terminal_post_entry_apex_gain_primary[{primary_terminal_basis}]: "
+                f"{primary_terminal_apex_gain_b:.3f} -> {primary_terminal_apex_gain_c:.3f} "
+                f"(delta {primary_terminal_apex_gain_c - primary_terminal_apex_gain_b:+.3f})"
+            )
+            print(
+                f"terminal_post_entry_time_to_apex_primary[{primary_terminal_basis}]: "
+                f"{primary_terminal_time_to_apex_b:.3f} -> {primary_terminal_time_to_apex_c:.3f} "
+                f"(delta {primary_terminal_time_to_apex_c - primary_terminal_time_to_apex_b:+.3f})"
+            )
+            print(
+                f"terminal_post_entry_peak_abs_dx_primary[{primary_terminal_basis}]: "
+                f"{primary_terminal_peak_abs_dx_b:.3f} -> {primary_terminal_peak_abs_dx_c:.3f} "
+                f"(delta {primary_terminal_peak_abs_dx_c - primary_terminal_peak_abs_dx_b:+.3f})"
+            )
+        elif (
+            b["terminal_post_entry_apex_gain_success_count"] > 0
+            or c["terminal_post_entry_apex_gain_success_count"] > 0
+            or b["terminal_post_entry_apex_gain_all_count"] > 0
+            or c["terminal_post_entry_apex_gain_all_count"] > 0
+        ):
+            print(
+                "terminal_post_entry_primary: unavailable "
+                "(missing telemetry on one side)"
+            )
         if b["fuel_success_count"] <= 0 or c["fuel_success_count"] <= 0:
             print(
                 "warning: success-only fuel aggregate unavailable for one side; "
@@ -745,6 +949,25 @@ def print_compare(
                 "ref_gap_area_primary": primary_ref_gap_area_c - primary_ref_gap_area_b,
                 "ref_gap_peak_max_primary": primary_ref_gap_peak_c
                 - primary_ref_gap_peak_b,
+                "terminal_post_entry_basis_primary": primary_terminal_basis,
+                "terminal_post_entry_apex_gain_primary": (
+                    None
+                    if primary_terminal_apex_gain_b is None
+                    or primary_terminal_apex_gain_c is None
+                    else primary_terminal_apex_gain_c - primary_terminal_apex_gain_b
+                ),
+                "terminal_post_entry_time_to_apex_primary": (
+                    None
+                    if primary_terminal_time_to_apex_b is None
+                    or primary_terminal_time_to_apex_c is None
+                    else primary_terminal_time_to_apex_c - primary_terminal_time_to_apex_b
+                ),
+                "terminal_post_entry_peak_abs_dx_primary": (
+                    None
+                    if primary_terminal_peak_abs_dx_b is None
+                    or primary_terminal_peak_abs_dx_c is None
+                    else primary_terminal_peak_abs_dx_c - primary_terminal_peak_abs_dx_b
+                ),
                 "fuel_mean_success": c["fuel_mean_success"] - b["fuel_mean_success"],
                 "fuel_per_distance_mean_success": (
                     c["fuel_per_distance_mean_success"]

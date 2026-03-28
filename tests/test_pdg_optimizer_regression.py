@@ -114,6 +114,21 @@ def test_pdg_passive_coast_suppresses_solver_work_mid_flare() -> None:
     assert snapshot.get("shape_projected_dx_abs_max") == pytest.approx(0.0)
 
 
+def test_pdg_terminal_optimizer_uses_fixed_terminal_weights() -> None:
+    bot = cast(Any, create_bot("pdg"))
+
+    terminal_cfg = bot._optimizer_terminal._cfg
+    boost_cfg = bot._optimizer_boost._cfg
+
+    assert terminal_cfg.w_path_x == pytest.approx(0.03)
+    assert terminal_cfg.w_path_y == pytest.approx(0.015)
+    assert terminal_cfg.w_upward_vy == pytest.approx(1.20)
+    assert terminal_cfg.w_altitude_progress == pytest.approx(0.0)
+    assert boost_cfg.w_path_x == pytest.approx(0.09)
+    assert boost_cfg.w_path_y == pytest.approx(0.025)
+    assert boost_cfg.w_upward_vy == pytest.approx(1.20)
+
+
 def test_pdg_optimizer_solution_changes_with_runtime_gravity() -> None:
     optimizer = PDGOptimizer(PDGOptimizerConfig(horizon_steps=10, step_dt=0.2))
     common: dict[str, Any] = dict(

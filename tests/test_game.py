@@ -376,6 +376,9 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
             "bot_pdg_terminal_entry_time": 8.6,
             "bot_pdg_terminal_entry_altitude": 72.0,
             "bot_pdg_terminal_entry_projected_dx": 4.5,
+            "bot_pdg_terminal_post_entry_apex_gain": 28.0,
+            "bot_pdg_terminal_post_entry_time_to_apex": 1.8,
+            "bot_pdg_terminal_post_entry_peak_abs_dx": 33.0,
             "bot_pdg_solve_count": 32,
             "bot_pdg_solve_ms_mean": 3.2,
             "bot_pdg_solve_ms_p90": 7.4,
@@ -409,6 +412,9 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
     assert record["bot_pdg_terminal_entry_time"] == pytest.approx(8.6)
     assert record["bot_pdg_terminal_entry_altitude"] == pytest.approx(72.0)
     assert record["bot_pdg_terminal_entry_projected_dx"] == pytest.approx(4.5)
+    assert record["bot_pdg_terminal_post_entry_apex_gain"] == pytest.approx(28.0)
+    assert record["bot_pdg_terminal_post_entry_time_to_apex"] == pytest.approx(1.8)
+    assert record["bot_pdg_terminal_post_entry_peak_abs_dx"] == pytest.approx(33.0)
     assert record["bot_pdg_solve_count"] == pytest.approx(32.0)
     assert record["bot_pdg_solve_ms_mean"] == pytest.approx(3.2)
     assert record["bot_pdg_solve_ms_p90"] == pytest.approx(7.4)
@@ -418,6 +424,14 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
     assert record["bot_pdg_shape_projected_dx_abs_mean"] == pytest.approx(18.0)
     assert record["bot_pdg_shape_projected_dx_abs_max"] == pytest.approx(41.0)
     assert record["bot_pdg_shape_shortfall_ratio"] == pytest.approx(0.12)
+
+    summary = aggregate_eval_records([record])
+    assert summary["efficiency_success"]["bot_pdg_terminal_post_entry_apex_gain"][
+        "mean"
+    ] == pytest.approx(28.0)
+    assert summary["efficiency_success"]["bot_pdg_terminal_post_entry_peak_abs_dx"][
+        "mean"
+    ] == pytest.approx(33.0)
 
 
 def test_boost_flat_run_merges_bot_telemetry_fields_into_result() -> None:
