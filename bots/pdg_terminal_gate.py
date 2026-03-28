@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
-from bots.common_ballistics import estimate_ground_time_to_impact
+from bots.common_ballistics import (
+    BallisticProjection,
+    estimate_ground_time_to_impact,
+    estimate_target_y_projection,
+)
 from core.bot import Sensors
 from core.config import GRAVITY
 
@@ -33,6 +37,16 @@ class LatestSafeState:
     best_candidate: TerminalGateCandidate
 
 
+@dataclass(frozen=True)
+class TerminalGateEvaluation:
+    decision: TerminalGateDecision | None
+    latest_safe_state: LatestSafeState
+    best_nominal: TerminalGateCandidate | None
+    nominal_ready_ticks: int
+    state_ready_ticks: int
+    required_accel_ratio: float
+
+
 def _required_control_accel(
     *,
     dx: float,
@@ -56,6 +70,25 @@ def _required_control_accel(
 
 def _clamp(value: float, lo: float, hi: float) -> float:
     return max(float(lo), min(float(hi), float(value)))
+
+
+def _height_to_target(*, dy: float) -> float:
+    return max(0.0, -float(dy))
+
+
+def _candidate_is_feasible(
+    candidate: TerminalGateCandidate, *, ratio_limit: float
+) -> bool:
+    return candidate.tilt_feasible and candidate.required_accel_ratio <= float(
+        ratio_limit
+    )
+
+
+def _candidate_preference_key(candidate: TerminalGateCandidate) -> tuple[float, float]:
+    return (
+        float(candidate.required_accel_ratio),
+        float(candidate.burn_time_s),
+    )
 
 
 def _max_tilt(
@@ -196,10 +229,11 @@ def _latest_safe_state(
     thrust_ramp_up: float,
 ) -> LatestSafeState:
     lateral_miss = float(dx) if lateral_dx is None else float(lateral_dx)
+    height_to_target = _height_to_target(dy=dy)
     down_speed = max(0.0, -float(passive.vy_up))
     max_tilt = _max_tilt(
         bot,
-        alt=max(0.0, float(passive.altitude)),
+        alt=height_to_target,
         dx=dx,
         dy=dy,
         vx=float(passive.vx),
@@ -220,7 +254,7 @@ def _latest_safe_state(
         float(max_thrust_accel) * math.sin(max_tilt),
     )
     time_to_impact = estimate_ground_time_to_impact(
-        altitude=max(0.0, float(passive.altitude)),
+        altitude=height_to_target,
         vy_up=float(passive.vy_up),
         min_t_fall=0.0,
     )
@@ -258,16 +292,10 @@ def _latest_safe_state(
     feasible_candidates = [
         candidate
         for candidate in latest_safe_candidates
-        if candidate.tilt_feasible and candidate.required_accel_ratio <= 1.0
+        if _candidate_is_feasible(candidate, ratio_limit=1.0)
     ]
     if feasible_candidates:
-        best_candidate = min(
-            feasible_candidates,
-            key=lambda candidate: (
-                candidate.burn_time_s,
-                candidate.required_accel_ratio,
-            ),
-        )
+        best_candidate = min(feasible_candidates, key=_candidate_preference_key)
     else:
         best_candidate = min(
             latest_safe_candidates,
@@ -288,22 +316,19 @@ def _latest_safe_state(
     )
 
 
-def evaluate_terminal_gate(
+def _evaluate_terminal_gate_core(
     bot,
     *,
-    dt: float,
+    current_ready_ticks: int,
     passive: Sensors,
     dx: float,
     projected_dx: float | None,
     dy: float,
     alt: float,
     max_thrust_accel: float,
-    min_thrust_accel: float,
     nominal_thrust_accel: float,
     thrust_ramp_up: float,
-) -> TerminalGateDecision | None:
-    del dt, min_thrust_accel
-
+) -> TerminalGateEvaluation:
     latest_safe_state = _latest_safe_state(
         bot,
         passive=passive,
@@ -339,41 +364,235 @@ def evaluate_terminal_gate(
         )
         for burn_time_s in candidate_times
     ]
-    best_nominal = next(
-        (candidate for candidate in nominal_candidates if candidate.ready), None
+    ready_candidates = [candidate for candidate in nominal_candidates if candidate.ready]
+    best_nominal = (
+        min(ready_candidates, key=_candidate_preference_key)
+        if ready_candidates
+        else None
     )
-    state = bot.state
-    if best_nominal is not None:
-        state._terminal_gate_ready_ticks += 1
-        state._terminal_gate_required_accel_ratio = best_nominal.required_accel_ratio
-    else:
-        state._terminal_gate_ready_ticks = 0
-        state._terminal_gate_required_accel_ratio = min(
+
+    nominal_ready_ticks = (
+        current_ready_ticks + 1 if best_nominal is not None else 0
+    )
+    required_accel_ratio = (
+        best_nominal.required_accel_ratio
+        if best_nominal is not None
+        else min(
             (candidate.required_accel_ratio for candidate in nominal_candidates),
             default=0.0,
         )
-    state._terminal_gate_latest_safe_margin_s = latest_safe_margin_s
+    )
+    state_ready_ticks = nominal_ready_ticks
 
-    if best_nominal is not None and state._terminal_gate_ready_ticks >= max(
+    decision: TerminalGateDecision | None = None
+    if best_nominal is not None and nominal_ready_ticks >= max(
         1, int(bot._cfg.terminal_gate_hysteresis_ticks)
     ):
-        return TerminalGateDecision(
+        decision = TerminalGateDecision(
             mode="nominal_ready",
             burn_time_s=best_nominal.burn_time_s,
             latest_safe_margin_s=latest_safe_margin_s,
             required_accel_ratio=best_nominal.required_accel_ratio,
         )
-
-    if latest_safe_margin_s <= 0.0:
-        state._terminal_gate_ready_ticks = 0
-        state._terminal_gate_required_accel_ratio = (
-            latest_safe_state.best_candidate.required_accel_ratio
-        )
-        return TerminalGateDecision(
+    elif latest_safe_margin_s <= 0.0:
+        state_ready_ticks = 0
+        required_accel_ratio = latest_safe_state.best_candidate.required_accel_ratio
+        decision = TerminalGateDecision(
             mode="latest_safe",
             burn_time_s=latest_safe_state.best_candidate.burn_time_s,
             latest_safe_margin_s=latest_safe_margin_s,
             required_accel_ratio=latest_safe_state.best_candidate.required_accel_ratio,
         )
 
-    return None
+    return TerminalGateEvaluation(
+        decision=decision,
+        latest_safe_state=latest_safe_state,
+        best_nominal=best_nominal,
+        nominal_ready_ticks=nominal_ready_ticks,
+        state_ready_ticks=state_ready_ticks,
+        required_accel_ratio=required_accel_ratio,
+    )
+
+
+def _passive_coast_step(passive: Sensors, *, dt: float) -> Sensors:
+    step_dt = max(0.0, float(dt))
+    next_x = float(passive.x) + (float(passive.vx) * step_dt)
+    next_y = (
+        float(passive.y)
+        + (float(passive.vy_up) * step_dt)
+        - (0.5 * _GRAVITY_MAG * step_dt * step_dt)
+    )
+    delta_y = next_y - float(passive.y)
+    return replace(
+        passive,
+        x=next_x,
+        y=next_y,
+        altitude=max(0.0, float(passive.altitude) + delta_y),
+        vx=float(passive.vx),
+        vy_up=float(passive.vy_up) - (_GRAVITY_MAG * step_dt),
+        ax=0.0,
+        ay_up=-_GRAVITY_MAG,
+        thrust_level=0.0,
+    )
+
+
+def _lookahead_projection(
+    *,
+    passive: Sensors,
+    target_x: float,
+    target_y: float,
+) -> tuple[float, float, BallisticProjection]:
+    dx = float(target_x) - float(passive.x)
+    dy = float(target_y) - float(passive.y)
+    projection = estimate_target_y_projection(
+        dx=dx,
+        dy=dy,
+        vx=float(passive.vx),
+        vy_up=float(passive.vy_up),
+        x=float(passive.x),
+        y=float(passive.y),
+    )
+    return dx, dy, projection
+
+
+def _should_defer_latest_safe_entry(
+    bot,
+    *,
+    dt: float,
+    passive: Sensors,
+    dx: float,
+    dy: float,
+    projected_dx: float | None,
+    max_thrust_accel: float,
+    nominal_thrust_accel: float,
+    thrust_ramp_up: float,
+    current_latest_safe_feasible: bool,
+    current_latest_safe_ratio: float,
+    current_ready_ticks: int,
+) -> bool:
+    if projected_dx is None or float(dt) <= 1e-6 or float(passive.vy_up) <= 0.0:
+        return False
+
+    x_tol = float(bot._phase_terminal_x_tol("terminal"))
+    if abs(float(projected_dx)) > x_tol:
+        return False
+
+    target_x = float(passive.x) + float(dx)
+    target_y = float(passive.y) + float(dy)
+    predicted_passive = passive
+    predicted_ready_ticks = max(0, int(current_ready_ticks))
+
+    while True:
+        predicted_passive = _passive_coast_step(predicted_passive, dt=dt)
+        pred_dx, pred_dy, predicted_projection = _lookahead_projection(
+            passive=predicted_passive,
+            target_x=target_x,
+            target_y=target_y,
+        )
+        pred_alt = _height_to_target(dy=pred_dy)
+        if abs(float(predicted_projection.projected_dx)) > x_tol:
+            break
+
+        evaluation = _evaluate_terminal_gate_core(
+            bot,
+            current_ready_ticks=predicted_ready_ticks,
+            passive=predicted_passive,
+            dx=pred_dx,
+            projected_dx=float(predicted_projection.projected_dx),
+            dy=pred_dy,
+            alt=pred_alt,
+            max_thrust_accel=max_thrust_accel,
+            nominal_thrust_accel=nominal_thrust_accel,
+            thrust_ramp_up=thrust_ramp_up,
+        )
+        if (
+            evaluation.decision is not None
+            and evaluation.decision.mode == "nominal_ready"
+        ):
+            return True
+
+        future_latest_safe = evaluation.latest_safe_state.best_candidate
+        future_latest_safe_feasible = _candidate_is_feasible(
+            future_latest_safe,
+            ratio_limit=1.0,
+        )
+        if future_latest_safe_feasible and (
+            (not current_latest_safe_feasible)
+            or (
+                future_latest_safe.required_accel_ratio
+                < (float(current_latest_safe_ratio) - 1e-3)
+            )
+        ):
+            return True
+
+        time_to_impact = estimate_ground_time_to_impact(
+            altitude=pred_alt,
+            vy_up=float(predicted_passive.vy_up),
+            min_t_fall=0.0,
+        )
+        if float(predicted_passive.vy_up) <= 0.0 or time_to_impact <= 0.0:
+            break
+
+        predicted_ready_ticks = evaluation.nominal_ready_ticks
+
+    return False
+
+
+def evaluate_terminal_gate(
+    bot,
+    *,
+    dt: float,
+    passive: Sensors,
+    dx: float,
+    projected_dx: float | None,
+    dy: float,
+    alt: float,
+    max_thrust_accel: float,
+    min_thrust_accel: float,
+    nominal_thrust_accel: float,
+    thrust_ramp_up: float,
+) -> TerminalGateDecision | None:
+    del min_thrust_accel
+
+    state = bot.state
+    evaluation = _evaluate_terminal_gate_core(
+        bot,
+        current_ready_ticks=int(state._terminal_gate_ready_ticks),
+        passive=passive,
+        dx=dx,
+        projected_dx=projected_dx,
+        dy=dy,
+        alt=alt,
+        max_thrust_accel=max_thrust_accel,
+        nominal_thrust_accel=nominal_thrust_accel,
+        thrust_ramp_up=thrust_ramp_up,
+    )
+
+    state._terminal_gate_ready_ticks = evaluation.state_ready_ticks
+    state._terminal_gate_required_accel_ratio = evaluation.required_accel_ratio
+    state._terminal_gate_latest_safe_margin_s = evaluation.latest_safe_state.margin_s
+
+    if (
+        evaluation.decision is not None
+        and evaluation.decision.mode == "latest_safe"
+        and _should_defer_latest_safe_entry(
+            bot,
+            dt=dt,
+            passive=passive,
+            dx=dx,
+            dy=dy,
+            projected_dx=projected_dx,
+            max_thrust_accel=max_thrust_accel,
+            nominal_thrust_accel=nominal_thrust_accel,
+            thrust_ramp_up=thrust_ramp_up,
+            current_latest_safe_feasible=_candidate_is_feasible(
+                evaluation.latest_safe_state.best_candidate,
+                ratio_limit=1.0,
+            ),
+            current_latest_safe_ratio=evaluation.decision.required_accel_ratio,
+            current_ready_ticks=evaluation.nominal_ready_ticks,
+        )
+    ):
+        return None
+
+    return evaluation.decision

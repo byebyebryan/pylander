@@ -66,6 +66,9 @@ def reset_evaluation_state(
     state._terminal_entry_projected_dx = None
     state._terminal_entry_x = None
     state._terminal_entry_y = None
+    state._terminal_post_entry_apex_gain = None
+    state._terminal_post_entry_time_to_apex = None
+    state._terminal_post_entry_peak_abs_dx = None
     state._terminal_gate_ready_ticks = 0
     state._terminal_probe_count = 0
     state._terminal_probe_ms_sum = 0.0
@@ -116,6 +119,9 @@ def build_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | None]
         "terminal_entry_time": state._terminal_entry_time,
         "terminal_entry_altitude": state._terminal_entry_altitude,
         "terminal_entry_projected_dx": state._terminal_entry_projected_dx,
+        "terminal_post_entry_apex_gain": state._terminal_post_entry_apex_gain,
+        "terminal_post_entry_time_to_apex": state._terminal_post_entry_time_to_apex,
+        "terminal_post_entry_peak_abs_dx": state._terminal_post_entry_peak_abs_dx,
         "solve_count": bot._solve_count,
         "solve_ms_mean": solve_ms_mean,
         "solve_ms_p90": percentile(bot._solve_ms_samples, 0.9),

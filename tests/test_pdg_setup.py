@@ -13,6 +13,10 @@ from bots.pdg_boost import (
     boost_objective_geometry,
 )
 from bots.pdg_config import PDGConfig
+from bots.pdg_tracking import (
+    finalize_terminal_entry_metrics,
+    update_terminal_post_entry_metrics,
+)
 from core.config import GRAVITY
 
 
@@ -20,6 +24,7 @@ class _Bot:
     def __init__(self) -> None:
         self._cfg = PDGConfig()
         self.state = SimpleNamespace(
+            _elapsed_time_s=0.0,
             _shape_window_started=False,
             _shape_target_y=0.0,
             _shape_start_y=0.0,
@@ -232,3 +237,42 @@ def test_boost_cut_wind_down_s_respects_minimum_when_already_near_idle() -> None
     )
 
     assert settle_s == pytest.approx(0.25)
+
+
+def test_terminal_post_entry_metrics_track_apex_gain_and_peak_abs_dx() -> None:
+    bot = _Bot()
+    bot.state._elapsed_time_s = 5.0
+
+    finalize_terminal_entry_metrics(
+        bot,
+        passive=_passive(x=20.0, y=150.0, vx=5.0, vy_up=-10.0),
+        alt=150.0,
+        projected_dx=18.0,
+        dx=30.0,
+    )
+
+    assert bot.state._terminal_post_entry_apex_gain == pytest.approx(0.0)
+    assert bot.state._terminal_post_entry_time_to_apex == pytest.approx(0.0)
+    assert bot.state._terminal_post_entry_peak_abs_dx == pytest.approx(30.0)
+
+    bot.state._elapsed_time_s = 6.0
+    update_terminal_post_entry_metrics(
+        bot,
+        passive=_passive(x=28.0, y=182.0, vx=4.0, vy_up=-5.0),
+        dx=12.0,
+    )
+
+    assert bot.state._terminal_post_entry_apex_gain == pytest.approx(32.0)
+    assert bot.state._terminal_post_entry_time_to_apex == pytest.approx(1.0)
+    assert bot.state._terminal_post_entry_peak_abs_dx == pytest.approx(30.0)
+
+    bot.state._elapsed_time_s = 7.5
+    update_terminal_post_entry_metrics(
+        bot,
+        passive=_passive(x=32.0, y=170.0, vx=2.0, vy_up=-8.0),
+        dx=-35.0,
+    )
+
+    assert bot.state._terminal_post_entry_apex_gain == pytest.approx(32.0)
+    assert bot.state._terminal_post_entry_time_to_apex == pytest.approx(1.0)
+    assert bot.state._terminal_post_entry_peak_abs_dx == pytest.approx(35.0)

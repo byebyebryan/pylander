@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import MethodType
 from typing import Any, cast
 
 import pytest
 
+import bots.pdg_terminal_gate as terminal_gate
 from bots import create_bot
 from bots.pdg_terminal_gate import _latest_safe_state
 from core.bot import Sensors
@@ -63,6 +65,319 @@ def test_latest_safe_margin_shrinks_when_lateral_overshoot_requires_more_time() 
     assert (
         larger_overshoot.best_candidate.required_accel_ratio
         > mild_overshoot.best_candidate.required_accel_ratio
+    )
+
+
+def test_latest_safe_state_prefers_lower_required_ratio_over_shorter_burn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = cast(Any, create_bot("pdg"))
+    passive = _sensors(vx=18.0, vy_up=-10.0, altitude=120.0)
+
+    monkeypatch.setattr(
+        terminal_gate,
+        "_burn_time_candidates",
+        lambda *args, **kwargs: ([3.0, 4.0], 0.4, -8.0),
+    )
+
+    def fake_evaluate_candidate(**kwargs: Any) -> terminal_gate.TerminalGateCandidate:
+        burn_time_s = float(kwargs["burn_time_s"])
+        if burn_time_s <= 3.5:
+            return terminal_gate.TerminalGateCandidate(
+                burn_time_s=burn_time_s,
+                required_accel_ratio=0.24,
+                upward_accel=1.0,
+                tilt_feasible=True,
+                ready=True,
+            )
+        return terminal_gate.TerminalGateCandidate(
+            burn_time_s=burn_time_s,
+            required_accel_ratio=0.09,
+            upward_accel=1.0,
+            tilt_feasible=True,
+            ready=True,
+        )
+
+    monkeypatch.setattr(
+        terminal_gate,
+        "_evaluate_candidate",
+        fake_evaluate_candidate,
+    )
+
+    latest_safe = _latest_safe_state(
+        bot,
+        passive=passive,
+        dx=0.0,
+        dy=-120.0,
+        alt=120.0,
+        max_thrust_accel=22.0,
+        thrust_ramp_up=2.0,
+    )
+
+    assert latest_safe.best_candidate.burn_time_s == pytest.approx(4.0)
+    assert latest_safe.best_candidate.required_accel_ratio == pytest.approx(0.09)
+
+
+def test_should_defer_latest_safe_entry_when_future_nominal_ready(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = cast(Any, create_bot("pdg"))
+    passive = _sensors(vx=8.0, vy_up=12.0, altitude=120.0)
+
+    monkeypatch.setattr(
+        terminal_gate,
+        "_passive_coast_step",
+        lambda current, *, dt: replace(
+            current,
+            y=float(current.y) + 3.0,
+            altitude=float(current.altitude) + 3.0,
+            vy_up=5.0,
+        ),
+    )
+    monkeypatch.setattr(
+        terminal_gate,
+        "_lookahead_projection",
+        lambda **kwargs: (
+            0.0,
+            -100.0,
+            terminal_gate.BallisticProjection(
+                projected_dx=0.0,
+                t_fall=2.0,
+                target_x=0.0,
+                impact_x=0.0,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        terminal_gate,
+        "_evaluate_terminal_gate_core",
+        lambda *args, **kwargs: terminal_gate.TerminalGateEvaluation(
+            decision=terminal_gate.TerminalGateDecision(
+                mode="nominal_ready",
+                burn_time_s=4.0,
+                latest_safe_margin_s=0.1,
+                required_accel_ratio=0.08,
+            ),
+            latest_safe_state=terminal_gate.LatestSafeState(
+                margin_s=0.1,
+                best_candidate=terminal_gate.TerminalGateCandidate(
+                    burn_time_s=4.0,
+                    required_accel_ratio=0.08,
+                    upward_accel=1.0,
+                    tilt_feasible=True,
+                    ready=True,
+                ),
+            ),
+            best_nominal=terminal_gate.TerminalGateCandidate(
+                burn_time_s=4.0,
+                required_accel_ratio=0.08,
+                upward_accel=1.0,
+                tilt_feasible=True,
+                ready=True,
+            ),
+            nominal_ready_ticks=2,
+            state_ready_ticks=2,
+            required_accel_ratio=0.08,
+        ),
+    )
+
+    assert terminal_gate._should_defer_latest_safe_entry(
+        bot,
+        dt=0.25,
+        passive=passive,
+        dx=0.0,
+        dy=-120.0,
+        projected_dx=0.0,
+        max_thrust_accel=22.0,
+        nominal_thrust_accel=18.0,
+        thrust_ramp_up=2.0,
+        current_latest_safe_feasible=False,
+        current_latest_safe_ratio=0.2,
+        current_ready_ticks=0,
+    )
+
+
+def test_should_defer_latest_safe_entry_when_future_latest_safe_is_easier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = cast(Any, create_bot("pdg"))
+    passive = _sensors(vx=8.0, vy_up=12.0, altitude=120.0)
+
+    monkeypatch.setattr(
+        terminal_gate,
+        "_passive_coast_step",
+        lambda current, *, dt: replace(
+            current,
+            y=float(current.y) + 2.0,
+            altitude=float(current.altitude) + 2.0,
+            vy_up=4.0,
+        ),
+    )
+    monkeypatch.setattr(
+        terminal_gate,
+        "_lookahead_projection",
+        lambda **kwargs: (
+            0.0,
+            -100.0,
+            terminal_gate.BallisticProjection(
+                projected_dx=0.0,
+                t_fall=2.0,
+                target_x=0.0,
+                impact_x=0.0,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        terminal_gate,
+        "_evaluate_terminal_gate_core",
+        lambda *args, **kwargs: terminal_gate.TerminalGateEvaluation(
+            decision=terminal_gate.TerminalGateDecision(
+                mode="latest_safe",
+                burn_time_s=4.0,
+                latest_safe_margin_s=-0.1,
+                required_accel_ratio=0.12,
+            ),
+            latest_safe_state=terminal_gate.LatestSafeState(
+                margin_s=-0.1,
+                best_candidate=terminal_gate.TerminalGateCandidate(
+                    burn_time_s=4.0,
+                    required_accel_ratio=0.12,
+                    upward_accel=1.0,
+                    tilt_feasible=True,
+                    ready=False,
+                ),
+            ),
+            best_nominal=None,
+            nominal_ready_ticks=0,
+            state_ready_ticks=0,
+            required_accel_ratio=0.12,
+        ),
+    )
+
+    assert terminal_gate._should_defer_latest_safe_entry(
+        bot,
+        dt=0.25,
+        passive=passive,
+        dx=0.0,
+        dy=-120.0,
+        projected_dx=0.0,
+        max_thrust_accel=22.0,
+        nominal_thrust_accel=18.0,
+        thrust_ramp_up=2.0,
+        current_latest_safe_feasible=True,
+        current_latest_safe_ratio=0.2,
+        current_ready_ticks=0,
+    )
+
+
+def test_should_not_defer_latest_safe_entry_when_descending() -> None:
+    bot = cast(Any, create_bot("pdg"))
+
+    assert not terminal_gate._should_defer_latest_safe_entry(
+        bot,
+        dt=0.25,
+        passive=_sensors(vx=8.0, vy_up=-2.0, altitude=120.0),
+        dx=0.0,
+        dy=-120.0,
+        projected_dx=0.0,
+        max_thrust_accel=22.0,
+        nominal_thrust_accel=18.0,
+        thrust_ramp_up=2.0,
+        current_latest_safe_feasible=True,
+        current_latest_safe_ratio=0.2,
+        current_ready_ticks=0,
+    )
+
+
+def test_should_not_defer_latest_safe_entry_when_outside_terminal_corridor() -> None:
+    bot = cast(Any, create_bot("pdg"))
+
+    assert not terminal_gate._should_defer_latest_safe_entry(
+        bot,
+        dt=0.25,
+        passive=_sensors(vx=8.0, vy_up=12.0, altitude=120.0),
+        dx=0.0,
+        dy=-120.0,
+        projected_dx=200.0,
+        max_thrust_accel=22.0,
+        nominal_thrust_accel=18.0,
+        thrust_ramp_up=2.0,
+        current_latest_safe_feasible=True,
+        current_latest_safe_ratio=0.2,
+        current_ready_ticks=0,
+    )
+
+
+def test_should_defer_latest_safe_entry_when_future_latest_safe_becomes_feasible(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bot = cast(Any, create_bot("pdg"))
+    passive = _sensors(vx=8.0, vy_up=12.0, altitude=120.0)
+
+    monkeypatch.setattr(
+        terminal_gate,
+        "_passive_coast_step",
+        lambda current, *, dt: replace(
+            current,
+            y=float(current.y) + 2.0,
+            altitude=float(current.altitude) + 2.0,
+            vy_up=6.0,
+        ),
+    )
+    monkeypatch.setattr(
+        terminal_gate,
+        "_lookahead_projection",
+        lambda **kwargs: (
+            0.0,
+            -100.0,
+            terminal_gate.BallisticProjection(
+                projected_dx=0.0,
+                t_fall=2.0,
+                target_x=0.0,
+                impact_x=0.0,
+            ),
+        ),
+    )
+    monkeypatch.setattr(
+        terminal_gate,
+        "_evaluate_terminal_gate_core",
+        lambda *args, **kwargs: terminal_gate.TerminalGateEvaluation(
+            decision=terminal_gate.TerminalGateDecision(
+                mode="latest_safe",
+                burn_time_s=4.0,
+                latest_safe_margin_s=-0.1,
+                required_accel_ratio=0.18,
+            ),
+            latest_safe_state=terminal_gate.LatestSafeState(
+                margin_s=-0.1,
+                best_candidate=terminal_gate.TerminalGateCandidate(
+                    burn_time_s=4.0,
+                    required_accel_ratio=0.18,
+                    upward_accel=1.0,
+                    tilt_feasible=True,
+                    ready=False,
+                ),
+            ),
+            best_nominal=None,
+            nominal_ready_ticks=0,
+            state_ready_ticks=0,
+            required_accel_ratio=0.18,
+        ),
+    )
+
+    assert terminal_gate._should_defer_latest_safe_entry(
+        bot,
+        dt=0.25,
+        passive=passive,
+        dx=0.0,
+        dy=-120.0,
+        projected_dx=0.0,
+        max_thrust_accel=22.0,
+        nominal_thrust_accel=18.0,
+        thrust_ramp_up=2.0,
+        current_latest_safe_feasible=False,
+        current_latest_safe_ratio=0.2,
+        current_ready_ticks=0,
     )
 
 
@@ -182,6 +497,20 @@ def test_terminal_error_wide_triggers_terminal_gate_before_impact() -> None:
     assert result["bot_pdg_terminal_probe_count"] == 0
     assert result["bot_pdg_terminal_gate_mode"] in {"nominal_ready", "latest_safe"}
     assert result["bot_pdg_solve_count"] > 0
+
+
+def test_terminal_normal_shallower_seed_one_delays_terminal_gate_entry() -> None:
+    level = cast(Any, create_level("terminal"))
+    level.set_eval_scenario("normal:shallower")
+    bot = cast(Any, create_bot("pdg"))
+
+    game = LanderGame(level=level, seed=1, bot=bot, headless=True)
+    result = game.run(print_freq=0, max_time=7.0)
+
+    entry_time = result.get("bot_pdg_terminal_entry_time")
+    assert isinstance(entry_time, (int, float))
+    assert float(entry_time) > 0.25
+    assert result["bot_pdg_terminal_entry_done"] is True
 
 
 def test_flare_flight_levels_can_force_flare_from_spawn() -> None:

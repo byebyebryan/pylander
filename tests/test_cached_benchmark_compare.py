@@ -19,6 +19,9 @@ def _record(
     fuel: float,
     ref_gap_area: float = 0.0,
     ref_gap_max: float = 0.0,
+    terminal_apex_gain: float | None = None,
+    terminal_time_to_apex: float | None = None,
+    terminal_peak_abs_dx: float | None = None,
 ) -> dict[str, object]:
     return {
         "level": level,
@@ -33,6 +36,9 @@ def _record(
         "trace_ref_gap_mean": ref_gap_area / 10.0,
         "trace_ref_gap_area": ref_gap_area,
         "trace_ref_gap_max": ref_gap_max,
+        "bot_pdg_terminal_post_entry_apex_gain": terminal_apex_gain,
+        "bot_pdg_terminal_post_entry_time_to_apex": terminal_time_to_apex,
+        "bot_pdg_terminal_post_entry_peak_abs_dx": terminal_peak_abs_dx,
     }
 
 
@@ -545,16 +551,125 @@ def test_run_diag_uses_selected_bot_terminal_metric_namespace() -> None:
             "state": "landed",
             "boost_cutoff_projected_dx": 12.0,
             "bot_test_bot_terminal_entry_projected_dx": 4.5,
+            "bot_test_bot_terminal_post_entry_apex_gain": 18.0,
+            "bot_test_bot_terminal_post_entry_time_to_apex": 1.4,
+            "bot_test_bot_terminal_post_entry_peak_abs_dx": 22.0,
         },
         bot="test-bot",
     )
 
     assert diag["boost_cutoff_projected_dx"] == 12.0
     assert diag["bot_terminal_entry_projected_dx"] == 4.5
+    assert diag["bot_terminal_post_entry_apex_gain"] == 18.0
+    assert diag["bot_terminal_post_entry_time_to_apex"] == 1.4
+    assert diag["bot_terminal_post_entry_peak_abs_dx"] == 22.0
     assert (
         diag["bot_terminal_entry_projected_dx_field"]
         == "bot_test_bot_terminal_entry_projected_dx"
     )
+
+
+def test_print_compare_includes_terminal_post_entry_summary_deltas() -> None:
+    baseline = {
+        "records": [
+            _record(
+                level="terminal",
+                scenario="normal:shallower",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=10.0,
+                terminal_apex_gain=40.0,
+                terminal_time_to_apex=1.8,
+                terminal_peak_abs_dx=20.0,
+            )
+        ]
+    }
+    candidate = {
+        "records": [
+            _record(
+                level="terminal",
+                scenario="normal:shallower",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=10.0,
+                terminal_apex_gain=12.0,
+                terminal_time_to_apex=0.6,
+                terminal_peak_abs_dx=8.0,
+            )
+        ]
+    }
+
+    report = benchmark_compare.print_compare(
+        baseline_commit="base",
+        candidate_commit="cand",
+        baseline_payload=baseline,
+        candidate_payload=candidate,
+        level_policy={},
+        bot="pdg",
+    )
+
+    summary_delta = report["global"]["summary_delta"]
+    assert summary_delta["terminal_post_entry_apex_gain_primary"] == pytest.approx(-28.0)
+    assert summary_delta["terminal_post_entry_time_to_apex_primary"] == pytest.approx(
+        -1.2
+    )
+    assert summary_delta["terminal_post_entry_peak_abs_dx_primary"] == pytest.approx(
+        -12.0
+    )
+
+
+def test_print_compare_marks_terminal_post_entry_unavailable_when_baseline_missing() -> None:
+    baseline = {
+        "records": [
+            _record(
+                level="terminal",
+                scenario="normal:shallower",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=10.0,
+            )
+        ]
+    }
+    candidate = {
+        "records": [
+            _record(
+                level="terminal",
+                scenario="normal:shallower",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=10.0,
+                terminal_apex_gain=12.0,
+                terminal_time_to_apex=0.6,
+                terminal_peak_abs_dx=8.0,
+            )
+        ]
+    }
+
+    report = benchmark_compare.print_compare(
+        baseline_commit="base",
+        candidate_commit="cand",
+        baseline_payload=baseline,
+        candidate_payload=candidate,
+        level_policy={},
+        bot="pdg",
+    )
+
+    summary_delta = report["global"]["summary_delta"]
+    assert summary_delta["terminal_post_entry_basis_primary"] == "unavailable"
+    assert summary_delta["terminal_post_entry_apex_gain_primary"] is None
+    assert summary_delta["terminal_post_entry_time_to_apex_primary"] is None
+    assert summary_delta["terminal_post_entry_peak_abs_dx_primary"] is None
+
+    rows = benchmark_compare.scenario_regressions(baseline, candidate)
+    target_row = next(row for row in rows if row["scenario"] == "terminal:normal:shallower")
+    assert target_row["terminal_post_entry_basis"] == "unavailable"
+    assert target_row["delta_terminal_post_entry_apex_gain"] is None
+    assert target_row["delta_terminal_post_entry_time_to_apex"] is None
+    assert target_row["delta_terminal_post_entry_peak_abs_dx"] is None
 
 
 def test_validate_cached_tracepack_assets_accepts_complete_pack(tmp_path: Path) -> None:
