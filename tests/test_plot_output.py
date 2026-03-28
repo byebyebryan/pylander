@@ -158,6 +158,19 @@ def test_build_plot_context_widens_tall_spatial_ratio_for_column_layouts() -> No
     assert ctx.span_x / ctx.span_y >= 1.24
 
 
+def test_build_plot_context_extends_terrain_window_to_target_with_margin() -> None:
+    ctx = _build_plot_context(
+        FlatTerrain(),
+        _samples(),
+        target={"x": 420.0, "y": 0.0, "size": 120.0, "label": "landing target"},
+    )
+
+    assert ctx.max_x >= 540.0
+    assert max(ctx.terrain_xs) >= 540.0
+    assert ctx.min_x <= -80.0
+    assert min(ctx.terrain_xs) <= -80.0
+
+
 def test_spatial_limits_expand_to_include_target_footprint() -> None:
     ctx = _build_plot_context(FlatTerrain(), _samples())
     min_x, max_x, lower_y, upper_y = _spatial_limits_with_target(

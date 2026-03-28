@@ -201,6 +201,8 @@ def _resolve_dpi(
 def _build_plot_context(
     terrain,
     samples: list[tuple[float, float, float, float, float, float, float, float]],
+    *,
+    target: dict[str, float | str | None] | None = None,
 ) -> _PlotContext:
     if len(samples) < 2:
         if samples:
@@ -226,6 +228,21 @@ def _build_plot_context(
     x_pad = min(240.0, max(45.0, sample_span_x * 0.18))
     min_x = sample_min_x - x_pad
     max_x = sample_max_x + x_pad
+    if target is not None:
+        try:
+            target_x = float(target.get("x", 0.0) or 0.0)
+            target_size = abs(float(target.get("size", 0.0) or 0.0))
+        except (TypeError, ValueError):
+            target_x = 0.0
+            target_size = 0.0
+        start_x = float(xs[0])
+        half_width = max(18.0, 0.5 * target_size)
+        route_min_x = min(start_x, target_x - half_width)
+        route_max_x = max(start_x, target_x + half_width)
+        route_span_x = max(1.0, route_max_x - route_min_x)
+        route_pad = min(240.0, max(45.0, route_span_x * 0.18))
+        min_x = min(min_x, route_min_x - route_pad)
+        max_x = max(max_x, route_max_x + route_pad)
     if max_x <= min_x:
         max_x = min_x + 1.0
 
@@ -1954,7 +1971,7 @@ def save_trajectory_plots(
     if profile not in {"combined", "split", "both"}:
         profile = "combined"
 
-    ctx = _build_plot_context(terrain, samples)
+    ctx = _build_plot_context(terrain, samples, target=target)
     resolved_max_side = max(256, int(max_side_px))
 
     include_manifest = True

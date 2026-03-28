@@ -10,10 +10,13 @@ def test_smoke_pack_uses_profile_policies() -> None:
     assert all(not item.startswith("flat") for item in pack.selectors)
     assert all(not item.startswith("mountains") for item in pack.selectors)
     assert "boost" not in pack.observe_only_levels_effective
+    assert "terrain" in pack.observe_only_levels_effective
     assert pack.effective_level_policy["boost"] == "normal"
+    assert pack.effective_level_policy["terrain"] == "observe_only"
     assert "flat" in pack.excluded_levels_effective
     assert "mountains" in pack.excluded_levels_effective
-    assert len(pack.selectors) == 6
+    assert "terrain:flat:mid:mid_table:half:0-1" in pack.selectors
+    assert len(pack.selectors) == 7
 
 
 def test_auto_mode_exclude_override_removes_level() -> None:
@@ -74,6 +77,18 @@ def test_focused_selector_unknown_scenario_errors() -> None:
             mode="focused",
             focused_selectors=["boost:flat:not_real:0"],
         )
+
+
+def test_focused_selector_expands_wildcard_scenarios() -> None:
+    pack = selector_pack.build_selectors(
+        mode="focused",
+        focused_selectors=["terrain:flat:mid:*:0-1"],
+    )
+    assert pack.selectors == [
+        "terrain:flat:mid:boost_table:half:0-1",
+        "terrain:flat:mid:mid_table:half:0-1",
+        "terrain:flat:mid:terminal_table:half:0-1",
+    ]
 
 
 def test_focused_selector_preserves_csv_seed_specs() -> None:

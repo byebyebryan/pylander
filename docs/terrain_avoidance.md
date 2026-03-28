@@ -113,7 +113,8 @@ Notes:
 - `TerrainQuery` should wrap the existing terrain sampler, not expose the raw engine object.
 - The bot gets the same read-only query object for the entire run.
 - `BotTarget` should mirror the runtime target corridor the bot is actually meant to fly toward.
-- `profile()` is important. Terrain-aware planning needs more than point samples.
+- `profile()` is important for setup and replan windows. Terrain-aware planning needs more than point samples.
+- In v1, `profile()` is explicitly not a per-tick reactive primitive.
 - Keep v1 small. Shared higher-level helpers can live in a bot utility module rather than the protocol itself.
 
 ### Why this shape
@@ -122,6 +123,8 @@ Notes:
 - `profile()` supports obstacle scans, crest detection, and terrain-relative route construction.
 - `resolution()` keeps downstream sampling stable and aligned to the terrain grid instead of hardcoding arbitrary step sizes.
 - `target` breaks the current implicit dependence on live radar contacts for basic route construction.
+
+If repeated reactive terrain summaries become necessary later, add a dedicated cached helper for window summaries instead of widening the hot-path meaning of `profile()`.
 
 ### Target contract
 
@@ -209,12 +212,18 @@ Recommended ownership model:
 2. A shared terrain guard evaluates short-horizon terrain threat against the current state and the nominal action.
 3. The terrain guard may:
    - leave the action unchanged
-   - clamp angle / thrust into a terrain-safe envelope
-   - delay a boost cutoff or terminal descent commitment
    - request a terrain-driven replan
+   - veto an unsafe cutoff / descent / handoff decision
+   - apply a bounded upward bias or minimum-clearance floor
 4. The routed action sent to control systems is the post-guard action.
 
 This keeps one clear action owner per frame while still allowing terrain safety to override unsafe nominal behavior.
+
+Guardrails for v1:
+
+- the terrain guard must not synthesize a fully independent lateral plan
+- the terrain guard must not replace the active stage controller wholesale
+- long-horizon route selection stays with boost planning, not the guard
 
 Responsibilities by layer:
 
@@ -259,16 +268,16 @@ Add a separate terrain-focused transfer root instead of changing the existing pu
 
 Working name:
 
-- `terrain_transfer`
+- `terrain`
 
 Proposed selector shape:
 
-- `terrain_transfer:<family>:<route_tier>:<obstacle_case>:<weight_tier>`
+- `terrain:<family>:<route_tier>:<obstacle_case>:<weight_tier>`
 
 Examples:
 
-- `terrain_transfer:flat:mid:launch_ridge:half`
-- `terrain_transfer:climb:high:double_ridge:full`
+- `terrain:flat:mid:boost_table:half`
+- `terrain:climb:high:double_ridge:full`
 
 Rationale:
 
@@ -285,7 +294,7 @@ Each scenario should carry intent metadata directly in the catalog:
 ```python
 @dataclass(frozen=True)
 class ObstacleSpec:
-    kind: Literal["ridge", "mesa"]
+    kind: Literal["ridge", "shoulder", "mesa"]
     x_fraction: float
     width: float
     height: float
@@ -318,6 +327,7 @@ Obstacle scenarios still have to fit the current terrain model: a deterministic 
 That means the first terrain catalog should explicitly support:
 
 - ridges
+- shoulders / slope breaks
 - mesas / plateaus
 - multi-crest heightfield combinations
 - asymmetric faces through shoulder width and face bias
@@ -331,14 +341,59 @@ It should not try to model:
 
 Those would require a different collision and sensing model than the current height-sampler-based world.
 
+### Reactive-first v1 scenario design
+
+The first shipping `terrain:*` level should be reactive-first.
+
+That means the initial normal-pack scenarios should only ask the controller to solve terrain problems that are locally recoverable through bounded upward bias, delayed descent, or cutoff vetoes.
+
+Rules for v1 normal scenarios:
+
+- exactly one obstacle per scenario
+- obstacle geometry must be narrow enough that a local recovery is plausible
+- obstacle cases should preserve the underlying clear-terrain family semantics instead of forcing a completely new route class
+- prefer late obstacles first, because terminal-side shoulders and tables isolate reactive descent behavior cleanly
+- allow early obstacles only when a boost-side shoulder or short table can be handled without sustained route reshaping
+
+Do not put these in the initial normal pack:
+
+- broad mesas that require a sustained higher route
+- double-ridge scenarios
+- hard margin-limited `climb:high:full` planning cases
+
+Those belong in observe-only coverage until boost planning exists.
+
+### Feature families by route type
+
+Different baseline families should prefer different obstacle primitives.
+
+- `flat`
+  - prefer short flat-top obstacles (`table`) and broad flat-top obstacles (`mesa`)
+  - a table is effectively a short mesa bounded by two shoulders
+  - in v1, table cases should stay short enough to remain reactive-only
+  - broad flat-top cases that require route shaping should use `mesa`, not an oversized `table`
+- `downhill`
+  - prefer `shoulder` cases over standalone ridges
+  - a shoulder is a local slope hold / flatten / break that intrudes into the expected descent corridor
+- `climb`
+  - prefer `shoulder` cases over standalone ridges
+  - a shoulder is a local roll-up or slope extension that makes a previously safe-looking climb/descent commitment unsafe
+
+This keeps the terrain shapes natural for the underlying route family instead of dropping the same obstacle silhouette onto every baseline.
+
 ### Baseline route coverage
 
 Use a small representative baseline set:
 
 - `flat:mid`
-- `flat:far`
 - `downhill:mid`
 - `climb:mid`
+
+Reactive-first normal packs should start there.
+
+Keep these for planning-phase expansion:
+
+- `flat:far`
 - `climb:high`
 
 Weight coverage:
@@ -351,11 +406,13 @@ Weight coverage:
 Treat these as design axes, not all as public selector layers:
 
 - location:
-  - `launch` at roughly 20-30% of route length
+  - `boost` at roughly 20-30% of route length
   - `mid` at roughly 45-55%
   - `terminal` at roughly 70-85%
   - `double` with one early and one late obstacle
 - geometry:
+  - `shoulder`
+  - `table`
   - `ridge`
   - `mesa`
   - `double_ridge`
@@ -369,7 +426,7 @@ Treat these as design axes, not all as public selector layers:
 
 Public selector guidance:
 
-- encode obstacle cases as named curated designs, for example `launch_ridge`, `mid_mesa`, `terminal_ridge`, `double_ridge`
+- encode obstacle cases as named curated designs, for example `boost_shoulder`, `terminal_shoulder`, `boost_table`, `terminal_table`, `mid_mesa`, `double_ridge`
 - keep width/height/asymmetry inside the scenario definition unless they become stable user-facing concepts later
 
 This avoids a brittle selector explosion while the controller is still evolving.
@@ -383,20 +440,31 @@ Each named obstacle case should resolve to deterministic geometry for a given se
 - obstacle dimensions must be part of the catalog, not inferred ad hoc inside level setup
 - if any obstacle dimension is randomized later, it must follow the existing benchmark median/sample rules and be recorded in scenario params
 
-## Starter scenario set
+## Reactive-First Starter Set
 
-The initial catalog should be small but intentional.
+The first normal-pack terrain catalog should stay small and intentionally reactive.
 
 | Selector | Avoidance band | Context / why | What to test | Plot focus |
 | --- | --- | --- | --- | --- |
-| `terrain_transfer:flat:mid:launch_ridge:half` | `hybrid` | Neutral baseline with an early obstacle and normal thrust margin. | Boost planner should loft early enough; boost reactive should still catch under-clear execution drift. | Terrain, terrainless reference, terrain-aware reference, boost cutoff, minimum-clearance point. |
-| `terrain_transfer:flat:mid:terminal_ridge:half` | `reactive` | Simple late obstacle near the target on otherwise normal terrain. | Terminal reactive avoidance should delay descent or bias upward without requiring a complex global replan. | Terrain crest, terminal-entry marker, reactive-avoid start/end markers, flown path vs late crest. |
-| `terrain_transfer:flat:far:mid_mesa:half` | `planning` | Broad obstacle that should not be solvable by last-second pull-up. | Boost planning should choose a sustained higher route, not a low fast transfer that reacts too late. | Mesa profile, terrain-aware reference over the mesa, actual path duration over the obstacle. |
-| `terrain_transfer:downhill:mid:launch_ridge:half` | `hybrid` | Early obstacle on a route that later descends toward the target. | Planner must clear the source-side obstacle without wasting all downhill efficiency; reactive logic should protect the initial climb. | Early ridge clearance, planned apex, post-clear descent back toward target. |
-| `terrain_transfer:downhill:mid:terminal_ridge:half` | `reactive` | Late crest on a descending route where the bot may be tempted to dive aggressively. | Terminal reactive logic should avoid terrain-induced dive-into-crest failures. | Downhill terrain line, terminal entry, late pull-up or descent delay, projected intercept. |
-| `terrain_transfer:climb:mid:launch_ridge:half` | `hybrid` | Moderate uphill transfer where terrain and target elevation both matter. | Boost planning should separate "clear terrain" from "reach target height" instead of hugging the slope. | Source-to-target slope baseline, obstacle crest, reference route above terrain. |
-| `terrain_transfer:climb:high:launch_ridge:full` | `planning` | Hard margin-limited uphill case close to the current failure mode. | Planner must respect terrain under low excess thrust; reactive logic should avoid boosting into the obstacle when the route is marginal. | Obstacle crest, boost cutoff state, projected intercept, margin remaining to target corridor. |
-| `terrain_transfer:climb:high:double_ridge:full` | `planning` | Early and late obstacles on the hardest uphill route. | Prevent "solve the first ridge, die at the second" behavior; force planner to preserve downstream terminal recoverability. | Both ridge crests, terrain-aware reference, terminal entry, actual path against both obstacles. |
+| `terrain:flat:mid:boost_table:half` | `reactive` | Short early flat-top obstacle on an otherwise flat route. | Boost-side reactive guarding should preserve climb margin and block an unsafe early cutoff without demanding a new global route. | Table edges, boost cutoff veto, actual path over the flat top. |
+| `terrain:flat:mid:mid_table:half` | `reactive` | Centered short flat-top obstacle with both source- and target-side shoulders affecting the same run. | Reactive correction should clear both table edges in one transfer without requiring terrain-aware planning. | Both table edges, actual dwell over the flat top, local clearance margin at each edge. |
+| `terrain:flat:mid:terminal_table:half` | `reactive` | Short late flat-top obstacle near the target on otherwise normal terrain. | Terminal reactive avoidance should delay descent or bias upward without requiring a global replan. | Table edges, terminal entry, reactive-avoid start/end markers, flown path vs late obstacle. |
+| `terrain:downhill:mid:boost_shoulder:half` | `reactive` | Source-side shoulder where the launch platform or early downhill profile extends before dropping. | Boost-side reactive logic should avoid cutting low off the source shelf and preserve safe initial descent geometry. | Source shoulder edge, boost cutoff veto, actual path leaving the shelf. |
+| `terrain:downhill:mid:terminal_shoulder:half` | `reactive` | Downhill route that flattens into a shoulder before a steeper final drop to target. | Reactive logic should avoid diving into the shoulder or committing too early into the final drop. | Downhill terrain line, shoulder edge, terminal entry, descent delay or pull-up. |
+| `terrain:climb:mid:boost_shoulder:half` | `reactive` | Source-side shoulder where the route looks easy initially before the climb steepens. | Boost-side reactive logic should avoid an early cutoff on the apparent shelf and preserve enough margin for the later climb. | Source shoulder edge, boost cutoff veto, actual path into the steeper climb. |
+| `terrain:climb:mid:terminal_shoulder:half` | `reactive` | Climb route that eases into a shoulder before the final approach geometry tightens again. | Reactive logic should protect the terminal approach without requiring terrain-aware boost routing. | Slope baseline, terminal shoulder edge, terminal entry, delayed descent or upward bias. |
+
+## Planning-Phase Expansion Set
+
+Once boost planning exists, expand the catalog with cases that are not fairly solvable by local reactive action alone.
+
+| Selector | Avoidance band | Context / why | What to test | Plot focus |
+| --- | --- | --- | --- | --- |
+| `terrain:flat:far:mid_mesa:half` | `planning` | Broad obstacle that should not be solvable by last-second pull-up. | Boost planning should choose a sustained higher route, not a low fast transfer that reacts too late. | Mesa profile, terrain-aware reference over the mesa, actual path duration over the obstacle. |
+| `terrain:downhill:mid:boost_shoulder:full` | `hybrid` | Source-side shoulder on a heavier downhill route where a local-only reaction may become marginal. | Planner should preserve enough early vertical margin while reactive logic protects the cutoff window. | Source shoulder edge, planned loft, cutoff state, post-shoulder descent. |
+| `terrain:climb:mid:boost_shoulder:full` | `hybrid` | Terrainized version of the current source-side climb margin problem. | Planner should separate "leave the shelf safely" from "reach the higher target" instead of treating the whole route as one smooth climb. | Source shoulder edge, planned climb profile, margin after the shoulder. |
+| `terrain:climb:high:boost_shoulder:full` | `planning` | Hard margin-limited uphill case close to the current clear-terrain failure mode, but with an explicit source-side shoulder. | Planner must respect terrain under low excess thrust and avoid an apparently safe early cutoff that becomes unrecoverable later. | Shoulder edge, boost cutoff state, projected intercept, margin remaining to target corridor. |
+| `terrain:climb:high:double_ridge:full` | `planning` | Early and late obstacles on the hardest uphill route. | Prevent "solve the first ridge, die at the second" behavior; force planner to preserve downstream terminal recoverability. | Both ridge crests, terrain-aware reference, terminal entry, actual path against both obstacles. |
 
 ## Reactive vs planning scenario bands
 
@@ -413,36 +481,48 @@ The scenario set should explicitly separate capability bands:
 
 This split matters because a planning-required scenario should not silently fail the same way as a reactive-only scenario. They test different controller responsibilities.
 
+For rollout:
+
+- initial `terrain:*` normal packs should contain only `reactive` scenarios
+- `hybrid` and `planning` scenarios should start as `observe_only`
+- promote `hybrid` to `normal` only after boost planning exists and the traces are interpretable
+
 ## Plot and trace requirements
 
-Terrain scenarios should be trace-first. For each run, the plot should make the failure or success obvious without reading logs.
+Terrain scenarios should be trace-first, but v1 should ship a minimal terrain telemetry slice before the full generalized overlay model.
 
-Required spatial overlays:
+Required v1 spatial overlays:
 
 - terrain
 - flown path
 - target pad
-- terrain-agnostic reference curve
-- terrain-aware reference curve
 - ballistic-from-event overlay when relevant
 - obstacle crest markers or annotated obstacle regions
 - boost cutoff marker
 - terminal entry marker
 - reactive avoidance markers
 
-Required timeseries/telemetry overlays:
+Required v1 timeseries/telemetry overlays:
 
 - minimum predicted clearance
 - predicted time to terrain intercept
 - active terrain mode (`nominal`, `terrain_plan`, `reactive_avoid`)
 - thrust / angle
-- optional route-reference gap metrics
+- optional terrain guard reason or cutoff-veto state
+
+Planning-phase additions:
+
+- terrain-aware reference curve
+- terrain-agnostic vs terrain-aware reference comparison
+- route-reference gap metrics for the terrain-aware planner
 
 ### Trace schema changes
 
-The current single `reference_curve` payload is not enough for terrain scenarios.
+The current single `reference_curve` payload is enough for the first reactive-only pass, but it will not be enough once boost planning lands.
 
-Terrain-aware traces should move to a more general plot payload shape:
+So the generalized overlay schema should be treated as the target shape for the planning phase, not as a day-one blocker for reactive avoidance.
+
+Planning-phase terrain traces should move to a more general plot payload shape:
 
 ```python
 plot = {
@@ -464,23 +544,27 @@ plot = {
 
 Compatibility guidance:
 
-- existing `ballistic_curve` / `reference_curve` fields can remain as convenience aliases at first
+- existing `ballistic_curve` / `reference_curve` fields can remain as convenience aliases in the reactive-first phase
 - the viewer should render from `overlay_curves` once present
 - report-mode traces must carry terrain sample channels directly
 - do not rely on debug-only control logs for terrain analysis
 
 ### Controller-authored references
 
-The terrain-aware reference curve must be emitted by the bot/controller at runtime.
+Once terrain-aware boost planning exists, the terrain-aware reference curve must be emitted by the bot/controller at runtime.
 
 Do not reconstruct it afterward from the flown path or from incomplete state snapshots. The post-run viewer can still derive helpful comparison curves, but the terrain-aware route that the planner actually intended should be stored as first-class trace data.
 
 Event additions to trace/plot output:
 
-- `terrain_replan`
 - `reactive_avoid_start`
 - `reactive_avoid_clear`
 - `terrain_threat`
+- `terrain_cutoff_veto`
+
+Planning-phase event additions:
+
+- `terrain_replan`
 
 ### Event semantics
 
@@ -505,7 +589,7 @@ Practical guidance:
 - `terrain_threat` should only emit on threshold crossing or state transition, not every frame
 - `reactive_avoid_start` / `reactive_avoid_clear` should pair cleanly in logs and plots
 
-Important rule:
+Important rule once planning lands:
 
 - the terrain-aware reference curve should be captured into the trace payload at runtime
 - do not recompute it later in the viewer from incomplete state
@@ -516,9 +600,10 @@ That keeps run-detail pages faithful to the actual controller decision.
 
 Recommended rollout:
 
-1. Add the new terrain root with `observe_only` policy while the controller is still terrain-blind.
-2. Promote a small smoke subset to `normal` once the read-only terrain API and first reactive/planning behaviors land.
-3. Expand quick/full packs only after the plots and telemetry make failures easy to interpret.
+1. Add the new `terrain` root with `observe_only` policy while the controller is still terrain-blind.
+2. Promote a small reactive-only smoke subset to `normal` once the read-only terrain API and shared reactive guard land.
+3. Keep `hybrid` and `planning` cases `observe_only` until boost planning exists.
+4. Expand quick/full packs only after the plots and telemetry make failures easy to interpret.
 
 ## Implementation phases
 
@@ -526,23 +611,27 @@ Recommended rollout:
    - add `TerrainQuery`
    - add `BotEnvironment`
    - inject it once during setup
-2. Trace/plot support
-   - record terrain-aware reference curves
-   - record reactive terrain events
-   - surface them in the existing plot/trace viewer
-3. Scenario root
-   - add `terrain_transfer`
+2. Scenario root
+   - add `terrain`
    - implement explicit scenario catalog and obstacle generators
-4. Reactive avoidance
+   - start with reactive-only normal scenarios
+3. Reactive avoidance
    - add shared short-horizon terrain threat evaluator
    - wire it into both `boost` and `terminal`
+4. Minimal trace/plot support
+   - record reactive terrain events
+   - record threat/clearance sample channels
+   - surface obstacle regions and reactive markers in the existing viewer
 5. Boost planning
    - add terrain-aware route shaping on top of the full terrain query
-6. Benchmark packs
+6. Richer trace/plot support
+   - record terrain-aware reference curves
+   - move viewer rendering toward generalized overlay curves/regions
+7. Benchmark packs
    - curate smoke, quick, and full scenario sets from the explicit catalog
 
 ## Open questions
 
-- Should terminal remain reactive-only at first, or should it also gain limited terrain-aware replanning?
+- After reactive-only v1, does terminal need any limited terrain-aware replanning beyond guard-only behavior?
 - Should obstacle width/height stay fully internal to named cases, or eventually become selector layers?
 - Do we want a shared generic clearance metric in results, analogous to `boost_cutoff_*`, for terrain scenarios?

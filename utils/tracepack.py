@@ -372,8 +372,9 @@ def _terrain_payload_from_samples(
     terrain: Any,
     *,
     samples: list[tuple[float, float, float, float, float, float, float, float]],
+    target: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    ctx = _build_plot_context(terrain, samples)
+    ctx = _build_plot_context(terrain, samples, target=target)
     return {
         "xs": [float(value) for value in ctx.terrain_xs],
         "ys": [float(value) for value in ctx.terrain_ys],
@@ -598,7 +599,7 @@ def _derive_plot_payload(
 ) -> dict[str, Any] | None:
     if not samples:
         return None
-    ctx = _build_plot_context(terrain, samples)
+    ctx = _build_plot_context(terrain, samples, target=target)
     terrain_payload = {
         "xs": [float(value) for value in ctx.terrain_xs],
         "ys": [float(value) for value in ctx.terrain_ys],
@@ -1232,7 +1233,7 @@ class TraceRecorder:
                 continue
             trace_metric_extras[result_key] = float(metric_value)
         terrain_payload = (
-            _terrain_payload_from_samples(self.terrain, samples=samples)
+            _terrain_payload_from_samples(self.terrain, samples=samples, target=self._target)
             if samples
             else None
         )
