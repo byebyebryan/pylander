@@ -16,6 +16,7 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 - Query API + profiling details: [`overview.md`](overview.md)
 - Terminal selector root: [`terminal.md`](terminal.md)
 - Boost selector root: [`boost.md`](boost.md)
+- Terrain / obstacle avoidance design: [`terrain_avoidance.md`](terrain_avoidance.md)
 
 ## Artifacts
 
