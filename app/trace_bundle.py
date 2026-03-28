@@ -118,6 +118,13 @@ def _format_float(value: Any, digits: int = 2) -> str:
         return "-"
 
 
+def _coerce_float(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _format_percent(value: Any) -> str:
     try:
         return f"{float(value) * 100.0:.2f}%"
@@ -1252,6 +1259,14 @@ def _overview_compute_cell(summary: dict[str, Any]) -> str:
     )
 
 
+def _overview_wall_clock_cell(benchmark_wall_clock_s: Any) -> str:
+    return _render_metric_stack(
+        [
+            ("bench", _format_float(benchmark_wall_clock_s, 3)),
+        ]
+    )
+
+
 def _overview_diff_ref_cell(compare_basis: dict[str, Any]) -> str:
     if not compare_basis:
         return '<span class="muted">current - baseline</span>'
@@ -1460,14 +1475,30 @@ def _overview_diff_compute_cell(
     )
 
 
+def _overview_diff_wall_clock_cell(
+    candidate_wall_clock_s: Any, baseline_wall_clock_s: Any
+) -> str:
+    try:
+        if candidate_wall_clock_s is None or baseline_wall_clock_s is None:
+            raise TypeError
+        delta = float(candidate_wall_clock_s) - float(baseline_wall_clock_s)
+    except (TypeError, ValueError):
+        return _overview_diff_unavailable_cell()
+    return _render_metric_stack([("bench", _format_float(delta, 3))])
+
+
 def _render_overview_section(
     bundle: dict[str, Any], *, outputs_root: Path
 ) -> str:
     benchmark = dict(bundle.get("benchmark") or {})
     candidate = dict(benchmark.get("candidate") or {})
     compare = dict(bundle.get("compare") or {})
+    timing = dict(bundle.get("timing") or {})
     candidate_summary = dict(candidate.get("summary") or {})
     candidate_json_rel = str(candidate.get("json_path") or "")
+    candidate_wall_clock_s = candidate.get("benchmark_wall_clock_s")
+    if candidate_wall_clock_s is None:
+        candidate_wall_clock_s = timing.get("benchmark_wall_clock_s")
 
     rows: list[tuple[str, list[str]]] = [
         (
@@ -1476,6 +1507,7 @@ def _render_overview_section(
                 '<span class="row-tag candidate">current</span>',
                 f"<code>{html.escape(_tracepack_ref_label(candidate_json_rel, fallback=compare.get('candidate_commit')))}</code>",
                 _overview_result_cell(candidate_summary),
+                _overview_wall_clock_cell(candidate_wall_clock_s),
                 _overview_efficiency_cell(candidate_summary),
                 _overview_tracking_cell(candidate_summary),
                 _overview_compute_cell(candidate_summary),
@@ -1488,6 +1520,7 @@ def _render_overview_section(
     )
     if compare and baseline_payload is not None:
         baseline_summary = dict(baseline_payload.get("summary") or {})
+        baseline_wall_clock_s = baseline_payload.get("benchmark_wall_clock_s")
         compare_candidate_summary = dict(compare.get("summary_candidate") or {})
         compare_baseline_summary = dict(compare.get("summary_baseline") or {})
         compare_basis = dict(compare.get("compare_basis") or {})
@@ -1503,6 +1536,7 @@ def _render_overview_section(
                     '<span class="row-tag baseline">baseline</span>',
                     f"<code>{html.escape(_tracepack_ref_label(baseline_json_rel, fallback=compare.get('baseline_commit')))}</code>",
                     _overview_result_cell(baseline_summary),
+                    _overview_wall_clock_cell(baseline_wall_clock_s),
                     _overview_efficiency_cell(baseline_summary),
                     _overview_tracking_cell(baseline_summary),
                     _overview_compute_cell(baseline_summary),
@@ -1522,6 +1556,9 @@ def _render_overview_section(
                         )
                         if compare_available
                         else _overview_diff_unavailable_cell()
+                    ),
+                    _overview_diff_wall_clock_cell(
+                        candidate_wall_clock_s, baseline_wall_clock_s
                     ),
                     (
                         _overview_diff_efficiency_cell(
@@ -1557,7 +1594,7 @@ def _render_overview_section(
         "<h2>Overview</h2>"
         '<div class="table-wrap">'
         + _render_table_with_row_classes(
-            ["Pack", "Ref", "Result", "Efficiency", "Tracking", "Compute"],
+            ["Pack", "Ref", "Result", "Wall Clock", "Efficiency", "Tracking", "Compute"],
             rows,
             table_class="summary-table",
         )
@@ -2651,6 +2688,9 @@ def _bundle_payload(
                 "meta_path": _rel_to_outputs(
                     candidate_meta_path, outputs_root=outputs_root
                 ),
+                "benchmark_wall_clock_s": _coerce_float(
+                    candidate_payload.get("benchmark_wall_clock_s")
+                ),
                 "summary": dict(candidate_payload.get("summary") or {}),
                 "schema": candidate_payload.get("schema"),
                 "schema_version": candidate_payload.get("schema_version"),
@@ -2777,7 +2817,7 @@ def render_bundle(
     analysis_path: Path | None,
     benchmark_cmd: list[str] | None,
     benchmark_exit_code: int,
-    benchmark_wall_clock_s: float,
+    benchmark_wall_clock_s: float | None,
     outputs_root: Path,
     created_at_utc: str | None = None,
     bundle_id: str | None = None,
@@ -2837,6 +2877,11 @@ def render_bundle(
     )
     viewer_assets = ensure_viewer_assets(outputs_root)
     candidate_payload = load_json(candidate_json_path)
+    effective_benchmark_wall_clock_s = _coerce_float(benchmark_wall_clock_s)
+    if effective_benchmark_wall_clock_s is None:
+        effective_benchmark_wall_clock_s = (
+            _coerce_float(candidate_payload.get("benchmark_wall_clock_s")) or 0.0
+        )
     compare_payload = (
         load_json(resolved_compare_path)
         if resolved_compare_path is not None
@@ -2917,7 +2962,7 @@ def render_bundle(
         created_at_utc=created_token,
         benchmark_cmd=list(benchmark_cmd or []),
         benchmark_exit_code=int(benchmark_exit_code),
-        benchmark_wall_clock_s=float(benchmark_wall_clock_s),
+        benchmark_wall_clock_s=effective_benchmark_wall_clock_s,
         candidate_json_path=candidate_json_path,
         candidate_meta_path=resolved_meta_path,
         candidate_payload=candidate_payload,
@@ -2987,7 +3032,7 @@ def _print_bundle_summary(
     server_status: str,
     server_state_path: Path | None,
     base_url: str | None,
-    benchmark_wall_clock_s: float,
+    benchmark_wall_clock_s: float | None,
 ) -> None:
     latest_rel = (
         _rel_to_outputs(result.latest_page_path, outputs_root=outputs_root)
@@ -3002,12 +3047,18 @@ def _print_bundle_summary(
     latest_url = bundle_url(base_url, latest_rel)
     bundle_url_value = bundle_url(base_url, bundle_rel)
 
+    timing = dict(result.bundle.get("timing") or {})
+    benchmark_wall_clock_value = _coerce_float(benchmark_wall_clock_s)
+    if benchmark_wall_clock_value is None:
+        benchmark_wall_clock_value = _coerce_float(timing.get("benchmark_wall_clock_s"))
+    if benchmark_wall_clock_value is None:
+        benchmark_wall_clock_value = 0.0
+
     print("# bench_bundle")
     print(f"server_status={server_status}")
     if base_url is not None:
         print(f"viewer_base_url={base_url}")
-    print(f"benchmark_wall_clock_s={benchmark_wall_clock_s:.3f}")
-    timing = dict(result.bundle.get("timing") or {})
+    print(f"benchmark_wall_clock_s={benchmark_wall_clock_value:.3f}")
     if timing.get("bundle_render_wall_clock_s") is not None:
         print(
             f"bundle_render_wall_clock_s={float(timing['bundle_render_wall_clock_s']):.3f}"
@@ -3088,7 +3139,7 @@ def build_report_parser() -> argparse.ArgumentParser:
     ap.add_argument("--analysis-json", default=None)
     ap.add_argument("--benchmark-command", default=None)
     ap.add_argument("--benchmark-exit-code", type=int, default=0)
-    ap.add_argument("--benchmark-wall-clock-s", type=float, default=0.0)
+    ap.add_argument("--benchmark-wall-clock-s", type=float, default=None)
     ap.add_argument("--viewer-base-url", default=None)
     ap.add_argument("--viewer-hostname", default=None)
     ap.add_argument("--server-port", type=int, default=8765)
@@ -3213,7 +3264,7 @@ def report_main(argv: Sequence[str] | None = None) -> None:
         analysis_path=analysis_path,
         benchmark_cmd=benchmark_cmd,
         benchmark_exit_code=int(args.benchmark_exit_code),
-        benchmark_wall_clock_s=float(args.benchmark_wall_clock_s),
+        benchmark_wall_clock_s=_coerce_float(args.benchmark_wall_clock_s),
         outputs_root=outputs_root,
     )
     _print_bundle_summary(
@@ -3222,7 +3273,7 @@ def report_main(argv: Sequence[str] | None = None) -> None:
         server_status=server_status,
         server_state_path=server_state_path,
         base_url=base_url,
-        benchmark_wall_clock_s=float(args.benchmark_wall_clock_s),
+        benchmark_wall_clock_s=_coerce_float(args.benchmark_wall_clock_s),
     )
     raise SystemExit(int(args.benchmark_exit_code))
 
