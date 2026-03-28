@@ -49,6 +49,10 @@ def test_level_eval_goal_support_matches_declared_catalogs() -> None:
         "landing",
         "boost_cutoff",
     )
+    assert resolve_level_eval_goals(create_level("terrain")) == (
+        "landing",
+        "boost_cutoff",
+    )
     assert resolve_level_eval_goals(create_level("terminal")) == ("landing",)
     assert resolve_level_eval_goals(create_level("plunge")) == ("landing",)
 
@@ -230,3 +234,15 @@ def test_all_levels_expose_valid_benchmark_profile() -> None:
         level = create_level(level_name)
         profile = resolve_level_benchmark_profile(level, level_name)
         assert profile.policy in {"normal", "observe_only", "excluded"}
+
+
+def test_terrain_level_is_public_and_observe_only_in_auto_benchmarks() -> None:
+    level = create_level("terrain")
+    profile = resolve_level_benchmark_profile(level, "terrain")
+    assert profile.policy == "observe_only"
+    assert profile.scenarios.smoke == ("flat:mid:mid_table:half",)
+    assert profile.scenarios.quick == (
+        "flat:mid:mid_table:half",
+        "downhill:mid:terminal_shoulder:half",
+        "climb:mid:terminal_shoulder:half",
+    )

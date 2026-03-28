@@ -11,7 +11,11 @@ from core.level_capabilities import (
     LevelBenchmarkProfile,
 )
 from core.selector_codec import render_selector
-from levels.registry import list_public_levels, resolve_public_level_benchmark_profile
+from levels.registry import (
+    expand_selector_bindings,
+    list_public_levels,
+    resolve_public_level_benchmark_profile,
+)
 
 DEFAULT_SEEDS = {
     "smoke": "0-1",
@@ -263,6 +267,40 @@ def _build_focused_mode(
         local_goal = str(parsed.goal or "landing").strip().lower() or "landing"
 
         if parsed.scenario_name:
+            if "*" in parsed.scenario_path:
+                bindings = expand_selector_bindings(
+                    level_name,
+                    scenario_path=parsed.scenario_path,
+                    allow_wildcards=True,
+                )
+                full_scenarios = set(profile.scenarios.full)
+                if not full_scenarios:
+                    raise ValueError(
+                        f"Selector '{raw}' specifies scenario '{parsed.scenario_name}', but "
+                        f"level '{level_name}' has no benchmark scenarios"
+                    )
+                expanded_scenarios: list[str] = []
+                for binding in bindings:
+                    scenario_name = binding.scenario_name
+                    if scenario_name is None or scenario_name not in full_scenarios:
+                        known = ", ".join(profile.scenarios.full)
+                        raise ValueError(
+                            f"Unknown scenario '{parsed.scenario_name}' for level '{level_name}' "
+                            f"in selector '{raw}'. Expected one of: {known}"
+                        )
+                    expanded_scenarios.append(scenario_name)
+                selectors.extend(
+                    _selector(
+                        level_name,
+                        scenario_name,
+                        local_seed,
+                        eval_goal=local_goal,
+                    )
+                    for scenario_name in expanded_scenarios
+                )
+                included.add(level_name)
+                continue
+
             full_scenarios = set(profile.scenarios.full)
             if not full_scenarios:
                 raise ValueError(

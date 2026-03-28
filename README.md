@@ -7,7 +7,7 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 - Start here: [`docs/README.md`](docs/README.md)
 - Bot framework + API: [`docs/overview.md`](docs/overview.md)
 - Bot docs: [`docs/plunge.md`](docs/plunge.md), [`docs/pdg.md`](docs/pdg.md)
-- Scenario docs: [`docs/terminal.md`](docs/terminal.md), [`docs/boost.md`](docs/boost.md)
+- Scenario docs: [`docs/terminal.md`](docs/terminal.md), [`docs/boost.md`](docs/boost.md), [`docs/terrain_avoidance.md`](docs/terrain_avoidance.md)
 
 ## Features
 
@@ -99,6 +99,7 @@ Selector format:
 - Use `level:seed` when setting a seed without any explicit selector layers.
 - Omit goal to default to `landing`.
 - Canonical examples: `boost:flat:near:half`, `terminal:error:mid:wide`, `plunge:high:full`.
+- Experimental terrain examples: `terrain:flat:mid:mid_table:half`, `terrain:climb:mid:terminal_shoulder:half`.
 - Use eval goal `boost_cutoff` under the `boost` selector root for early-stop boost checks.
 - Bot selector remains bot-only: `--bot <name>`.
 
@@ -107,6 +108,7 @@ Selector format:
 ```bash
 uv run python main.py plot boost:flat:far:half:0 --bot pdg
 uv run python main.py plot boost:flat:far:half:0 --bot pdg --trace-sample-period-s 0.10
+uv run python main.py plot terrain:flat:mid:mid_table:half:0 --bot pdg
 ```
 
 Single-run trace capture writes a trace JSON plus a small preview PNG under
@@ -153,6 +155,7 @@ level metadata from `benchmark_profile()`:
 Default policy profile:
 
 - `flat`, `mountains`: `excluded`
+- `terrain`: `observe_only`
 - `plunge`, `terminal`, `boost`: `normal`
 
 Repo shorthand:

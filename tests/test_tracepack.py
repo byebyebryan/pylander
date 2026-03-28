@@ -214,6 +214,33 @@ def test_derive_plot_payload_expands_bounds_for_target_and_overlay_curves() -> N
     assert bounds["upper_y"] >= 808.0
 
 
+def test_derive_plot_payload_extends_terrain_samples_to_target_with_margin() -> None:
+    class _Terrain:
+        def __call__(self, x: float, lod: int = 0) -> float:
+            _ = (x, lod)
+            return 0.0
+
+        def get_resolution(self, lod: int = 0) -> float:
+            _ = lod
+            return 4.0
+
+    payload = tracepack._derive_plot_payload(
+        _Terrain(),
+        samples=[
+            (0.0, 4.0, 10.0, 1.0, 0.0, 0.0, 0.0, 12.0),
+            (40.0, 30.0, 18.0, 0.6, 0.0, 2.0, 14.0, 8.0),
+            (120.0, 4.0, 24.0, 0.0, 0.0, 10.0, 0.0, 0.0),
+        ],
+        events=[],
+        target={"x": 400.0, "y": 0.0, "size": 110.0, "label": "landing target"},
+    )
+
+    assert payload is not None
+    terrain = payload["terrain"]
+    assert max(terrain["xs"]) >= 520.0
+    assert min(terrain["xs"]) <= -70.0
+
+
 def test_reference_gap_metrics_use_reference_projected_cross_track() -> None:
     metrics = tracepack._reference_gap_metrics(
         actual_xs=[0.0, 2.0, 5.0, 8.0, 10.0],

@@ -58,7 +58,7 @@ def test_create_bot_applies_pdg_bot_config_override() -> None:
 def test_level_registry_still_includes_phase_levels() -> None:
     levels = list_available_levels()
     assert "flare_plunge" not in levels
-    for name in ("flat", "mountains", "boost", "terminal", "plunge"):
+    for name in ("flat", "mountains", "boost", "terrain", "terminal", "plunge"):
         assert name in levels
     for removed in (
         "terminal_normal",
@@ -147,9 +147,33 @@ def test_boost_level_scenario_names_are_canonical() -> None:
     ]
 
 
+def test_terrain_level_scenario_names_are_canonical() -> None:
+    level = create_level_by_name("terrain")
+    assert level.list_batch_scenarios() == [
+        "flat:mid:boost_table:half",
+        "flat:mid:mid_table:half",
+        "flat:mid:terminal_table:half",
+        "downhill:mid:boost_shoulder:half",
+        "downhill:mid:terminal_shoulder:half",
+        "climb:mid:boost_shoulder:half",
+        "climb:mid:terminal_shoulder:half",
+    ]
+    assert level.list_quick_benchmark_scenarios() == [
+        "flat:mid:mid_table:half",
+        "downhill:mid:terminal_shoulder:half",
+        "climb:mid:terminal_shoulder:half",
+    ]
+
+
 def test_boost_rejects_unknown_scenario() -> None:
     level = create_level_by_name("boost")
     with pytest.raises(ValueError, match="Unknown boost scenario"):
+        level.set_eval_scenario("bad")
+
+
+def test_terrain_rejects_unknown_scenario() -> None:
+    level = create_level_by_name("terrain")
+    with pytest.raises(ValueError, match="Unknown terrain scenario"):
         level.set_eval_scenario("bad")
 
 
@@ -173,6 +197,13 @@ def test_boost_defaults_to_flat_mid_half() -> None:
     level = create_level_by_name(level_name)
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     assert game.level.scenario_name == "flat:mid:half"
+
+
+def test_terrain_defaults_to_flat_mid_boost_table_half() -> None:
+    level_name = "terrain"
+    level = create_level_by_name(level_name)
+    game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
+    assert game.level.scenario_name == "flat:mid:boost_table:half"
 
 
 def test_boost_climb_target_is_terrain_bound_flush_pad() -> None:
@@ -243,6 +274,62 @@ def _boost_scenario_params(
     return dict(level._scenario_params)
 
 
+def _terrain_scenario_params(
+    scenario: str, seed: int, *, benchmark_mode: str | None = None
+) -> dict[str, float | str]:
+    level = create_level_by_name("terrain")
+    if benchmark_mode is not None:
+        level.set_benchmark_mode(benchmark_mode)
+    level.set_eval_scenario(scenario)
+    _game = LanderGame(level=level, seed=seed, bot=create_bot("pdg"), headless=True)
+    return dict(level._scenario_params)
+
+
+def _terrain_heights(
+    scenario: str, seed: int, *, benchmark_mode: str | None = None
+) -> tuple[dict[str, float | str], tuple[float, float, float, float]]:
+    level = create_level_by_name("terrain")
+    if benchmark_mode is not None:
+        level.set_benchmark_mode(benchmark_mode)
+    level.set_eval_scenario(scenario)
+    game = LanderGame(level=level, seed=seed, bot=create_bot("pdg"), headless=True)
+    params = dict(level._scenario_params)
+    terrain = game.level.world.terrain
+    support_x0 = float(params["obstacle_support_x0"])
+    center_x = float(params["obstacle_center_x"])
+    support_x1 = float(params["obstacle_support_x1"])
+    return (
+        params,
+        (
+            float(terrain(support_x0, lod=0)),
+            float(terrain(center_x, lod=0)),
+            float(terrain(support_x1, lod=0)),
+            float(terrain(float(params["dx"]), lod=0)),
+        ),
+    )
+
+
+def _terrain_profile_heights(
+    scenario: str, seed: int, *, benchmark_mode: str | None = None
+) -> tuple[dict[str, float | str], tuple[float, ...]]:
+    level = create_level_by_name("terrain")
+    if benchmark_mode is not None:
+        level.set_benchmark_mode(benchmark_mode)
+    level.set_eval_scenario(scenario)
+    game = LanderGame(level=level, seed=seed, bot=create_bot("pdg"), headless=True)
+    params = dict(level._scenario_params)
+    terrain = game.level.world.terrain
+    count = int(float(params.get("obstacle_profile_point_count", 0.0) or 0.0))
+    xs = tuple(
+        float(params[f"obstacle_profile_p{idx}_x"])
+        for idx in range(count)
+    )
+    return (
+        params,
+        tuple(float(terrain(xx, lod=0)) for xx in xs),
+    )
+
+
 def test_setup_and_terminal_error_scenarios_are_seed_deterministic() -> None:
     setup_a = _spawn_state("boost", "downhill:mid:half", 42)
     setup_b = _spawn_state("boost", "downhill:mid:half", 42)
@@ -255,6 +342,10 @@ def test_setup_and_terminal_error_scenarios_are_seed_deterministic() -> None:
     climb_a = _spawn_state("boost", "climb:mid:half", 42)
     climb_b = _spawn_state("boost", "climb:mid:half", 42)
     assert climb_a == pytest.approx(climb_b)
+
+    terrain_a = _spawn_state("terrain", "climb:mid:terminal_shoulder:half", 42)
+    terrain_b = _spawn_state("terrain", "climb:mid:terminal_shoulder:half", 42)
+    assert terrain_a == pytest.approx(terrain_b)
 
 
 @pytest.mark.parametrize(
@@ -307,6 +398,72 @@ def test_boost_route_tiers_expose_expected_median_geometry(
     )
     assert scenario_params["dx"] == pytest.approx(expected_dx)
     assert scenario_params["dy"] == pytest.approx(expected_dy)
+
+
+@pytest.mark.parametrize(
+    ("scenario_name", "expected_kind", "expected_height_sign"),
+    (
+        ("flat:mid:boost_table:half", "table", 1.0),
+        ("flat:mid:mid_table:half", "table", 1.0),
+        ("flat:mid:terminal_table:half", "table", 1.0),
+        ("downhill:mid:boost_shoulder:half", "shoulder", 1.0),
+        ("downhill:mid:terminal_shoulder:half", "shoulder", 1.0),
+        ("climb:mid:boost_shoulder:half", "shoulder", 1.0),
+        ("climb:mid:terminal_shoulder:half", "shoulder", 1.0),
+    ),
+)
+def test_terrain_reactive_scenarios_expose_expected_median_geometry(
+    scenario_name: str, expected_kind: str, expected_height_sign: float
+) -> None:
+    scenario_params = _terrain_scenario_params(
+        scenario_name, 0, benchmark_mode="median"
+    )
+    assert scenario_params["route_tier"] == "mid"
+    assert scenario_params["avoidance_band"] == "reactive"
+    assert scenario_params["obstacle_kind"] == expected_kind
+    assert float(scenario_params["obstacle_height_offset"]) * expected_height_sign > 0.0
+
+
+@pytest.mark.parametrize(
+    "scenario_name",
+    (
+        "flat:mid:boost_table:half",
+        "flat:mid:mid_table:half",
+        "flat:mid:terminal_table:half",
+        "downhill:mid:boost_shoulder:half",
+        "downhill:mid:terminal_shoulder:half",
+        "climb:mid:boost_shoulder:half",
+        "climb:mid:terminal_shoulder:half",
+    ),
+)
+def test_terrain_shapes_match_recorded_obstacle_profile(scenario_name: str) -> None:
+    params, (y_x0, y_center, y_x1, y_dest) = _terrain_heights(
+        scenario_name, 0, benchmark_mode="median"
+    )
+    if params["obstacle_profile_mode"] == "piecewise":
+        profile_params, ys = _terrain_profile_heights(
+            scenario_name, 0, benchmark_mode="median"
+        )
+        count = int(float(profile_params.get("obstacle_profile_point_count", 0.0) or 0.0))
+        expected = tuple(
+            float(profile_params[f"obstacle_profile_p{idx}_y"])
+            for idx in range(count)
+        )
+        assert ys == pytest.approx(expected)
+        assert y_dest == pytest.approx(float(params["dy"]))
+        return
+
+    slope = float(params["slope"])
+    x0 = float(params["obstacle_support_x0"])
+    center_x = float(params["obstacle_center_x"])
+    x1 = float(params["obstacle_support_x1"])
+    dx = float(params["dx"])
+    height_offset = float(params["obstacle_height_offset"])
+
+    assert y_x0 == pytest.approx(slope * x0, abs=10.0)
+    assert y_center == pytest.approx((slope * center_x) + height_offset)
+    assert y_x1 == pytest.approx(slope * x1, abs=10.0)
+    assert y_dest == pytest.approx(slope * dx)
 
 
 @pytest.mark.parametrize(

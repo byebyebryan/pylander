@@ -17,6 +17,7 @@ _PUBLIC_LEVEL_ORDER: tuple[str, ...] = (
     "flat",
     "mountains",
     "boost",
+    "terrain",
     "terminal",
     "plunge",
 )
@@ -183,12 +184,14 @@ def _level_classes() -> dict[str, Type[Level]]:
     from levels.flat import FlatLevel
     from levels.mountains import MountainsLevel
     from levels.plunge import PlungeLevel
+    from levels.terrain import TerrainLevel
     from levels.terminal import TerminalLevel
 
     return {
         "flat": FlatLevel,
         "mountains": MountainsLevel,
         "boost": BoostLevel,
+        "terrain": TerrainLevel,
         "terminal": TerminalLevel,
         "plunge": PlungeLevel,
     }
@@ -355,6 +358,12 @@ def _make_leaf(
 
 
 def _build_leaves() -> tuple[SelectorLeaf, ...]:
+    from levels.terrain_catalog import (
+        TERRAIN_QUICK_SCENARIOS,
+        TERRAIN_SCENARIOS,
+        TERRAIN_SMOKE_SCENARIOS,
+    )
+
     leaves: list[SelectorLeaf] = [
         _make_leaf(root="flat", path=(), policy="excluded"),
         _make_leaf(root="mountains", path=(), policy="excluded"),
@@ -391,6 +400,26 @@ def _build_leaves() -> tuple[SelectorLeaf, ...]:
                         benchmark_modes=frozenset(benchmark_modes),
                     )
                 )
+
+    for scenario in TERRAIN_SCENARIOS:
+        benchmark_modes = {"full"}
+        if scenario.name in TERRAIN_QUICK_SCENARIOS:
+            benchmark_modes.add("quick")
+        if scenario.name in TERRAIN_SMOKE_SCENARIOS:
+            benchmark_modes.add("smoke")
+        leaves.append(
+            _make_leaf(
+                root="terrain",
+                path=(
+                    scenario.family,
+                    scenario.route_tier,
+                    scenario.obstacle_case,
+                    scenario.weight_tier,
+                ),
+                policy="observe_only",
+                benchmark_modes=frozenset(benchmark_modes),
+            )
+        )
 
     for profile in ("shallower", "shallow", "mid", "steep", "steeper"):
         benchmark_modes = {"full"}
@@ -445,16 +474,29 @@ def _build_leaves() -> tuple[SelectorLeaf, ...]:
 def _build_default_child_map() -> dict[tuple[str, ...], str]:
     out: dict[tuple[str, ...], str] = {
         ("boost",): "flat",
+        ("terrain",): "flat",
         ("terminal",): "normal",
         ("plunge",): "mid",
     }
     for family in ("flat", "downhill", "climb"):
         out[("boost", family)] = "mid"
+    for family in ("flat", "downhill", "climb"):
+        out[("terrain", family)] = "mid"
     for route in ("near", "mid", "far"):
         out[("boost", "flat", route)] = "half"
+    out[("terrain", "flat", "mid")] = "boost_table"
+    out[("terrain", "flat", "mid", "boost_table")] = "half"
+    out[("terrain", "flat", "mid", "mid_table")] = "half"
+    out[("terrain", "flat", "mid", "terminal_table")] = "half"
     for route in ("low", "mid", "mid_long", "high"):
         out[("boost", "downhill", route)] = "half"
         out[("boost", "climb", route)] = "half"
+    out[("terrain", "downhill", "mid")] = "boost_shoulder"
+    out[("terrain", "downhill", "mid", "boost_shoulder")] = "half"
+    out[("terrain", "downhill", "mid", "terminal_shoulder")] = "half"
+    out[("terrain", "climb", "mid")] = "boost_shoulder"
+    out[("terrain", "climb", "mid", "boost_shoulder")] = "half"
+    out[("terrain", "climb", "mid", "terminal_shoulder")] = "half"
     for route in ("low", "mid", "high"):
         out[("plunge", route)] = "half"
     out[("terminal", "normal")] = "mid"
