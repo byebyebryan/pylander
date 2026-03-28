@@ -172,6 +172,7 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     candidate_payload = {
         "schema": "pylander.tracepack.v1",
         "schema_version": 2,
+        "benchmark_wall_clock_s": 12.5,
         "trace_sample_period_s": 0.25,
         "trace_root_path": str(trace_root),
         "trace_root_rel": "benchmarks/head/full_pack.tracepack",
@@ -364,6 +365,7 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     candidate_meta.write_text("{}", encoding="utf-8")
     baseline_payload = {
         **candidate_payload,
+        "benchmark_wall_clock_s": 10.0,
         "trace_root_path": str(baseline_root),
         "trace_root_rel": "benchmarks/base/full_pack.tracepack",
         "summary": {
@@ -502,10 +504,14 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     assert "<th>Efficiency</th>" in html_payload
     assert "<th>Tracking</th>" in html_payload
     assert "<th>Compute</th>" in html_payload
+    assert "<th>Wall Clock</th>" in html_payload
     assert "<code>head</code>" in html_payload
     assert "<code>base</code>" in html_payload
     assert "9/10 (90.00%)" in html_payload
     assert "10/10 (100.00%)" in html_payload
+    assert "12.500" in html_payload
+    assert "10.000" in html_payload
+    assert "2.500" in html_payload
     assert '<span class="row-tag candidate">current</span>' in html_payload
     assert '<span class="row-tag baseline">baseline</span>' in html_payload
     assert '<span class="row-tag diff">diff</span>' in html_payload
@@ -766,3 +772,54 @@ def test_render_bundle_rejects_mismatched_explicit_baseline_json(tmp_path: Path)
         assert "does not match compare JSON baseline" in str(exc)
     else:
         raise AssertionError("expected mismatched baseline json to raise SystemExit")
+
+
+def test_render_bundle_uses_candidate_wall_clock_when_report_arg_missing(
+    tmp_path: Path,
+) -> None:
+    outputs_root = tmp_path / "outputs"
+    outputs_root.mkdir()
+    candidate_json = outputs_root / "benchmarks" / "head" / "pack.tracepack.json"
+    candidate_meta = outputs_root / "benchmarks" / "head" / "pack.meta.json"
+    candidate_json.parent.mkdir(parents=True, exist_ok=True)
+
+    payload = {
+        "schema": "pylander.tracepack.v1",
+        "benchmark_wall_clock_s": 12.5,
+        "summary": {
+            "runs": 1,
+            "successes": 1,
+            "crashed": 0,
+            "success_rate": 1.0,
+        },
+        "records": [],
+    }
+    candidate_json.write_text(json.dumps(payload), encoding="utf-8")
+    candidate_meta.write_text("{}", encoding="utf-8")
+
+    rendered = trace_bundle.render_bundle(
+        candidate_json_path=candidate_json,
+        candidate_meta_path=candidate_meta,
+        compare_path=None,
+        baseline_json_path=None,
+        intent_path=None,
+        analysis_path=None,
+        benchmark_cmd=[],
+        benchmark_exit_code=0,
+        benchmark_wall_clock_s=None,
+        outputs_root=outputs_root,
+        bundle_id="bundle_candidate_clock",
+        candidate_cached="True",
+    )
+
+    bundle_json_payload = json.loads(
+        rendered.bundle_json_path.read_text(encoding="utf-8")
+    )
+    html_payload = rendered.bundle_page_path.read_text(encoding="utf-8")
+
+    assert bundle_json_payload["timing"]["benchmark_wall_clock_s"] == 12.5
+    assert (
+        bundle_json_payload["benchmark"]["candidate"]["benchmark_wall_clock_s"] == 12.5
+    )
+    assert "<th>Wall Clock</th>" in html_payload
+    assert "12.500" in html_payload
