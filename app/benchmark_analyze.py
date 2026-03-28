@@ -95,6 +95,11 @@ def _measure_evidence(
         return evidence
 
     global_block = dict(compare_payload.get("global") or {})
+    compare_basis = dict(global_block.get("compare_basis") or {})
+    if str(compare_basis.get("mode") or "").strip() == "no_shared_runs":
+        evidence.append("compare basis=no_shared_runs")
+        evidence.append("global deltas unavailable because candidate and baseline share no runs")
+        return evidence
     summary_delta = dict(global_block.get("summary_delta") or {})
     crash_block = dict(global_block.get("crash") or {})
     compute_block = dict(global_block.get("compute") or {})
@@ -174,6 +179,13 @@ def _likely_causes(
 
     affected_levels = _affected_levels(compare_payload)
     global_block = dict(compare_payload.get("global") or {})
+    compare_basis = dict(global_block.get("compare_basis") or {})
+    if str(compare_basis.get("mode") or "").strip() == "no_shared_runs":
+        causes.append(
+            "Candidate and baseline tracepacks do not share any selector/seed runs, so this report can only show the individual packs and not meaningful deltas."
+        )
+        confidence = "low"
+        return causes, confidence
     crash_block = dict(global_block.get("crash") or {})
     compute_block = dict(global_block.get("compute") or {})
 
@@ -244,51 +256,62 @@ def build_analysis_payload(
 
     if compare_present:
         global_block = dict(compare_payload.get("global") or {})
-        summary_delta = dict(global_block.get("summary_delta") or {})
-        crash_block = dict(global_block.get("crash") or {})
-        compute_block = dict(global_block.get("compute") or {})
-        success_delta = _coerce_float(summary_delta.get("success_rate")) or 0.0
-        fuel_delta = _coerce_float(summary_delta.get("fuel_mean_primary")) or 0.0
-        new_crashes = len(crash_block.get("new_crashes") or [])
-        notable = bool(compare_payload.get("notable_regression", False))
-        compute_notable = bool(compute_block.get("notable_regression", False))
-        if notable or new_crashes > 0 or success_delta < -0.01:
-            verdict = "regression"
+        compare_basis = dict(global_block.get("compare_basis") or {})
+        if str(compare_basis.get("mode") or "").strip() == "no_shared_runs":
+            verdict = "investigate"
             summary = (
-                f"Global regressions detected: success_rate {_format_delta(success_delta)}"
-                f", new_crashes={new_crashes}, fuel_mean_primary {_format_delta(fuel_delta)}."
-            )
-        elif success_delta > 0.01 or (fuel_delta < -0.25 and not compute_notable):
-            verdict = "improvement"
-            summary = (
-                f"Global results improved: success_rate {_format_delta(success_delta)}"
-                f", fuel_mean_primary {_format_delta(fuel_delta)}."
-            )
-        elif compute_notable:
-            verdict = "mixed"
-            summary = (
-                "Outcome metrics are broadly stable, but compute cost regressed enough to warrant investigation."
+                "Candidate and baseline tracepacks do not share any common selector/seed runs, so compare deltas are unavailable."
             )
         else:
-            near_zero = abs(success_delta) <= 0.01 and abs(fuel_delta) <= 0.25 and new_crashes == 0
-            verdict = "no_change" if near_zero else "mixed"
-            summary = (
-                "Compare completed without a notable global regression."
-                if verdict == "no_change"
-                else "Results moved in mixed directions without a clear single verdict."
-            )
-        for item in crash_block.get("new_crashes") or []:
-            if not isinstance(item, dict):
-                continue
-            repro = dict(item.get("repro") or {})
-            for key in ("plot", "sim_trace", "sim_profile"):
-                command = str(repro.get(key) or "").strip()
-                if command and command not in follow_ups:
-                    follow_ups.append(command)
+            summary_delta = dict(global_block.get("summary_delta") or {})
+            crash_block = dict(global_block.get("crash") or {})
+            compute_block = dict(global_block.get("compute") or {})
+            success_delta = _coerce_float(summary_delta.get("success_rate")) or 0.0
+            fuel_delta = _coerce_float(summary_delta.get("fuel_mean_primary")) or 0.0
+            new_crashes = len(crash_block.get("new_crashes") or [])
+            notable = bool(compare_payload.get("notable_regression", False))
+            compute_notable = bool(compute_block.get("notable_regression", False))
+            if notable or new_crashes > 0 or success_delta < -0.01:
+                verdict = "regression"
+                summary = (
+                    f"Global regressions detected: success_rate {_format_delta(success_delta)}"
+                    f", new_crashes={new_crashes}, fuel_mean_primary {_format_delta(fuel_delta)}."
+                )
+            elif success_delta > 0.01 or (fuel_delta < -0.25 and not compute_notable):
+                verdict = "improvement"
+                summary = (
+                    f"Global results improved: success_rate {_format_delta(success_delta)}"
+                    f", fuel_mean_primary {_format_delta(fuel_delta)}."
+                )
+            elif compute_notable:
+                verdict = "mixed"
+                summary = (
+                    "Outcome metrics are broadly stable, but compute cost regressed enough to warrant investigation."
+                )
+            else:
+                near_zero = (
+                    abs(success_delta) <= 0.01
+                    and abs(fuel_delta) <= 0.25
+                    and new_crashes == 0
+                )
+                verdict = "no_change" if near_zero else "mixed"
+                summary = (
+                    "Compare completed without a notable global regression."
+                    if verdict == "no_change"
+                    else "Results moved in mixed directions without a clear single verdict."
+                )
+            for item in crash_block.get("new_crashes") or []:
+                if not isinstance(item, dict):
+                    continue
+                repro = dict(item.get("repro") or {})
+                for key in ("plot", "sim_trace", "sim_profile"):
+                    command = str(repro.get(key) or "").strip()
+                    if command and command not in follow_ups:
+                        follow_ups.append(command)
+                    if len(follow_ups) >= 3:
+                        break
                 if len(follow_ups) >= 3:
                     break
-            if len(follow_ups) >= 3:
-                break
 
     bot = str(
         dict((intent_payload or {}).get("run_plan") or {}).get("bot")

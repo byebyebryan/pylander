@@ -50,6 +50,8 @@ def _extract_summary_metrics(payload: dict[str, Any]) -> dict[str, float]:
         "fuel_mean_all": _mean(efficiency_all, "fuel_consumed"),
         "fuel_per_distance_mean_all": _mean(efficiency_all, "fuel_per_distance"),
         "fuel_mean_success": _mean(efficiency_success, "fuel_consumed"),
+        "time_mean_all": _mean(efficiency_all, "time"),
+        "time_mean_success": _mean(efficiency_success, "time"),
         "fuel_per_distance_mean_success": _mean(
             efficiency_success, "fuel_per_distance"
         ),
@@ -106,6 +108,98 @@ def _build_payload_from_records(records: list[dict[str, Any]]) -> dict[str, Any]
     return {
         "summary": aggregate_eval_records(records),
         "records": records,
+    }
+
+
+def _record_compare_key(record: dict[str, Any]) -> tuple[str, str, str, int] | None:
+    level = str(record.get("level") or "").strip()
+    scenario = str(record.get("scenario") or "").strip()
+    eval_goal = str(record.get("eval_goal") or "landing").strip().lower() or "landing"
+    if not level:
+        return None
+    return (level, scenario, eval_goal, _to_int(record.get("seed"), 0))
+
+
+def _record_selector_key(record: dict[str, Any]) -> tuple[str, str, str] | None:
+    compare_key = _record_compare_key(record)
+    if compare_key is None:
+        return None
+    return compare_key[:3]
+
+
+def _record_key_set(payload: dict[str, Any]) -> set[tuple[str, str, str, int]]:
+    keys: set[tuple[str, str, str, int]] = set()
+    for record in _payload_records(payload):
+        compare_key = _record_compare_key(record)
+        if compare_key is not None:
+            keys.add(compare_key)
+    return keys
+
+
+def _selector_key_set(payload: dict[str, Any]) -> set[tuple[str, str, str]]:
+    keys: set[tuple[str, str, str]] = set()
+    for record in _payload_records(payload):
+        selector_key = _record_selector_key(record)
+        if selector_key is not None:
+            keys.add(selector_key)
+    return keys
+
+
+def _filter_payload_to_keys(
+    payload: dict[str, Any],
+    keys: set[tuple[str, str, str, int]],
+) -> dict[str, Any]:
+    if not keys:
+        return _build_payload_from_records([])
+    records = [
+        record
+        for record in _payload_records(payload)
+        if (_record_compare_key(record) in keys)
+    ]
+    return _build_payload_from_records(records)
+
+
+def _compare_basis_summary(
+    baseline_payload: dict[str, Any],
+    candidate_payload: dict[str, Any],
+) -> dict[str, Any]:
+    baseline_record_keys = _record_key_set(baseline_payload)
+    candidate_record_keys = _record_key_set(candidate_payload)
+    shared_record_keys = baseline_record_keys & candidate_record_keys
+    baseline_selector_keys = _selector_key_set(baseline_payload)
+    candidate_selector_keys = _selector_key_set(candidate_payload)
+    shared_selector_keys = baseline_selector_keys & candidate_selector_keys
+    baseline_only_records = baseline_record_keys - shared_record_keys
+    candidate_only_records = candidate_record_keys - shared_record_keys
+    baseline_only_selectors = baseline_selector_keys - shared_selector_keys
+    candidate_only_selectors = candidate_selector_keys - shared_selector_keys
+    if not shared_record_keys:
+        mode = "no_shared_runs"
+    elif baseline_only_records or candidate_only_records:
+        mode = "shared_runs"
+    else:
+        mode = "aligned_runs"
+    return {
+        "mode": mode,
+        "shared_runs": len(shared_record_keys),
+        "baseline_runs": len(baseline_record_keys),
+        "candidate_runs": len(candidate_record_keys),
+        "baseline_only_runs": len(baseline_only_records),
+        "candidate_only_runs": len(candidate_only_records),
+        "shared_selectors": len(shared_selector_keys),
+        "baseline_selectors": len(baseline_selector_keys),
+        "candidate_selectors": len(candidate_selector_keys),
+        "baseline_only_selectors": len(baseline_only_selectors),
+        "candidate_only_selectors": len(candidate_only_selectors),
+    }
+
+
+def _summary_unavailable_block() -> dict[str, Any]:
+    return {
+        "summary_available": False,
+        "summary_baseline": {},
+        "summary_candidate": {},
+        "summary_delta": {},
     }
 
 
@@ -935,6 +1029,7 @@ def print_compare(
                 f"new crashes vs baseline ({label})"
             )
         return {
+            "summary_available": True,
             "summary_baseline": b,
             "summary_candidate": c,
             "summary_delta": {
@@ -969,11 +1064,13 @@ def print_compare(
                     else primary_terminal_peak_abs_dx_c - primary_terminal_peak_abs_dx_b
                 ),
                 "fuel_mean_success": c["fuel_mean_success"] - b["fuel_mean_success"],
+                "time_mean_success": c["time_mean_success"] - b["time_mean_success"],
                 "fuel_per_distance_mean_success": (
                     c["fuel_per_distance_mean_success"]
                     - b["fuel_per_distance_mean_success"]
                 ),
                 "fuel_mean_all": c["fuel_mean_all"] - b["fuel_mean_all"],
+                "time_mean_all": c["time_mean_all"] - b["time_mean_all"],
                 "fuel_per_distance_mean_all": (
                     c["fuel_per_distance_mean_all"] - b["fuel_per_distance_mean_all"]
                 ),
@@ -1027,19 +1124,50 @@ def print_compare(
         candidate_payload,
         level_policy=level_policy,
     )
+    compare_basis = _compare_basis_summary(baseline_payload, candidate_payload)
+    global_compare_basis = _compare_basis_summary(
+        baseline_parts["global"], candidate_parts["global"]
+    )
+    observation_compare_basis = _compare_basis_summary(
+        baseline_parts["observation"], candidate_parts["observation"]
+    )
+    baseline_global_compare = _filter_payload_to_keys(
+        baseline_parts["global"],
+        _record_key_set(baseline_parts["global"]) & _record_key_set(candidate_parts["global"]),
+    )
+    candidate_global_compare = _filter_payload_to_keys(
+        candidate_parts["global"],
+        _record_key_set(baseline_parts["global"]) & _record_key_set(candidate_parts["global"]),
+    )
+    baseline_observation_compare = _filter_payload_to_keys(
+        baseline_parts["observation"],
+        _record_key_set(baseline_parts["observation"])
+        & _record_key_set(candidate_parts["observation"]),
+    )
+    candidate_observation_compare = _filter_payload_to_keys(
+        candidate_parts["observation"],
+        _record_key_set(baseline_parts["observation"])
+        & _record_key_set(candidate_parts["observation"]),
+    )
     crash_global = _crash_deltas(
-        baseline_payload=baseline_parts["global"],
-        candidate_payload=candidate_parts["global"],
+        baseline_payload=baseline_global_compare,
+        candidate_payload=candidate_global_compare,
         bot=bot,
     )
     crash_observation = _crash_deltas(
-        baseline_payload=baseline_parts["observation"],
-        candidate_payload=candidate_parts["observation"],
+        baseline_payload=baseline_observation_compare,
+        candidate_payload=candidate_observation_compare,
         bot=bot,
     )
 
     print("\n# compare")
     print(f"baseline={baseline_commit} candidate={candidate_commit}")
+    print(
+        "compare_basis: "
+        f"{compare_basis['mode']} shared_runs={compare_basis['shared_runs']} "
+        f"candidate_only_runs={compare_basis['candidate_only_runs']} "
+        f"baseline_only_runs={compare_basis['baseline_only_runs']}"
+    )
     print(
         "policy_counts: "
         f"normal={len(_payload_records(candidate_parts['global']))} "
@@ -1048,25 +1176,29 @@ def print_compare(
 
     global_summary = _summary_block(
         "global",
-        baseline_block=baseline_parts["global"],
-        candidate_block=candidate_parts["global"],
+        baseline_block=baseline_global_compare,
+        candidate_block=candidate_global_compare,
         crash_block=crash_global,
         crash_notable=len(crash_global["new_crashes"]) > 0,
-    )
+    ) if int(global_compare_basis.get("shared_runs", 0) or 0) > 0 else _summary_unavailable_block()
     observation_summary = _summary_block(
         "observation",
-        baseline_block=baseline_parts["observation"],
-        candidate_block=candidate_parts["observation"],
+        baseline_block=baseline_observation_compare,
+        candidate_block=candidate_observation_compare,
         crash_block=crash_observation,
         crash_notable=False,
-    )
+    ) if int(observation_compare_basis.get("shared_runs", 0) or 0) > 0 else _summary_unavailable_block()
+    if int(global_compare_basis.get("shared_runs", 0) or 0) <= 0:
+        print("warning: global compare has no shared runs; summary deltas are unavailable.")
+    if int(observation_compare_basis.get("shared_runs", 0) or 0) <= 0:
+        print("warning: observation compare has no shared runs; summary deltas are unavailable.")
     compute_global = _compute_compare(
-        baseline_payload=baseline_parts["global"],
-        candidate_payload=candidate_parts["global"],
+        baseline_payload=baseline_global_compare,
+        candidate_payload=candidate_global_compare,
     )
     compute_observation = _compute_compare(
-        baseline_payload=baseline_parts["observation"],
-        candidate_payload=candidate_parts["observation"],
+        baseline_payload=baseline_observation_compare,
+        candidate_payload=candidate_observation_compare,
     )
     compute_global_notable = bool(compute_global.get("notable_any", False))
     compute_observation_notable = bool(compute_observation.get("notable_any", False))
@@ -1103,8 +1235,8 @@ def print_compare(
         )
 
     deltas_global = scenario_regressions(
-        baseline_parts["global"],
-        candidate_parts["global"],
+        baseline_global_compare,
+        candidate_global_compare,
     )
     if deltas_global:
         print("\n# worst_scenarios_global")
@@ -1117,8 +1249,8 @@ def print_compare(
             )
 
     deltas_observation = scenario_regressions(
-        baseline_parts["observation"],
-        candidate_parts["observation"],
+        baseline_observation_compare,
+        candidate_observation_compare,
     )
     if deltas_observation:
         print("\n# worst_scenarios_observation")
@@ -1142,9 +1274,11 @@ def print_compare(
                 for level_name, policy in level_policy.items()
                 if policy in {"observe_only", "excluded"}
             ),
+            "compare_basis": compare_basis,
         },
         "global": {
             **global_summary,
+            "compare_basis": global_compare_basis,
             "crash": crash_global,
             "compute": compute_global_summary,
             "notable_regression": global_notable,
@@ -1152,6 +1286,7 @@ def print_compare(
         },
         "observation": {
             **observation_summary,
+            "compare_basis": observation_compare_basis,
             "crash": crash_observation,
             "compute": compute_observation_summary,
             "notable_regression": False,

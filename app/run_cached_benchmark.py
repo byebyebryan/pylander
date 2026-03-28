@@ -447,6 +447,8 @@ def main(argv: Sequence[str] | None = None) -> None:
         bot=str(run_plan.get("bot") or args.bot),
         crash_detail_limit=max(0, int(args.crash_detail_limit)),
     )
+    compare["baseline_json_path"] = str(base_json.resolve())
+    compare["candidate_json_path"] = str(cand_json.resolve())
     policy_digest_payload = json.dumps(
         {
             "policy": pack.effective_level_policy,

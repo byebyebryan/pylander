@@ -174,6 +174,8 @@ def test_missing_baseline_seed_uses_worktree_seed_and_continues(
         "print_compare",
         lambda **kwargs: {
             "notable_regression": False,
+            "baseline_commit": "base123",
+            "candidate_commit": "cand123",
             "global": {
                 "crash": {"new_crashes": []},
                 "worst_scenarios": [],
@@ -188,6 +190,11 @@ def test_missing_baseline_seed_uses_worktree_seed_and_continues(
 
     assert ("seed_cache_from_worktree", "base123") in calls
     assert "# compare_report" in output
+    compare_files = sorted(tmp_path.glob("*.compare_vs_*.json"))
+    assert compare_files
+    compare_payload = json.loads(compare_files[0].read_text(encoding="utf-8"))
+    assert compare_payload["baseline_json_path"] == str(baseline_json.resolve())
+    assert compare_payload["candidate_json_path"] == str(candidate_json.resolve())
 
 
 def test_missing_baseline_error_raises(

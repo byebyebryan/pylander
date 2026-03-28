@@ -425,6 +425,111 @@ def test_scenario_regressions_include_reference_gap_deltas() -> None:
     assert rows[0]["ref_gap_basis"] == "success_only"
 
 
+def test_print_compare_uses_shared_run_basis_for_mismatched_packs() -> None:
+    baseline = {
+        "records": [
+            _record(
+                level="boost",
+                scenario="flat:mid:half",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=20.0,
+            ),
+            _record(
+                level="terminal",
+                scenario="normal:mid",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=30.0,
+            ),
+        ]
+    }
+    candidate = {
+        "records": [
+            _record(
+                level="boost",
+                scenario="flat:mid:half",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=21.0,
+            )
+        ]
+    }
+
+    report = benchmark_compare.print_compare(
+        baseline_commit="base",
+        candidate_commit="cand",
+        baseline_payload=baseline,
+        candidate_payload=candidate,
+        level_policy={"boost": "normal", "terminal": "normal"},
+        bot="pdg",
+    )
+
+    overall_basis = report["policy_context"]["compare_basis"]
+    assert overall_basis["mode"] == "shared_runs"
+    assert overall_basis["shared_runs"] == 1
+    assert overall_basis["baseline_only_runs"] == 1
+    assert overall_basis["candidate_only_runs"] == 0
+
+    global_basis = report["global"]["compare_basis"]
+    assert global_basis["mode"] == "shared_runs"
+    assert global_basis["shared_runs"] == 1
+
+    assert report["global"]["summary_baseline"]["runs"] == pytest.approx(1.0)
+    assert report["global"]["summary_candidate"]["runs"] == pytest.approx(1.0)
+    assert report["global"]["summary_baseline"]["fuel_mean_success"] == pytest.approx(20.0)
+    assert report["global"]["summary_candidate"]["fuel_mean_success"] == pytest.approx(21.0)
+    assert [row["scenario"] for row in report["global"]["worst_scenarios"]] == [
+        "boost:flat:mid:half"
+    ]
+
+
+def test_print_compare_marks_no_shared_runs_unavailable() -> None:
+    baseline = {
+        "records": [
+            _record(
+                level="boost",
+                scenario="flat:mid:half",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=20.0,
+            )
+        ]
+    }
+    candidate = {
+        "records": [
+            _record(
+                level="terminal",
+                scenario="normal:mid",
+                seed=0,
+                state="landed",
+                success=True,
+                fuel=30.0,
+            )
+        ]
+    }
+
+    report = benchmark_compare.print_compare(
+        baseline_commit="base",
+        candidate_commit="cand",
+        baseline_payload=baseline,
+        candidate_payload=candidate,
+        level_policy={"boost": "normal", "terminal": "normal"},
+        bot="pdg",
+    )
+
+    assert report["global"]["compare_basis"]["mode"] == "no_shared_runs"
+    assert report["global"]["summary_available"] is False
+    assert report["global"]["summary_baseline"] == {}
+    assert report["global"]["summary_candidate"] == {}
+    assert report["global"]["summary_delta"] == {}
+    assert report["global"]["worst_scenarios"] == []
+
+
 def test_global_compute_regression_marks_notable_regression() -> None:
     baseline = {
         "records": [
