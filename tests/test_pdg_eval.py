@@ -31,17 +31,11 @@ class _Bot:
         self._boost_burn_started = True
         self._boost_burn_start_time = 1.0
         self._boost_burn_idle_since = 1.0
-        self._boost_release_best_entry_projected_dx_abs = 12.0
-        self._boost_release_best_entry_required_accel_ratio = 0.35
-        self._boost_release_last_improve_time = 2.0
         self._boost_cut_latched = False
         self._boost_settle_start_time = None
         self._boost_quality_verdict: str | None = None
         self._boost_cutoff_quality_pass: bool | None = None
         self._boost_cutoff_quality_verdict: str | None = None
-        self._boost_release_predicted_terminal_entry_projected_dx = 44.0
-        self._boost_release_predicted_terminal_required_accel_ratio = 0.31
-        self._boost_release_mode = "latest_safe"
         self._terminal_entry_done = True
         self._terminal_entry_time = 7.0
         self._terminal_entry_altitude = 80.0
@@ -111,18 +105,12 @@ class _Bot:
             _boost_burn_started=self._boost_burn_started,
             _boost_burn_start_time=self._boost_burn_start_time,
             _boost_burn_idle_since=self._boost_burn_idle_since,
-            _boost_release_best_entry_projected_dx_abs=self._boost_release_best_entry_projected_dx_abs,
-            _boost_release_best_entry_required_accel_ratio=self._boost_release_best_entry_required_accel_ratio,
-            _boost_release_last_improve_time=self._boost_release_last_improve_time,
             _boost_cut_latched=self._boost_cut_latched,
             _boost_cut_hold_angle=None,
             _boost_settle_start_time=self._boost_settle_start_time,
             _boost_quality_verdict=self._boost_quality_verdict,
             _boost_cutoff_quality_pass=self._boost_cutoff_quality_pass,
             _boost_cutoff_quality_verdict=self._boost_cutoff_quality_verdict,
-            _boost_release_predicted_terminal_entry_projected_dx=self._boost_release_predicted_terminal_entry_projected_dx,
-            _boost_release_predicted_terminal_required_accel_ratio=self._boost_release_predicted_terminal_required_accel_ratio,
-            _boost_release_mode=self._boost_release_mode,
             _terminal_entry_done=self._terminal_entry_done,
             _terminal_entry_time=self._terminal_entry_time,
             _terminal_entry_altitude=self._terminal_entry_altitude,
@@ -281,12 +269,6 @@ def test_reset_evaluation_state_preserves_or_clears_last_snapshot() -> None:
     assert bot.state._boost_settle_start_time is None
     assert bot.state._boost_cutoff_quality_pass is None
     assert bot.state._boost_cutoff_quality_verdict is None
-    assert bot.state._boost_release_best_entry_projected_dx_abs is None
-    assert bot.state._boost_release_best_entry_required_accel_ratio is None
-    assert bot.state._boost_release_last_improve_time is None
-    assert bot.state._boost_release_predicted_terminal_entry_projected_dx is None
-    assert bot.state._boost_release_predicted_terminal_required_accel_ratio is None
-    assert bot.state._boost_release_mode is None
     assert bot.state._clearance_active is False
     assert bot.state._debug_boost_last_print_t == -1.0
     assert bot.state._debug_boost_post_end_time is None
@@ -315,9 +297,6 @@ def test_build_evaluation_snapshot_prefers_explicit_state_container() -> None:
         _shape_projected_dx_count=3,
         _boost_cutoff_quality_verdict="pass",
         _boost_quality_verdict=None,
-        _boost_release_predicted_terminal_entry_projected_dx=18.0,
-        _boost_release_predicted_terminal_required_accel_ratio=0.29,
-        _boost_release_mode="assist_ready",
         _terminal_entry_done=True,
         _terminal_entry_time=9.0,
         _terminal_entry_altitude=70.0,
@@ -348,9 +327,6 @@ def test_build_evaluation_snapshot_prefers_explicit_state_container() -> None:
     assert snapshot["terminal_probe_count"] == 4
     assert snapshot["terminal_gate_mode"] == "nominal_ready"
     assert snapshot["boost_quality_verdict"] == "pass"
-    assert snapshot["boost_release_predicted_terminal_entry_projected_dx"] == 18.0
-    assert snapshot["boost_release_predicted_terminal_required_accel_ratio"] == 0.29
-    assert snapshot["boost_release_mode"] == "assist_ready"
     assert snapshot["shape_apex_error"] == 8.0
     assert snapshot["shape_projected_dx_abs_max"] == 42.0
 
@@ -417,18 +393,12 @@ def test_reset_evaluation_state_prefers_explicit_runtime_state_container() -> No
         _boost_burn_started=False,
         _boost_burn_start_time=None,
         _boost_burn_idle_since=None,
-        _boost_release_best_entry_projected_dx_abs=None,
-        _boost_release_best_entry_required_accel_ratio=None,
-        _boost_release_last_improve_time=None,
         _boost_cut_latched=False,
         _boost_cut_hold_angle=None,
         _boost_settle_start_time=None,
         _boost_quality_verdict=None,
         _boost_cutoff_quality_pass=None,
         _boost_cutoff_quality_verdict=None,
-        _boost_release_predicted_terminal_entry_projected_dx=None,
-        _boost_release_predicted_terminal_required_accel_ratio=None,
-        _boost_release_mode=None,
         _terminal_entry_done=False,
         _terminal_entry_time=None,
         _terminal_entry_altitude=None,
@@ -473,9 +443,3 @@ def test_reset_evaluation_state_prefers_explicit_runtime_state_container() -> No
     assert bot.state._terminal_post_entry_apex_gain is None
     assert bot.state._terminal_post_entry_time_to_apex is None
     assert bot.state._terminal_post_entry_peak_abs_dx is None
-    assert bot.state._boost_release_best_entry_projected_dx_abs is None
-    assert bot.state._boost_release_best_entry_required_accel_ratio is None
-    assert bot.state._boost_release_last_improve_time is None
-    assert bot.state._boost_release_predicted_terminal_entry_projected_dx is None
-    assert bot.state._boost_release_predicted_terminal_required_accel_ratio is None
-    assert bot.state._boost_release_mode is None
