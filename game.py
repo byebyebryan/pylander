@@ -143,6 +143,7 @@ class LanderGame:
         self.player_controller = interactive_runtime.player_controller
 
         bot_runtime = bootstrap_bot_runtime(
+            level=self.level,
             actors=self.actors,
             ecs_world=self.ecs_world,
             world_bots=getattr(self.level.world, "actor_bots", None),

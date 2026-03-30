@@ -69,7 +69,7 @@ _EXECUTION_GUARDRAIL_ROUTES: dict[tuple[str, str], _TerrainRoute] = {
     ("downhill", "mid"): _TerrainRoute(
         family="downhill",
         route_tier="mid",
-        route_dx=SampleRange(300.0, 500.0),
+        route_dx=SampleRange(360.0, 400.0),
         route_dy=-400.0,
     ),
     ("climb", "high"): _TerrainRoute(
@@ -141,10 +141,11 @@ TERRAIN_SCENARIOS: tuple[TerrainScenario, ...] = (
         obstacle=TerrainObstacle(
             kind="shoulder",
             placement="terminal",
-            x_fraction=0.78,
-            top_width=90.0,
+            x_fraction=0.0,
+            top_width=80.0,
             shoulder_width=0.0,
             height_offset=180.0,
+            target_offset=100.0,
         ),
         hazard_driver="descent_clip",
     ),

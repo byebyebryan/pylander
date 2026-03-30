@@ -122,6 +122,7 @@ class BotRuntimeBootstrap:
 
 def bootstrap_bot_runtime(
     *,
+    level: Any,
     actors: list[Any],
     ecs_world: World,
     world_bots: Any,
@@ -137,6 +138,7 @@ def bootstrap_bot_runtime(
     install_world_actor_bots(
         actor_bots=actor_bots,
         ecs_world=ecs_world,
+        level=level,
         world_bots=world_bots,
     )
     if primary_bot is not None:
@@ -144,6 +146,7 @@ def bootstrap_bot_runtime(
             actors=actors,
             actor_bots=actor_bots,
             ecs_world=ecs_world,
+            level=level,
             active_uid=active_uid,
             bot=primary_bot,
         )

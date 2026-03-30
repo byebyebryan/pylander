@@ -1,13 +1,78 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+from math import fabs
 from typing import Any, cast
 
-from core.bot import Bot
-from core.components import ActorControlRole, PlayerControlled, PlayerSelectable
-from core.ecs import Entity, World
+from core.bot import Bot, BotEnvironment
+from core.components import (
+    ActorControlRole,
+    PlayerControlled,
+    PlayerSelectable,
+    Transform,
+)
+from core.config import GRAVITY
+from core.ecs import Entity, World, require_component
 from core.engine_adapter import EngineAdapter
 from core.level import Level
-from runtime.sensors import build_vehicle_info
+from core.level_capabilities import level_name_tag, level_scenario_tag
+from core.maths import Vector2
+from core.terrain import (
+    anchored_profile,
+    estimate_terrain_slope,
+    sample_terrain_height,
+    terrain_resolution,
+)
+from runtime.sensors import build_vehicle_info, resolve_eval_target
+
+
+@dataclass(frozen=True)
+class _TerrainQueryAdapter:
+    terrain: Any
+
+    def sample_height(self, x: float, lod: int = 0) -> float:
+        return sample_terrain_height(self.terrain, x, lod=lod)
+
+    def sample_slope(self, x: float, lod: int = 0) -> float:
+        return estimate_terrain_slope(self.terrain, x, lod=lod)
+
+    def profile(
+        self,
+        x0: float,
+        x1: float,
+        *,
+        step: float,
+        lod: int = 0,
+    ) -> list[tuple[float, float]]:
+        return anchored_profile(self.terrain, x0, x1, step=step, lod=lod)
+
+    def resolution(self, lod: int = 0) -> float:
+        return terrain_resolution(self.terrain, lod=lod)
+
+
+def build_bot_environment(*, level: Level, actor: Entity) -> BotEnvironment | None:
+    terrain = getattr(level, "terrain", None)
+    if terrain is None:
+        return None
+    trans = require_component(actor, Transform)
+    start_pos = Vector2(getattr(actor, "start_pos", trans.pos))
+    target = resolve_eval_target(level, level.sites, start_pos)
+    scenario_params = getattr(level, "_scenario_params", None)
+    env_params: dict[str, float | int | str | bool] | None = None
+    if isinstance(scenario_params, dict):
+        env_params = {
+            str(key): value
+            for key, value in scenario_params.items()
+            if isinstance(value, (float, int, str, bool))
+        }
+    return BotEnvironment(
+        terrain=_TerrainQueryAdapter(terrain),
+        gravity_mag=fabs(float(GRAVITY)),
+        target=target,
+        level_name=level_name_tag(level),
+        scenario_name=level_scenario_tag(level) or None,
+        scenario_params=env_params,
+    )
 
 
 def collect_actor_entities(level: Level) -> list[Entity]:
@@ -133,6 +198,7 @@ def install_actor_bot(
     *,
     actor_bots: dict[str, Bot],
     ecs_world: World,
+    level: Level,
     uid: str,
     bot: Bot,
 ) -> None:
@@ -143,6 +209,10 @@ def install_actor_bot(
         return
     if hasattr(bot, "set_vehicle_info"):
         bot.set_vehicle_info(build_vehicle_info(actor))
+    if hasattr(bot, "set_environment"):
+        environment = build_bot_environment(level=level, actor=actor)
+        if environment is not None:
+            bot.set_environment(environment)
 
 
 def attach_primary_bot(
@@ -150,6 +220,7 @@ def attach_primary_bot(
     actors: list[Entity],
     actor_bots: dict[str, Bot],
     ecs_world: World,
+    level: Level,
     active_uid: str,
     bot: Bot,
 ) -> None:
@@ -159,6 +230,7 @@ def attach_primary_bot(
     install_actor_bot(
         actor_bots=actor_bots,
         ecs_world=ecs_world,
+        level=level,
         uid=bot_uid,
         bot=bot,
     )
@@ -168,6 +240,7 @@ def install_world_actor_bots(
     *,
     actor_bots: dict[str, Bot],
     ecs_world: World,
+    level: Level,
     world_bots: Any,
 ) -> None:
     if not isinstance(world_bots, dict):
@@ -177,6 +250,7 @@ def install_world_actor_bots(
             install_actor_bot(
                 actor_bots=actor_bots,
                 ecs_world=ecs_world,
+                level=level,
                 uid=uid,
                 bot=actor_bot,
             )

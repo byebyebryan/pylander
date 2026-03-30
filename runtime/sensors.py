@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any, Iterable, cast
 
-from core.bot import Sensors, VehicleInfo
+from core.bot import BotTarget, Sensors, VehicleInfo
 from core.components import (
     CargoHold,
     Engine,
@@ -20,6 +20,29 @@ from core.ecs import require_component
 from core.level import Level, get_entity_mass
 from core.maths import Range1D, Vector2, clearance_above_terrain
 from core.terrain import estimate_terrain_slope, sample_terrain_height
+
+
+def _nearest_target_site(sites: Any, target_pos: Vector2) -> Any | None:
+    get_sites = getattr(sites, "get_sites", None)
+    if not callable(get_sites):
+        return None
+    try:
+        site_iterable = cast(
+            Iterable[Any],
+            get_sites(Range1D.from_center(float(target_pos.x), 1000.0)),
+        )
+        nearby_sites = list(site_iterable)
+    except (TypeError, ValueError, AttributeError):
+        return None
+    if not nearby_sites:
+        return None
+    return min(
+        nearby_sites,
+        key=lambda site: (
+            (float(site.x) - float(target_pos.x)) ** 2
+            + (float(site.y) - float(target_pos.y)) ** 2
+        ),
+    )
 
 
 def resolve_eval_target_pos(level: Level, sites: Any, start_pos: Any) -> Any | None:
@@ -54,6 +77,26 @@ def resolve_eval_target_pos(level: Level, sites: Any, start_pos: Any) -> Any | N
         key=lambda site: (site.x - start_pos.x) ** 2 + (site.y - start_pos.y) ** 2,
     )
     return Vector2(nearest.x, nearest.y)
+
+
+def resolve_eval_target(level: Level, sites: Any, start_pos: Any) -> BotTarget | None:
+    target_pos = resolve_eval_target_pos(level, sites, start_pos)
+    if target_pos is None:
+        return None
+    nearest_site = _nearest_target_site(sites, Vector2(target_pos))
+    target_uid = getattr(nearest_site, "uid", None) if nearest_site is not None else None
+    target_size = (
+        float(getattr(nearest_site, "size", 0.0) or 0.0)
+        if nearest_site is not None
+        else None
+    )
+    return BotTarget(
+        uid=str(target_uid) if target_uid is not None else None,
+        x=float(target_pos.x),
+        y=float(target_pos.y),
+        size=target_size,
+        label="landing target",
+    )
 
 
 def build_vehicle_info(entity) -> VehicleInfo:

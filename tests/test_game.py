@@ -497,6 +497,22 @@ def test_climb_follow_records_local_hazard_span_not_full_route() -> None:
     assert float(params["obstacle_support_x1"]) < float(params["dx"])
 
 
+def test_downhill_clip_is_target_relative_late_shoulder() -> None:
+    params = _terrain_scenario_params("downhill:mid:clip:half", 0, benchmark_mode="median")
+    dx = float(params["dx"])
+    support_x0 = float(params["obstacle_support_x0"])
+    support_x1 = float(params["obstacle_support_x1"])
+    top_x0 = float(params["obstacle_top_x0"])
+    top_x1 = float(params["obstacle_top_x1"])
+
+    assert dx == pytest.approx(380.0)
+    assert dx - support_x1 == pytest.approx(100.0)
+    assert support_x1 - support_x0 == pytest.approx(80.0)
+    assert top_x0 == pytest.approx(support_x0)
+    assert top_x1 == pytest.approx(support_x1)
+    assert support_x0 > 0.5 * dx
+
+
 @pytest.mark.parametrize(
     "scenario_names",
     (

@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal, normalize_eval_goals
 from core.sensor import RadarContact, ProximityContact
@@ -31,6 +31,52 @@ class VehicleInfo:
     radar_outer_range: float
     radar_inner_range: float
     proximity_sensor_range: float
+
+
+class TerrainQuery(Protocol):
+    """Read-only terrain query surface shared with bots at setup time."""
+
+    def sample_height(self, x: float, lod: int = 0) -> float:
+        raise NotImplementedError
+
+    def sample_slope(self, x: float, lod: int = 0) -> float:
+        raise NotImplementedError
+
+    def profile(
+        self,
+        x0: float,
+        x1: float,
+        *,
+        step: float,
+        lod: int = 0,
+    ) -> list[tuple[float, float]]:
+        raise NotImplementedError
+
+    def resolution(self, lod: int = 0) -> float:
+        raise NotImplementedError
+
+
+@dataclass(frozen=True)
+class BotTarget:
+    """Static primary target corridor provided once at setup."""
+
+    uid: str | None
+    x: float
+    y: float
+    size: float | None = None
+    label: str | None = None
+
+
+@dataclass(frozen=True)
+class BotEnvironment:
+    """Read-only environment shared with the bot once per run."""
+
+    terrain: TerrainQuery
+    gravity_mag: float
+    target: BotTarget | None = None
+    level_name: str | None = None
+    scenario_name: str | None = None
+    scenario_params: dict[str, float | int | str | bool] | None = None
 
 
 @dataclass(frozen=True)
@@ -138,7 +184,7 @@ class PlotMarker:
     label: str | None = None
     x: float | None = None
     y: float | None = None
-    metadata: dict[str, float | str | None] = field(default_factory=dict)
+    metadata: dict[str, float | str | bool | None] = field(default_factory=dict)
 
 
 def resolve_bot_name(bot: "Bot") -> str:
@@ -176,6 +222,7 @@ class Bot(ABC):
     def __init__(self):
         self.status = ""
         self.vehicle_info: VehicleInfo | None = None
+        self.environment: BotEnvironment | None = None
         self._pinned_target_uid: str | None = None
         self._eval_goal = EVAL_GOAL_LANDING
         self._bot_identity_name: str | None = None
@@ -200,6 +247,10 @@ class Bot(ABC):
     def set_vehicle_info(self, info: "VehicleInfo"):
         """Provide static vehicle parameters (dimensions, masses, performance)."""
         self.vehicle_info = info
+
+    def set_environment(self, environment: BotEnvironment) -> None:
+        """Provide static environment context (terrain, target, gravity)."""
+        self.environment = environment
 
     @property
     def pinned_target_uid(self) -> str | None:
