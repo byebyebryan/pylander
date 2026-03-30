@@ -17,8 +17,8 @@ class TerrainObstacle:
     top_width: float
     shoulder_width: float
     height_offset: float
-    left_shoulder_width: float | None = None
-    right_shoulder_width: float | None = None
+    target_offset: float = 0.0
+    anchor_points: tuple[tuple[float, float], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -35,6 +35,12 @@ class TerrainScenario:
     route_dy: float
     obstacle: TerrainObstacle
     sample_key: str
+    reactive_contract: str
+    hazard_driver: str
+    reactive_trigger: str
+    resume_without_replan: bool
+    primary_navigation_owner: str
+    nominal_route_must_clear: bool
 
 
 @dataclass(frozen=True)
@@ -51,149 +57,122 @@ def terrain_scenario_name(
     return f"{family}:{route_tier}:{obstacle_case}:{weight_tier}"
 
 
-_HALF_WEIGHT = next(weight for weight in BOOST_WEIGHT_TIERS if weight.key == "half")
+_WEIGHT_BY_KEY = {weight.key: weight for weight in BOOST_WEIGHT_TIERS}
 
-_MID_ROUTES: dict[str, _TerrainRoute] = {
-    "flat": _TerrainRoute(
+_EXECUTION_GUARDRAIL_ROUTES: dict[tuple[str, str], _TerrainRoute] = {
+    ("flat", "far"): _TerrainRoute(
         family="flat",
-        route_tier="mid",
-        route_dx=SampleRange(600.0, 1000.0),
+        route_tier="far",
+        route_dx=SampleRange(1200.0, 2000.0),
         route_dy=0.0,
     ),
-    "downhill": _TerrainRoute(
+    ("downhill", "mid"): _TerrainRoute(
         family="downhill",
         route_tier="mid",
         route_dx=SampleRange(300.0, 500.0),
         route_dy=-400.0,
     ),
-    "climb": _TerrainRoute(
+    ("climb", "high"): _TerrainRoute(
         family="climb",
-        route_tier="mid",
+        route_tier="high",
         route_dx=SampleRange(300.0, 500.0),
-        route_dy=400.0,
+        route_dy=800.0,
     ),
 }
 
 
 def _build_reactive_scenario(
     family: str,
+    route_tier: str,
     obstacle_case: str,
     *,
+    weight_tier: str,
     obstacle: TerrainObstacle,
+    hazard_driver: str,
 ) -> TerrainScenario:
-    route = _MID_ROUTES[family]
+    route = _EXECUTION_GUARDRAIL_ROUTES[(family, route_tier)]
+    weight = _WEIGHT_BY_KEY[weight_tier]
     return TerrainScenario(
         name=terrain_scenario_name(
-            family, route.route_tier, obstacle_case, _HALF_WEIGHT.key
+            family, route.route_tier, obstacle_case, weight.key
         ),
         family=family,
         route_tier=route.route_tier,
         obstacle_case=obstacle_case,
         avoidance_band="reactive",
-        weight_tier=_HALF_WEIGHT.key,
-        cargo_mass=float(_HALF_WEIGHT.cargo_mass),
-        cargo_fraction=float(_HALF_WEIGHT.cargo_fraction),
+        weight_tier=weight.key,
+        cargo_mass=float(weight.cargo_mass),
+        cargo_fraction=float(weight.cargo_fraction),
         route_dx=route.route_dx,
         route_dy=float(route.route_dy),
         obstacle=obstacle,
         sample_key=f"{family}:{route.route_tier}:{obstacle_case}",
+        reactive_contract="execution_guardrail",
+        hazard_driver=hazard_driver,
+        reactive_trigger="execution_drift",
+        resume_without_replan=True,
+        primary_navigation_owner="boost",
+        nominal_route_must_clear=True,
     )
 
 
 TERRAIN_SCENARIOS: tuple[TerrainScenario, ...] = (
     _build_reactive_scenario(
         "flat",
-        "boost_table",
+        "far",
+        "backstop",
+        weight_tier="half",
         obstacle=TerrainObstacle(
-            kind="table",
-            placement="boost",
-            x_fraction=0.28,
+            kind="backstop",
+            placement="target",
+            x_fraction=0.0,
             top_width=120.0,
-            shoulder_width=55.0,
-            height_offset=120.0,
+            shoulder_width=25.0,
+            height_offset=260.0,
+            target_offset=75.0,
         ),
-    ),
-    _build_reactive_scenario(
-        "flat",
-        "mid_table",
-        obstacle=TerrainObstacle(
-            kind="table",
-            placement="mid",
-            x_fraction=0.50,
-            top_width=140.0,
-            shoulder_width=60.0,
-            height_offset=150.0,
-        ),
-    ),
-    _build_reactive_scenario(
-        "flat",
-        "terminal_table",
-        obstacle=TerrainObstacle(
-            kind="table",
-            placement="terminal",
-            x_fraction=0.78,
-            top_width=90.0,
-            shoulder_width=40.0,
-            height_offset=180.0,
-        ),
+        hazard_driver="containment_backstop",
     ),
     _build_reactive_scenario(
         "downhill",
-        "boost_shoulder",
+        "mid",
+        "clip",
+        weight_tier="half",
         obstacle=TerrainObstacle(
             kind="shoulder",
-            placement="boost",
-            x_fraction=0.28,
+            placement="terminal",
+            x_fraction=0.78,
             top_width=90.0,
+            shoulder_width=0.0,
+            height_offset=180.0,
+        ),
+        hazard_driver="descent_clip",
+    ),
+    _build_reactive_scenario(
+        "climb",
+        "high",
+        "follow",
+        weight_tier="full",
+        obstacle=TerrainObstacle(
+            kind="follow",
+            placement="route",
+            x_fraction=0.0,
+            top_width=0.0,
             shoulder_width=0.0,
             height_offset=0.0,
+            anchor_points=((0.30, 0.34), (0.55, 0.60), (0.78, 0.85)),
         ),
-    ),
-    _build_reactive_scenario(
-        "downhill",
-        "terminal_shoulder",
-        obstacle=TerrainObstacle(
-            kind="shoulder",
-            placement="terminal",
-            x_fraction=0.78,
-            top_width=90.0,
-            shoulder_width=0.0,
-            height_offset=180.0,
-        ),
-    ),
-    _build_reactive_scenario(
-        "climb",
-        "boost_shoulder",
-        obstacle=TerrainObstacle(
-            kind="shoulder",
-            placement="boost",
-            x_fraction=0.34,
-            top_width=90.0,
-            shoulder_width=55.0,
-            height_offset=220.0,
-        ),
-    ),
-    _build_reactive_scenario(
-        "climb",
-        "terminal_shoulder",
-        obstacle=TerrainObstacle(
-            kind="shoulder",
-            placement="terminal",
-            x_fraction=0.78,
-            top_width=80.0,
-            shoulder_width=45.0,
-            height_offset=260.0,
-        ),
+        hazard_driver="terrain_follow",
     ),
 )
 
 TERRAIN_SCENARIO_BY_NAME = {scenario.name: scenario for scenario in TERRAIN_SCENARIOS}
-TERRAIN_DEFAULT_SCENARIO = terrain_scenario_name("flat", "mid", "boost_table", "half")
+TERRAIN_DEFAULT_SCENARIO = terrain_scenario_name("flat", "far", "backstop", "half")
 TERRAIN_SMOKE_SCENARIOS: tuple[str, ...] = (
-    terrain_scenario_name("flat", "mid", "mid_table", "half"),
+    terrain_scenario_name("flat", "far", "backstop", "half"),
 )
 TERRAIN_QUICK_SCENARIOS: tuple[str, ...] = (
-    terrain_scenario_name("flat", "mid", "mid_table", "half"),
-    terrain_scenario_name("downhill", "mid", "terminal_shoulder", "half"),
-    terrain_scenario_name("climb", "mid", "terminal_shoulder", "half"),
+    terrain_scenario_name("flat", "far", "backstop", "half"),
+    terrain_scenario_name("downhill", "mid", "clip", "half"),
+    terrain_scenario_name("climb", "high", "follow", "full"),
 )

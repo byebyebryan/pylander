@@ -480,23 +480,20 @@ def _build_default_child_map() -> dict[tuple[str, ...], str]:
     }
     for family in ("flat", "downhill", "climb"):
         out[("boost", family)] = "mid"
-    for family in ("flat", "downhill", "climb"):
-        out[("terrain", family)] = "mid"
+    out[("terrain", "flat")] = "far"
+    out[("terrain", "downhill")] = "mid"
+    out[("terrain", "climb")] = "high"
     for route in ("near", "mid", "far"):
         out[("boost", "flat", route)] = "half"
-    out[("terrain", "flat", "mid")] = "boost_table"
-    out[("terrain", "flat", "mid", "boost_table")] = "half"
-    out[("terrain", "flat", "mid", "mid_table")] = "half"
-    out[("terrain", "flat", "mid", "terminal_table")] = "half"
+    out[("terrain", "flat", "far")] = "backstop"
+    out[("terrain", "flat", "far", "backstop")] = "half"
     for route in ("low", "mid", "mid_long", "high"):
         out[("boost", "downhill", route)] = "half"
         out[("boost", "climb", route)] = "half"
-    out[("terrain", "downhill", "mid")] = "boost_shoulder"
-    out[("terrain", "downhill", "mid", "boost_shoulder")] = "half"
-    out[("terrain", "downhill", "mid", "terminal_shoulder")] = "half"
-    out[("terrain", "climb", "mid")] = "boost_shoulder"
-    out[("terrain", "climb", "mid", "boost_shoulder")] = "half"
-    out[("terrain", "climb", "mid", "terminal_shoulder")] = "half"
+    out[("terrain", "downhill", "mid")] = "clip"
+    out[("terrain", "downhill", "mid", "clip")] = "half"
+    out[("terrain", "climb", "high")] = "follow"
+    out[("terrain", "climb", "high", "follow")] = "full"
     for route in ("low", "mid", "high"):
         out[("plunge", route)] = "half"
     out[("terminal", "normal")] = "mid"
