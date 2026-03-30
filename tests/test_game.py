@@ -17,6 +17,7 @@ from core.ecs import require_component
 from core.eval import aggregate_eval_records, normalize_run_result
 from game import LanderGame
 from levels import create_level as create_level_by_name, list_available_levels
+from levels.terrain_catalog import TERRAIN_SCENARIO_BY_NAME
 from app.run_batch import ResolvedBenchRun, parse_seed_spec, resolve_benchmark_plan
 
 
@@ -150,19 +151,21 @@ def test_boost_level_scenario_names_are_canonical() -> None:
 def test_terrain_level_scenario_names_are_canonical() -> None:
     level = create_level_by_name("terrain")
     assert level.list_batch_scenarios() == [
-        "flat:mid:boost_table:half",
-        "flat:mid:mid_table:half",
-        "flat:mid:terminal_table:half",
-        "downhill:mid:boost_shoulder:half",
-        "downhill:mid:terminal_shoulder:half",
-        "climb:mid:boost_shoulder:half",
-        "climb:mid:terminal_shoulder:half",
+        "flat:far:backstop:half",
+        "downhill:mid:clip:half",
+        "climb:high:follow:full",
     ]
     assert level.list_quick_benchmark_scenarios() == [
-        "flat:mid:mid_table:half",
-        "downhill:mid:terminal_shoulder:half",
-        "climb:mid:terminal_shoulder:half",
+        "flat:far:backstop:half",
+        "downhill:mid:clip:half",
+        "climb:high:follow:full",
     ]
+
+
+def test_terrain_reactive_sample_keys_ignore_weight_tier() -> None:
+    assert TERRAIN_SCENARIO_BY_NAME["flat:far:backstop:half"].sample_key == "flat:far:backstop"
+    assert TERRAIN_SCENARIO_BY_NAME["downhill:mid:clip:half"].sample_key == "downhill:mid:clip"
+    assert TERRAIN_SCENARIO_BY_NAME["climb:high:follow:full"].sample_key == "climb:high:follow"
 
 
 def test_boost_rejects_unknown_scenario() -> None:
@@ -199,11 +202,11 @@ def test_boost_defaults_to_flat_mid_half() -> None:
     assert game.level.scenario_name == "flat:mid:half"
 
 
-def test_terrain_defaults_to_flat_mid_boost_table_half() -> None:
+def test_terrain_defaults_to_flat_far_backstop_half() -> None:
     level_name = "terrain"
     level = create_level_by_name(level_name)
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
-    assert game.level.scenario_name == "flat:mid:boost_table:half"
+    assert game.level.scenario_name == "flat:far:backstop:half"
 
 
 def test_boost_climb_target_is_terrain_bound_flush_pad() -> None:
@@ -343,8 +346,8 @@ def test_setup_and_terminal_error_scenarios_are_seed_deterministic() -> None:
     climb_b = _spawn_state("boost", "climb:mid:half", 42)
     assert climb_a == pytest.approx(climb_b)
 
-    terrain_a = _spawn_state("terrain", "climb:mid:terminal_shoulder:half", 42)
-    terrain_b = _spawn_state("terrain", "climb:mid:terminal_shoulder:half", 42)
+    terrain_a = _spawn_state("terrain", "climb:high:follow:full", 42)
+    terrain_b = _spawn_state("terrain", "climb:high:follow:full", 42)
     assert terrain_a == pytest.approx(terrain_b)
 
 
@@ -401,24 +404,42 @@ def test_boost_route_tiers_expose_expected_median_geometry(
 
 
 @pytest.mark.parametrize(
-    ("scenario_name", "expected_kind", "expected_height_sign"),
     (
-        ("flat:mid:boost_table:half", "table", 1.0),
-        ("flat:mid:mid_table:half", "table", 1.0),
-        ("flat:mid:terminal_table:half", "table", 1.0),
-        ("downhill:mid:boost_shoulder:half", "shoulder", 1.0),
-        ("downhill:mid:terminal_shoulder:half", "shoulder", 1.0),
-        ("climb:mid:boost_shoulder:half", "shoulder", 1.0),
-        ("climb:mid:terminal_shoulder:half", "shoulder", 1.0),
+        "scenario_name",
+        "expected_route_tier",
+        "expected_kind",
+        "expected_hazard_driver",
+        "expected_height_sign",
+    ),
+    (
+        ("flat:far:backstop:half", "far", "backstop", "containment_backstop", 1.0),
+        (
+            "downhill:mid:clip:half",
+            "mid",
+            "shoulder",
+            "descent_clip",
+            1.0,
+        ),
+        ("climb:high:follow:full", "high", "follow", "terrain_follow", 1.0),
     ),
 )
 def test_terrain_reactive_scenarios_expose_expected_median_geometry(
-    scenario_name: str, expected_kind: str, expected_height_sign: float
+    scenario_name: str,
+    expected_route_tier: str,
+    expected_kind: str,
+    expected_hazard_driver: str,
+    expected_height_sign: float,
 ) -> None:
     scenario_params = _terrain_scenario_params(
         scenario_name, 0, benchmark_mode="median"
     )
-    assert scenario_params["route_tier"] == "mid"
+    assert scenario_params["route_tier"] == expected_route_tier
+    assert scenario_params["reactive_contract"] == "execution_guardrail"
+    assert scenario_params["hazard_driver"] == expected_hazard_driver
+    assert scenario_params["reactive_trigger"] == "execution_drift"
+    assert bool(scenario_params["resume_without_replan"]) is True
+    assert scenario_params["primary_navigation_owner"] == "boost"
+    assert bool(scenario_params["nominal_route_must_clear"]) is True
     assert scenario_params["avoidance_band"] == "reactive"
     assert scenario_params["obstacle_kind"] == expected_kind
     assert float(scenario_params["obstacle_height_offset"]) * expected_height_sign > 0.0
@@ -427,13 +448,9 @@ def test_terrain_reactive_scenarios_expose_expected_median_geometry(
 @pytest.mark.parametrize(
     "scenario_name",
     (
-        "flat:mid:boost_table:half",
-        "flat:mid:mid_table:half",
-        "flat:mid:terminal_table:half",
-        "downhill:mid:boost_shoulder:half",
-        "downhill:mid:terminal_shoulder:half",
-        "climb:mid:boost_shoulder:half",
-        "climb:mid:terminal_shoulder:half",
+        "flat:far:backstop:half",
+        "downhill:mid:clip:half",
+        "climb:high:follow:full",
     ),
 )
 def test_terrain_shapes_match_recorded_obstacle_profile(scenario_name: str) -> None:
@@ -464,6 +481,20 @@ def test_terrain_shapes_match_recorded_obstacle_profile(scenario_name: str) -> N
     assert y_center == pytest.approx((slope * center_x) + height_offset)
     assert y_x1 == pytest.approx(slope * x1, abs=10.0)
     assert y_dest == pytest.approx(slope * dx)
+
+
+def test_climb_follow_records_local_hazard_span_not_full_route() -> None:
+    params = _terrain_scenario_params("climb:high:follow:full", 0, benchmark_mode="median")
+    count = int(float(params["obstacle_profile_point_count"]))
+    assert count >= 3
+    assert float(params["obstacle_support_x0"]) == pytest.approx(
+        float(params["obstacle_profile_p1_x"])
+    )
+    assert float(params["obstacle_support_x1"]) == pytest.approx(
+        float(params[f"obstacle_profile_p{count - 2}_x"])
+    )
+    assert float(params["obstacle_support_x0"]) > 0.0
+    assert float(params["obstacle_support_x1"]) < float(params["dx"])
 
 
 @pytest.mark.parametrize(

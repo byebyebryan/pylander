@@ -19,13 +19,13 @@ from levels.terrain_catalog import (
 
 
 _PAD_CLEARANCE = 85.0
+_TARGET_PAD_BACKSTOP_CLEARANCE = 75.0
 
 
 @dataclass(frozen=True)
 class _ResolvedObstacle:
     kind: str
     placement: str
-    profile_mode: str
     center_x: float
     support_x0: float
     support_x1: float
@@ -35,20 +35,6 @@ class _ResolvedObstacle:
     right_shoulder_width: float
     height_offset: float
     profile_points: tuple[tuple[float, float], ...] = ()
-
-
-def _trapezoid_height(x: float, obstacle: _ResolvedObstacle) -> float:
-    if x <= obstacle.support_x0 or x >= obstacle.support_x1:
-        return 0.0
-    if x < obstacle.top_x0:
-        span = max(1e-6, obstacle.left_shoulder_width)
-        t = (x - obstacle.support_x0) / span
-        return obstacle.height_offset * t
-    if x <= obstacle.top_x1:
-        return obstacle.height_offset
-    span = max(1e-6, obstacle.right_shoulder_width)
-    t = (obstacle.support_x1 - x) / span
-    return obstacle.height_offset * t
 
 
 def _lerp(x0: float, y0: float, x1: float, y1: float, x: float) -> float:
@@ -104,7 +90,7 @@ def _sample_profile_points(
 
 
 class TerrainLevel(BoostTransferLevel):
-    """Reactive terrain-transfer scenario root for manual plotting and setup work."""
+    """Execution-guardrail terrain scenarios for reactive v1 work."""
 
     _scenario_by_name = TERRAIN_SCENARIO_BY_NAME
     _default_scenario_name = TERRAIN_DEFAULT_SCENARIO
@@ -131,165 +117,50 @@ class TerrainLevel(BoostTransferLevel):
             return 0.0
         return float(scenario.route_dy) / cls._scenario_dx(scenario, dest_x=dest_x)
 
-    def _resolve_obstacle(self, scenario, *, dest_x: float) -> _ResolvedObstacle:  # noqa: ANN001
+    def _resolve_backstop(self, scenario, *, dest_x: float) -> _ResolvedObstacle:  # noqa: ANN001
         obstacle = scenario.obstacle
         route_dx = max(1e-6, float(dest_x) - float(SOURCE_PAD_X))
         route_dy = float(scenario.route_dy)
-        slope = self._scenario_slope(scenario, dest_x=dest_x)
-        left_shoulder_width = float(
-            obstacle.left_shoulder_width
-            if obstacle.left_shoulder_width is not None
-            else obstacle.shoulder_width
+        ramp_start = route_dx + max(
+            _TARGET_PAD_BACKSTOP_CLEARANCE, float(obstacle.target_offset)
         )
-        right_shoulder_width = float(
-            obstacle.right_shoulder_width
-            if obstacle.right_shoulder_width is not None
-            else obstacle.shoulder_width
+        top_x0 = ramp_start + max(20.0, float(obstacle.shoulder_width))
+        top_x1 = top_x0 + float(obstacle.top_width)
+        center_x = 0.5 * (top_x0 + top_x1)
+        plateau_y = route_dy + abs(float(obstacle.height_offset))
+        profile_points = (
+            (0.0, 0.0),
+            (route_dx, route_dy),
+            (ramp_start, route_dy),
+            (top_x0, plateau_y),
+            (top_x1, plateau_y),
+            (top_x1 + 1.0, plateau_y),
         )
-        if obstacle.kind == "shoulder":
-            if obstacle.placement == "boost":
-                if scenario.family == "climb":
-                    plateau_start = min(
-                        max(float(obstacle.x_fraction) * route_dx, _PAD_CLEARANCE),
-                        route_dx - _PAD_CLEARANCE - float(obstacle.top_width),
-                    )
-                    plateau_end = min(
-                        route_dx - _PAD_CLEARANCE,
-                        plateau_start + float(obstacle.top_width),
-                    )
-                    ramp_start = max(
-                        _PAD_CLEARANCE,
-                        plateau_start - max(20.0, float(obstacle.shoulder_width)),
-                    )
-                    center_x = 0.5 * (plateau_start + plateau_end)
-                    plateau_y = (slope * center_x) + abs(float(obstacle.height_offset))
-                    profile_points = (
-                        (0.0, 0.0),
-                        (ramp_start, slope * ramp_start),
-                        (plateau_start, plateau_y),
-                        (plateau_end, plateau_y),
-                        (route_dx, route_dy),
-                    )
-                    return _ResolvedObstacle(
-                        kind=str(obstacle.kind),
-                        placement=str(obstacle.placement),
-                        profile_mode="piecewise",
-                        center_x=float(center_x),
-                        support_x0=float(ramp_start),
-                        support_x1=float(plateau_end),
-                        top_x0=float(plateau_start),
-                        top_x1=float(plateau_end),
-                        left_shoulder_width=float(plateau_start - ramp_start),
-                        right_shoulder_width=float(route_dx - plateau_end),
-                        height_offset=float(plateau_y - (slope * center_x)),
-                        profile_points=profile_points,
-                    )
-                anchor_x = min(
-                    max(float(obstacle.x_fraction) * route_dx, _PAD_CLEARANCE),
-                    route_dx - _PAD_CLEARANCE - float(obstacle.top_width),
-                )
-                flat_end_x = min(
-                    route_dx - _PAD_CLEARANCE,
-                    anchor_x + float(obstacle.top_width),
-                )
-                profile_points = (
-                    (0.0, 0.0),
-                    (anchor_x, 0.0),
-                    (flat_end_x, 0.0),
-                    (route_dx, route_dy),
-                )
-                center_x = 0.5 * (anchor_x + flat_end_x)
-                return _ResolvedObstacle(
-                    kind=str(obstacle.kind),
-                    placement=str(obstacle.placement),
-                    profile_mode="piecewise",
-                    center_x=float(center_x),
-                    support_x0=0.0,
-                    support_x1=float(flat_end_x),
-                    top_x0=float(anchor_x),
-                    top_x1=float(flat_end_x),
-                    left_shoulder_width=0.0,
-                    right_shoulder_width=0.0,
-                    height_offset=float(-(slope * center_x)),
-                    profile_points=profile_points,
-                )
-            if scenario.family == "climb":
-                top_half = 0.5 * float(obstacle.top_width)
-                min_center = _PAD_CLEARANCE + top_half
-                max_center = route_dx - _PAD_CLEARANCE - top_half
-                desired_center = float(obstacle.x_fraction) * route_dx
-                if max_center < min_center:
-                    center_x = 0.5 * route_dx
-                else:
-                    center_x = min(max(desired_center, min_center), max_center)
-                plateau_start = center_x - top_half
-                plateau_end = center_x + top_half
-                ramp_start = max(
-                    _PAD_CLEARANCE,
-                    plateau_start - max(20.0, float(obstacle.shoulder_width)),
-                )
-                plateau_y = (slope * center_x) + abs(float(obstacle.height_offset))
-                profile_points = (
-                    (0.0, 0.0),
-                    (ramp_start, slope * ramp_start),
-                    (plateau_start, plateau_y),
-                    (plateau_end, plateau_y),
-                    (route_dx, route_dy),
-                )
-                return _ResolvedObstacle(
-                    kind=str(obstacle.kind),
-                    placement=str(obstacle.placement),
-                    profile_mode="piecewise",
-                    center_x=float(center_x),
-                    support_x0=float(ramp_start),
-                    support_x1=float(plateau_end),
-                    top_x0=float(plateau_start),
-                    top_x1=float(plateau_end),
-                    left_shoulder_width=float(plateau_start - ramp_start),
-                    right_shoulder_width=float(route_dx - plateau_end),
-                    height_offset=float(plateau_y - (slope * center_x)),
-                    profile_points=profile_points,
-                )
-            top_half = 0.5 * float(obstacle.top_width)
-            min_center = _PAD_CLEARANCE + top_half
-            max_center = route_dx - _PAD_CLEARANCE - top_half
-            desired_center = float(obstacle.x_fraction) * route_dx
-            if max_center < min_center:
-                center_x = 0.5 * route_dx
-            else:
-                center_x = min(max(desired_center, min_center), max_center)
-            top_x0 = center_x - top_half
-            top_x1 = center_x + top_half
-            target_y = route_dy
-            shoulder_delta = abs(float(obstacle.height_offset))
-            plateau_y = (
-                target_y + shoulder_delta
-                if scenario.family == "downhill"
-                else target_y - shoulder_delta
-            )
-            profile_points = (
-                (0.0, 0.0),
-                (top_x0, plateau_y),
-                (top_x1, plateau_y),
-                (route_dx, route_dy),
-            )
-            return _ResolvedObstacle(
-                kind=str(obstacle.kind),
-                placement=str(obstacle.placement),
-                profile_mode="piecewise",
-                center_x=float(center_x),
-                support_x0=float(top_x0),
-                support_x1=float(top_x1),
-                top_x0=float(top_x0),
-                top_x1=float(top_x1),
-                left_shoulder_width=0.0,
-                right_shoulder_width=0.0,
-                height_offset=float(plateau_y - (slope * center_x)),
-                profile_points=profile_points,
-            )
+        return _ResolvedObstacle(
+            kind=str(obstacle.kind),
+            placement=str(obstacle.placement),
+            center_x=float(center_x),
+            support_x0=float(ramp_start),
+            support_x1=float(top_x1 + 1.0),
+            top_x0=float(top_x0),
+            top_x1=float(top_x1),
+            left_shoulder_width=float(top_x0 - ramp_start),
+            right_shoulder_width=0.0,
+            height_offset=float(plateau_y - route_dy),
+            profile_points=profile_points,
+        )
+
+    def _resolve_clip(
+        self, scenario, *, dest_x: float
+    ) -> _ResolvedObstacle:  # noqa: ANN001
+        obstacle = scenario.obstacle
+        if scenario.family != "downhill":
+            raise ValueError("Reactive v1 clip terrain is only defined for downhill cases")
+        route_dx = max(1e-6, float(dest_x) - float(SOURCE_PAD_X))
+        route_dy = float(scenario.route_dy)
         top_half = 0.5 * float(obstacle.top_width)
-        min_center = _PAD_CLEARANCE + left_shoulder_width + top_half
-        max_center = route_dx - _PAD_CLEARANCE - right_shoulder_width - top_half
+        min_center = _PAD_CLEARANCE + top_half
+        max_center = route_dx - _PAD_CLEARANCE - top_half
         desired_center = float(obstacle.x_fraction) * route_dx
         if max_center < min_center:
             center_x = 0.5 * route_dx
@@ -297,20 +168,90 @@ class TerrainLevel(BoostTransferLevel):
             center_x = min(max(desired_center, min_center), max_center)
         top_x0 = center_x - top_half
         top_x1 = center_x + top_half
-        support_x0 = top_x0 - left_shoulder_width
-        support_x1 = top_x1 + right_shoulder_width
+        plateau_y = route_dy + abs(float(obstacle.height_offset))
+        profile_points = (
+            (0.0, 0.0),
+            (top_x0, plateau_y),
+            (top_x1, plateau_y),
+            (route_dx, route_dy),
+        )
         return _ResolvedObstacle(
             kind=str(obstacle.kind),
             placement=str(obstacle.placement),
-            profile_mode="trapezoid",
             center_x=float(center_x),
-            support_x0=float(support_x0),
-            support_x1=float(support_x1),
+            support_x0=float(top_x0),
+            support_x1=float(top_x1),
             top_x0=float(top_x0),
             top_x1=float(top_x1),
-            left_shoulder_width=float(left_shoulder_width),
-            right_shoulder_width=float(right_shoulder_width),
-            height_offset=float(obstacle.height_offset),
+            left_shoulder_width=0.0,
+            right_shoulder_width=0.0,
+            height_offset=float(
+                plateau_y
+                - (self._scenario_slope(scenario, dest_x=dest_x) * center_x)
+            ),
+            profile_points=profile_points,
+        )
+
+    def _resolve_follow(
+        self, scenario, *, dest_x: float
+    ) -> _ResolvedObstacle:  # noqa: ANN001
+        obstacle = scenario.obstacle
+        route_dx = max(1e-6, float(dest_x) - float(SOURCE_PAD_X))
+        route_dy = float(scenario.route_dy)
+        if scenario.family != "climb":
+            raise ValueError("Reactive v1 follow terrain is only defined for climb cases")
+        scaled_points: list[tuple[float, float]] = [(0.0, 0.0)]
+        last_x = 0.0
+        for x_frac, y_frac in obstacle.anchor_points:
+            px = min(
+                max(float(x_frac) * route_dx, _PAD_CLEARANCE),
+                route_dx - _PAD_CLEARANCE,
+            )
+            px = max(px, last_x + 1.0)
+            py = max(0.0, min(float(y_frac) * route_dy, route_dy))
+            scaled_points.append((float(px), float(py)))
+            last_x = px
+        scaled_points.append((route_dx, route_dy))
+        support_start_idx = 1
+        support_end_idx = len(scaled_points) - 2
+        if support_end_idx < support_start_idx:
+            raise ValueError("Reactive follow terrain requires at least one interior anchor point")
+        top_idx = max(
+            range(support_start_idx, support_end_idx + 1),
+            key=lambda idx: scaled_points[idx][1]
+            - (route_dy / route_dx) * scaled_points[idx][0],
+        )
+        center_x, center_y = scaled_points[top_idx]
+        top_left_idx = max(support_start_idx, top_idx - 1)
+        top_right_idx = min(support_end_idx, top_idx + 1)
+        return _ResolvedObstacle(
+            kind=str(obstacle.kind),
+            placement=str(obstacle.placement),
+            center_x=float(center_x),
+            support_x0=float(scaled_points[support_start_idx][0]),
+            support_x1=float(scaled_points[support_end_idx][0]),
+            top_x0=float(scaled_points[top_left_idx][0]),
+            top_x1=float(scaled_points[top_right_idx][0]),
+            left_shoulder_width=float(center_x - scaled_points[top_left_idx][0]),
+            right_shoulder_width=float(
+                scaled_points[top_right_idx][0] - center_x
+            ),
+            height_offset=float(
+                center_y - (self._scenario_slope(scenario, dest_x=dest_x) * center_x)
+            ),
+            profile_points=tuple(scaled_points),
+        )
+
+    def _resolve_obstacle(self, scenario, *, dest_x: float) -> _ResolvedObstacle:  # noqa: ANN001
+        obstacle = scenario.obstacle
+        if obstacle.kind == "backstop":
+            return self._resolve_backstop(scenario, dest_x=dest_x)
+        if obstacle.kind == "shoulder" and obstacle.placement == "terminal":
+            return self._resolve_clip(scenario, dest_x=dest_x)
+        if obstacle.kind == "follow" and obstacle.placement == "route":
+            return self._resolve_follow(scenario, dest_x=dest_x)
+        raise ValueError(
+            f"Unsupported terrain obstacle '{obstacle.kind}:{obstacle.placement}' for reactive v1"
         )
 
     def _build_base_terrain(self, seed: int):
@@ -319,15 +260,11 @@ class TerrainLevel(BoostTransferLevel):
         dest_x = getattr(self, "_sampled_dest_x", None)
         if dest_x is None:
             raise RuntimeError("TerrainLevel dest_x was not resolved before terrain build")
-        slope = self._scenario_slope(scenario, dest_x=dest_x)
         resolved = self._resolve_obstacle(scenario, dest_x=float(dest_x))
 
         def height_fn(x: float) -> float:
             xx = float(x)
-            if resolved.profile_mode == "piecewise":
-                return _piecewise_linear_height(xx, resolved.profile_points)
-            base_y = slope * xx
-            return base_y + _trapezoid_height(xx, resolved)
+            return _piecewise_linear_height(xx, resolved.profile_points)
 
         return _terrain.LodGridGenerator(height_fn)
 
@@ -357,8 +294,14 @@ class TerrainLevel(BoostTransferLevel):
             "obstacle_case": scenario.obstacle_case,
             "obstacle_kind": resolved.kind,
             "obstacle_placement": resolved.placement,
-            "obstacle_profile_mode": resolved.profile_mode,
+            "obstacle_profile_mode": "piecewise",
             "avoidance_band": scenario.avoidance_band,
+            "reactive_contract": scenario.reactive_contract,
+            "hazard_driver": scenario.hazard_driver,
+            "reactive_trigger": scenario.reactive_trigger,
+            "resume_without_replan": scenario.resume_without_replan,
+            "primary_navigation_owner": scenario.primary_navigation_owner,
+            "nominal_route_must_clear": scenario.nominal_route_must_clear,
             "slope": slope,
             "dx": float(dest_x) - float(SOURCE_PAD_X),
             "dy": float(scenario.route_dy),
