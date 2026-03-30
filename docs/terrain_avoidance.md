@@ -530,7 +530,7 @@ The actual v1 level implementation should stay narrower than the long-term desig
 Each named obstacle case should resolve to deterministic geometry for a given selector and seed:
 
 - route geometry must still follow the selected baseline family/tier
-- obstacle positions should be defined relative to route progress, then materialized into concrete world x coordinates
+- obstacle positions should use an explicit stable anchor rule, for example route-progress fractions or target/source-relative offsets, then materialize into concrete world x coordinates
 - obstacle dimensions must be part of the catalog, not inferred ad hoc inside level setup
 - if any obstacle dimension is randomized later, it must follow the existing benchmark median/sample rules and be recorded in scenario params
 
@@ -543,7 +543,7 @@ Current implemented v1 pack:
 | Selector | Avoidance band | Context / why | What to test | Plot focus |
 | --- | --- | --- | --- | --- |
 | `terrain:flat:far:backstop:half` | `reactive` | `containment_backstop`: flat long-range transfer with a target-side wall that is irrelevant to a clean landing but punishes overshoot and fly-back drift. | Reactive logic should avoid the backstop without changing the primary point-to-point plan. | Target pad, backstop rise, overshoot / fly-back path, resume-toward-target behavior. |
-| `terrain:downhill:mid:clip:half` | `reactive` | `descent_clip`: downhill route that flattens into a shoulder before a steeper final drop to target. | Reactive logic should avoid diving into the shoulder or committing too early into the final drop. | Downhill terrain line, shoulder edge, terminal entry, descent delay or pull-up. |
+| `terrain:downhill:mid:clip:half` | `reactive` | `descent_clip`: downhill route with a target-relative late shoulder before the final drop to target. The route band should stay narrow enough that this remains one stable local cutoff-veto situation, not a mix of local and route-reshaping regimes. | Reactive logic should avoid diving into the shoulder or committing too early into the final drop. | Downhill terrain line, shoulder edge, terminal entry, descent delay or pull-up. |
 | `terrain:climb:high:follow:full` | `reactive` | `terrain_follow`: uphill route where the nominal terrain-aware climb corridor stays only slightly above terrain for a meaningful stretch, especially under low thrust margin. | Reactive logic should maintain clearance while still climbing toward the same ballistic objective, without changing the route family. | Terrain line under ascent corridor, clearance margin over time, cutoff timing vs terrain-follow segment, resume-to-reference behavior. |
 
 Deferred from v1:

@@ -14,6 +14,7 @@ from core.components import (
     PlayerSelectable,
     Radar,
     RefuelConfig,
+    Transform,
 )
 from core.ecs import Entity, World
 from core.engine_adapter import EngineAdapter
@@ -48,6 +49,7 @@ def _make_actor(
     role: str = "none",
 ) -> Entity:
     actor = Entity(uid=uid)
+    actor.add_component(Transform())
     actor.add_component(PhysicsState())
     actor.add_component(FuelTank())
     actor.add_component(Engine())
@@ -61,6 +63,30 @@ def _make_actor(
     if active:
         actor.add_component(PlayerControlled(active=True))
     return actor
+
+
+def _make_level() -> SimpleNamespace:
+    class _Terrain:
+        def __call__(self, x: float, lod: int = 0) -> float:
+            _ = x, lod
+            return 0.0
+
+    class _Sites:
+        def get_sites(self, _range: object) -> list[SimpleNamespace]:
+            return [SimpleNamespace(uid="target", x=120.0, y=0.0, size=110.0)]
+
+    runtime_context = SimpleNamespace(
+        level_name="demo",
+        public_scenario_name="demo:mid:half",
+        scenario_name="demo:mid:half",
+        eval_target_pos=None,
+    )
+    return SimpleNamespace(
+        terrain=_Terrain(),
+        sites=_Sites(),
+        _scenario_params={"hazard_driver": "demo_driver", "obstacle_support_x0": 88.0},
+        ensure_runtime_context=lambda: runtime_context,
+    )
 
 
 def test_find_initial_player_actor_uid_prefers_explicit_active() -> None:
@@ -148,12 +174,20 @@ def test_attach_primary_bot_prefers_actor_with_bot_role() -> None:
         actors=actors,
         actor_bots=actor_bots,
         ecs_world=ecs_world,
+        level=_make_level(),
         active_uid="player",
         bot=bot,
     )
 
     assert actor_bots == {"wingman": bot}
     assert bot.vehicle_info is not None
+    assert bot.environment is not None
+    assert bot.environment.target is not None
+    assert bot.environment.target.uid == "target"
+    assert bot.environment.scenario_params == {
+        "hazard_driver": "demo_driver",
+        "obstacle_support_x0": 88.0,
+    }
     assert active_actor_bot(
         actor_bots=actor_bots,
         active_uid="wingman",
@@ -176,6 +210,7 @@ def test_attach_primary_bot_falls_back_to_non_active_actor() -> None:
         actors=actors,
         actor_bots=actor_bots,
         ecs_world=ecs_world,
+        level=_make_level(),
         active_uid="player",
         bot=bot,
     )

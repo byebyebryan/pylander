@@ -158,16 +158,26 @@ class TerrainLevel(BoostTransferLevel):
             raise ValueError("Reactive v1 clip terrain is only defined for downhill cases")
         route_dx = max(1e-6, float(dest_x) - float(SOURCE_PAD_X))
         route_dy = float(scenario.route_dy)
-        top_half = 0.5 * float(obstacle.top_width)
-        min_center = _PAD_CLEARANCE + top_half
-        max_center = route_dx - _PAD_CLEARANCE - top_half
-        desired_center = float(obstacle.x_fraction) * route_dx
-        if max_center < min_center:
+        top_width = float(obstacle.top_width)
+        support_x1 = route_dx - max(_PAD_CLEARANCE, float(obstacle.target_offset))
+        support_x0 = support_x1 - top_width
+        min_support_x0 = _PAD_CLEARANCE
+        if support_x0 < min_support_x0:
+            shift = min_support_x0 - support_x0
+            support_x0 += shift
+            support_x1 += shift
+        max_support_x1 = route_dx - _PAD_CLEARANCE
+        if support_x1 > max_support_x1:
+            shift = support_x1 - max_support_x1
+            support_x0 -= shift
+            support_x1 -= shift
+        if support_x0 >= support_x1:
             center_x = 0.5 * route_dx
-        else:
-            center_x = min(max(desired_center, min_center), max_center)
-        top_x0 = center_x - top_half
-        top_x1 = center_x + top_half
+            support_x0 = center_x - 0.5 * top_width
+            support_x1 = center_x + 0.5 * top_width
+        top_x0 = support_x0
+        top_x1 = support_x1
+        center_x = 0.5 * (top_x0 + top_x1)
         plateau_y = route_dy + abs(float(obstacle.height_offset))
         profile_points = (
             (0.0, 0.0),
