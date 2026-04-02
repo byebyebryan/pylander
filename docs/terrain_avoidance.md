@@ -127,6 +127,293 @@ Observed constraints:
 
 The missing piece is not visualization infrastructure; it is the terrain-aware data and planning model behind those visuals.
 
+## Prototype findings
+
+An unmerged reactive-terrain prototype was explored after the level/catalog redesign.
+
+It should be treated as research, not as a hidden implementation to resume blindly.
+
+### What changed in the prototype
+
+The prototype added a bot-side terrain guard around `pdg` with four main pieces:
+
+- setup-time terrain/target context injected into the bot
+- a shared `pdg_terrain` helper that evaluated short-horizon terrain threats
+- a pre-controller stage override hook
+- a post-action terrain guard plus terrain-specific telemetry / plot markers
+
+The threat model used:
+
+- a passive ballistic probe
+- a hold-current-acceleration probe
+- short-horizon terrain intercept prediction
+- simple hazard classification (`clearance` vs `containment`, and later scenario-driver-specific behavior)
+
+This was a reasonable first architecture pass. It identified the right high-level hook points:
+
+- setup-time environment injection
+- threat evaluation before stage routing
+- post-controller action arbitration
+- explicit terrain telemetry in traces and plots
+
+### What worked
+
+`containment_backstop` was the strongest case.
+
+Why it worked:
+
+- it naturally fits a short-horizon execution guardrail
+- the nominal route remains valid
+- the terrain problem is "do not continue outward into the wall" rather than "invent a new route"
+- a terminal-side braking / containment bias is a natural response
+
+The prototype also proved that terrain observability itself is valuable:
+
+- terrain threat markers made scenario failures much easier to reason about
+- separating setup-time terrain access from per-frame sensors was the right API boundary
+
+### What did not work
+
+`descent_clip` and `terrain_follow` did not settle under the same reactive model.
+
+Observed failure modes:
+
+- a generic "impending collision" probe is a poor model for `terrain_follow`
+- generic thrust-floor / upright-bias responses are too weak or too ambiguous for `descent_clip`
+- some early "successful" `clip` runs only worked by making `boost` own the shoulder, which is directionally wrong for this scenario family
+
+The important lesson:
+
+- `backstop` is a true reactive containment case
+- `clip` is not just "another clearance event"
+- `follow` is not primarily an imminent-collision problem at all
+
+### What was directionally wrong
+
+The prototype drifted into a bad shortcut for `clip`:
+
+- `boost` stayed active until the post-cut ballistic path cleared the shoulder
+- this solved the scenario numerically in some versions
+- but it changed scenario ownership from terminal/coast-side reactive handling into boost-side terrain planning
+
+That is not the behavior we want `clip` to represent.
+
+The prototype also over-relied on "collision soon" as the core signal for `follow`.
+
+That is the wrong abstraction for climb terrain-follow. The problem is not simply "will I hit terrain soon?" It is "am I still inside a safe terrain-relative corridor while pursuing the same climb objective?"
+
+### Current interpretation of the results
+
+The bot-side prototype should not be resumed as-is.
+
+What it proved:
+
+- the infrastructure boundary is sound
+- the terrain scenarios are useful
+- `backstop` is a good first reactive behavior target
+
+What it did not prove:
+
+- that one generic reactive terrain guard can solve all three v1 terrain cases
+- that `clip` and `follow` are purely post-plan collision-avoidance problems
+
+### Strategy change
+
+The next design pass should treat the three terrain cases as different control problems:
+
+- `containment_backstop`
+  - terminal-side containment / braking
+  - this is the best first true reactive implementation target
+- `descent_clip`
+  - descent corridor protection
+  - this should only be considered reactive if the nominal handoff is already terrain-safe
+- `terrain_follow`
+  - terrain-relative corridor tracking
+  - this likely needs a clearance-margin or corridor model, not just intercept prediction
+
+Most importantly:
+
+- reactive terrain handling should guard a terrain-safe nominal strategy
+- it should not substitute for missing terrain-aware route choice
+
+Useful simplification: narrow reactive behavior into small scenario-aligned primitives instead of one generic guard:
+
+- `containment_backstop`
+  - mostly lateral containment / braking
+- `descent_clip`
+  - mostly descent veto / descent-floor behavior
+- `terrain_follow`
+  - mostly terrain-clearance floor / terrain-margin tracking
+
+This is simpler than a universal terrain guard and more faithful than trying to force every reactive case into a lateral-only response.
+
+Implication:
+
+- `backstop` can likely be implemented as a standalone reactive guard
+- `clip` and `follow` may require some amount of nominal terrain-aware boost / handoff shaping before a reactive layer makes sense
+
+### Recommended next steps
+
+Do not restart with "generic terrain guard for all scenarios."
+
+Instead:
+
+1. Keep the committed terrain/environment scaffolding as the base.
+2. Reintroduce terrain behavior one scenario family at a time.
+3. Start with `backstop` only.
+4. Add scenario-specific instrumentation before trying to tune control behavior again:
+   - `backstop`: corridor exit, outward velocity, wall intercept time, overshoot distance
+   - `clip`: first descent-arc / shoulder intersection, descent start position, time from handoff to shoulder intrusion
+   - `follow`: minimum terrain clearance across the follow span, time below clearance floor, peak clearance deficit
+5. Run an explicit feasibility check for `clip`:
+   - if a normal boost/handoff can still leave a terrain-safe descent corridor and only local descent delay is required, keep it reactive
+   - if not, redesign the scenario or move it out of reactive v1
+6. Treat `follow` as a boost execution primitive:
+   - terrain-relative clearance-margin keeping
+   - not a late terminal collision guard
+7. Only after these behaviors make sense separately should they be generalized into a shared terrain layer again.
+
+More concrete ownership guidance for the next attempt:
+
+- `containment_backstop`
+  - first implementation target
+  - terminal-side containment / braking primitive
+  - best candidate for a divert-feasibility check layered onto the existing terminal gate
+- `descent_clip`
+  - keep only if feasibility analysis confirms it is truly a local descent-corridor problem
+  - otherwise move it out of reactive v1 instead of forcing the bot to fake it
+- `terrain_follow`
+  - boost-phase terrain-margin primitive
+  - preserve the same climb objective while keeping clearance over the terrain-follow segment
+
+Implementation bias for the next pass:
+
+- do not start with a new generic terrain controller
+- add a lightweight terrain-feasibility margin beside the existing terminal gate
+- use that first for `backstop` only
+- keep the runtime probe on a fixed sampling budget and out of `BOOST`
+- do not let terrain instrumentation expand the hot path on non-terrain runs
+- treat `clip` and `follow` as follow-on problems after `backstop` is shown to work cleanly
+
+Updated lesson from the first `backstop` divert prototype:
+
+- the right safety question is not "does the passive arc directly hit the wall?"
+- the right safety question is "can terminal still recover back inside the safe corridor before wall-side terrain becomes binding?"
+
+So the next `backstop` pass should use a corridor-recoverability trigger, not a direct wall-penetration trigger.
+
+Additional lesson from the trace review:
+
+- exact corridor exhaustion is also too late
+
+### Updated backstop status
+
+The current `backstop` prototype now has a cleaner generic shape:
+
+- target-side terrain is summarized once at setup
+- lateral containment only considers terrain that looks like a barrier, not just any rise beyond target
+- the useful generic boundary test is:
+  - steep initial rise
+  - followed by a flat or nearly flat tail
+- runtime arming exits immediately when neither side of target matches that containment shape
+
+This matters because the earlier generic pass falsely armed on normal uphill pads:
+
+- ordinary `boost:climb:*` target-side terrain can be steep near the pad
+- but it keeps rising afterward, so it is not a `backstop`
+- once the runtime prefilter required a barrier-like tail, false normal-run probes dropped back to zero
+
+Current practical status:
+
+- `terrain:flat:far:backstop:half` is solved
+- normal quick-pack behavior is unchanged
+- normal quick-pack probe count is zero outside the actual backstop case
+- normal quick-pack compute is back near baseline
+
+So the current recommendation stands:
+
+- keep `backstop` as the only active containment response
+- keep generic geometry-based arming
+- do not widen to `clip` or `follow` until they have their own control primitives
+
+For the failed `backstop` seeds, a max-braking stop-distance margin stays positive until the final seconds and only goes negative essentially at impact.
+
+So the next containment trigger should arm on a shrinking positive recoverability buffer, not only when the state is already mathematically unrecoverable.
+
+That also implies the response should be a real temporary containment mode in terminal:
+
+- stronger inward braking authority
+- temporary descent suppression while wall-side containment is unresolved
+- release once outward velocity and corridor buffer recover
+
+Updated lesson from the next `backstop` pass:
+
+- a blended recoverability-buffer trigger still did not separate the good and bad seeds cleanly enough
+- projected corridor overshoot at target-height crossing separated them better
+- the working shape was:
+  - keep moderate overshoot seeds on `latest_safe`
+  - move only the worse overshoot seeds into `terrain_divert`
+  - use an explicit temporary terminal containment override after that handoff
+
+So the current best `backstop` strategy is:
+
+- gate on projected corridor overshoot
+- keep ownership in `COAST` / `TERMINAL`
+- once armed, use a dedicated terminal containment mode instead of a small additive bias
+
+Current review note:
+
+- the resulting containment arc can still run visibly close to the wall
+- that is expected under this trigger, because the controller is protecting corridor re-entry, not trying to maximize raw wall clearance
+- so "close to the wall" by itself is not the main failure signal for this pass
+- the more important question is whether the maneuver stays within an acceptable reactive envelope instead of turning into a new route class
+
+### Implementation pass: summary-based generic arming (2026-04)
+
+The current bot-side terrain pass removes scenario metadata from the runtime trigger path, but it does not try to solve every terrain family with one response.
+
+Architecture:
+
+- **Setup-time terrain summary** (`BotEnvironment.terrain_summary`):
+  - target ground height
+  - first elevated boundary to the left/right of target above a fixed local threshold
+- **Cheap runtime arming** (`evaluate_terrain_divert_probe`):
+  - no ballistic terrain sampling in the hot path
+  - uses projected landing side, precomputed corridor boundary, projected corridor overshoot, and outward velocity
+  - currently only arms a `lateral_containment` response
+- **Containment override** (`backstop_containment_override`):
+  - terminal-only
+  - active only after the terminal gate explicitly enters `terrain_divert`
+  - brakes inward relative to the target-side elevated boundary while keeping enough vertical support to stay recoverable
+
+Key findings from this pass:
+
+1. **Terrain-derived boundaries are the right generic primitive for containment.**
+   The useful geometry is "where does terrain first rise past the target corridor?", not "does this scenario declare a wall?"
+
+2. **A cheap generic guard can be separated from the response law.**
+   The runtime trigger can be generic and terrain-derived while the active response is still just the containment primitive. This avoids hardcoding specific selector names while still admitting different later responses for `clip` and `follow`.
+
+3. **The current containment response is still stronger than a minimal guardrail.**
+   It lands `backstop` reliably, but the resulting terminal arc is still materially larger than the baseline route. That remains a quality question, not a correctness question.
+
+4. **The broad always-on trajectory-sampling probe was a bad shape.**
+   Replacing it with setup-time summaries plus O(1) corridor arming kept `backstop` solved while restoring exact behavioral isolation on the normal quick pack.
+
+5. **Compute is improved from the earlier generic probe, but not yet where it should be.**
+   The current summary-based path is much cheaper than the sampling version, but the normal quick pack still shows a measurable compute regression. More prefiltering is still needed before calling this done.
+
+### Acceptance criteria for the next attempt
+
+Do not judge the next prototype by raw success rate alone.
+
+Also require:
+
+- no route-class changes for scenarios meant to be reactive-only
+- bounded reference-gap or equivalent route-deviation metrics
+- clear agreement between scenario ownership and controller ownership
+- scenario-specific reasoning in traces and plots so "why it passed" is visible
+
 ## Bot terrain API
 
 ### Design direction

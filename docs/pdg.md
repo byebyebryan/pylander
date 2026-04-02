@@ -75,6 +75,7 @@ Each frame:
 
 1. update stage tracking (`boost`, `coast`, `terminal`, `touchdown`),
 2. if in `coast`, hold passive retrograde attitude and evaluate a cheap analytic terminal gate,
+   optionally extended by a terrain-feasibility probe on terrain-aware scenarios,
 3. otherwise replan on schedule or state-deviation trigger,
 4. track plan between replans,
 5. allocate acceleration to thrust+angle with tilt/rate limits,
@@ -132,8 +133,12 @@ Terminal tilt is now recoverability-based instead of a single fixed cap:
     state to indicate coast entry rather than post-burn boost completion
 - bot-owned terminal handoff: `bot_pdg_terminal_entry_done`, `bot_pdg_terminal_entry_time`, `bot_pdg_terminal_entry_altitude`, `bot_pdg_terminal_entry_projected_dx`
 - bot-owned terminal-gate diagnostics: `bot_pdg_terminal_gate_mode`, `bot_pdg_terminal_gate_horizon_s`, `bot_pdg_terminal_gate_terminal_speed`, `bot_pdg_terminal_gate_peak_accel_ratio`, `bot_pdg_terminal_gate_od_excess_s`, `bot_pdg_terminal_gate_latest_safe_margin_s`, `bot_pdg_terminal_gate_required_accel_ratio`
-  - `terminal_gate_mode` is `nominal_ready` or `latest_safe`
+  - `terminal_gate_mode` is `nominal_ready`, `latest_safe`, or `terrain_divert`
   - `terminal_gate_horizon_s` is the chosen analytic burn-duration estimate
+  - on terrain-aware scenarios, `terrain_divert` means the target-side gate was still deferrable but terrain recoverability was not
+- bot-owned terrain-divert diagnostics: `bot_pdg_terrain_divert_mode`, `bot_pdg_terrain_divert_margin_min`, `bot_pdg_terrain_divert_first_limit_t`, `bot_pdg_terrain_divert_worst_x`, `bot_pdg_terrain_divert_horizon_s`, `bot_pdg_terrain_divert_sample_count`
+  - v1 only uses this path for target-side `backstop` containment
+  - when `terrain_divert_mode=lateral_containment`, terminal commands add a narrow inward lateral bias against wall-side overshoot while keeping the same landing target
 - bot-owned compute/fallback: `bot_pdg_solve_count`, `bot_pdg_solve_ms_mean`, `bot_pdg_solve_ms_p90`, `bot_pdg_fallback_frames`
 - bot-owned shape quality: `bot_pdg_shape_apex_error`, `bot_pdg_shape_curve_rmse`, `bot_pdg_shape_projected_dx_abs_mean`, `bot_pdg_shape_projected_dx_abs_max`, `bot_pdg_shape_shortfall_ratio`
 

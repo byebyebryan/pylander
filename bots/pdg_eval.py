@@ -80,6 +80,13 @@ def reset_evaluation_state(
     state._terminal_gate_od_excess_s = None
     state._terminal_gate_latest_safe_margin_s = None
     state._terminal_gate_required_accel_ratio = None
+    state._terrain_divert_mode = None
+    state._terrain_divert_margin_min = None
+    state._terrain_divert_first_limit_t = None
+    state._terrain_divert_worst_x = None
+    state._terrain_divert_worst_y = None
+    state._terrain_divert_horizon_s = None
+    state._terrain_divert_sample_count = 0
     state._last_projection_dx = None
     state._last_projection_t_fall = None
     state._last_projection_has_target_y = False
@@ -135,6 +142,18 @@ def build_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | None]
         "terminal_gate_od_excess_s": state._terminal_gate_od_excess_s,
         "terminal_gate_latest_safe_margin_s": state._terminal_gate_latest_safe_margin_s,
         "terminal_gate_required_accel_ratio": state._terminal_gate_required_accel_ratio,
+        "terrain_divert_mode": getattr(state, "_terrain_divert_mode", None),
+        "terrain_divert_margin_min": getattr(
+            state, "_terrain_divert_margin_min", None
+        ),
+        "terrain_divert_first_limit_t": getattr(
+            state, "_terrain_divert_first_limit_t", None
+        ),
+        "terrain_divert_worst_x": getattr(state, "_terrain_divert_worst_x", None),
+        "terrain_divert_horizon_s": getattr(state, "_terrain_divert_horizon_s", None),
+        "terrain_divert_sample_count": getattr(
+            state, "_terrain_divert_sample_count", 0
+        ),
         "fallback_frames": bot._fallback_frames,
         "boost_quality_verdict": state._boost_cutoff_quality_verdict
         or state._boost_quality_verdict,

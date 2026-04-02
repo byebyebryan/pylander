@@ -152,6 +152,13 @@ class PDGState:
     _terminal_gate_od_excess_s: float | None = None
     _terminal_gate_latest_safe_margin_s: float | None = None
     _terminal_gate_required_accel_ratio: float | None = None
+    _terrain_divert_mode: str | None = None
+    _terrain_divert_margin_min: float | None = None
+    _terrain_divert_first_limit_t: float | None = None
+    _terrain_divert_worst_x: float | None = None
+    _terrain_divert_worst_y: float | None = None
+    _terrain_divert_horizon_s: float | None = None
+    _terrain_divert_sample_count: int = 0
     _last_projection_dx: float | None = None
     _last_projection_t_fall: float | None = None
     _last_projection_has_target_y: bool = False
@@ -1842,9 +1849,12 @@ class PDGBot(Bot):
         if state._terminal_entry_done:
             label = "terminal"
             if state._terminal_gate_mode:
-                mode_label = (
-                    "ready" if state._terminal_gate_mode == "nominal_ready" else "late"
-                )
+                if state._terminal_gate_mode == "nominal_ready":
+                    mode_label = "ready"
+                elif state._terminal_gate_mode == "terrain_divert":
+                    mode_label = "terrain"
+                else:
+                    mode_label = "late"
                 label = f"{label} {mode_label}"
             if state._terminal_entry_projected_dx is not None:
                 label = (
@@ -1864,6 +1874,31 @@ class PDGBot(Bot):
                     label=label,
                     x=state._terminal_entry_x,
                     y=state._terminal_entry_y,
+                    metadata=metadata,
+                )
+            )
+        if (
+            state._terrain_divert_mode is not None
+            and state._terrain_divert_worst_x is not None
+            and self.environment is not None
+        ):
+            terrain_y = self.environment.terrain.sample_height(
+                float(state._terrain_divert_worst_x),
+                lod=0,
+            )
+            metadata: dict[str, float | str | None] = {
+                "mode": state._terrain_divert_mode,
+                "margin": state._terrain_divert_margin_min,
+                "limit_t": state._terrain_divert_first_limit_t,
+                "horizon_s": state._terrain_divert_horizon_s,
+            }
+            out.append(
+                PlotMarker(
+                    id="terrain_divert",
+                    name="terrain_divert",
+                    label="terrain divert",
+                    x=state._terrain_divert_worst_x,
+                    y=terrain_y,
                     metadata=metadata,
                 )
             )

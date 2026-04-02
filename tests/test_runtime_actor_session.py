@@ -18,9 +18,11 @@ from core.components import (
 )
 from core.ecs import Entity, World
 from core.engine_adapter import EngineAdapter
+from core.maths import Vector2
 from runtime.actor_session import (
     active_actor_bot,
     attach_primary_bot,
+    build_bot_environment,
     find_initial_player_actor_uid,
     set_active_actor,
     switch_active_actor,
@@ -85,6 +87,39 @@ def _make_level() -> SimpleNamespace:
         terrain=_Terrain(),
         sites=_Sites(),
         _scenario_params={"hazard_driver": "demo_driver", "obstacle_support_x0": 88.0},
+        ensure_runtime_context=lambda: runtime_context,
+    )
+
+
+def _make_backstop_level() -> SimpleNamespace:
+    class _Terrain:
+        def __call__(self, x: float, lod: int = 0) -> float:
+            _ = lod
+            x = float(x)
+            if x < 160.0:
+                return 0.0
+            if x < 180.0:
+                return (x - 160.0) * 13.0
+            return 260.0
+
+        def get_resolution(self, lod: int = 0) -> float:
+            _ = lod
+            return 2.0
+
+    class _Sites:
+        def get_sites(self, _range: object) -> list[SimpleNamespace]:
+            return [SimpleNamespace(uid="target", x=120.0, y=0.0, size=110.0)]
+
+    runtime_context = SimpleNamespace(
+        level_name="terrain",
+        public_scenario_name="terrain:flat:far:backstop:half",
+        scenario_name="terrain:flat:far:backstop:half",
+        eval_target_pos=None,
+    )
+    return SimpleNamespace(
+        terrain=_Terrain(),
+        sites=_Sites(),
+        _scenario_params={"hazard_driver": "containment_backstop"},
         ensure_runtime_context=lambda: runtime_context,
     )
 
@@ -184,6 +219,9 @@ def test_attach_primary_bot_prefers_actor_with_bot_role() -> None:
     assert bot.environment is not None
     assert bot.environment.target is not None
     assert bot.environment.target.uid == "target"
+    assert bot.environment.terrain_summary is not None
+    assert bot.environment.terrain_summary.left_boundary is None
+    assert bot.environment.terrain_summary.right_boundary is None
     assert bot.environment.scenario_params == {
         "hazard_driver": "demo_driver",
         "obstacle_support_x0": 88.0,
@@ -216,3 +254,22 @@ def test_attach_primary_bot_falls_back_to_non_active_actor() -> None:
     )
 
     assert actor_bots == {"escort": bot}
+
+
+def test_build_bot_environment_precomputes_target_side_terrain_boundaries() -> None:
+    actor = _make_actor("bot")
+    actor.get_component(Transform).pos.x = 0.0
+    actor.start_pos = Vector2(0.0, 0.0)
+
+    environment = build_bot_environment(level=_make_backstop_level(), actor=actor)
+
+    assert environment is not None
+    assert environment.target is not None
+    assert environment.terrain_summary is not None
+    assert environment.terrain_summary.target_ground_y == 0.0
+    assert environment.terrain_summary.left_boundary is None
+    assert environment.terrain_summary.right_boundary is not None
+    assert environment.terrain_summary.right_boundary.direction == 1
+    assert environment.terrain_summary.right_boundary.x == 164.0
+    assert environment.terrain_summary.right_boundary.steepness > 5.0
+    assert environment.terrain_summary.right_boundary.tail_steepness == 0.0
