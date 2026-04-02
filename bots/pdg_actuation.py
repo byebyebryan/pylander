@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 
 from bots.common_math import clamp, rate_limit_angle_command
+from bots.pdg_terrain_divert import backstop_containment_override
 from core.bot import BotAction, Sensors
 from core.config import GRAVITY
 
@@ -113,6 +114,24 @@ def command_from_plan(
         a_x = clamp(a_x, -tilt_tan * max(0.2, a_y), tilt_tan * max(0.2, a_y))
 
     runtime_state = bot.state
+    if (
+        runtime_state._active_phase == "terminal"
+        and runtime_state._terminal_gate_mode == "terrain_divert"
+        and getattr(getattr(bot, "environment", None), "terrain", None) is not None
+    ):
+        containment_override = backstop_containment_override(
+            bot,
+            passive=passive,
+            projected_dx=projected_dx,
+            max_thrust_accel=max_thrust_accel,
+        )
+        if containment_override is not None:
+            override_ax, override_ay = containment_override
+            if override_ax < 0.0:
+                a_x = min(a_x, override_ax)
+            else:
+                a_x = max(a_x, override_ax)
+            a_y = max(a_y, override_ay)
     max_tilt_now = bot._resolve_max_tilt(
         alt,
         dx,

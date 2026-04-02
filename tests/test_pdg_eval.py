@@ -56,6 +56,12 @@ class _Bot:
         self._terminal_gate_od_excess_s = None
         self._terminal_gate_latest_safe_margin_s = -0.25
         self._terminal_gate_required_accel_ratio = 0.5
+        self._terrain_divert_mode = "lateral_containment"
+        self._terrain_divert_margin_min = -3.5
+        self._terrain_divert_first_limit_t = 1.25
+        self._terrain_divert_worst_x = 242.0
+        self._terrain_divert_horizon_s = 3.0
+        self._terrain_divert_sample_count = 10
         self._fallback_frames = 1
         self._last_projection_dx = 3.0
         self._last_projection_t_fall = 2.0
@@ -131,6 +137,13 @@ class _Bot:
             _terminal_gate_od_excess_s=self._terminal_gate_od_excess_s,
             _terminal_gate_latest_safe_margin_s=self._terminal_gate_latest_safe_margin_s,
             _terminal_gate_required_accel_ratio=self._terminal_gate_required_accel_ratio,
+            _terrain_divert_mode=self._terrain_divert_mode,
+            _terrain_divert_margin_min=self._terrain_divert_margin_min,
+            _terrain_divert_first_limit_t=self._terrain_divert_first_limit_t,
+            _terrain_divert_worst_x=self._terrain_divert_worst_x,
+            _terrain_divert_worst_y=None,
+            _terrain_divert_horizon_s=self._terrain_divert_horizon_s,
+            _terrain_divert_sample_count=self._terrain_divert_sample_count,
             _last_projection_dx=self._last_projection_dx,
             _last_projection_t_fall=self._last_projection_t_fall,
             _last_projection_has_target_y=self._last_projection_has_target_y,
@@ -314,6 +327,13 @@ def test_build_evaluation_snapshot_prefers_explicit_state_container() -> None:
         _terminal_gate_od_excess_s=None,
         _terminal_gate_latest_safe_margin_s=0.4,
         _terminal_gate_required_accel_ratio=0.33,
+        _terrain_divert_mode="lateral_containment",
+        _terrain_divert_margin_min=-2.5,
+        _terrain_divert_first_limit_t=0.75,
+        _terrain_divert_worst_x=236.0,
+        _terrain_divert_worst_y=None,
+        _terrain_divert_horizon_s=3.5,
+        _terrain_divert_sample_count=12,
     )
 
     snapshot = build_evaluation_snapshot(bot)
@@ -326,6 +346,11 @@ def test_build_evaluation_snapshot_prefers_explicit_state_container() -> None:
     assert snapshot["terminal_post_entry_peak_abs_dx"] == 18.0
     assert snapshot["terminal_probe_count"] == 4
     assert snapshot["terminal_gate_mode"] == "nominal_ready"
+    assert snapshot["terrain_divert_mode"] == "lateral_containment"
+    assert snapshot["terrain_divert_margin_min"] == -2.5
+    assert snapshot["terrain_divert_first_limit_t"] == 0.75
+    assert snapshot["terrain_divert_worst_x"] == 236.0
+    assert snapshot["terrain_divert_sample_count"] == 12
     assert snapshot["boost_quality_verdict"] == "pass"
     assert snapshot["shape_apex_error"] == 8.0
     assert snapshot["shape_projected_dx_abs_max"] == 42.0
@@ -419,6 +444,13 @@ def test_reset_evaluation_state_prefers_explicit_runtime_state_container() -> No
         _terminal_gate_od_excess_s=None,
         _terminal_gate_latest_safe_margin_s=None,
         _terminal_gate_required_accel_ratio=None,
+        _terrain_divert_mode=None,
+        _terrain_divert_margin_min=None,
+        _terrain_divert_first_limit_t=None,
+        _terrain_divert_worst_x=None,
+        _terrain_divert_worst_y=None,
+        _terrain_divert_horizon_s=None,
+        _terrain_divert_sample_count=0,
         _shape_apex_actual_over_target=0.0,
         _shape_apex_target_over_target=0.0,
         _shape_projected_dx_abs_max=0.0,

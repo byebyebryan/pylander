@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, replace
+import time
+from dataclasses import dataclass, field, replace
 
 from bots.common_ballistics import (
     BallisticProjection,
     estimate_ground_time_to_impact,
     estimate_target_y_projection,
+)
+from bots.pdg_terrain_divert import (
+    TerrainDivertPrefilter,
+    TerrainDivertProbe,
+    evaluate_terrain_divert_probe,
+    prefilter_terrain_divert,
 )
 from core.bot import Sensors
 from core.config import GRAVITY
@@ -45,6 +52,9 @@ class TerminalGateEvaluation:
     nominal_ready_ticks: int
     state_ready_ticks: int
     required_accel_ratio: float
+    terrain_divert: TerrainDivertProbe = field(
+        default_factory=lambda: TerrainDivertProbe(active=False)
+    )
 
 
 def _required_control_accel(
@@ -411,6 +421,7 @@ def _evaluate_terminal_gate_core(
         nominal_ready_ticks=nominal_ready_ticks,
         state_ready_ticks=state_ready_ticks,
         required_accel_ratio=required_accel_ratio,
+        terrain_divert=TerrainDivertProbe(active=False),
     )
 
 
@@ -571,6 +582,58 @@ def evaluate_terminal_gate(
     state._terminal_gate_ready_ticks = evaluation.state_ready_ticks
     state._terminal_gate_required_accel_ratio = evaluation.required_accel_ratio
     state._terminal_gate_latest_safe_margin_s = evaluation.latest_safe_state.margin_s
+    state._terrain_divert_mode = None
+    state._terrain_divert_margin_min = None
+    state._terrain_divert_first_limit_t = None
+    state._terrain_divert_worst_x = None
+    state._terrain_divert_worst_y = None
+    state._terrain_divert_horizon_s = None
+    state._terrain_divert_sample_count = 0
+
+    terrain_divert_prefilter: TerrainDivertPrefilter | None = None
+    if evaluation.decision is None or evaluation.decision.mode == "latest_safe":
+        terrain_divert_prefilter = prefilter_terrain_divert(
+            bot,
+            passive=passive,
+            projected_dx=projected_dx,
+        )
+        if terrain_divert_prefilter.should_probe:
+            probe_start = time.perf_counter()
+            terrain_divert = evaluate_terrain_divert_probe(
+                bot,
+                passive=passive,
+                projected_dx=projected_dx,
+                max_thrust_accel=max_thrust_accel,
+            )
+            probe_ms = (time.perf_counter() - probe_start) * 1000.0
+            state._terminal_probe_count += 1
+            state._terminal_probe_ms_sum += probe_ms
+            state._terminal_probe_ms_samples.append(probe_ms)
+            state._terrain_divert_mode = terrain_divert.mode
+            state._terrain_divert_margin_min = terrain_divert.min_margin
+            state._terrain_divert_first_limit_t = terrain_divert.first_limit_t
+            state._terrain_divert_worst_x = terrain_divert.worst_x
+            state._terrain_divert_worst_y = terrain_divert.worst_y
+            state._terrain_divert_horizon_s = terrain_divert.horizon_s
+            state._terrain_divert_sample_count = terrain_divert.sample_count
+            if (
+                terrain_divert.active
+                and terrain_divert.min_margin is not None
+                and float(terrain_divert.min_margin)
+                <= float(bot._cfg.terrain_divert_trigger_margin)
+            ):
+                evaluation = replace(
+                    evaluation,
+                    decision=TerminalGateDecision(
+                        mode="terrain_divert",
+                        burn_time_s=evaluation.latest_safe_state.best_candidate.burn_time_s,
+                        latest_safe_margin_s=evaluation.latest_safe_state.margin_s,
+                        required_accel_ratio=evaluation.latest_safe_state.best_candidate.required_accel_ratio,
+                    ),
+                    state_ready_ticks=0,
+                    required_accel_ratio=evaluation.latest_safe_state.best_candidate.required_accel_ratio,
+                    terrain_divert=terrain_divert,
+                )
 
     if (
         evaluation.decision is not None

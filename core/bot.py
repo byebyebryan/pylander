@@ -68,12 +68,34 @@ class BotTarget:
 
 
 @dataclass(frozen=True)
+class TerrainBoundary:
+    """First elevated terrain boundary on one side of the target corridor."""
+
+    direction: int
+    x: float
+    height: float
+    steepness: float = 0.0
+    tail_steepness: float = 0.0
+
+
+@dataclass(frozen=True)
+class BotTerrainSummary:
+    """Precomputed terrain summary around the primary target."""
+
+    target_ground_y: float
+    height_threshold: float
+    left_boundary: TerrainBoundary | None = None
+    right_boundary: TerrainBoundary | None = None
+
+
+@dataclass(frozen=True)
 class BotEnvironment:
     """Read-only environment shared with the bot once per run."""
 
     terrain: TerrainQuery
     gravity_mag: float
     target: BotTarget | None = None
+    terrain_summary: BotTerrainSummary | None = None
     level_name: str | None = None
     scenario_name: str | None = None
     scenario_params: dict[str, float | int | str | bool] | None = None
