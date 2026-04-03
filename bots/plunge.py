@@ -21,7 +21,10 @@ from bots.common_math import (
 )
 from bots.common_targeting import pick_target
 from core.bot import Bot, BotAction, BotDisplayState, Sensors
+from core.config import GRAVITY
 from core.sensor import RadarContact
+
+_GRAVITY_MAG = abs(float(GRAVITY))
 
 
 @dataclass(frozen=True)
@@ -129,7 +132,7 @@ class PlungeBot(Bot):
             vy_err = vy_sp - passive.vy_up
             # Keep correction burns thrust-backed without drifting into hover.
             a_up_cmd = 7.2 + (0.2 * vy_err)
-            max_up_cmd = 9.8 if alt < 14.0 else 9.25
+            max_up_cmd = _GRAVITY_MAG if alt < 14.0 else max(0.0, _GRAVITY_MAG - 0.55)
             return clamp(a_up_cmd, 4.8, max_up_cmd)
         if vertical_mode == "terminal_burn":
             brake_gain = (
@@ -137,13 +140,13 @@ class PlungeBot(Bot):
                 if alt > 8.0
                 else self._policy.terminal_brake_gain_low_alt
             )
-            a_up_cmd = 9.8 + (brake_gain * up_acc_max)
+            a_up_cmd = _GRAVITY_MAG + (brake_gain * up_acc_max)
             if passive.vy_up > -0.7:
-                a_up_cmd = min(a_up_cmd, 9.8 + (0.45 * up_acc_max))
+                a_up_cmd = min(a_up_cmd, _GRAVITY_MAG + (0.45 * up_acc_max))
             return a_up_cmd
 
         vy_err = vy_sp - passive.vy_up
-        a_up_cmd = 9.8 + (0.38 * vy_err)
+        a_up_cmd = _GRAVITY_MAG + (0.38 * vy_err)
         if alt < 7.0:
             a_up_cmd += 0.08
         if alt < 3.0 and passive.vy_up > -0.45:
@@ -229,7 +232,9 @@ class PlungeBot(Bot):
             1e-3,
             ramp_up,
         )
-        spool_distance = (down_speed * spool_time) + (4.9 * spool_time * spool_time)
+        spool_distance = (down_speed * spool_time) + (
+            0.5 * _GRAVITY_MAG * spool_time * spool_time
+        )
         flare_speed = clamp(0.45 + (0.11 * alt), 0.6, 2.2)
         speed_to_kill = max(0.0, down_speed - flare_speed)
         stop_distance = (speed_to_kill * speed_to_kill) / (2.0 * max(1e-3, up_acc_max))

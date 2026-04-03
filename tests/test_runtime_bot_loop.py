@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from core.bot import Bot, BotAction, Sensors
 from game import LanderGame
 from levels import create_level as create_level_by_name
@@ -73,3 +75,26 @@ def test_bot_profiler_emits_total_and_percentiles() -> None:
         result["bot_profile_update_ms_per_tick_p90"]
     )
     assert lines == []
+
+
+def test_bot_profiler_caps_sample_history() -> None:
+    profiler = BotLoopProfiler(
+        enabled=True,
+        interval_s=1.0,
+        next_report_s=1.0,
+        log_lines=False,
+        sample_cap=4,
+    )
+    for idx in range(10):
+        profiler.record_tick("bot-1")
+        profiler.record_tick_costs(
+            "bot-1",
+            passive_s=0.001 * idx,
+            update_s=0.002 * idx,
+        )
+
+    assert len(profiler.total_tick_samples_s) == 4
+    assert len(profiler.update_tick_samples_s) == 4
+    assert list(profiler.update_tick_samples_s) == pytest.approx(
+        [0.012, 0.014, 0.016, 0.018]
+    )

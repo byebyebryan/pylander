@@ -21,7 +21,7 @@ class InputHandler:
           - toggle_ballistic: bool
           - zoom_in, zoom_out (keyboard-based)
           - thrust_up, thrust_down, rot_left, rot_right, refuel
-          - pan_left, pan_right, pan_up, pan_down
+          - pan_left, pan_right, pan_up, pan_down (I/J/K/L)
         """
         signals: dict = {"quit": False, "reset": False, "toggle_ballistic": False}
         # No mouse-based camera control; only handle quit/reset keys here
@@ -50,10 +50,10 @@ class InputHandler:
                 "rot_left": bool(ks[pygame.K_LEFT] or ks[pygame.K_a]),
                 "rot_right": bool(ks[pygame.K_RIGHT] or ks[pygame.K_d]),
                 "refuel": bool(ks[pygame.K_f]),
-                "pan_left": bool(ks[pygame.K_LEFT] or ks[pygame.K_a]),
-                "pan_right": bool(ks[pygame.K_RIGHT] or ks[pygame.K_d]),
-                "pan_up": bool(ks[pygame.K_UP] or ks[pygame.K_w]),
-                "pan_down": bool(ks[pygame.K_DOWN] or ks[pygame.K_s]),
+                "pan_left": bool(ks[pygame.K_j]),
+                "pan_right": bool(ks[pygame.K_l]),
+                "pan_up": bool(ks[pygame.K_i]),
+                "pan_down": bool(ks[pygame.K_k]),
             }
         )
         signals.setdefault("switch_actor", False)

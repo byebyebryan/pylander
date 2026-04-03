@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import deque
+from collections.abc import Iterable
 import math
 import os
 from dataclasses import dataclass, field
@@ -201,10 +203,19 @@ class BotLoopProfiler:
     interval_s: float = 5.0
     next_report_s: float = 5.0
     log_lines: bool = True
+    sample_cap: int = 4096
     total: BotProfileCounter = field(default_factory=BotProfileCounter)
     by_bot: dict[str, BotProfileCounter] = field(default_factory=dict)
-    total_tick_samples_s: list[float] = field(default_factory=list)
-    update_tick_samples_s: list[float] = field(default_factory=list)
+    total_tick_samples_s: deque[float] = field(default_factory=deque)
+    update_tick_samples_s: deque[float] = field(default_factory=deque)
+
+    def __post_init__(self) -> None:
+        cap = max(1, int(self.sample_cap))
+        self.sample_cap = cap
+        if self.total_tick_samples_s.maxlen != cap:
+            self.total_tick_samples_s = deque(self.total_tick_samples_s, maxlen=cap)
+        if self.update_tick_samples_s.maxlen != cap:
+            self.update_tick_samples_s = deque(self.update_tick_samples_s, maxlen=cap)
 
     @staticmethod
     def _env_true(name: str) -> bool:
@@ -296,7 +307,7 @@ class BotLoopProfiler:
         return 1000.0 * seconds / max(1, ticks)
 
     @staticmethod
-    def _percentile_ms(samples_s: list[float], q: float) -> float:
+    def _percentile_ms(samples_s: Iterable[float], q: float) -> float:
         if not samples_s:
             return 0.0
         vals = sorted(float(max(0.0, x)) for x in samples_s)
