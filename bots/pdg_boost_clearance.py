@@ -43,6 +43,44 @@ def _body_clearance(bot) -> float:
     return max(0.0, (0.5 * float(vehicle_info.height)) + body_margin)
 
 
+def _targetward_half_width(bot) -> float:
+    vehicle_info = getattr(bot, "vehicle_info", None)
+    if vehicle_info is None:
+        return 0.0
+    width = float(
+        getattr(vehicle_info, "width", getattr(vehicle_info, "height", 0.0)) or 0.0
+    )
+    return max(0.0, 0.5 * width)
+
+
+def _targetward_terrain_height(
+    terrain,
+    *,
+    sample_x: float,
+    direction: float,
+    half_width: float,
+) -> tuple[float, float]:
+    worst_x = float(sample_x)
+    worst_y = float(terrain.sample_height(sample_x))
+    if abs(float(direction)) <= 1e-6 or half_width <= 1e-6:
+        return worst_y, worst_x
+
+    resolution = 0.5
+    resolution_fn = getattr(terrain, "resolution", None)
+    if callable(resolution_fn):
+        resolution = max(0.5, float(resolution_fn(lod=0)))
+    sample_count = max(1, int(math.ceil(half_width / resolution)))
+    for idx in range(1, sample_count + 1):
+        probe_x = float(sample_x) + (
+            float(direction) * half_width * (float(idx) / float(sample_count))
+        )
+        probe_y = float(terrain.sample_height(probe_x))
+        if probe_y > worst_y:
+            worst_y = probe_y
+            worst_x = probe_x
+    return worst_y, worst_x
+
+
 def _support_span(bot) -> tuple[float, float] | None:
     params = getattr(getattr(bot, "environment", None), "scenario_params", None) or {}
     support_x0 = params.get("obstacle_support_x0")
@@ -89,6 +127,8 @@ def evaluate_boost_clearance_probe(
     horizon_s = float(cfg.progress_clearance_horizon_s)
     sample_count = max(1, int(cfg.progress_clearance_samples))
     body_clearance = _body_clearance(bot)
+    half_width = _targetward_half_width(bot)
+    direction = 1.0 if float(dx) > 0.0 else -1.0
     terrain = bot.environment.terrain
     min_margin = math.inf
     worst_x: float | None = None
@@ -99,11 +139,16 @@ def evaluate_boost_clearance_probe(
         sample_y = (
             float(passive.y) + (float(passive.vy_up) * t) + (0.5 * accel_y * t * t)
         )
-        terrain_y = float(terrain.sample_height(sample_x))
+        terrain_y, terrain_x = _targetward_terrain_height(
+            terrain,
+            sample_x=sample_x,
+            direction=direction,
+            half_width=half_width,
+        )
         margin = sample_y - terrain_y - body_clearance
         if margin < min_margin:
             min_margin = margin
-            worst_x = float(sample_x)
+            worst_x = float(terrain_x)
             worst_y = float(terrain_y)
 
     threshold = (

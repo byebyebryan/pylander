@@ -63,7 +63,7 @@ class _SourceRiseTerrain:
 
 def _bot() -> Any:
     bot = cast(Any, create_bot("pdg"))
-    bot.vehicle_info = SimpleNamespace(height=20.0)
+    bot.vehicle_info = SimpleNamespace(width=20.0, height=20.0)
     bot.environment = BotEnvironment(
         terrain=_SourceRiseTerrain(),
         gravity_mag=9.8,
@@ -198,6 +198,75 @@ class _FlatSupportTerrain:
         return 2.0
 
 
+class _LeadEdgeTerrain:
+    def sample_height(self, x: float, lod: int = 0) -> float:
+        _ = lod
+        return 20.0 if float(x) >= 105.0 else 0.0
+
+    def sample_slope(self, x: float, lod: int = 0) -> float:
+        _ = x, lod
+        return 0.0
+
+    def profile(
+        self,
+        x0: float,
+        x1: float,
+        *,
+        step: float,
+        lod: int = 0,
+    ) -> list[tuple[float, float]]:
+        _ = lod
+        out: list[tuple[float, float]] = []
+        x = float(x0)
+        while x <= float(x1):
+            out.append((x, self.sample_height(x)))
+            x += max(1.0, float(step))
+        return out
+
+    def resolution(self, lod: int = 0) -> float:
+        _ = lod
+        return 2.0
+
+
+def test_boost_clearance_probe_checks_targetward_footprint() -> None:
+    bot = cast(Any, create_bot("pdg"))
+    bot.apply_config_override(
+        {
+            "progress_clearance_horizon_s": 1.0,
+            "progress_clearance_samples": 1,
+        }
+    )
+    bot.vehicle_info = SimpleNamespace(width=20.0, height=20.0)
+    bot.environment = BotEnvironment(
+        terrain=_LeadEdgeTerrain(),
+        gravity_mag=9.8,
+        target=BotTarget(uid="target", x=800.0, y=0.0, size=110.0),
+        level_name="terrain",
+        scenario_name="terrain:reactive:boost_clearance",
+        scenario_params={
+            "hazard_driver": "progress_clearance",
+            "obstacle_support_x0": 50.0,
+            "obstacle_support_x1": 200.0,
+        },
+    )
+
+    probe = evaluate_boost_clearance_probe(
+        bot,
+        passive=_sensors(x=0.0, y=22.0, vx=100.0, vy_up=0.0),
+        dx=800.0,
+        action=BotAction(target_thrust=0.0, target_angle=0.0, refuel=False),
+        max_power=24000.0,
+        currently_active=False,
+    )
+
+    assert probe.active is True
+    assert probe.min_margin is not None
+    assert probe.min_margin < 0.0
+    assert probe.worst_x is not None
+    assert 105.0 <= probe.worst_x <= 110.0
+    assert probe.worst_y == 20.0
+
+
 def test_boost_clearance_probe_uses_release_margin_when_already_active() -> None:
     bot = cast(Any, create_bot("pdg"))
     bot._cfg = replace(
@@ -205,7 +274,7 @@ def test_boost_clearance_probe_uses_release_margin_when_already_active() -> None
         progress_clearance_trigger_margin=2.0,
         progress_clearance_release_margin=8.0,
     )
-    bot.vehicle_info = SimpleNamespace(height=20.0)
+    bot.vehicle_info = SimpleNamespace(width=20.0, height=20.0)
     bot.environment = BotEnvironment(
         terrain=_FlatSupportTerrain(),
         gravity_mag=9.8,
