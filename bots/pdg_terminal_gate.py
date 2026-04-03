@@ -13,6 +13,7 @@ from bots.pdg_terrain_divert import (
     TerrainDivertPrefilter,
     TerrainDivertProbe,
     evaluate_terrain_divert_probe,
+    evaluate_terminal_clip_probe,
     prefilter_terrain_divert,
 )
 from core.bot import Sensors
@@ -633,6 +634,39 @@ def evaluate_terminal_gate(
                     state_ready_ticks=0,
                     required_accel_ratio=evaluation.latest_safe_state.best_candidate.required_accel_ratio,
                     terrain_divert=terrain_divert,
+                )
+        if evaluation.decision is None:
+            probe_start = time.perf_counter()
+            terrain_clip = evaluate_terminal_clip_probe(
+                bot,
+                passive=passive,
+                dx=dx,
+                ax_cmd=0.0,
+                ay_cmd=0.0,
+            )
+            if terrain_clip.sample_count > 0:
+                probe_ms = (time.perf_counter() - probe_start) * 1000.0
+                state._terminal_probe_count += 1
+                state._terminal_probe_ms_sum += probe_ms
+                state._terminal_probe_ms_samples.append(probe_ms)
+                state._terrain_divert_mode = "descent_clip"
+                state._terrain_divert_margin_min = terrain_clip.min_margin
+                state._terrain_divert_first_limit_t = terrain_clip.first_limit_t
+                state._terrain_divert_worst_x = terrain_clip.worst_x
+                state._terrain_divert_worst_y = terrain_clip.worst_y
+                state._terrain_divert_horizon_s = terrain_clip.horizon_s
+                state._terrain_divert_sample_count = terrain_clip.sample_count
+            if terrain_clip.active:
+                evaluation = replace(
+                    evaluation,
+                    decision=TerminalGateDecision(
+                        mode="terrain_clip",
+                        burn_time_s=evaluation.latest_safe_state.best_candidate.burn_time_s,
+                        latest_safe_margin_s=evaluation.latest_safe_state.margin_s,
+                        required_accel_ratio=evaluation.latest_safe_state.best_candidate.required_accel_ratio,
+                    ),
+                    state_ready_ticks=0,
+                    required_accel_ratio=evaluation.latest_safe_state.best_candidate.required_accel_ratio,
                 )
 
     if (

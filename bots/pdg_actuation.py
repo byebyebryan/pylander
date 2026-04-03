@@ -3,7 +3,10 @@ from __future__ import annotations
 import math
 
 from bots.common_math import clamp, rate_limit_angle_command
-from bots.pdg_terrain_divert import backstop_containment_override
+from bots.pdg_terrain_divert import (
+    backstop_containment_override,
+    clip_targetward_override,
+)
 from core.bot import BotAction, Sensors
 from core.config import GRAVITY
 
@@ -116,15 +119,26 @@ def command_from_plan(
     runtime_state = bot.state
     if (
         runtime_state._active_phase == "terminal"
-        and runtime_state._terminal_gate_mode == "terrain_divert"
+        and runtime_state._terminal_gate_mode in ("terrain_divert", "terrain_clip")
         and getattr(getattr(bot, "environment", None), "terrain", None) is not None
     ):
-        containment_override = backstop_containment_override(
-            bot,
-            passive=passive,
-            projected_dx=projected_dx,
-            max_thrust_accel=max_thrust_accel,
-        )
+        containment_override = None
+        if runtime_state._terminal_gate_mode == "terrain_divert":
+            containment_override = backstop_containment_override(
+                bot,
+                passive=passive,
+                projected_dx=projected_dx,
+                max_thrust_accel=max_thrust_accel,
+            )
+        elif runtime_state._terminal_gate_mode == "terrain_clip":
+            containment_override = clip_targetward_override(
+                bot,
+                passive=passive,
+                dx=dx,
+                ax_cmd=a_x,
+                ay_cmd=a_y,
+                max_thrust_accel=max_thrust_accel,
+            )
         if containment_override is not None:
             override_ax, override_ay = containment_override
             if override_ax < 0.0:

@@ -117,6 +117,16 @@ class PDGConfig:
     terrain_divert_release_vx: float = 14.0
     terrain_divert_containment_vx_gain: float = 0.22
     terrain_divert_containment_net_up: float = 0.35
+    terrain_clip_enable: bool = True
+    terrain_clip_body_margin: float = 2.0
+    terrain_clip_horizon_s: float = 8.0
+    terrain_clip_samples: int = 10
+    terrain_clip_trigger_margin: float = 0.0
+    terrain_clip_release_margin: float = 4.0
+    terrain_clip_targetward_bias: float = 7.0
+    terrain_clip_targetward_gain: float = 0.06
+    terrain_clip_targetward_bias_max: float = 11.0
+    terrain_clip_net_up: float = 0.45
 
     # Phase centering + boost/coast shape objective
     boost_center_tol_ratio: float = 0.20
