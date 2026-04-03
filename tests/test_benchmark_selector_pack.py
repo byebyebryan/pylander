@@ -15,7 +15,7 @@ def test_smoke_pack_uses_profile_policies() -> None:
     assert pack.effective_level_policy["terrain"] == "observe_only"
     assert "flat" in pack.excluded_levels_effective
     assert "mountains" in pack.excluded_levels_effective
-    assert "terrain:flat:far:backstop:half:0-1" in pack.selectors
+    assert "terrain:reactive:terminal_backstop:0-1" in pack.selectors
     assert len(pack.selectors) == 7
 
 
@@ -82,12 +82,20 @@ def test_focused_selector_unknown_scenario_errors() -> None:
 def test_focused_selector_expands_wildcard_scenarios() -> None:
     pack = selector_pack.build_selectors(
         mode="focused",
-        focused_selectors=["terrain:flat:far:*:0-1", "terrain:climb:high:*:0-1"],
+        focused_selectors=["terrain:reactive:*:0-1"],
     )
     assert pack.selectors == [
-        "terrain:flat:far:backstop:half:0-1",
-        "terrain:climb:high:follow:full:0-1",
+        "terrain:reactive:terminal_backstop:0-1",
+        "terrain:reactive:terminal_clip:0-1",
+        "terrain:reactive:boost_clearance:0-1",
     ]
+
+def test_focused_selector_rejects_removed_legacy_terrain_alias() -> None:
+    with pytest.raises(ValueError, match="Unknown scenario 'flat:far:backstop:half'"):
+        selector_pack.build_selectors(
+            mode="focused",
+            focused_selectors=["terrain:flat:far:backstop:half:0-1"],
+        )
 
 
 def test_focused_selector_preserves_csv_seed_specs() -> None:

@@ -343,10 +343,15 @@ def _make_leaf(
     *,
     root: str,
     path: tuple[str, ...],
+    runtime_scenario_name: str | None = None,
     policy: str = "normal",
     benchmark_modes: frozenset[str] | None = None,
 ) -> SelectorLeaf:
-    scenario_name = join_selector_path(path)
+    scenario_name = (
+        str(runtime_scenario_name).strip().lower()
+        if runtime_scenario_name is not None
+        else join_selector_path(path)
+    )
     return SelectorLeaf(
         root=root,
         path=path,
@@ -402,6 +407,7 @@ def _build_leaves() -> tuple[SelectorLeaf, ...]:
                 )
 
     for scenario in TERRAIN_SCENARIOS:
+        scenario_path = split_selector_path(scenario.name)
         benchmark_modes = {"full"}
         if scenario.name in TERRAIN_QUICK_SCENARIOS:
             benchmark_modes.add("quick")
@@ -410,12 +416,8 @@ def _build_leaves() -> tuple[SelectorLeaf, ...]:
         leaves.append(
             _make_leaf(
                 root="terrain",
-                path=(
-                    scenario.family,
-                    scenario.route_tier,
-                    scenario.obstacle_case,
-                    scenario.weight_tier,
-                ),
+                path=scenario_path,
+                runtime_scenario_name=scenario.name,
                 policy="observe_only",
                 benchmark_modes=frozenset(benchmark_modes),
             )
@@ -474,26 +476,18 @@ def _build_leaves() -> tuple[SelectorLeaf, ...]:
 def _build_default_child_map() -> dict[tuple[str, ...], str]:
     out: dict[tuple[str, ...], str] = {
         ("boost",): "flat",
-        ("terrain",): "flat",
+        ("terrain",): "reactive",
         ("terminal",): "normal",
         ("plunge",): "mid",
     }
     for family in ("flat", "downhill", "climb"):
         out[("boost", family)] = "mid"
-    out[("terrain", "flat")] = "far"
-    out[("terrain", "downhill")] = "mid"
-    out[("terrain", "climb")] = "high"
+    out[("terrain", "reactive")] = "terminal_backstop"
     for route in ("near", "mid", "far"):
         out[("boost", "flat", route)] = "half"
-    out[("terrain", "flat", "far")] = "backstop"
-    out[("terrain", "flat", "far", "backstop")] = "half"
     for route in ("low", "mid", "mid_long", "high"):
         out[("boost", "downhill", route)] = "half"
         out[("boost", "climb", route)] = "half"
-    out[("terrain", "downhill", "mid")] = "clip"
-    out[("terrain", "downhill", "mid", "clip")] = "half"
-    out[("terrain", "climb", "high")] = "follow"
-    out[("terrain", "climb", "high", "follow")] = "full"
     for route in ("low", "mid", "high"):
         out[("plunge", route)] = "half"
     out[("terminal", "normal")] = "mid"

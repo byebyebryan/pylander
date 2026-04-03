@@ -202,7 +202,26 @@ Practical consequence:
 
 - `containment_backstop`: strong fit
 - `descent_clip`: only useful if the nominal handoff is already terrain-safe
-- `terrain_follow`: not a terminal-entry problem first; this still wants boost-phase clearance-margin logic
+- `boost_clearance` / `terrain_follow`: not a terminal-entry problem first; this still wants boost-phase clearance-margin logic
+
+More generally, the useful unifying idea is not "one terrain response."
+
+It is:
+
+- one mission-preserving objective
+- one broad route class
+- a small local control tradeoff that preserves that mission while restoring terrain clearance
+
+For the current terrain trio, that means:
+
+- `containment_backstop`
+  - trade overshoot margin for earlier corridor recovery while still target-homing
+- `descent_clip`
+  - trade descent commitment or lateral braking timing for shoulder clearance while still descending to the same target
+- `boost_clearance`
+  - trade targetward progress for vertical clearance while still boosting toward the same target / handoff
+
+This is a better decomposition than treating all three as generic "collision avoidance" events.
 
 ### Recommended integration into `pdg`
 
@@ -311,7 +330,7 @@ Proposed rollout:
    - `terrain_divert_mode`
    - probe count / probe ms
 4. Validate only on:
-   - `terrain:flat:far:backstop:half`
+   - `terrain:reactive:terminal_backstop`
    - quick non-terrain bundle for regression safety
 5. Only after `backstop` is solid:
    - run a feasibility analysis for `clip`
@@ -323,7 +342,7 @@ The first implementation pass was intentionally narrow:
 
 - new helper module: `bots/pdg_terrain_divert.py`
 - fixed-budget probe beside the existing terminal gate
-- scope limited to `terrain:flat:far:backstop:half`
+- scope limited to `terrain:reactive:terminal_backstop`
 - no `BOOST` ownership change
 - terminal-side experiments only
 
@@ -547,7 +566,7 @@ This confirmed the architectural split:
 
 Current status of that summary-based version:
 
-- `terrain:flat:far:backstop:half` stayed `10/10`
+- `terrain:reactive:terminal_backstop` stayed `10/10`
 - normal quick-pack behavior returned to exact parity with the baseline
 - compute improved substantially relative to the earlier trajectory-sampling probe, but still regressed on the normal quick pack enough to need another optimization pass
 
@@ -582,7 +601,7 @@ Implementation shape:
 
 Measured outcome:
 
-- `terrain:flat:far:backstop:half` stayed `10/10`
+- `terrain:reactive:terminal_backstop` stayed `10/10`
 - normal quick-pack terrain probes dropped back to `0` outside the actual backstop case
 - quick normal-pack compute returned to near-parity with baseline, about `+0.9%` avg total ms/tick
 
@@ -612,7 +631,7 @@ This worked better than the earlier ideas of:
 
 Measured outcome of the first clean pass:
 
-- focused `terrain:downhill:mid:clip:half` improved from `0/10` to `10/10`
+- focused `terrain:reactive:terminal_clip` improved from `0/10` to `10/10`
 - quick observe-only `clip` improved from `0/5` to `5/5`
 - normal quick-pack behavior stayed unchanged
 - quick normal-pack compute stayed effectively flat

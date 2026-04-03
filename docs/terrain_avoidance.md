@@ -60,6 +60,24 @@ Reactive avoidance means:
 - the required terrain response is obvious and one-sided
 - once terrain danger is gone, the bot can resume the same primary objective without significant replanning or a different route class
 
+Another useful way to state it:
+
+- reactive avoidance preserves the same mission objective
+- reactive avoidance preserves the same broad route class
+- terrain handling is expressed as a temporary control tradeoff inside that mission, not as a new plan
+
+For v1, the most important "allowed" tradeoffs are:
+
+- trade lateral progress for vertical clearance
+- trade descent commitment for terrain clearance
+- trade overshoot margin for earlier recovery back into the target corridor
+
+The corresponding "not reactive" cases are the ones where terrain handling requires:
+
+- a deliberately different transfer arc
+- a different handoff strategy owned by another phase
+- an intentional temporary objective other than "keep progressing toward the same target"
+
 The size or duration of the terrain response does not matter by itself. A longer terrain-following segment can still be reactive if it does not conflict with the primary objective and does not require a new planning strategy.
 
 Examples:
@@ -87,16 +105,35 @@ More accurate reactive categories:
 
 - `terrain_follow`
   - terrain runs close to the intended corridor for a meaningful segment
-  - the reactive behavior is "keep a safe clearance while continuing toward the same cutoff / target objective"
+  - the reactive behavior is "delay targetward progress just enough to maintain clearance, then resume the same cutoff / target objective"
   - this can last a while and still be reactive if it does not create a new route class
 - `descent_clip`
   - the nominal descent family is still correct, but execution drift can clip a late shoulder or slope break
-  - the reactive behavior is "do not descend into terrain, then resume the same descent objective"
+  - the reactive behavior is "delay descent commitment or lateral braking just enough to clear the shoulder, then resume the same descent objective"
 - `containment_backstop`
   - the nominal route remains valid, but overshoot / fly-back / lateral drift can hit terrain outside the intended landing corridor
-  - the reactive behavior is "do not run into terrain while still returning to the same target objective"
+  - the reactive behavior is "do not drift farther outward than necessary; stay target-homing while recovering back inside the corridor"
 
 Under this framing, reactive terrain is about whether terrain safety stays aligned with the current mission objective, not about whether the correction is brief.
+
+### Mission-preserving tradeoffs
+
+This is the most compact way to think about the current reactive terrain pack:
+
+- `backstop`
+  - still home toward the same target
+  - do not intentionally overshoot as a terrain strategy
+  - make a containment/braking tradeoff so outward lateral error does not become a terrain collision
+- `clip`
+  - still descend toward the same target
+  - do not intentionally take a different route around the shoulder
+  - make a local descent-timing / lateral-braking tradeoff so the ship clears the bump before committing downward
+- `boost_clearance`
+  - still boost toward the same target and same broad ballistic handoff
+  - do not intentionally choose a different transfer class
+  - make a local vertical-vs-horizontal tradeoff so the ship clears the source-side rise before resuming stronger targetward motion
+
+This framing is useful because it describes the reactive problem in control terms instead of geometry terms.
 
 ## Current state
 
@@ -325,8 +362,8 @@ This matters because the earlier generic pass falsely armed on normal uphill pad
 
 Current practical status:
 
-- `terrain:flat:far:backstop:half` is solved
-- `terrain:downhill:mid:clip:half` is also solved with a separate coast/terminal primitive
+- `terrain:reactive:terminal_backstop` is solved
+- `terrain:reactive:terminal_clip` is also solved with a separate coast/terminal primitive
 - normal quick-pack behavior is unchanged
 - normal quick-pack probe count is zero outside the actual backstop case
 - normal quick-pack compute is back near baseline
@@ -425,7 +462,7 @@ Architecture:
 
 Current practical status:
 
-- `terrain:downhill:mid:clip:half` is solved on the focused 10-seed pack
+- `terrain:reactive:terminal_clip` is solved on the focused 10-seed pack
 - it also resolves the quick observe-only `clip` slice
 - normal quick-pack behavior remains unchanged
 - quick normal-pack compute remains effectively unchanged relative to baseline
@@ -660,20 +697,31 @@ Working name:
 
 - `terrain`
 
-Proposed selector shape:
+Long-term public selector shape:
 
-- `terrain:<family>:<route_tier>:<obstacle_case>:<weight_tier>`
+- `terrain:<band>:<case>`
 
 Examples:
 
-- `terrain:flat:far:backstop:half`
-- `terrain:climb:high:double_ridge:full`
+- `terrain:reactive:terminal_backstop`
+- `terrain:reactive:terminal_clip`
+- `terrain:reactive:boost_clearance`
+- `terrain:planning:mid_mesa`
 
 Rationale:
 
 - existing `boost:*` selectors are already stable and used broadly
 - obstacle handling deserves its own benchmark policy and pack curation
 - this keeps clear-terrain regressions and terrain-aware regressions separable
+
+Selector cleanup follow-up:
+
+- the current implemented terrain stack is deeper than the actual user-facing choice set
+- the meaningful user-facing dimensions are:
+  - avoidance band, for example `reactive` / `planning`
+  - hazard case, for example `terminal_backstop`, `terminal_clip`, `boost_clearance`
+- route family, route tier, and weight tier should become scenario metadata or backward-compatible aliases rather than permanent public selector layers
+- the current deep selectors can remain as implementation-time aliases during the transition, but they should stop being the primary public shape
 
 ## Scenario catalog design
 
@@ -837,10 +885,19 @@ Treat these as design axes, not all as public selector layers:
 
 Public selector guidance:
 
-- encode obstacle cases as named curated designs, for example `backstop`, `clip`, `follow`, `mid_mesa`, `double_ridge`
+- encode public terrain cases as named curated behaviors first, for example `terminal_backstop`, `terminal_clip`, `boost_clearance`, `mid_mesa`, `double_ridge`
 - keep width/height/asymmetry inside the scenario definition unless they become stable user-facing concepts later
 
 This avoids a brittle selector explosion while the controller is still evolving.
+
+For the current reactive trio, the intended public names are:
+
+- `terminal_backstop`
+  - terminal/coast containment while still target-homing
+- `terminal_clip`
+  - terminal/coast descent-commitment delay over a late shoulder
+- `boost_clearance`
+  - boost-phase progress-vs-clearance tradeoff over a source-side rise
 
 ### V1 implementation scope
 
@@ -868,9 +925,9 @@ Current implemented v1 pack:
 
 | Selector | Avoidance band | Context / why | What to test | Plot focus |
 | --- | --- | --- | --- | --- |
-| `terrain:flat:far:backstop:half` | `reactive` | `containment_backstop`: flat long-range transfer with a target-side wall that is irrelevant to a clean landing but punishes overshoot and fly-back drift. | Reactive logic should avoid the backstop without changing the primary point-to-point plan. | Target pad, backstop rise, overshoot / fly-back path, resume-toward-target behavior. |
-| `terrain:downhill:mid:clip:half` | `reactive` | `descent_clip`: downhill route with a target-relative late shoulder before the final drop to target. The route band should stay narrow enough that this remains one stable local cutoff-veto situation, not a mix of local and route-reshaping regimes. | Reactive logic should avoid diving into the shoulder or committing too early into the final drop. | Downhill terrain line, shoulder edge, terminal entry, descent delay or pull-up. |
-| `terrain:climb:high:follow:full` | `reactive` | `terrain_follow`: uphill route where the nominal terrain-aware climb corridor stays only slightly above terrain for a meaningful stretch, especially under low thrust margin. | Reactive logic should maintain clearance while still climbing toward the same ballistic objective, without changing the route family. | Terrain line under ascent corridor, clearance margin over time, cutoff timing vs terrain-follow segment, resume-to-reference behavior. |
+| `terrain:reactive:terminal_backstop` | `reactive` | `containment_backstop`: flat long-range transfer with a target-side wall that is irrelevant to a clean landing but punishes overshoot and fly-back drift. | Reactive logic should avoid the backstop without changing the primary point-to-point plan. | Target pad, backstop rise, overshoot / fly-back path, resume-toward-target behavior. |
+| `terrain:reactive:terminal_clip` | `reactive` | `descent_clip`: downhill route with a target-relative late shoulder before the final drop to target. The route band should stay narrow enough that this remains one stable local cutoff-veto situation, not a mix of local and route-reshaping regimes. | Reactive logic should avoid diving into the shoulder or committing too early into the final drop. | Downhill terrain line, shoulder edge, terminal entry, descent delay or pull-up. |
+| `terrain:reactive:boost_clearance` | `reactive` | `boost_clearance`: flat transfer with a steep source-side rise that punishes over-prioritizing targetward progress immediately after launch. | Reactive logic should trade horizontal progress for vertical clearance, clear the rise, then resume the same targetward transfer without replanning. | Source-side rise, early boost path, clearance margin over the rise, resume-to-reference behavior after clearing it. |
 
 Deferred from v1:
 
@@ -885,12 +942,49 @@ Why `climb:terminal_shoulder` moved out:
 - once the terrain feature meaningfully changes the climb profile or terminal-entry shape, the scenario is no longer testing reactive execution safety
 - that makes it a better future `hybrid` or `planning` case than a v1 reactive scenario
 
-Why `climb:high:follow:full` fits better:
+Why the current `terrain:reactive:boost_clearance` shape fits better:
 
-- the primary objective is still "keep climbing toward the same uphill transfer"
-- terrain safety aligns with the obvious local action: keep enough clearance above the slope while continuing uphill
-- the response can last for a while without becoming planning, because it still does not require a different route class
-- this matches the real `climb:high:heavy` failure mode more closely than a separate late obstacle near the target
+- it isolates the intended control tradeoff directly: give up targetward progress temporarily to buy clearance
+- it keeps ownership in `BOOST`, where that tradeoff actually lives
+- it avoids conflating the terrain-follow problem with a globally steeper uphill route family
+- a terrain-blind bot should clip the source-side rise by chasing horizontal progress too early, while a terrain-aware bot can stay more upright, clear the rise, then resume the same transfer
+
+Current practical status after the level redesign:
+
+- `backstop` remains solved by the current bot
+- `clip` remains solved by the current bot
+- `follow` is now a clean terrain-blind failure again on the focused pack, which is the intended checkpoint before adding a dedicated boost-phase follow primitive
+
+Naming/design guidance from the current definition:
+
+- the public scenario name should describe the mission-preserving tradeoff first
+- geometry should explain the case, but not be the whole identity of the case
+- current internal shorthand maps cleanly to the public names:
+  - `backstop` -> `terminal_backstop`
+  - `clip` -> `terminal_clip`
+  - `follow` -> `boost_clearance`
+- the public selector shape is now `terrain:reactive:*`; route family, route tier, and weight tier remain scenario metadata only
+- if variants appear later, prefer behavior-first qualifiers such as:
+  - `boost_clearance:source_rise`
+  - `clip:late`
+  - `backstop:target`
+  rather than re-exposing a deep family / route / weight stack when those are not true user-facing choices
+
+Current selector/catalog structure:
+
+1. The public terrain selector root is flattened to `terrain:<band>:<case>`.
+2. Terrain scenarios carry explicit public ids in the catalog instead of reconstructing them from family/tier/weight fields.
+3. Route family, route tier, weight tier, and detailed geometry are scenario metadata only.
+4. The current reactive public cases are:
+   - `terrain:reactive:terminal_backstop`
+   - `terrain:reactive:terminal_clip`
+   - `terrain:reactive:boost_clearance`
+5. Internal hazard-driver/control names stay distinct from the public case names when useful:
+   - `containment_backstop`
+   - `descent_clip`
+   - `progress_clearance`
+6. Registry defaults, wildcard benchmark expansion, README examples, and terrain tests now use the flattened selector shape.
+7. The old deep terrain selectors are removed rather than preserved as long-term compatibility paths.
 
 Important evaluation note:
 
@@ -903,7 +997,10 @@ Important evaluation note:
 Scenario redesign guidance:
 
 - add:
-  - climb reactive cases that are explicitly `terrain_follow`, not late terminal obstacles
+  - more reactive cases framed by the allowed tradeoff, not by arbitrary silhouettes
+  - source-side rise / shelf cases that explicitly test progress-vs-clearance tradeoffs
+  - late descent-brow cases that explicitly test descent-commitment delay
+  - target-side containment cases that explicitly test corridor recovery without route change
 - keep:
   - flat target-side backstops as containment/overshoot guardrails
   - downhill terminal shoulders as descent-clip guardrails
@@ -913,6 +1010,18 @@ Scenario redesign guidance:
 - remove from reactive v1:
   - source-side tables and shoulders that demand sustained route reshaping
   - late climb obstacles that effectively define a new terminal strategy
+
+Additional reactive cases worth considering later:
+
+- `follow` variants
+  - slightly later source-side rise on flat or mild downhill terrain
+  - short source shelf that requires staying upright longer before resuming targetward motion
+- `clip` variants
+  - flatter terminal brow instead of a full shoulder
+  - slightly wider late shoulder to test a longer descent-delay window without changing route class
+- `backstop` variants
+  - lower, closer target-side barrier that punishes shallow overshoot
+  - mirrored target-side barrier on the opposite side of the corridor for return-from-the-other-side cases
 
 ## Planning-Phase Expansion Set
 

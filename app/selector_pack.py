@@ -14,6 +14,7 @@ from core.selector_codec import render_selector
 from levels.registry import (
     expand_selector_bindings,
     list_public_levels,
+    resolve_selector_binding,
     resolve_public_level_benchmark_profile,
 )
 
@@ -301,18 +302,14 @@ def _build_focused_mode(
                 included.add(level_name)
                 continue
 
-            full_scenarios = set(profile.scenarios.full)
-            if not full_scenarios:
-                raise ValueError(
-                    f"Selector '{raw}' specifies scenario '{parsed.scenario_name}', but "
-                    f"level '{level_name}' has no benchmark scenarios"
-                )
-            if parsed.scenario_name not in full_scenarios:
+            try:
+                resolve_selector_binding(level_name, parsed.scenario_path)
+            except ValueError as exc:
                 known = ", ".join(profile.scenarios.full)
                 raise ValueError(
                     f"Unknown scenario '{parsed.scenario_name}' for level '{level_name}' "
                     f"in selector '{raw}'. Expected one of: {known}"
-                )
+                ) from exc
             selectors.append(
                 _selector(
                     level_name,

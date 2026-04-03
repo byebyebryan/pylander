@@ -153,7 +153,7 @@ def test_divert_probe_positive_clearance_on_flat_terrain() -> None:
             height_threshold=30.0,
         ),
         level_name="terrain",
-        scenario_name="terrain:downhill:mid:clip:half",
+        scenario_name="terrain:reactive:terminal_clip",
     )
 
     probe = evaluate_terrain_divert_probe(
@@ -178,7 +178,7 @@ def test_terminal_clip_probe_reports_terrain_intersection() -> None:
             height_threshold=30.0,
         ),
         level_name="terrain",
-        scenario_name="terrain:downhill:mid:clip:half",
+        scenario_name="terrain:reactive:terminal_clip",
         scenario_params={"hazard_driver": "descent_clip"},
     )
 
@@ -216,7 +216,7 @@ def test_divert_probe_reports_negative_margin_for_terrain_penetration() -> None:
             ),
         ),
         level_name="terrain",
-        scenario_name="terrain:flat:far:backstop:half",
+        scenario_name="terrain:reactive:terminal_backstop",
     )
 
     probe = evaluate_terrain_divert_probe(
@@ -288,7 +288,7 @@ def test_terminal_gate_can_force_terrain_divert_entry(
             ),
         ),
         level_name="terrain",
-        scenario_name="terrain:flat:far:backstop:half",
+        scenario_name="terrain:reactive:terminal_backstop",
     )
     bot.state._active_stage = FlightStage.COAST
 
@@ -371,7 +371,7 @@ def test_terminal_gate_can_force_terrain_clip_entry() -> None:
             height_threshold=30.0,
         ),
         level_name="terrain",
-        scenario_name="terrain:downhill:mid:clip:half",
+        scenario_name="terrain:reactive:terminal_clip",
         scenario_params={"hazard_driver": "descent_clip"},
     )
     bot.state._active_stage = FlightStage.COAST
@@ -416,7 +416,7 @@ def test_containment_override_returns_inward_push() -> None:
             ),
         ),
         level_name="terrain",
-        scenario_name="terrain:flat:far:backstop:half",
+        scenario_name="terrain:reactive:terminal_backstop",
     )
     override = backstop_containment_override(
         bot,
@@ -442,7 +442,7 @@ def test_clip_override_pulses_targetward() -> None:
             height_threshold=30.0,
         ),
         level_name="terrain",
-        scenario_name="terrain:downhill:mid:clip:half",
+        scenario_name="terrain:reactive:terminal_clip",
         scenario_params={"hazard_driver": "descent_clip"},
     )
 
