@@ -14,6 +14,7 @@ from bots.pdg_terrain_divert import (
     clip_targetward_override,
     evaluate_terrain_divert_probe,
     evaluate_terminal_clip_probe,
+    prefilter_terrain_divert,
 )
 from core.bot import (
     BotEnvironment,
@@ -272,6 +273,38 @@ def test_divert_probe_reports_negative_margin_for_terrain_penetration() -> None:
     assert probe.worst_x is not None
     assert probe.worst_x >= 230.0
     assert probe.sample_count == 1
+
+
+def test_prefilter_accepts_borderline_backstop_boundary() -> None:
+    bot = _bot()
+    bot.environment = BotEnvironment(
+        terrain=_RisingTerrain(),
+        gravity_mag=9.8,
+        target=BotTarget(uid="target", x=200.0, y=0.0, size=110.0),
+        terrain_summary=BotTerrainSummary(
+            target_ground_y=0.0,
+            height_threshold=30.0,
+            right_boundary=TerrainBoundary(
+                direction=1,
+                x=230.0,
+                height=120.0,
+                steepness=3.96,
+                tail_steepness=0.0,
+            ),
+        ),
+        level_name="terrain",
+        scenario_name="terrain:reactive:terminal_backstop_close",
+    )
+
+    probe = prefilter_terrain_divert(
+        bot,
+        passive=_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
+        projected_dx=-220.0,
+    )
+
+    assert probe.should_probe is True
+    assert probe.overshoot > 0.0
+    assert probe.outward_vx > 0.0
 
 
 def test_divert_probe_ignores_rising_target_side_continuation() -> None:

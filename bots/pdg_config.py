@@ -108,7 +108,7 @@ class PDGConfig:
     terrain_divert_enable: bool = True
     terrain_divert_body_margin: float = 2.0
     terrain_divert_trigger_margin: float = 10.0
-    terrain_divert_min_boundary_steepness: float = 4.0
+    terrain_divert_min_boundary_steepness: float = 3.95
     terrain_divert_max_boundary_tail_steepness: float = 1.0
     terrain_divert_arm_overshoot: float = 18.0
     terrain_divert_arm_vx: float = 6.0
