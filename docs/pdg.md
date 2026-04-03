@@ -141,6 +141,10 @@ Terminal tilt is now recoverability-based instead of a single fixed cap:
   - v1 uses this path for target-side `backstop` containment and `descent_clip` telemetry
   - when `terrain_divert_mode=lateral_containment`, terminal commands add a narrow inward lateral bias against wall-side overshoot while keeping the same landing target
   - when `terrain_divert_mode=descent_clip`, terminal commands add a short-lived targetward, lift-preserving mix-in while the near-horizon path still clips the downhill shoulder
+- bot-owned boost-clearance diagnostics: `bot_pdg_boost_clearance_active`, `bot_pdg_boost_clearance_margin_min`, `bot_pdg_boost_clearance_worst_x`, `bot_pdg_boost_clearance_angle_cap`, `bot_pdg_boost_clearance_sample_count`
+  - this path is scoped to `terrain:reactive:boost_clearance`
+  - it runs only in `BOOST`
+  - while active, it temporarily caps targetward tilt and floors thrust so the ship clears the source-side rise before resuming normal boost behavior
 - bot-owned compute/fallback: `bot_pdg_solve_count`, `bot_pdg_solve_ms_mean`, `bot_pdg_solve_ms_p90`, `bot_pdg_fallback_frames`
 - bot-owned shape quality: `bot_pdg_shape_apex_error`, `bot_pdg_shape_curve_rmse`, `bot_pdg_shape_projected_dx_abs_mean`, `bot_pdg_shape_projected_dx_abs_max`, `bot_pdg_shape_shortfall_ratio`
 

@@ -22,6 +22,9 @@ from bots.pdg_actuation import (
     command_passive_coast as _command_passive_coast_impl,
     command_zero_thrust_hold_angle as _command_zero_thrust_hold_angle_impl,
 )
+from bots.pdg_boost_clearance import (
+    apply_boost_clearance_guard as _apply_boost_clearance_guard_impl,
+)
 from bots.pdg_boost import (
     boost_cut_wind_down_s as _boost_cut_wind_down_s_impl,
     evaluate_boost_quality as _evaluate_boost_quality_impl,
@@ -159,6 +162,11 @@ class PDGState:
     _terrain_divert_worst_y: float | None = None
     _terrain_divert_horizon_s: float | None = None
     _terrain_divert_sample_count: int = 0
+    _boost_clearance_active: bool = False
+    _boost_clearance_margin_min: float | None = None
+    _boost_clearance_worst_x: float | None = None
+    _boost_clearance_angle_cap: float | None = None
+    _boost_clearance_sample_count: int = 0
     _last_projection_dx: float | None = None
     _last_projection_t_fall: float | None = None
     _last_projection_has_target_y: bool = False
@@ -1254,12 +1262,17 @@ class PDGBot(Bot):
         ctx: UpdateContext,
     ) -> StageTickResult:
         state = self._state
-        if (
+        was_boost_clearance_active = bool(state._boost_clearance_active)
+        handoff_requested = (
             ctx.suggested_stage != FlightStage.BOOST
             and (not state._boost_cut_latched)
             and (not state._boost_cutoff_done)
-        ):
-            return StageTickResult(next_stage=ctx.suggested_stage)
+        )
+        state._boost_clearance_active = False
+        state._boost_clearance_margin_min = None
+        state._boost_clearance_worst_x = None
+        state._boost_clearance_angle_cap = None
+        state._boost_clearance_sample_count = 0
 
         quality = self._evaluate_boost_quality(
             passive=ctx.passive,
@@ -1288,7 +1301,28 @@ class PDGBot(Bot):
                 return StageTickResult(action=action, next_stage=FlightStage.COAST)
             return StageTickResult(action=action)
 
+        prev_angle_cmd = float(self._prev_angle_cmd)
         action = self._run_pdg_stage(ctx=ctx, stage=FlightStage.BOOST)
+        action, boost_clearance_probe = _apply_boost_clearance_guard_impl(
+            self,
+            passive=ctx.passive,
+            dx=ctx.dx,
+            action=action,
+            dt=ctx.dt,
+            prev_angle_cmd=prev_angle_cmd,
+            max_power=ctx.max_power,
+            max_throttle=ctx.max_throttle,
+            currently_active=was_boost_clearance_active,
+        )
+        state._boost_clearance_active = bool(boost_clearance_probe.active)
+        state._boost_clearance_margin_min = boost_clearance_probe.min_margin
+        state._boost_clearance_worst_x = boost_clearance_probe.worst_x
+        state._boost_clearance_angle_cap = boost_clearance_probe.angle_cap
+        state._boost_clearance_sample_count = int(boost_clearance_probe.sample_count)
+        if boost_clearance_probe.active:
+            action.status = f"{action.status} pc"
+        elif handoff_requested:
+            return StageTickResult(next_stage=ctx.suggested_stage)
         planner_target_thrust = float(action.target_thrust)
         boost_cut_thrust = float(self._cfg.boost_cutoff_burn_start_thrust)
         boost_thrust_floor_ratio = float(self._cfg.boost_active_thrust_floor)
@@ -1331,7 +1365,11 @@ class PDGBot(Bot):
             and abs(float(ctx.dx)) > 1e-3
             and (float(quality.projected_dx) * float(ctx.dx)) < 0.0
         )
-        if settled_quality.passed and state._boost_burn_started:
+        if (
+            settled_quality.passed
+            and state._boost_burn_started
+            and not boost_clearance_probe.active
+        ):
             state._boost_cut_latched = True
             state._boost_settle_start_time = state._elapsed_time_s
             state._boost_cut_hold_angle = self._boost_settle_hold_angle(dy=ctx.dy)
@@ -1341,7 +1379,7 @@ class PDGBot(Bot):
             settle_action.status = "pdg settle/boost pass"
             self._set_display_state(mode="passive", phase="boost", summary="cut pass")
             return StageTickResult(action=settle_action)
-        if state._boost_burn_started and (not quality.passed):
+        if state._boost_burn_started and (not quality.passed) and not boost_clearance_probe.active:
             burn_elapsed = state._elapsed_time_s - float(
                 state._boost_burn_start_time or state._elapsed_time_s
             )

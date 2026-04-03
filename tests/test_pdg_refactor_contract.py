@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from types import MethodType
+from types import MethodType, SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -10,6 +10,8 @@ from bots.common_ballistics import BallisticProjection
 from bots.pdg import FlightStage, UpdateContext
 from core.bot import (
     BotAction,
+    BotEnvironment,
+    BotTarget,
     FlightPhaseSnapshot,
     PlotMarker,
     Sensors,
@@ -310,3 +312,121 @@ def test_boost_controller_honors_touchdown_stage_suggestion_before_boost_cutoff(
 
     assert result.next_stage == FlightStage.TOUCHDOWN
     assert result.action is None
+
+
+def test_boost_clearance_vetoes_stage_transition_while_rise_is_unresolved() -> None:
+    class _SourceRiseTerrain:
+        def sample_height(self, x: float, lod: int = 0) -> float:
+            _ = lod
+            xx = float(x)
+            if xx < 85.0:
+                return 0.0
+            if xx < 110.0:
+                return (xx - 85.0) * 3.2
+            if xx < 160.0:
+                return 80.0
+            if xx < 230.0:
+                return max(0.0, 80.0 - ((xx - 160.0) * 1.142857142857143))
+            return 0.0
+
+        def sample_slope(self, x: float, lod: int = 0) -> float:
+            _ = x, lod
+            return 0.0
+
+        def profile(
+            self,
+            x0: float,
+            x1: float,
+            *,
+            step: float,
+            lod: int = 0,
+        ) -> list[tuple[float, float]]:
+            _ = x0, x1, step, lod
+            return []
+
+        def resolution(self, lod: int = 0) -> float:
+            _ = lod
+            return 2.0
+
+    bot = _pdg_bot()
+    bot.vehicle_info = SimpleNamespace(height=20.0)
+    bot.environment = BotEnvironment(
+        terrain=_SourceRiseTerrain(),
+        gravity_mag=9.8,
+        target=BotTarget(uid="target", x=800.0, y=0.0, size=110.0),
+        level_name="terrain",
+        scenario_name="terrain:reactive:boost_clearance",
+        scenario_params={
+            "hazard_driver": "progress_clearance",
+            "obstacle_support_x0": 85.0,
+            "obstacle_support_x1": 230.0,
+        },
+    )
+    bot._evaluate_boost_quality = MethodType(
+        lambda self, **_: SimpleNamespace(
+            verdict="rise",
+            passed=False,
+            projected_dx=None,
+        ),
+        bot,
+    )
+    bot._run_pdg_stage = MethodType(
+        lambda self, **_: BotAction(0.95, 0.45, False, status="pdg opt/boost"),
+        bot,
+    )
+    bot._evaluate_boost_quality_after_settle = MethodType(
+        lambda self, **_: SimpleNamespace(
+            verdict="rise",
+            passed=False,
+            projected_dx=None,
+        ),
+        bot,
+    )
+    passive = Sensors(
+        x=40.0,
+        y=10.0,
+        altitude=10.0,
+        terrain_y=0.0,
+        terrain_slope=0.0,
+        vx=22.0,
+        vy_up=6.0,
+        angle=0.0,
+        ax=0.0,
+        ay_up=0.0,
+        mass=1200.0,
+        thrust_level=0.0,
+        fuel=100.0,
+        max_fuel=100.0,
+        state="flying",
+        radar_contacts=[],
+        proximity=None,
+    )
+    ctx = UpdateContext(
+        dt=1.0 / 30.0,
+        passive=passive,
+        target=None,
+        dx=760.0,
+        dy=0.0,
+        alt=10.0,
+        projection=BallisticProjection(
+            projected_dx=0.0,
+            t_fall=4.0,
+            target_x=800.0,
+            impact_x=800.0,
+            has_target_y_solution=True,
+        ),
+        max_power=24000.0,
+        min_throttle=0.25,
+        max_throttle=1.6,
+        ramp_up=1.1,
+        max_thrust_accel=27.0,
+        nominal_thrust_accel=17.0,
+        min_thrust_accel=4.0,
+        suggested_stage=FlightStage.TERMINAL,
+    )
+
+    result = bot._run_boost_controller(ctx=ctx)
+
+    assert result.next_stage is None
+    assert result.action is not None
+    assert bot.state._boost_clearance_active is True

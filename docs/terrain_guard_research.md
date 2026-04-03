@@ -652,7 +652,13 @@ So the current synthesis is:
 
 - `backstop`: solved with generic geometry-based arming plus a containment primitive
 - `clip`: solved with a separate short-horizon descent primitive
-- `follow`: still unresolved and should not be forced into either of the above shapes
+- `boost_clearance`: solved with a separate boost-phase progress-vs-clearance primitive
+
+That reinforces the main architectural point:
+
+- the generic part should stay in terrain geometry, setup-time summaries, and cheap runtime arming
+- the control law should stay primitive-specific
+- the three current reactive cases are now owned by three different local responses rather than one generalized terrain controller
 
 ## Sources
 

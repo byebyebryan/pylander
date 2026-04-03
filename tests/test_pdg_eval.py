@@ -62,6 +62,11 @@ class _Bot:
         self._terrain_divert_worst_x = 242.0
         self._terrain_divert_horizon_s = 3.0
         self._terrain_divert_sample_count = 10
+        self._boost_clearance_active = True
+        self._boost_clearance_margin_min = -4.0
+        self._boost_clearance_worst_x = 118.0
+        self._boost_clearance_angle_cap = 0.08
+        self._boost_clearance_sample_count = 8
         self._fallback_frames = 1
         self._last_projection_dx = 3.0
         self._last_projection_t_fall = 2.0
@@ -144,6 +149,11 @@ class _Bot:
             _terrain_divert_worst_y=None,
             _terrain_divert_horizon_s=self._terrain_divert_horizon_s,
             _terrain_divert_sample_count=self._terrain_divert_sample_count,
+            _boost_clearance_active=self._boost_clearance_active,
+            _boost_clearance_margin_min=self._boost_clearance_margin_min,
+            _boost_clearance_worst_x=self._boost_clearance_worst_x,
+            _boost_clearance_angle_cap=self._boost_clearance_angle_cap,
+            _boost_clearance_sample_count=self._boost_clearance_sample_count,
             _last_projection_dx=self._last_projection_dx,
             _last_projection_t_fall=self._last_projection_t_fall,
             _last_projection_has_target_y=self._last_projection_has_target_y,
@@ -334,6 +344,11 @@ def test_build_evaluation_snapshot_prefers_explicit_state_container() -> None:
         _terrain_divert_worst_y=None,
         _terrain_divert_horizon_s=3.5,
         _terrain_divert_sample_count=12,
+        _boost_clearance_active=True,
+        _boost_clearance_margin_min=-3.0,
+        _boost_clearance_worst_x=108.0,
+        _boost_clearance_angle_cap=0.06,
+        _boost_clearance_sample_count=7,
     )
 
     snapshot = build_evaluation_snapshot(bot)
@@ -351,6 +366,11 @@ def test_build_evaluation_snapshot_prefers_explicit_state_container() -> None:
     assert snapshot["terrain_divert_first_limit_t"] == 0.75
     assert snapshot["terrain_divert_worst_x"] == 236.0
     assert snapshot["terrain_divert_sample_count"] == 12
+    assert snapshot["boost_clearance_active"] is True
+    assert snapshot["boost_clearance_margin_min"] == -3.0
+    assert snapshot["boost_clearance_worst_x"] == 108.0
+    assert snapshot["boost_clearance_angle_cap"] == 0.06
+    assert snapshot["boost_clearance_sample_count"] == 7
     assert snapshot["boost_quality_verdict"] == "pass"
     assert snapshot["shape_apex_error"] == 8.0
     assert snapshot["shape_projected_dx_abs_max"] == 42.0
