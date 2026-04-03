@@ -890,7 +890,7 @@ Public selector guidance:
 
 This avoids a brittle selector explosion while the controller is still evolving.
 
-For the current reactive trio, the intended public names are:
+For the current reactive anchor trio, the intended public names are:
 
 - `terminal_backstop`
   - terminal/coast containment while still target-homing
@@ -903,7 +903,8 @@ For the current reactive trio, the intended public names are:
 
 The actual v1 level implementation should stay narrower than the long-term design space:
 
-- only ship the three guardrail scenarios that clearly match the refined definition
+- start from the three anchor guardrail scenarios that clearly match the refined definition
+- expand coverage with curated variants inside those same `backstop`, `clip`, and `source_rise` builder families before adding new obstacle primitives
 - keep scenario metadata explicit about `hazard_driver`, `reactive_trigger`, and who owns primary navigation
 - do not keep generic climb/boost obstacle shape logic in the level code just because planning-phase scenarios might need it later
 - when planning or hybrid terrain is added, extend the terrain builder from those concrete use cases rather than preserving speculative branches from day one
@@ -921,13 +922,46 @@ Each named obstacle case should resolve to deterministic geometry for a given se
 
 The reactive starter set should be framed by behavior, not by obstacle silhouette.
 
-Current implemented v1 pack:
+Reactive anchor pack:
 
 | Selector | Avoidance band | Context / why | What to test | Plot focus |
 | --- | --- | --- | --- | --- |
 | `terrain:reactive:terminal_backstop` | `reactive` | `containment_backstop`: flat long-range transfer with a target-side wall that is irrelevant to a clean landing but punishes overshoot and fly-back drift. | Reactive logic should avoid the backstop without changing the primary point-to-point plan. | Target pad, backstop rise, overshoot / fly-back path, resume-toward-target behavior. |
 | `terrain:reactive:terminal_clip` | `reactive` | `descent_clip`: downhill route with a target-relative late shoulder before the final drop to target. The route band should stay narrow enough that this remains one stable local cutoff-veto situation, not a mix of local and route-reshaping regimes. | Reactive logic should avoid diving into the shoulder or committing too early into the final drop. | Downhill terrain line, shoulder edge, terminal entry, descent delay or pull-up. |
 | `terrain:reactive:boost_clearance` | `reactive` | `boost_clearance`: flat transfer with a steep source-side rise that punishes over-prioritizing targetward progress immediately after launch. | Reactive logic should trade horizontal progress for vertical clearance, clear the rise, then resume the same targetward transfer without replanning. | Source-side rise, early boost path, clearance margin over the rise, resume-to-reference behavior after clearing it. |
+
+Coverage expansion axes inside each hazard driver:
+
+- trigger timing
+  - early / mid / late arm window within the owning phase
+- severity
+  - lower-margin vs tighter-margin corrections while staying mission-preserving
+- duration
+  - brief veto vs longer sustained local correction
+- specificity
+  - near-look-alike terrain that should keep the same primary route and only arm in the intended local regime
+
+Current curated expansion set:
+
+| Selector | Hazard driver | Coverage axis | Intent |
+| --- | --- | --- | --- |
+| `terrain:reactive:terminal_backstop_close` | `containment_backstop` | earlier / shallower onset | Lower, closer target-side backstop that punishes shallow overshoot sooner without changing the route class. |
+| `terrain:reactive:terminal_backstop_tall` | `containment_backstop` | severity | Taller target-side backstop that widens the containment correction while keeping the same flat far transfer. |
+| `terrain:reactive:terminal_clip_brow` | `descent_clip` | later / lighter veto | Lower, narrower late brow that still wants a pure descent-delay correction. |
+| `terrain:reactive:terminal_clip_wide` | `descent_clip` | duration | Wider late shoulder that extends the local veto window without turning into a planning case. |
+| `terrain:reactive:boost_clearance_shelf` | `progress_clearance` | duration | Longer source-side crown that requires staying upright longer before resuming targetward progress. |
+| `terrain:reactive:boost_clearance_late_rise` | `progress_clearance` | later trigger | Similar source-side rise shifted later so boost retains a conservative posture for longer. |
+
+Pack policy after the first expansion:
+
+- `smoke`
+  - the three anchor cases, one per hazard driver
+- `quick`
+  - the anchor trio plus one representative variant per driver
+- `full`
+  - all curated reactive variants in the catalog
+- `observe_only`
+  - boundary or look-alike cases that are close to reactive but not clearly fair for v1 normal packs
 
 Deferred from v1:
 
@@ -954,7 +988,7 @@ Current practical status after the level redesign:
 - `backstop` remains solved by the current bot
 - `clip` remains solved by the current bot
 - `boost_clearance` is now solved with a dedicated boost-phase `progress_clearance` primitive
-- the current reactive trio is therefore covered by three distinct control shapes:
+- the current anchor trio is therefore covered by three distinct control shapes:
   - terminal containment for `backstop`
   - coast/terminal descent correction for `clip`
   - boost-phase progress-vs-clearance control for `boost_clearance`
@@ -981,8 +1015,14 @@ Current selector/catalog structure:
 3. Route family, route tier, weight tier, and detailed geometry are scenario metadata only.
 4. The current reactive public cases are:
    - `terrain:reactive:terminal_backstop`
+   - `terrain:reactive:terminal_backstop_close`
+   - `terrain:reactive:terminal_backstop_tall`
    - `terrain:reactive:terminal_clip`
+   - `terrain:reactive:terminal_clip_brow`
+   - `terrain:reactive:terminal_clip_wide`
    - `terrain:reactive:boost_clearance`
+   - `terrain:reactive:boost_clearance_shelf`
+   - `terrain:reactive:boost_clearance_late_rise`
 5. Internal hazard-driver/control names stay distinct from the public case names when useful:
    - `containment_backstop`
    - `descent_clip`
@@ -997,6 +1037,9 @@ Important evaluation note:
 - the useful signal is whether terrain creates failures on drift-prone executions without requiring a different route class
 - this is different from planning scenarios, where the nominal path itself should be invalid without terrain-aware routing
 - the terrain-blind bot can therefore show a mix of clean landings and terrain crashes in the same reactive scenario without invalidating the scenario design
+- the current validation path for "terrain-blind PDG" is the master config override
+  `terrain_awareness_enable=false`; the repo ships a ready-made preset at
+  `configs/pdg_terrain_blind.json`
 
 Scenario redesign guidance:
 
@@ -1017,15 +1060,15 @@ Scenario redesign guidance:
 
 Additional reactive cases worth considering later:
 
-- `boost_clearance` variants
-  - slightly later source-side rise on flat or mild downhill terrain
-  - short source shelf that requires staying upright longer before resuming targetward motion
-- `clip` variants
-  - flatter terminal brow instead of a full shoulder
-  - slightly wider late shoulder to test a longer descent-delay window without changing route class
-- `backstop` variants
-  - lower, closer target-side barrier that punishes shallow overshoot
-  - mirrored target-side barrier on the opposite side of the corridor for return-from-the-other-side cases
+- `backstop` follow-ons
+  - narrower target-side buffer before the wall
+  - mirrored target-side barrier for return-from-the-other-side containment cases
+- `clip` follow-ons
+  - tighter late shoulder that pushes closer to the reactive / planning boundary
+  - same clip logic on a longer downhill route if it still stays clearly terminal-owned
+- `boost_clearance` follow-ons
+  - milder source rise that should arm rarely and mostly serves as a specificity check
+  - mild downhill source rise if it still reads as boost-owned local clearance rather than route replanning
 
 ## Planning-Phase Expansion Set
 
