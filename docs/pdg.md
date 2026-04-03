@@ -160,6 +160,18 @@ Goal-based eval boundary:
 - boost-goal success is metric-gated: valid target-y solution, projected dx inside corridor, and impact angle above `boost_descent_angle_deg_min`
 - apex telemetry remains available in `boost_cutoff_*` / `boost_goal_*`, but apex-band matching is no longer part of the boost verdict
 
+Terrain-awareness validation:
+
+- master switch: `terrain_awareness_enable`
+- path-specific switches remain available underneath it:
+  `terrain_divert_enable`, `terrain_clip_enable`, `progress_clearance_enable`
+- repo preset for terrain-blind PDG runs:
+  `configs/pdg_terrain_blind.json`
+- example:
+  `uv run python main.py sim terrain:reactive:terminal_backstop:0 --bot pdg --bot-config configs/pdg_terrain_blind.json`
+- intended use:
+  compare terrain-aware vs terrain-blind runs on the same selector/seed to validate that the scenario is testing a real reactive hazard rather than a generic transfer
+
 ## Tuning knobs
 
 `boost` -> `coast` transition strictness:
@@ -173,6 +185,9 @@ Goal-based eval boundary:
 - terminal lateral-authority ceiling: `terminal_dynamic_tilt_max`
 - terminal overshoot tilt relaxation:
   `terminal_overshoot_tilt_*`
+- terrain awareness:
+  `terrain_awareness_enable`, `terrain_divert_enable`, `terrain_clip_enable`,
+  `progress_clearance_enable`
 
 Centering pressure by phase:
 

@@ -16,7 +16,9 @@ def test_smoke_pack_uses_profile_policies() -> None:
     assert "flat" in pack.excluded_levels_effective
     assert "mountains" in pack.excluded_levels_effective
     assert "terrain:reactive:terminal_backstop:0-1" in pack.selectors
-    assert len(pack.selectors) == 7
+    assert "terrain:reactive:terminal_clip:0-1" in pack.selectors
+    assert "terrain:reactive:boost_clearance:0-1" in pack.selectors
+    assert len(pack.selectors) == 9
 
 
 def test_auto_mode_exclude_override_removes_level() -> None:
@@ -86,9 +88,16 @@ def test_focused_selector_expands_wildcard_scenarios() -> None:
     )
     assert pack.selectors == [
         "terrain:reactive:terminal_backstop:0-1",
+        "terrain:reactive:terminal_backstop_close:0-1",
+        "terrain:reactive:terminal_backstop_tall:0-1",
         "terrain:reactive:terminal_clip:0-1",
+        "terrain:reactive:terminal_clip_brow:0-1",
+        "terrain:reactive:terminal_clip_wide:0-1",
         "terrain:reactive:boost_clearance:0-1",
+        "terrain:reactive:boost_clearance_shelf:0-1",
+        "terrain:reactive:boost_clearance_late_rise:0-1",
     ]
+
 
 def test_focused_selector_rejects_removed_legacy_terrain_alias() -> None:
     with pytest.raises(ValueError, match="Unknown scenario 'flat:far:backstop:half'"):

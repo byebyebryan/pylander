@@ -101,7 +101,9 @@ def _sensors(*, x: float, y: float, vx: float, vy_up: float) -> Sensors:
     )
 
 
-def test_boost_clearance_probe_reports_negative_margin_for_targetward_progress() -> None:
+def test_boost_clearance_probe_reports_negative_margin_for_targetward_progress() -> (
+    None
+):
     bot = _bot()
     probe = evaluate_boost_clearance_probe(
         bot,
@@ -149,6 +151,21 @@ def test_boost_clearance_probe_stays_idle_after_rise_rejoin() -> None:
         passive=_sensors(x=260.0, y=90.0, vx=18.0, vy_up=12.0),
         dx=540.0,
         action=BotAction(target_thrust=0.90, target_angle=0.20, refuel=False),
+        max_power=24000.0,
+        currently_active=False,
+    )
+
+    assert probe.active is False
+
+
+def test_terrain_awareness_master_toggle_disables_boost_clearance_probe() -> None:
+    bot = _bot()
+    bot.apply_config_override({"terrain_awareness_enable": False})
+    probe = evaluate_boost_clearance_probe(
+        bot,
+        passive=_sensors(x=40.0, y=10.0, vx=22.0, vy_up=6.0),
+        dx=760.0,
+        action=BotAction(target_thrust=0.95, target_angle=0.45, refuel=False),
         max_power=24000.0,
         currently_active=False,
     )

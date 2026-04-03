@@ -44,7 +44,9 @@ class TerrainClipProbe:
 
 def _terrain_probe_enabled(bot) -> bool:
     cfg = getattr(bot, "_cfg", None)
-    if cfg is None or not bool(getattr(cfg, "terrain_divert_enable", False)):
+    if cfg is None or not bool(getattr(cfg, "terrain_awareness_enable", False)):
+        return False
+    if not bool(getattr(cfg, "terrain_divert_enable", False)):
         return False
     environment = getattr(bot, "environment", None)
     if environment is None:
@@ -83,12 +85,17 @@ def _boundary_for_direction(bot, direction: int) -> TerrainBoundary | None:
 
 def _clip_probe_enabled(bot) -> bool:
     cfg = getattr(bot, "_cfg", None)
-    if cfg is None or not bool(getattr(cfg, "terrain_clip_enable", False)):
+    if cfg is None or not bool(getattr(cfg, "terrain_awareness_enable", False)):
+        return False
+    if not bool(getattr(cfg, "terrain_clip_enable", False)):
         return False
     environment = getattr(bot, "environment", None)
     if environment is None:
         return False
-    if getattr(environment, "terrain", None) is None or getattr(environment, "target", None) is None:
+    if (
+        getattr(environment, "terrain", None) is None
+        or getattr(environment, "target", None) is None
+    ):
         return False
     params = getattr(environment, "scenario_params", None) or {}
     return params.get("hazard_driver") == "descent_clip"
@@ -100,11 +107,10 @@ def _boundary_supports_containment(bot, boundary: TerrainBoundary | None) -> boo
     cfg = getattr(bot, "_cfg", None)
     if cfg is None:
         return False
-    return (
-        float(boundary.steepness)
-        >= float(getattr(cfg, "terrain_divert_min_boundary_steepness", 0.0))
-        and float(boundary.tail_steepness)
-        <= float(getattr(cfg, "terrain_divert_max_boundary_tail_steepness", 0.0))
+    return float(boundary.steepness) >= float(
+        getattr(cfg, "terrain_divert_min_boundary_steepness", 0.0)
+    ) and float(boundary.tail_steepness) <= float(
+        getattr(cfg, "terrain_divert_max_boundary_tail_steepness", 0.0)
     )
 
 
@@ -227,7 +233,9 @@ def evaluate_terrain_divert_probe(
     passive: Sensors,
     projected_dx: float | None,
 ) -> TerrainDivertProbe:
-    prefilter = prefilter_terrain_divert(bot, passive=passive, projected_dx=projected_dx)
+    prefilter = prefilter_terrain_divert(
+        bot, passive=passive, projected_dx=projected_dx
+    )
     if not prefilter.should_probe:
         return TerrainDivertProbe(active=False)
     cfg = bot._cfg
@@ -321,10 +329,9 @@ def backstop_containment_override(
         return None
 
     cfg = bot._cfg
-    if (
-        state.overshoot <= float(cfg.terrain_divert_release_overshoot)
-        and state.outward_vx <= float(cfg.terrain_divert_release_vx)
-    ):
+    if state.overshoot <= float(
+        cfg.terrain_divert_release_overshoot
+    ) and state.outward_vx <= float(cfg.terrain_divert_release_vx):
         return None
 
     inward_mag = min(

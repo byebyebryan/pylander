@@ -104,6 +104,7 @@ class PDGConfig:
     terminal_overshoot_tilt_projected_dx_ratio: float = 2.0
     terminal_overshoot_tilt_vx_min: float = 8.0
     terminal_overshoot_tilt_max: float = 1.22
+    terrain_awareness_enable: bool = True
     terrain_divert_enable: bool = True
     terrain_divert_body_margin: float = 2.0
     terrain_divert_trigger_margin: float = 10.0

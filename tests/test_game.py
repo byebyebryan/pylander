@@ -56,6 +56,17 @@ def test_create_bot_applies_pdg_bot_config_override() -> None:
     assert int(cfg.fallback_hold_steps) == 10
 
 
+def test_create_bot_applies_pdg_terrain_awareness_override() -> None:
+    bot = create_bot(
+        "pdg",
+        config_override={
+            "terrain_awareness_enable": False,
+        },
+    )
+    cfg = getattr(bot, "_cfg")
+    assert bool(cfg.terrain_awareness_enable) is False
+
+
 def test_level_registry_still_includes_phase_levels() -> None:
     levels = list_available_levels()
     assert "flare_plunge" not in levels
@@ -152,20 +163,43 @@ def test_terrain_level_scenario_names_are_canonical() -> None:
     level = create_level_by_name("terrain")
     assert level.list_batch_scenarios() == [
         "reactive:terminal_backstop",
+        "reactive:terminal_backstop_close",
+        "reactive:terminal_backstop_tall",
         "reactive:terminal_clip",
+        "reactive:terminal_clip_brow",
+        "reactive:terminal_clip_wide",
         "reactive:boost_clearance",
+        "reactive:boost_clearance_shelf",
+        "reactive:boost_clearance_late_rise",
     ]
     assert level.list_quick_benchmark_scenarios() == [
         "reactive:terminal_backstop",
+        "reactive:terminal_backstop_close",
         "reactive:terminal_clip",
+        "reactive:terminal_clip_brow",
         "reactive:boost_clearance",
+        "reactive:boost_clearance_shelf",
     ]
 
 
-def test_terrain_reactive_seed_keys_ignore_weight_tier() -> None:
-    assert TERRAIN_SCENARIO_BY_NAME["reactive:terminal_backstop"].seed_key == "flat:far:backstop"
-    assert TERRAIN_SCENARIO_BY_NAME["reactive:terminal_clip"].seed_key == "downhill:mid:clip"
-    assert TERRAIN_SCENARIO_BY_NAME["reactive:boost_clearance"].seed_key == "flat:mid:source_rise"
+@pytest.mark.parametrize(
+    ("scenario_name", "expected_seed_key"),
+    (
+        ("reactive:terminal_backstop", "flat:far:backstop"),
+        ("reactive:terminal_backstop_close", "flat:far:backstop"),
+        ("reactive:terminal_backstop_tall", "flat:far:backstop"),
+        ("reactive:terminal_clip", "downhill:mid:clip"),
+        ("reactive:terminal_clip_brow", "downhill:mid:clip"),
+        ("reactive:terminal_clip_wide", "downhill:mid:clip"),
+        ("reactive:boost_clearance", "flat:mid:source_rise"),
+        ("reactive:boost_clearance_shelf", "flat:mid:source_rise"),
+        ("reactive:boost_clearance_late_rise", "flat:mid:source_rise"),
+    ),
+)
+def test_terrain_reactive_seed_keys_follow_route_hazard_groups(
+    scenario_name: str, expected_seed_key: str
+) -> None:
+    assert TERRAIN_SCENARIO_BY_NAME[scenario_name].seed_key == expected_seed_key
 
 
 def test_boost_rejects_unknown_scenario() -> None:
@@ -220,9 +254,7 @@ def test_boost_climb_target_is_terrain_bound_flush_pad() -> None:
     level.set_eval_scenario("climb:mid:half")
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     target = next(
-        site
-        for site in game.level.world.site_entities
-        if site.uid == "transfer_target"
+        site for site in game.level.world.site_entities if site.uid == "transfer_target"
     )
     shape = target.get_component(LandingSite)
     assert shape is not None
@@ -238,9 +270,7 @@ def test_landed_site_uid_requires_pad_overlap(scenario_name: str) -> None:
     level = create_level_by_name("boost")
     level.set_eval_scenario(scenario_name)
     _game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
-    target = next(
-        spec for spec in level.site_specs if spec.uid == "transfer_target"
-    )
+    target = next(spec for spec in level.site_specs if spec.uid == "transfer_target")
     half = 0.5 * float(target.size)
     assert level._resolve_landed_site_uid(float(target.x)) == "transfer_target"
     assert level._resolve_landed_site_uid(float(target.x) + half + 2.0) is None
@@ -329,10 +359,7 @@ def _terrain_profile_heights(
     params = dict(level._scenario_params)
     terrain = game.level.world.terrain
     count = int(float(params.get("obstacle_profile_point_count", 0.0) or 0.0))
-    xs = tuple(
-        float(params[f"obstacle_profile_p{idx}_x"])
-        for idx in range(count)
-    )
+    xs = tuple(float(params[f"obstacle_profile_p{idx}_x"]) for idx in range(count))
     return (
         params,
         tuple(float(terrain(xx, lod=0)) for xx in xs),
@@ -402,9 +429,7 @@ def test_setup_levels_apply_weight_tier_mass_and_params(
 def test_boost_route_tiers_expose_expected_median_geometry(
     scenario_name: str, expected_dx: float, expected_dy: float
 ) -> None:
-    scenario_params = _boost_scenario_params(
-        scenario_name, 0, benchmark_mode="median"
-    )
+    scenario_params = _boost_scenario_params(scenario_name, 0, benchmark_mode="median")
     assert scenario_params["dx"] == pytest.approx(expected_dx)
     assert scenario_params["dy"] == pytest.approx(expected_dy)
 
@@ -413,25 +438,90 @@ def test_boost_route_tiers_expose_expected_median_geometry(
     (
         "scenario_name",
         "expected_route_tier",
+        "expected_obstacle_case",
         "expected_kind",
         "expected_hazard_driver",
         "expected_height_sign",
     ),
     (
-        ("reactive:terminal_backstop", "far", "backstop", "containment_backstop", 1.0),
+        (
+            "reactive:terminal_backstop",
+            "far",
+            "backstop",
+            "backstop",
+            "containment_backstop",
+            1.0,
+        ),
+        (
+            "reactive:terminal_backstop_close",
+            "far",
+            "backstop_close",
+            "backstop",
+            "containment_backstop",
+            1.0,
+        ),
+        (
+            "reactive:terminal_backstop_tall",
+            "far",
+            "backstop_tall",
+            "backstop",
+            "containment_backstop",
+            1.0,
+        ),
         (
             "reactive:terminal_clip",
             "mid",
+            "clip",
             "shoulder",
             "descent_clip",
             1.0,
         ),
-        ("reactive:boost_clearance", "mid", "source_rise", "progress_clearance", 1.0),
+        (
+            "reactive:terminal_clip_brow",
+            "mid",
+            "clip_brow",
+            "shoulder",
+            "descent_clip",
+            1.0,
+        ),
+        (
+            "reactive:terminal_clip_wide",
+            "mid",
+            "clip_wide",
+            "shoulder",
+            "descent_clip",
+            1.0,
+        ),
+        (
+            "reactive:boost_clearance",
+            "mid",
+            "source_rise",
+            "source_rise",
+            "progress_clearance",
+            1.0,
+        ),
+        (
+            "reactive:boost_clearance_shelf",
+            "mid",
+            "source_shelf",
+            "source_rise",
+            "progress_clearance",
+            1.0,
+        ),
+        (
+            "reactive:boost_clearance_late_rise",
+            "mid",
+            "source_rise_late",
+            "source_rise",
+            "progress_clearance",
+            1.0,
+        ),
     ),
 )
 def test_terrain_reactive_scenarios_expose_expected_median_geometry(
     scenario_name: str,
     expected_route_tier: str,
+    expected_obstacle_case: str,
     expected_kind: str,
     expected_hazard_driver: str,
     expected_height_sign: float,
@@ -447,6 +537,7 @@ def test_terrain_reactive_scenarios_expose_expected_median_geometry(
     assert scenario_params["primary_navigation_owner"] == "boost"
     assert bool(scenario_params["nominal_route_must_clear"]) is True
     assert scenario_params["avoidance_band"] == "reactive"
+    assert scenario_params["obstacle_case"] == expected_obstacle_case
     assert scenario_params["obstacle_kind"] == expected_kind
     assert float(scenario_params["obstacle_height_offset"]) * expected_height_sign > 0.0
 
@@ -455,8 +546,14 @@ def test_terrain_reactive_scenarios_expose_expected_median_geometry(
     "scenario_name",
     (
         "reactive:terminal_backstop",
+        "reactive:terminal_backstop_close",
+        "reactive:terminal_backstop_tall",
         "reactive:terminal_clip",
+        "reactive:terminal_clip_brow",
+        "reactive:terminal_clip_wide",
         "reactive:boost_clearance",
+        "reactive:boost_clearance_shelf",
+        "reactive:boost_clearance_late_rise",
     ),
 )
 def test_terrain_shapes_match_recorded_obstacle_profile(scenario_name: str) -> None:
@@ -467,10 +564,11 @@ def test_terrain_shapes_match_recorded_obstacle_profile(scenario_name: str) -> N
         profile_params, ys = _terrain_profile_heights(
             scenario_name, 0, benchmark_mode="median"
         )
-        count = int(float(profile_params.get("obstacle_profile_point_count", 0.0) or 0.0))
+        count = int(
+            float(profile_params.get("obstacle_profile_point_count", 0.0) or 0.0)
+        )
         expected = tuple(
-            float(profile_params[f"obstacle_profile_p{idx}_y"])
-            for idx in range(count)
+            float(profile_params[f"obstacle_profile_p{idx}_y"]) for idx in range(count)
         )
         assert ys == pytest.approx(expected)
         assert y_dest == pytest.approx(float(params["dy"]))
@@ -489,8 +587,18 @@ def test_terrain_shapes_match_recorded_obstacle_profile(scenario_name: str) -> N
     assert y_dest == pytest.approx(slope * dx)
 
 
-def test_boost_clearance_records_local_hazard_span_not_full_route() -> None:
-    params = _terrain_scenario_params("reactive:boost_clearance", 0, benchmark_mode="median")
+@pytest.mark.parametrize(
+    "scenario_name",
+    (
+        "reactive:boost_clearance",
+        "reactive:boost_clearance_shelf",
+        "reactive:boost_clearance_late_rise",
+    ),
+)
+def test_boost_clearance_records_local_hazard_span_not_full_route(
+    scenario_name: str,
+) -> None:
+    params = _terrain_scenario_params(scenario_name, 0, benchmark_mode="median")
     count = int(float(params["obstacle_profile_point_count"]))
     assert count >= 3
     assert float(params["obstacle_support_x0"]) == pytest.approx(
@@ -504,7 +612,9 @@ def test_boost_clearance_records_local_hazard_span_not_full_route() -> None:
 
 
 def test_boost_clearance_is_source_side_rise_with_local_rejoin() -> None:
-    params = _terrain_scenario_params("reactive:boost_clearance", 0, benchmark_mode="median")
+    params = _terrain_scenario_params(
+        "reactive:boost_clearance", 0, benchmark_mode="median"
+    )
     dx = float(params["dx"])
     support_x0 = float(params["obstacle_support_x0"])
     support_x1 = float(params["obstacle_support_x1"])
@@ -518,8 +628,48 @@ def test_boost_clearance_is_source_side_rise_with_local_rejoin() -> None:
     assert 50.0 < height < 100.0
 
 
+def test_boost_clearance_variants_expand_timing_and_duration() -> None:
+    base = _terrain_scenario_params(
+        "reactive:boost_clearance", 0, benchmark_mode="median"
+    )
+    shelf = _terrain_scenario_params(
+        "reactive:boost_clearance_shelf", 0, benchmark_mode="median"
+    )
+    late = _terrain_scenario_params(
+        "reactive:boost_clearance_late_rise", 0, benchmark_mode="median"
+    )
+
+    assert float(shelf["obstacle_support_x1"]) > float(base["obstacle_support_x1"])
+    assert float(shelf["obstacle_center_x"]) > float(base["obstacle_center_x"])
+    assert float(late["obstacle_support_x0"]) > float(base["obstacle_support_x0"])
+    assert float(late["obstacle_center_x"]) > float(base["obstacle_center_x"])
+
+
+def test_backstop_variants_expand_containment_timing_and_severity() -> None:
+    base = _terrain_scenario_params(
+        "reactive:terminal_backstop", 0, benchmark_mode="median"
+    )
+    close = _terrain_scenario_params(
+        "reactive:terminal_backstop_close", 0, benchmark_mode="median"
+    )
+    tall = _terrain_scenario_params(
+        "reactive:terminal_backstop_tall", 0, benchmark_mode="median"
+    )
+
+    assert float(close["obstacle_top_x0"]) < float(base["obstacle_top_x0"])
+    assert float(close["obstacle_height_offset"]) < float(
+        base["obstacle_height_offset"]
+    )
+    assert float(tall["obstacle_top_x0"]) == pytest.approx(
+        float(base["obstacle_top_x0"])
+    )
+    assert float(tall["obstacle_height_offset"]) > float(base["obstacle_height_offset"])
+
+
 def test_downhill_clip_is_target_relative_late_shoulder() -> None:
-    params = _terrain_scenario_params("reactive:terminal_clip", 0, benchmark_mode="median")
+    params = _terrain_scenario_params(
+        "reactive:terminal_clip", 0, benchmark_mode="median"
+    )
     dx = float(params["dx"])
     support_x0 = float(params["obstacle_support_x0"])
     support_x1 = float(params["obstacle_support_x1"])
@@ -532,6 +682,28 @@ def test_downhill_clip_is_target_relative_late_shoulder() -> None:
     assert top_x0 == pytest.approx(support_x0)
     assert top_x1 == pytest.approx(support_x1)
     assert support_x0 > 0.5 * dx
+
+
+def test_clip_variants_expand_descent_delay_window() -> None:
+    base = _terrain_scenario_params(
+        "reactive:terminal_clip", 0, benchmark_mode="median"
+    )
+    brow = _terrain_scenario_params(
+        "reactive:terminal_clip_brow", 0, benchmark_mode="median"
+    )
+    wide = _terrain_scenario_params(
+        "reactive:terminal_clip_wide", 0, benchmark_mode="median"
+    )
+
+    assert float(brow["obstacle_support_x1"]) > float(base["obstacle_support_x1"])
+    assert float(brow["obstacle_top_x1"]) - float(brow["obstacle_top_x0"]) < (
+        float(base["obstacle_top_x1"]) - float(base["obstacle_top_x0"])
+    )
+    assert float(brow["obstacle_height_offset"]) < float(base["obstacle_height_offset"])
+    assert float(wide["obstacle_top_x1"]) - float(wide["obstacle_top_x0"]) > (
+        float(base["obstacle_top_x1"]) - float(base["obstacle_top_x0"])
+    )
+    assert float(wide["obstacle_support_x0"]) < float(base["obstacle_support_x0"])
 
 
 @pytest.mark.parametrize(
@@ -556,12 +728,8 @@ def test_boost_weight_tiers_share_same_sampled_route_for_same_seed(
         target_x_by_weight[scenario_name] = _target_site_x("boost", scenario_name, 19)
 
     first, second, third = scenario_names
-    assert target_x_by_weight[first] == pytest.approx(
-        target_x_by_weight[second]
-    )
-    assert target_x_by_weight[second] == pytest.approx(
-        target_x_by_weight[third]
-    )
+    assert target_x_by_weight[first] == pytest.approx(target_x_by_weight[second])
+    assert target_x_by_weight[second] == pytest.approx(target_x_by_weight[third])
 
 
 @pytest.mark.parametrize(
@@ -575,9 +743,7 @@ def test_boost_weight_tiers_share_same_sampled_route_for_same_seed(
     ),
 )
 def test_boost_routes_sample_new_target_x_across_seeds(scenario_name: str) -> None:
-    target_xs = {
-        _target_site_x("boost", scenario_name, seed) for seed in (0, 1, 2)
-    }
+    target_xs = {_target_site_x("boost", scenario_name, seed) for seed in (0, 1, 2)}
     assert len(target_xs) == 3
 
 
@@ -586,7 +752,9 @@ def test_pdg_boost_goal_ends_headless_run_early() -> None:
     level.set_eval_scenario("downhill:mid:half")
     bot = create_bot("pdg")
     bot.set_eval_goal("boost_cutoff")
-    game = LanderGame(level=level, seed=0, bot=bot, headless=True, eval_goal="boost_cutoff")
+    game = LanderGame(
+        level=level, seed=0, bot=bot, headless=True, eval_goal="boost_cutoff"
+    )
 
     result = game.run(print_freq=0, max_time=120.0)
     assert result["eval_goal"] == "boost_cutoff"
@@ -767,7 +935,9 @@ def test_eval_aggregate_uses_explicit_success_for_staged_records() -> None:
     assert summary["runs"] == 1
     assert summary["successes"] == 1
     assert summary["success_rate"] == pytest.approx(1.0)
-    assert summary["by_scenario"]["downhill:mid:half"]["success_rate"] == pytest.approx(1.0)
+    assert summary["by_scenario"]["downhill:mid:half"]["success_rate"] == pytest.approx(
+        1.0
+    )
     assert summary["by_selector"]["boost:downhill:mid:half:boost_cutoff"][
         "success_rate"
     ] == pytest.approx(1.0)
@@ -1016,7 +1186,9 @@ def test_resolve_batch_plan_auto_expands_seeded_boost_slope_scenarios(
     assert all(target.scenario_name == scenario_name for target in plan)
 
 
-def test_resolve_batch_plan_assigns_unique_run_keys_for_duplicate_selectors(monkeypatch) -> None:
+def test_resolve_batch_plan_assigns_unique_run_keys_for_duplicate_selectors(
+    monkeypatch,
+) -> None:
     config = BenchSettings(
         bot_name=None,
         bot_config_path=None,
@@ -1124,7 +1296,9 @@ def test_parse_bench_command_uses_expected_defaults() -> None:
     _parser, command = parse_command(["bench", "plunge"])
     assert isinstance(command, BenchCommand)
     assert command.bench.selectors == (
-        BenchTarget(level_name="plunge", scenario_name=None, seed_spec=None, scenario_path=()),
+        BenchTarget(
+            level_name="plunge", scenario_name=None, seed_spec=None, scenario_path=()
+        ),
     )
     assert command.bench.workers == max(1, int(os.cpu_count() or 1) - 2)
     assert command.bench.trace_enabled is True
@@ -1219,8 +1393,12 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
         run_batch_module,
         "resolve_benchmark_plan",
         lambda _cfg: [
-            ResolvedBenchRun(0, "boost", "flat:mid:half", "boost", "flat:mid:half", "landing"),
-            ResolvedBenchRun(1, "boost", "flat:mid:half", "boost", "flat:mid:half", "landing"),
+            ResolvedBenchRun(
+                0, "boost", "flat:mid:half", "boost", "flat:mid:half", "landing"
+            ),
+            ResolvedBenchRun(
+                1, "boost", "flat:mid:half", "boost", "flat:mid:half", "landing"
+            ),
         ],
     )
 
@@ -1251,7 +1429,9 @@ def test_run_benchmark_parallel_run_failure_is_not_reclassified(monkeypatch) -> 
         run_batch_module.run_benchmark(cfg)
 
 
-def test_resolve_output_path_keeps_explicit_path_even_when_file_exists(tmp_path) -> None:
+def test_resolve_output_path_keeps_explicit_path_even_when_file_exists(
+    tmp_path,
+) -> None:
     explicit = tmp_path / "report.tracepack.json"
     explicit.write_text("old", encoding="utf-8")
 
@@ -1295,7 +1475,9 @@ def test_run_benchmark_writes_absolute_trace_paths_for_explicit_tracepack_outsid
             )
         ],
     )
-    monkeypatch.setattr(run_batch_module, "print_batch_summary", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        run_batch_module, "print_batch_summary", lambda *_args, **_kwargs: None
+    )
     monkeypatch.setattr(
         run_batch_module,
         "_run_batch_sequential",
@@ -1395,7 +1577,9 @@ def test_run_benchmark_auto_tracepack_uses_absolute_root_and_outputs_relative_ro
             )
         ],
     )
-    monkeypatch.setattr(run_batch_module, "print_batch_summary", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        run_batch_module, "print_batch_summary", lambda *_args, **_kwargs: None
+    )
 
     def _fake_run_batch_sequential(run_settings, _run_plan, *, benchmark_mode):  # type: ignore[no-untyped-def]
         _ = benchmark_mode
@@ -1419,14 +1603,18 @@ def test_run_benchmark_auto_tracepack_uses_absolute_root_and_outputs_relative_ro
                 "trace_path": str(trace_path),
                 "trace_rel_path": trace_path.relative_to(outputs_root).as_posix(),
                 "trace_preview_path": str(preview_path),
-                "trace_preview_rel_path": preview_path.relative_to(outputs_root).as_posix(),
+                "trace_preview_rel_path": preview_path.relative_to(
+                    outputs_root
+                ).as_posix(),
                 "trace_detail": "report",
                 "run_key": "plunge:low:half:0",
                 "run_instance_id": 1,
             }
         ]
 
-    monkeypatch.setattr(run_batch_module, "_run_batch_sequential", _fake_run_batch_sequential)
+    monkeypatch.setattr(
+        run_batch_module, "_run_batch_sequential", _fake_run_batch_sequential
+    )
     monkeypatch.setattr(
         run_batch_module,
         "aggregate_eval_records",
@@ -1468,13 +1656,18 @@ def test_run_benchmark_auto_tracepack_uses_absolute_root_and_outputs_relative_ro
     )
 
     exit_code = run_batch_module.run_benchmark(cfg)
-    generated = max(outputs_root.glob("*.tracepack.json"), key=lambda path: path.stat().st_mtime)
+    generated = max(
+        outputs_root.glob("*.tracepack.json"), key=lambda path: path.stat().st_mtime
+    )
     payload = json.loads(generated.read_text(encoding="utf-8"))
     trace_root = generated.with_suffix("")
 
     assert exit_code == 0
     assert payload["trace_root_path"] == str(trace_root.resolve())
-    assert payload["trace_root_rel"] == trace_root.resolve().relative_to(outputs_root).as_posix()
+    assert (
+        payload["trace_root_rel"]
+        == trace_root.resolve().relative_to(outputs_root).as_posix()
+    )
     assert payload["trace_detail"] == "report"
     assert payload["records"][0]["trace_rel_path"] == (
         trace_root.resolve().relative_to(outputs_root).as_posix()

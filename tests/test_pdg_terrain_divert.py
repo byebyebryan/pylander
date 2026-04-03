@@ -197,6 +197,46 @@ def test_terminal_clip_probe_reports_terrain_intersection() -> None:
     assert 220.0 <= probe.worst_x <= 380.0
 
 
+def test_terrain_awareness_master_toggle_disables_terminal_probes() -> None:
+    bot = _bot()
+    bot.apply_config_override({"terrain_awareness_enable": False})
+    bot.environment = BotEnvironment(
+        terrain=_ClipTerrain(),
+        gravity_mag=9.8,
+        target=BotTarget(uid="target", x=398.0, y=-400.0, size=110.0),
+        terrain_summary=BotTerrainSummary(
+            target_ground_y=-400.0,
+            height_threshold=30.0,
+            right_boundary=TerrainBoundary(
+                direction=1,
+                x=230.0,
+                height=120.0,
+                steepness=9.5,
+                tail_steepness=0.0,
+            ),
+        ),
+        level_name="terrain",
+        scenario_name="terrain:reactive:terminal_clip",
+        scenario_params={"hazard_driver": "descent_clip"},
+    )
+
+    clip_probe = evaluate_terminal_clip_probe(
+        bot,
+        passive=_sensors(x=80.0, y=28.0, vx=32.0, vy_up=-3.0),
+        dx=318.0,
+        ax_cmd=0.0,
+        ay_cmd=0.0,
+    )
+    divert_probe = evaluate_terrain_divert_probe(
+        bot,
+        passive=_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
+        projected_dx=-220.0,
+    )
+
+    assert clip_probe.active is False
+    assert divert_probe.active is False
+
+
 def test_divert_probe_reports_negative_margin_for_terrain_penetration() -> None:
     bot = _bot()
     bot.environment = BotEnvironment(

@@ -23,7 +23,9 @@ class BoostClearanceProbe:
 
 def _progress_clearance_enabled(bot) -> bool:
     cfg = getattr(bot, "_cfg", None)
-    if cfg is None or not bool(getattr(cfg, "progress_clearance_enable", False)):
+    if cfg is None or not bool(getattr(cfg, "terrain_awareness_enable", False)):
+        return False
+    if not bool(getattr(cfg, "progress_clearance_enable", False)):
         return False
     environment = getattr(bot, "environment", None)
     if environment is None or getattr(environment, "terrain", None) is None:
@@ -37,9 +39,7 @@ def _body_clearance(bot) -> float:
     if vehicle_info is None:
         return 0.0
     cfg = bot._cfg
-    body_margin = max(
-        0.0, float(getattr(cfg, "progress_clearance_body_margin", 0.0))
-    )
+    body_margin = max(0.0, float(getattr(cfg, "progress_clearance_body_margin", 0.0)))
     return max(0.0, (0.5 * float(vehicle_info.height)) + body_margin)
 
 
@@ -47,7 +47,9 @@ def _support_span(bot) -> tuple[float, float] | None:
     params = getattr(getattr(bot, "environment", None), "scenario_params", None) or {}
     support_x0 = params.get("obstacle_support_x0")
     support_x1 = params.get("obstacle_support_x1")
-    if not isinstance(support_x0, int | float) or not isinstance(support_x1, int | float):
+    if not isinstance(support_x0, int | float) or not isinstance(
+        support_x1, int | float
+    ):
         return None
     x0 = float(support_x0)
     x1 = float(support_x1)
@@ -94,7 +96,9 @@ def evaluate_boost_clearance_probe(
     for idx in range(1, sample_count + 1):
         t = horizon_s * (float(idx) / float(sample_count))
         sample_x = float(passive.x) + (float(passive.vx) * t) + (0.5 * accel_x * t * t)
-        sample_y = float(passive.y) + (float(passive.vy_up) * t) + (0.5 * accel_y * t * t)
+        sample_y = (
+            float(passive.y) + (float(passive.vy_up) * t) + (0.5 * accel_y * t * t)
+        )
         terrain_y = float(terrain.sample_height(sample_x))
         margin = sample_y - terrain_y - body_clearance
         if margin < min_margin:
