@@ -87,6 +87,11 @@ def reset_evaluation_state(
     state._terrain_divert_worst_y = None
     state._terrain_divert_horizon_s = None
     state._terrain_divert_sample_count = 0
+    state._boost_clearance_active = False
+    state._boost_clearance_margin_min = None
+    state._boost_clearance_worst_x = None
+    state._boost_clearance_angle_cap = None
+    state._boost_clearance_sample_count = 0
     state._last_projection_dx = None
     state._last_projection_t_fall = None
     state._last_projection_has_target_y = False
@@ -153,6 +158,17 @@ def build_evaluation_snapshot(bot) -> dict[str, float | int | bool | str | None]
         "terrain_divert_horizon_s": getattr(state, "_terrain_divert_horizon_s", None),
         "terrain_divert_sample_count": getattr(
             state, "_terrain_divert_sample_count", 0
+        ),
+        "boost_clearance_active": getattr(state, "_boost_clearance_active", False),
+        "boost_clearance_margin_min": getattr(
+            state, "_boost_clearance_margin_min", None
+        ),
+        "boost_clearance_worst_x": getattr(state, "_boost_clearance_worst_x", None),
+        "boost_clearance_angle_cap": getattr(
+            state, "_boost_clearance_angle_cap", None
+        ),
+        "boost_clearance_sample_count": getattr(
+            state, "_boost_clearance_sample_count", 0
         ),
         "fallback_frames": bot._fallback_frames,
         "boost_quality_verdict": state._boost_cutoff_quality_verdict

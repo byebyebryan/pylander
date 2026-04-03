@@ -127,6 +127,17 @@ class PDGConfig:
     terrain_clip_targetward_gain: float = 0.06
     terrain_clip_targetward_bias_max: float = 11.0
     terrain_clip_net_up: float = 0.45
+    progress_clearance_enable: bool = True
+    progress_clearance_body_margin: float = 2.0
+    progress_clearance_horizon_s: float = 2.5
+    progress_clearance_samples: int = 8
+    progress_clearance_trigger_margin: float = 2.0
+    progress_clearance_release_margin: float = 8.0
+    progress_clearance_release_x_margin: float = 20.0
+    progress_clearance_targetward_cap: float = 0.12
+    progress_clearance_targetward_cap_min: float = 0.0
+    progress_clearance_targetward_cap_gain: float = 0.01
+    progress_clearance_thrust_floor_ratio: float = 0.95
 
     # Phase centering + boost/coast shape objective
     boost_center_tol_ratio: float = 0.20

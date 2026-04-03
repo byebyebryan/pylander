@@ -953,7 +953,11 @@ Current practical status after the level redesign:
 
 - `backstop` remains solved by the current bot
 - `clip` remains solved by the current bot
-- `follow` is now a clean terrain-blind failure again on the focused pack, which is the intended checkpoint before adding a dedicated boost-phase follow primitive
+- `boost_clearance` is now solved with a dedicated boost-phase `progress_clearance` primitive
+- the current reactive trio is therefore covered by three distinct control shapes:
+  - terminal containment for `backstop`
+  - coast/terminal descent correction for `clip`
+  - boost-phase progress-vs-clearance control for `boost_clearance`
 
 Naming/design guidance from the current definition:
 
@@ -1006,7 +1010,7 @@ Scenario redesign guidance:
   - downhill terminal shoulders as descent-clip guardrails
 - change:
   - judge reactive validity by alignment with the primary objective, not by obstacle size or shortness of correction
-  - describe scenarios primarily by hazard behavior (`terrain_follow`, `descent_clip`, `containment_backstop`) and only secondarily by geometry
+  - describe scenarios primarily by hazard behavior (`progress_clearance`, `descent_clip`, `containment_backstop`) and only secondarily by geometry
 - remove from reactive v1:
   - source-side tables and shoulders that demand sustained route reshaping
   - late climb obstacles that effectively define a new terminal strategy
