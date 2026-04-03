@@ -160,7 +160,6 @@ def test_divert_probe_positive_clearance_on_flat_terrain() -> None:
         bot,
         passive=_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
         projected_dx=-40.0,
-        max_thrust_accel=22.0,
     )
 
     assert probe.active is False
@@ -223,7 +222,6 @@ def test_divert_probe_reports_negative_margin_for_terrain_penetration() -> None:
         bot,
         passive=_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
         projected_dx=-220.0,
-        max_thrust_accel=22.0,
     )
 
     assert probe.active is True
@@ -261,7 +259,6 @@ def test_divert_probe_ignores_rising_target_side_continuation() -> None:
         bot,
         passive=_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
         projected_dx=-220.0,
-        max_thrust_accel=22.0,
     )
 
     assert probe.active is False

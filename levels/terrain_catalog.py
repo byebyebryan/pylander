@@ -35,7 +35,7 @@ class TerrainScenario:
     route_dx: TerrainDistance
     route_dy: float
     obstacle: TerrainObstacle
-    sample_key: str
+    seed_key: str
     reactive_contract: str
     hazard_driver: str
     reactive_trigger: str
@@ -79,12 +79,6 @@ _EXECUTION_GUARDRAIL_ROUTES: dict[tuple[str, str], _TerrainRoute] = {
         route_dx=SampleRange(360.0, 400.0),
         route_dy=-400.0,
     ),
-    ("climb", "high"): _TerrainRoute(
-        family="climb",
-        route_tier="high",
-        route_dx=SampleRange(300.0, 500.0),
-        route_dy=800.0,
-    ),
 }
 
 
@@ -113,7 +107,7 @@ def _build_reactive_scenario(
         route_dx=route.route_dx,
         route_dy=float(route.route_dy),
         obstacle=obstacle,
-        sample_key=f"{family}:{route.route_tier}:{obstacle_case}",
+        seed_key=f"{family}:{route.route_tier}:{obstacle_case}",
         reactive_contract="execution_guardrail",
         hazard_driver=hazard_driver,
         reactive_trigger="execution_drift",
@@ -162,10 +156,10 @@ TERRAIN_SCENARIOS: tuple[TerrainScenario, ...] = (
         "boost_clearance",
         "flat",
         "mid",
-        "follow",
+        "source_rise",
         weight_tier="full",
         obstacle=TerrainObstacle(
-            kind="follow",
+            kind="source_rise",
             placement="route",
             x_fraction=0.0,
             top_width=0.0,

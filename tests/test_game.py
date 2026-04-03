@@ -162,10 +162,10 @@ def test_terrain_level_scenario_names_are_canonical() -> None:
     ]
 
 
-def test_terrain_reactive_sample_keys_ignore_weight_tier() -> None:
-    assert TERRAIN_SCENARIO_BY_NAME["reactive:terminal_backstop"].sample_key == "flat:far:backstop"
-    assert TERRAIN_SCENARIO_BY_NAME["reactive:terminal_clip"].sample_key == "downhill:mid:clip"
-    assert TERRAIN_SCENARIO_BY_NAME["reactive:boost_clearance"].sample_key == "flat:mid:follow"
+def test_terrain_reactive_seed_keys_ignore_weight_tier() -> None:
+    assert TERRAIN_SCENARIO_BY_NAME["reactive:terminal_backstop"].seed_key == "flat:far:backstop"
+    assert TERRAIN_SCENARIO_BY_NAME["reactive:terminal_clip"].seed_key == "downhill:mid:clip"
+    assert TERRAIN_SCENARIO_BY_NAME["reactive:boost_clearance"].seed_key == "flat:mid:source_rise"
 
 
 def test_boost_rejects_unknown_scenario() -> None:
@@ -426,7 +426,7 @@ def test_boost_route_tiers_expose_expected_median_geometry(
             "descent_clip",
             1.0,
         ),
-        ("reactive:boost_clearance", "mid", "follow", "progress_clearance", 1.0),
+        ("reactive:boost_clearance", "mid", "source_rise", "progress_clearance", 1.0),
     ),
 )
 def test_terrain_reactive_scenarios_expose_expected_median_geometry(
@@ -489,7 +489,7 @@ def test_terrain_shapes_match_recorded_obstacle_profile(scenario_name: str) -> N
     assert y_dest == pytest.approx(slope * dx)
 
 
-def test_flat_follow_records_local_hazard_span_not_full_route() -> None:
+def test_boost_clearance_records_local_hazard_span_not_full_route() -> None:
     params = _terrain_scenario_params("reactive:boost_clearance", 0, benchmark_mode="median")
     count = int(float(params["obstacle_profile_point_count"]))
     assert count >= 3
@@ -503,7 +503,7 @@ def test_flat_follow_records_local_hazard_span_not_full_route() -> None:
     assert float(params["obstacle_support_x1"]) < float(params["dx"])
 
 
-def test_flat_follow_is_source_side_rise_with_local_rejoin() -> None:
+def test_boost_clearance_is_source_side_rise_with_local_rejoin() -> None:
     params = _terrain_scenario_params("reactive:boost_clearance", 0, benchmark_mode="median")
     dx = float(params["dx"])
     support_x0 = float(params["obstacle_support_x0"])

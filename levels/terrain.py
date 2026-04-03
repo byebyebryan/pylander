@@ -202,14 +202,16 @@ class TerrainLevel(BoostTransferLevel):
             profile_points=profile_points,
         )
 
-    def _resolve_follow(
+    def _resolve_source_rise(
         self, scenario, *, dest_x: float
     ) -> _ResolvedObstacle:  # noqa: ANN001
         obstacle = scenario.obstacle
         route_dx = max(1e-6, float(dest_x) - float(SOURCE_PAD_X))
         route_dy = float(scenario.route_dy)
         if scenario.family != "flat":
-            raise ValueError("Reactive v1 follow terrain is only defined for flat cases")
+            raise ValueError(
+                "Reactive v1 source-rise terrain is only defined for flat cases"
+            )
         amplitude = max(1.0, abs(float(obstacle.height_offset)))
         scaled_points: list[tuple[float, float]] = [(0.0, 0.0)]
         last_x = 0.0
@@ -226,7 +228,9 @@ class TerrainLevel(BoostTransferLevel):
         support_start_idx = 1
         support_end_idx = len(scaled_points) - 2
         if support_end_idx < support_start_idx:
-            raise ValueError("Reactive follow terrain requires at least one interior anchor point")
+            raise ValueError(
+                "Reactive source-rise terrain requires at least one interior anchor point"
+            )
         top_idx = max(
             range(support_start_idx, support_end_idx + 1),
             key=lambda idx: scaled_points[idx][1]
@@ -259,8 +263,8 @@ class TerrainLevel(BoostTransferLevel):
             return self._resolve_backstop(scenario, dest_x=dest_x)
         if obstacle.kind == "shoulder" and obstacle.placement == "terminal":
             return self._resolve_clip(scenario, dest_x=dest_x)
-        if obstacle.kind == "follow" and obstacle.placement == "route":
-            return self._resolve_follow(scenario, dest_x=dest_x)
+        if obstacle.kind == "source_rise" and obstacle.placement == "route":
+            return self._resolve_source_rise(scenario, dest_x=dest_x)
         raise ValueError(
             f"Unsupported terrain obstacle '{obstacle.kind}:{obstacle.placement}' for reactive v1"
         )

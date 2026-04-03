@@ -22,6 +22,42 @@ from core.config import GRAVITY
 _GRAVITY_MAG = abs(float(GRAVITY))
 
 
+def _clear_terrain_probe_state(state) -> None:
+    state._terrain_divert_mode = None
+    state._terrain_divert_margin_min = None
+    state._terrain_divert_first_limit_t = None
+    state._terrain_divert_worst_x = None
+    state._terrain_divert_worst_y = None
+    state._terrain_divert_horizon_s = None
+    state._terrain_divert_sample_count = 0
+
+
+def _record_terminal_probe_cost(state, *, probe_ms: float) -> None:
+    state._terminal_probe_count += 1
+    state._terminal_probe_ms_sum += probe_ms
+    state._terminal_probe_ms_samples.append(probe_ms)
+
+
+def _record_terrain_probe_state(
+    state,
+    *,
+    mode: str | None,
+    min_margin: float | None,
+    first_limit_t: float | None,
+    worst_x: float | None,
+    worst_y: float | None,
+    horizon_s: float | None,
+    sample_count: int,
+) -> None:
+    state._terrain_divert_mode = mode
+    state._terrain_divert_margin_min = min_margin
+    state._terrain_divert_first_limit_t = first_limit_t
+    state._terrain_divert_worst_x = worst_x
+    state._terrain_divert_worst_y = worst_y
+    state._terrain_divert_horizon_s = horizon_s
+    state._terrain_divert_sample_count = sample_count
+
+
 @dataclass(frozen=True)
 class TerminalGateCandidate:
     burn_time_s: float
@@ -583,17 +619,9 @@ def evaluate_terminal_gate(
     state._terminal_gate_ready_ticks = evaluation.state_ready_ticks
     state._terminal_gate_required_accel_ratio = evaluation.required_accel_ratio
     state._terminal_gate_latest_safe_margin_s = evaluation.latest_safe_state.margin_s
-    state._terrain_divert_mode = None
-    state._terrain_divert_margin_min = None
-    state._terrain_divert_first_limit_t = None
-    state._terrain_divert_worst_x = None
-    state._terrain_divert_worst_y = None
-    state._terrain_divert_horizon_s = None
-    state._terrain_divert_sample_count = 0
-
-    terrain_divert_prefilter: TerrainDivertPrefilter | None = None
+    _clear_terrain_probe_state(state)
     if evaluation.decision is None or evaluation.decision.mode == "latest_safe":
-        terrain_divert_prefilter = prefilter_terrain_divert(
+        terrain_divert_prefilter: TerrainDivertPrefilter = prefilter_terrain_divert(
             bot,
             passive=passive,
             projected_dx=projected_dx,
@@ -604,19 +632,19 @@ def evaluate_terminal_gate(
                 bot,
                 passive=passive,
                 projected_dx=projected_dx,
-                max_thrust_accel=max_thrust_accel,
             )
             probe_ms = (time.perf_counter() - probe_start) * 1000.0
-            state._terminal_probe_count += 1
-            state._terminal_probe_ms_sum += probe_ms
-            state._terminal_probe_ms_samples.append(probe_ms)
-            state._terrain_divert_mode = terrain_divert.mode
-            state._terrain_divert_margin_min = terrain_divert.min_margin
-            state._terrain_divert_first_limit_t = terrain_divert.first_limit_t
-            state._terrain_divert_worst_x = terrain_divert.worst_x
-            state._terrain_divert_worst_y = terrain_divert.worst_y
-            state._terrain_divert_horizon_s = terrain_divert.horizon_s
-            state._terrain_divert_sample_count = terrain_divert.sample_count
+            _record_terminal_probe_cost(state, probe_ms=probe_ms)
+            _record_terrain_probe_state(
+                state,
+                mode=terrain_divert.mode,
+                min_margin=terrain_divert.min_margin,
+                first_limit_t=terrain_divert.first_limit_t,
+                worst_x=terrain_divert.worst_x,
+                worst_y=terrain_divert.worst_y,
+                horizon_s=terrain_divert.horizon_s,
+                sample_count=terrain_divert.sample_count,
+            )
             if (
                 terrain_divert.active
                 and terrain_divert.min_margin is not None
@@ -646,16 +674,17 @@ def evaluate_terminal_gate(
             )
             if terrain_clip.sample_count > 0:
                 probe_ms = (time.perf_counter() - probe_start) * 1000.0
-                state._terminal_probe_count += 1
-                state._terminal_probe_ms_sum += probe_ms
-                state._terminal_probe_ms_samples.append(probe_ms)
-                state._terrain_divert_mode = "descent_clip"
-                state._terrain_divert_margin_min = terrain_clip.min_margin
-                state._terrain_divert_first_limit_t = terrain_clip.first_limit_t
-                state._terrain_divert_worst_x = terrain_clip.worst_x
-                state._terrain_divert_worst_y = terrain_clip.worst_y
-                state._terrain_divert_horizon_s = terrain_clip.horizon_s
-                state._terrain_divert_sample_count = terrain_clip.sample_count
+                _record_terminal_probe_cost(state, probe_ms=probe_ms)
+                _record_terrain_probe_state(
+                    state,
+                    mode="descent_clip",
+                    min_margin=terrain_clip.min_margin,
+                    first_limit_t=terrain_clip.first_limit_t,
+                    worst_x=terrain_clip.worst_x,
+                    worst_y=terrain_clip.worst_y,
+                    horizon_s=terrain_clip.horizon_s,
+                    sample_count=terrain_clip.sample_count,
+                )
             if terrain_clip.active:
                 evaluation = replace(
                     evaluation,

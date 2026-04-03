@@ -56,21 +56,12 @@ def _terrain_probe_enabled(bot) -> bool:
     )
 
 
-def _body_clearance(bot) -> float:
+def _configured_body_clearance(bot, margin_attr: str) -> float:
     vehicle_info = getattr(bot, "vehicle_info", None)
     if vehicle_info is None:
         return 0.0
     cfg = bot._cfg
-    body_margin = max(0.0, float(getattr(cfg, "terrain_divert_body_margin", 0.0)))
-    return max(0.0, (0.5 * float(vehicle_info.height)) + body_margin)
-
-
-def _clip_body_clearance(bot) -> float:
-    vehicle_info = getattr(bot, "vehicle_info", None)
-    if vehicle_info is None:
-        return 0.0
-    cfg = bot._cfg
-    body_margin = max(0.0, float(getattr(cfg, "terrain_clip_body_margin", 0.0)))
+    body_margin = max(0.0, float(getattr(cfg, margin_attr, 0.0)))
     return max(0.0, (0.5 * float(vehicle_info.height)) + body_margin)
 
 
@@ -154,7 +145,7 @@ def _containment_state(
     if not _boundary_supports_containment(bot, boundary):
         return None
 
-    body_clearance = _body_clearance(bot)
+    body_clearance = _configured_body_clearance(bot, "terrain_divert_body_margin")
     corridor_x = float(boundary.x) - (direction * body_clearance)
     overshoot = max(
         0.0,
@@ -235,9 +226,7 @@ def evaluate_terrain_divert_probe(
     *,
     passive: Sensors,
     projected_dx: float | None,
-    max_thrust_accel: float,
 ) -> TerrainDivertProbe:
-    del max_thrust_accel
     prefilter = prefilter_terrain_divert(bot, passive=passive, projected_dx=projected_dx)
     if not prefilter.should_probe:
         return TerrainDivertProbe(active=False)
@@ -282,7 +271,7 @@ def evaluate_terminal_clip_probe(
         return TerrainClipProbe(active=False)
 
     sample_count = max(4, int(bot._cfg.terrain_clip_samples))
-    clearance_radius = _clip_body_clearance(bot)
+    clearance_radius = _configured_body_clearance(bot, "terrain_clip_body_margin")
     net_ay = float(ay_cmd) - _GRAVITY_MAG
 
     min_margin: float | None = None

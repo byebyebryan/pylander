@@ -92,9 +92,7 @@ class BoostTransferLevel(ScenarioCatalogMixin, PresetLevel):
         scenario = self._active_scenario()
         import random as _random
 
-        scenario_seed_key = str(
-            getattr(scenario, "sample_key", scenario.name) or scenario.name
-        )
+        scenario_seed_key = str(getattr(scenario, "seed_key", scenario.name) or scenario.name)
         scenario_name_hash = sum(ord(ch) for ch in scenario_seed_key)
         rng = _random.Random(seed ^ (scenario_name_hash << 1))
 

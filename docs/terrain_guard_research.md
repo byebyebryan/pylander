@@ -202,7 +202,7 @@ Practical consequence:
 
 - `containment_backstop`: strong fit
 - `descent_clip`: only useful if the nominal handoff is already terrain-safe
-- `boost_clearance` / `terrain_follow`: not a terminal-entry problem first; this still wants boost-phase clearance-margin logic
+- `boost_clearance`: not a terminal-entry problem first; this still wants boost-phase clearance-margin logic
 
 More generally, the useful unifying idea is not "one terrain response."
 

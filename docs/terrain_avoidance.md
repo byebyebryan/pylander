@@ -1017,7 +1017,7 @@ Scenario redesign guidance:
 
 Additional reactive cases worth considering later:
 
-- `follow` variants
+- `boost_clearance` variants
   - slightly later source-side rise on flat or mild downhill terrain
   - short source shelf that requires staying upright longer before resuming targetward motion
 - `clip` variants

@@ -19,7 +19,7 @@ class BoostScenario:
     cargo_fraction: float
     route_dx: BoostDistance
     route_dy: float
-    sample_key: str
+    seed_key: str
 
     @property
     def terrain_kind(self) -> str:
@@ -118,7 +118,7 @@ BOOST_SCENARIOS: tuple[BoostScenario, ...] = tuple(
         cargo_fraction=float(weight.cargo_fraction),
         route_dx=geometry.route_dx,
         route_dy=float(geometry.route_dy),
-        sample_key=f"{geometry.family}:{geometry.route_tier}",
+        seed_key=f"{geometry.family}:{geometry.route_tier}",
     )
     for geometry in _BOOST_GEOMETRIES
     for weight in BOOST_WEIGHT_TIERS
