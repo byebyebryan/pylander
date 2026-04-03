@@ -354,13 +354,8 @@ def test_boost_clearance_vetoes_stage_transition_while_rise_is_unresolved() -> N
         terrain=_SourceRiseTerrain(),
         gravity_mag=9.8,
         target=BotTarget(uid="target", x=800.0, y=0.0, size=110.0),
-        level_name="terrain",
-        scenario_name="terrain:reactive:boost_clearance",
-        scenario_params={
-            "hazard_driver": "progress_clearance",
-            "obstacle_support_x0": 85.0,
-            "obstacle_support_x1": 230.0,
-        },
+        level_name="boost",
+        scenario_name="boost:climb:high:full",
     )
     bot._evaluate_boost_quality = MethodType(
         lambda self, **_: SimpleNamespace(

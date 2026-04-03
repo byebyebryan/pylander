@@ -115,6 +115,36 @@ class _ClipTerrain:
         return 2.0
 
 
+class _LowReliefTerminalTerrain:
+    def sample_height(self, x: float, lod: int = 0) -> float:
+        _ = lod
+        return 8.0 if float(x) >= -80.0 else 0.0
+
+    def sample_slope(self, x: float, lod: int = 0) -> float:
+        _ = x, lod
+        return 0.0
+
+    def profile(
+        self,
+        x0: float,
+        x1: float,
+        *,
+        step: float,
+        lod: int = 0,
+    ) -> list[tuple[float, float]]:
+        _ = lod
+        xs: list[tuple[float, float]] = []
+        x = float(x0)
+        while x <= float(x1):
+            xs.append((x, self.sample_height(x)))
+            x += max(1.0, float(step))
+        return xs
+
+    def resolution(self, lod: int = 0) -> float:
+        _ = lod
+        return 2.0
+
+
 def _bot() -> Any:
     bot = cast(Any, create_bot("pdg"))
     bot.vehicle_info = SimpleNamespace(height=20.0)
@@ -177,9 +207,8 @@ def test_terminal_clip_probe_reports_terrain_intersection() -> None:
             target_ground_y=-400.0,
             height_threshold=30.0,
         ),
-        level_name="terrain",
-        scenario_name="terrain:reactive:terminal_clip",
-        scenario_params={"hazard_driver": "descent_clip"},
+        level_name="boost",
+        scenario_name="boost:downhill:high:empty",
     )
 
     probe = evaluate_terminal_clip_probe(
@@ -196,6 +225,32 @@ def test_terminal_clip_probe_reports_terrain_intersection() -> None:
     assert probe.first_limit_t is not None
     assert probe.worst_x is not None
     assert 220.0 <= probe.worst_x <= 380.0
+
+
+def test_terminal_clip_probe_ignores_low_relief_near_target_ground() -> None:
+    bot = _bot()
+    bot.environment = BotEnvironment(
+        terrain=_LowReliefTerminalTerrain(),
+        gravity_mag=9.8,
+        target=BotTarget(uid="target", x=0.0, y=0.0, size=110.0),
+        terrain_summary=BotTerrainSummary(
+            target_ground_y=0.0,
+            height_threshold=30.0,
+        ),
+        level_name="terminal",
+        scenario_name="terminal:error:shallower:tight",
+    )
+
+    probe = evaluate_terminal_clip_probe(
+        bot,
+        passive=_sensors(x=-120.0, y=24.0, vx=24.0, vy_up=-6.0),
+        dx=120.0,
+        ax_cmd=0.0,
+        ay_cmd=0.0,
+    )
+
+    assert probe.active is False
+    assert probe.min_margin is None
 
 
 def test_terrain_awareness_master_toggle_disables_terminal_probes() -> None:
@@ -216,9 +271,8 @@ def test_terrain_awareness_master_toggle_disables_terminal_probes() -> None:
                 tail_steepness=0.0,
             ),
         ),
-        level_name="terrain",
-        scenario_name="terrain:reactive:terminal_clip",
-        scenario_params={"hazard_driver": "descent_clip"},
+        level_name="boost",
+        scenario_name="boost:downhill:high:half",
     )
 
     clip_probe = evaluate_terminal_clip_probe(
@@ -440,9 +494,8 @@ def test_terminal_gate_can_force_terrain_clip_entry() -> None:
             target_ground_y=-400.0,
             height_threshold=30.0,
         ),
-        level_name="terrain",
-        scenario_name="terrain:reactive:terminal_clip",
-        scenario_params={"hazard_driver": "descent_clip"},
+        level_name="boost",
+        scenario_name="boost:downhill:high:full",
     )
     bot.state._active_stage = FlightStage.COAST
 
@@ -511,9 +564,8 @@ def test_clip_override_pulses_targetward() -> None:
             target_ground_y=-400.0,
             height_threshold=30.0,
         ),
-        level_name="terrain",
-        scenario_name="terrain:reactive:terminal_clip",
-        scenario_params={"hazard_driver": "descent_clip"},
+        level_name="boost",
+        scenario_name="boost:downhill:high:full",
     )
 
     override = clip_targetward_override(

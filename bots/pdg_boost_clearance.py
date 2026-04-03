@@ -28,10 +28,12 @@ def _progress_clearance_enabled(bot) -> bool:
     if not bool(getattr(cfg, "progress_clearance_enable", False)):
         return False
     environment = getattr(bot, "environment", None)
-    if environment is None or getattr(environment, "terrain", None) is None:
+    if environment is None:
         return False
-    params = getattr(environment, "scenario_params", None) or {}
-    return params.get("hazard_driver") == "progress_clearance"
+    return (
+        getattr(environment, "terrain", None) is not None
+        and getattr(environment, "target", None) is not None
+    )
 
 
 def _body_clearance(bot) -> float:
@@ -81,21 +83,6 @@ def _targetward_terrain_height(
     return worst_y, worst_x
 
 
-def _support_span(bot) -> tuple[float, float] | None:
-    params = getattr(getattr(bot, "environment", None), "scenario_params", None) or {}
-    support_x0 = params.get("obstacle_support_x0")
-    support_x1 = params.get("obstacle_support_x1")
-    if not isinstance(support_x0, int | float) or not isinstance(
-        support_x1, int | float
-    ):
-        return None
-    x0 = float(support_x0)
-    x1 = float(support_x1)
-    if x1 <= x0:
-        return None
-    return x0, x1
-
-
 def evaluate_boost_clearance_probe(
     bot,
     *,
@@ -107,14 +94,18 @@ def evaluate_boost_clearance_probe(
 ) -> BoostClearanceProbe:
     if not _progress_clearance_enabled(bot):
         return BoostClearanceProbe(active=False)
-    support_span = _support_span(bot)
-    if support_span is None:
-        return BoostClearanceProbe(active=False)
-    support_x0, support_x1 = support_span
-    release_x = float(bot._cfg.progress_clearance_release_x_margin)
-    if float(passive.x) >= (support_x1 + release_x):
-        return BoostClearanceProbe(active=False)
     if abs(float(dx)) <= 1e-6:
+        return BoostClearanceProbe(active=False)
+
+    environment = bot.environment
+    assert environment is not None
+    target = environment.target
+    assert target is not None
+    target_x = float(target.x)
+    direction = 1.0 if float(dx) > 0.0 else -1.0
+    distance_to_target = max(0.0, direction * (target_x - float(passive.x)))
+    release_x = float(bot._cfg.progress_clearance_release_x_margin)
+    if distance_to_target <= release_x:
         return BoostClearanceProbe(active=False)
 
     mass = max(0.5, float(passive.mass))
@@ -128,14 +119,20 @@ def evaluate_boost_clearance_probe(
     sample_count = max(1, int(cfg.progress_clearance_samples))
     body_clearance = _body_clearance(bot)
     half_width = _targetward_half_width(bot)
-    direction = 1.0 if float(dx) > 0.0 else -1.0
-    terrain = bot.environment.terrain
+    vx_toward = max(0.0, direction * float(passive.vx))
+    if vx_toward > 1.0:
+        horizon_s = min(horizon_s, distance_to_target / vx_toward)
+    if horizon_s <= 0.0:
+        return BoostClearanceProbe(active=False)
+    terrain = environment.terrain
     min_margin = math.inf
     worst_x: float | None = None
     worst_y: float | None = None
     for idx in range(1, sample_count + 1):
         t = horizon_s * (float(idx) / float(sample_count))
         sample_x = float(passive.x) + (float(passive.vx) * t) + (0.5 * accel_x * t * t)
+        if direction * (sample_x - target_x) > 0.0:
+            sample_x = target_x
         sample_y = (
             float(passive.y) + (float(passive.vy_up) * t) + (0.5 * accel_y * t * t)
         )

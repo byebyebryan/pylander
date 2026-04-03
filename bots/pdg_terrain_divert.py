@@ -97,8 +97,7 @@ def _clip_probe_enabled(bot) -> bool:
         or getattr(environment, "target", None) is None
     ):
         return False
-    params = getattr(environment, "scenario_params", None) or {}
-    return params.get("hazard_driver") == "descent_clip"
+    return getattr(environment, "terrain_summary", None) is not None
 
 
 def _boundary_supports_containment(bot, boundary: TerrainBoundary | None) -> bool:
@@ -265,7 +264,13 @@ def evaluate_terminal_clip_probe(
     environment = getattr(bot, "environment", None)
     if environment is None or environment.terrain is None or environment.target is None:
         return TerrainClipProbe(active=False)
+    terrain_summary = environment.terrain_summary
+    if terrain_summary is None:
+        return TerrainClipProbe(active=False)
     target_x = float(environment.target.x)
+    clip_floor_y = float(terrain_summary.target_ground_y) + float(
+        terrain_summary.height_threshold
+    )
     direction = 1 if float(dx) >= 0.0 else -1
     distance_to_target = max(0.0, direction * (target_x - float(passive.x)))
     if distance_to_target <= 1e-3:
@@ -294,6 +299,8 @@ def evaluate_terminal_clip_probe(
             break
         y = float(passive.y) + (float(passive.vy_up) * t) + (0.5 * net_ay * t * t)
         terrain_y = float(environment.terrain.sample_height(x, lod=0))
+        if terrain_y < clip_floor_y:
+            continue
         margin = y - terrain_y - clearance_radius
         if min_margin is None or margin < min_margin:
             min_margin = float(margin)

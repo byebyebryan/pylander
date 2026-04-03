@@ -68,13 +68,8 @@ def _bot() -> Any:
         terrain=_SourceRiseTerrain(),
         gravity_mag=9.8,
         target=BotTarget(uid="target", x=800.0, y=0.0, size=110.0),
-        level_name="terrain",
-        scenario_name="terrain:reactive:boost_clearance",
-        scenario_params={
-            "hazard_driver": "progress_clearance",
-            "obstacle_support_x0": 85.0,
-            "obstacle_support_x1": 230.0,
-        },
+        level_name="boost",
+        scenario_name="boost:climb:high:full",
     )
     return bot
 
@@ -241,13 +236,8 @@ def test_boost_clearance_probe_checks_targetward_footprint() -> None:
         terrain=_LeadEdgeTerrain(),
         gravity_mag=9.8,
         target=BotTarget(uid="target", x=800.0, y=0.0, size=110.0),
-        level_name="terrain",
-        scenario_name="terrain:reactive:boost_clearance",
-        scenario_params={
-            "hazard_driver": "progress_clearance",
-            "obstacle_support_x0": 50.0,
-            "obstacle_support_x1": 200.0,
-        },
+        level_name="boost",
+        scenario_name="boost:climb:high:half",
     )
 
     probe = evaluate_boost_clearance_probe(
@@ -279,13 +269,8 @@ def test_boost_clearance_probe_uses_release_margin_when_already_active() -> None
         terrain=_FlatSupportTerrain(),
         gravity_mag=9.8,
         target=BotTarget(uid="target", x=800.0, y=0.0, size=110.0),
-        level_name="terrain",
-        scenario_name="terrain:reactive:boost_clearance",
-        scenario_params={
-            "hazard_driver": "progress_clearance",
-            "obstacle_support_x0": 85.0,
-            "obstacle_support_x1": 230.0,
-        },
+        level_name="boost",
+        scenario_name="boost:flat:mid:full",
     )
     passive = _sensors(x=40.0, y=17.0, vx=0.0, vy_up=0.0)
     action = BotAction(target_thrust=0.95, target_angle=0.0, refuel=False)
