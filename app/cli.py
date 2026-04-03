@@ -267,11 +267,10 @@ def _build_run_settings(
     if selector.seed_token is not None:
         try:
             seed_value = int(selector.seed_token)
-        except ValueError as exc:
+        except ValueError:
             parser.error(
                 f"Invalid selector '{args.selector}': seed must be an integer for sim/run/plot"
             )
-            raise AssertionError from exc
 
     trace_enabled = default_trace_enabled if args.trace is None else bool(args.trace)
     trace_sample_period_s = (
@@ -440,7 +439,7 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
         )
         return parser, BenchCommand(bench=bench_cfg)
 
-    raise AssertionError(f"Unsupported command {args.command!r}")
+    raise ValueError(f"Unsupported command {args.command!r}")
 
 
 def announce_command(command: Command) -> None:

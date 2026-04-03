@@ -210,6 +210,7 @@ class PresetLevel(EndResultMixin, Level):
     site_x_jitter: float = 0.0
     dynamic_site_enabled: bool = True
     dynamic_site_lead_distance: float = 2000.0
+    dynamic_site_spawns_per_side_per_frame: int = 8
     dynamic_cluster_size_min: int = 3
     dynamic_cluster_size_max: int = 5
     dynamic_cluster_spacing_min: float = 360.0
@@ -608,7 +609,7 @@ class PresetLevel(EndResultMixin, Level):
             return
 
         lead = max(200.0, float(self.dynamic_site_lead_distance))
-        max_spawns_per_side = 64
+        max_spawns_per_side = max(1, int(self.dynamic_site_spawns_per_side_per_frame))
         right_spawns = 0
         while trans.pos.x + lead > self._dynamic_site_max_x:
             self._spawn_dynamic_site(game, direction=1)

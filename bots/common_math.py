@@ -6,8 +6,10 @@ import math
 from typing import Mapping, TypeVar
 
 from core.bot import Sensors, VehicleInfo
+from core.config import GRAVITY
 
 _BehaviorT = TypeVar("_BehaviorT")
+_GRAVITY_MAG = abs(float(GRAVITY))
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -58,7 +60,7 @@ def resolve_behavior(
 
 def vehicle_limits(passive: Sensors, max_force: float) -> tuple[float, float]:
     mass = max(0.5, passive.mass)
-    up_acc_max = max(0.1, (max_force / mass) - 9.8)
+    up_acc_max = max(0.1, (max_force / mass) - _GRAVITY_MAG)
     return mass, up_acc_max
 
 

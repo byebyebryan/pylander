@@ -365,6 +365,8 @@ See [`docs/overview.md`](docs/overview.md) for the bot API and profiling details
 - `S`/`DOWN`: Decrease thrust
 - `A`/`LEFT`: Rotate left
 - `D`/`RIGHT`: Rotate right
+- `I`/`J`/`K`/`L`: Pan camera
+- `=`/`PageUp`, `-`/`PageDown`: Zoom camera
 - `F`: Refuel (when landed)
 - `TAB`: Switch actor
 - `T`: Toggle ballistic path
