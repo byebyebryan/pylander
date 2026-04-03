@@ -24,6 +24,7 @@ class TerrainObstacle:
 @dataclass(frozen=True)
 class TerrainScenario:
     name: str
+    public_case: str
     family: str
     route_tier: str
     obstacle_case: str
@@ -52,14 +53,20 @@ class _TerrainRoute:
 
 
 def terrain_scenario_name(
-    family: str, route_tier: str, obstacle_case: str, weight_tier: str
+    avoidance_band: str, public_case: str
 ) -> str:
-    return f"{family}:{route_tier}:{obstacle_case}:{weight_tier}"
+    return f"{avoidance_band}:{public_case}"
 
 
 _WEIGHT_BY_KEY = {weight.key: weight for weight in BOOST_WEIGHT_TIERS}
 
 _EXECUTION_GUARDRAIL_ROUTES: dict[tuple[str, str], _TerrainRoute] = {
+    ("flat", "mid"): _TerrainRoute(
+        family="flat",
+        route_tier="mid",
+        route_dx=SampleRange(700.0, 900.0),
+        route_dy=0.0,
+    ),
     ("flat", "far"): _TerrainRoute(
         family="flat",
         route_tier="far",
@@ -82,6 +89,7 @@ _EXECUTION_GUARDRAIL_ROUTES: dict[tuple[str, str], _TerrainRoute] = {
 
 
 def _build_reactive_scenario(
+    public_case: str,
     family: str,
     route_tier: str,
     obstacle_case: str,
@@ -93,9 +101,8 @@ def _build_reactive_scenario(
     route = _EXECUTION_GUARDRAIL_ROUTES[(family, route_tier)]
     weight = _WEIGHT_BY_KEY[weight_tier]
     return TerrainScenario(
-        name=terrain_scenario_name(
-            family, route.route_tier, obstacle_case, weight.key
-        ),
+        name=terrain_scenario_name("reactive", public_case),
+        public_case=public_case,
         family=family,
         route_tier=route.route_tier,
         obstacle_case=obstacle_case,
@@ -118,6 +125,7 @@ def _build_reactive_scenario(
 
 TERRAIN_SCENARIOS: tuple[TerrainScenario, ...] = (
     _build_reactive_scenario(
+        "terminal_backstop",
         "flat",
         "far",
         "backstop",
@@ -134,6 +142,7 @@ TERRAIN_SCENARIOS: tuple[TerrainScenario, ...] = (
         hazard_driver="containment_backstop",
     ),
     _build_reactive_scenario(
+        "terminal_clip",
         "downhill",
         "mid",
         "clip",
@@ -150,8 +159,9 @@ TERRAIN_SCENARIOS: tuple[TerrainScenario, ...] = (
         hazard_driver="descent_clip",
     ),
     _build_reactive_scenario(
-        "climb",
-        "high",
+        "boost_clearance",
+        "flat",
+        "mid",
         "follow",
         weight_tier="full",
         obstacle=TerrainObstacle(
@@ -160,20 +170,26 @@ TERRAIN_SCENARIOS: tuple[TerrainScenario, ...] = (
             x_fraction=0.0,
             top_width=0.0,
             shoulder_width=0.0,
-            height_offset=0.0,
-            anchor_points=((0.30, 0.34), (0.55, 0.60), (0.78, 0.85)),
+            height_offset=80.0,
+            anchor_points=(
+                (0.10, 0.00),
+                (0.14, 1.00),
+                (0.20, 0.95),
+                (0.28, 0.20),
+                (0.34, 0.00),
+            ),
         ),
-        hazard_driver="terrain_follow",
+        hazard_driver="progress_clearance",
     ),
 )
 
 TERRAIN_SCENARIO_BY_NAME = {scenario.name: scenario for scenario in TERRAIN_SCENARIOS}
-TERRAIN_DEFAULT_SCENARIO = terrain_scenario_name("flat", "far", "backstop", "half")
+TERRAIN_DEFAULT_SCENARIO = terrain_scenario_name("reactive", "terminal_backstop")
 TERRAIN_SMOKE_SCENARIOS: tuple[str, ...] = (
-    terrain_scenario_name("flat", "far", "backstop", "half"),
+    terrain_scenario_name("reactive", "terminal_backstop"),
 )
 TERRAIN_QUICK_SCENARIOS: tuple[str, ...] = (
-    terrain_scenario_name("flat", "far", "backstop", "half"),
-    terrain_scenario_name("downhill", "mid", "clip", "half"),
-    terrain_scenario_name("climb", "high", "follow", "full"),
+    terrain_scenario_name("reactive", "terminal_backstop"),
+    terrain_scenario_name("reactive", "terminal_clip"),
+    terrain_scenario_name("reactive", "boost_clearance"),
 )

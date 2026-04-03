@@ -62,7 +62,7 @@ def _piecewise_linear_height(
 
 
 def _profile_param_items(
-    points: tuple[tuple[float, float], ...], *, max_points: int = 6
+    points: tuple[tuple[float, float], ...], *, max_points: int = 8
 ) -> dict[str, float]:
     out: dict[str, float] = {
         "obstacle_profile_point_count": float(len(points)),
@@ -208,8 +208,9 @@ class TerrainLevel(BoostTransferLevel):
         obstacle = scenario.obstacle
         route_dx = max(1e-6, float(dest_x) - float(SOURCE_PAD_X))
         route_dy = float(scenario.route_dy)
-        if scenario.family != "climb":
-            raise ValueError("Reactive v1 follow terrain is only defined for climb cases")
+        if scenario.family != "flat":
+            raise ValueError("Reactive v1 follow terrain is only defined for flat cases")
+        amplitude = max(1.0, abs(float(obstacle.height_offset)))
         scaled_points: list[tuple[float, float]] = [(0.0, 0.0)]
         last_x = 0.0
         for x_frac, y_frac in obstacle.anchor_points:
@@ -218,7 +219,7 @@ class TerrainLevel(BoostTransferLevel):
                 route_dx - _PAD_CLEARANCE,
             )
             px = max(px, last_x + 1.0)
-            py = max(0.0, min(float(y_frac) * route_dy, route_dy))
+            py = max(0.0, float(y_frac) * amplitude)
             scaled_points.append((float(px), float(py)))
             last_x = px
         scaled_points.append((route_dx, route_dy))

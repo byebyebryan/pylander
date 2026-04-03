@@ -112,8 +112,8 @@ def _make_backstop_level() -> SimpleNamespace:
 
     runtime_context = SimpleNamespace(
         level_name="terrain",
-        public_scenario_name="terrain:flat:far:backstop:half",
-        scenario_name="terrain:flat:far:backstop:half",
+        public_scenario_name="terrain:reactive:terminal_backstop",
+        scenario_name="terrain:reactive:terminal_backstop",
         eval_target_pos=None,
     )
     return SimpleNamespace(

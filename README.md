@@ -99,7 +99,7 @@ Selector format:
 - Use `level:seed` when setting a seed without any explicit selector layers.
 - Omit goal to default to `landing`.
 - Canonical examples: `boost:flat:near:half`, `terminal:error:mid:wide`, `plunge:high:full`.
-- Experimental terrain examples: `terrain:flat:far:backstop:half`, `terrain:downhill:mid:clip:half`, `terrain:climb:high:follow:full`.
+- Experimental terrain examples: `terrain:reactive:terminal_backstop`, `terrain:reactive:terminal_clip`, `terrain:reactive:boost_clearance`.
 - Use eval goal `boost_cutoff` under the `boost` selector root for early-stop boost checks.
 - Bot selector remains bot-only: `--bot <name>`.
 
@@ -108,7 +108,7 @@ Selector format:
 ```bash
 uv run python main.py plot boost:flat:far:half:0 --bot pdg
 uv run python main.py plot boost:flat:far:half:0 --bot pdg --trace-sample-period-s 0.10
-uv run python main.py plot terrain:flat:far:backstop:half:0 --bot pdg
+uv run python main.py plot terrain:reactive:terminal_backstop:0 --bot pdg
 ```
 
 Single-run trace capture writes a trace JSON plus a small preview PNG under

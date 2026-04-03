@@ -240,9 +240,9 @@ def test_terrain_level_is_public_and_observe_only_in_auto_benchmarks() -> None:
     level = create_level("terrain")
     profile = resolve_level_benchmark_profile(level, "terrain")
     assert profile.policy == "observe_only"
-    assert profile.scenarios.smoke == ("flat:far:backstop:half",)
+    assert profile.scenarios.smoke == ("reactive:terminal_backstop",)
     assert profile.scenarios.quick == (
-        "flat:far:backstop:half",
-        "downhill:mid:clip:half",
-        "climb:high:follow:full",
+        "reactive:terminal_backstop",
+        "reactive:terminal_clip",
+        "reactive:boost_clearance",
     )
