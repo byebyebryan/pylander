@@ -326,15 +326,17 @@ This matters because the earlier generic pass falsely armed on normal uphill pad
 Current practical status:
 
 - `terrain:flat:far:backstop:half` is solved
+- `terrain:downhill:mid:clip:half` is also solved with a separate coast/terminal primitive
 - normal quick-pack behavior is unchanged
 - normal quick-pack probe count is zero outside the actual backstop case
 - normal quick-pack compute is back near baseline
 
 So the current recommendation stands:
 
-- keep `backstop` as the only active containment response
+- keep `backstop` as the active containment response
+- keep `clip` as a separate descent primitive
 - keep generic geometry-based arming
-- do not widen to `clip` or `follow` until they have their own control primitives
+- do not widen to `follow` until it has its own control primitive
 
 For the failed `backstop` seeds, a max-braking stop-distance margin stays positive until the final seconds and only goes negative essentially at impact.
 
@@ -400,8 +402,45 @@ Key findings from this pass:
 4. **The broad always-on trajectory-sampling probe was a bad shape.**
    Replacing it with setup-time summaries plus O(1) corridor arming kept `backstop` solved while restoring exact behavioral isolation on the normal quick pack.
 
-5. **Compute is improved from the earlier generic probe, but not yet where it should be.**
-   The current summary-based path is much cheaper than the sampling version, but the normal quick pack still shows a measurable compute regression. More prefiltering is still needed before calling this done.
+5. **The compute issue is now under control for the current containment path.**
+   The later barrier-shape prefilter brought the normal quick-pack compute back to near parity while keeping `backstop` solved.
+
+### Implementation pass: simple descent-clip primitive (2026-04)
+
+The next successful terrain step did not extend the `backstop` response. It added a separate `clip` primitive with its own control shape.
+
+Architecture:
+
+- **Enable path**:
+  - currently scoped to `hazard_driver=descent_clip`
+  - this is narrower than the `backstop` arming layer on purpose
+- **Short-horizon clip probe** (`evaluate_terminal_clip_probe`):
+  - active only in `COAST` / `TERMINAL`
+  - rolls out the near path toward target for a fixed horizon
+  - checks whether that near path intersects terrain before target
+- **Clip response** (`clip_targetward_override`):
+  - does not modify `BOOST`
+  - forces immediate terminal entry when the short-horizon path is already unsafe
+  - then adds a targetward, lift-preserving mix-in while the local path still clips the shoulder
+
+Current practical status:
+
+- `terrain:downhill:mid:clip:half` is solved on the focused 10-seed pack
+- it also resolves the quick observe-only `clip` slice
+- normal quick-pack behavior remains unchanged
+- quick normal-pack compute remains effectively unchanged relative to baseline
+
+Current quality caveat:
+
+- on the solved `clip` seeds, terminal entry now happens almost immediately after boost cutoff
+- that is still coast/terminal ownership, not boost-side planning
+- but it means the current solution reads more like immediate terminal handoff plus local correction than long passive coast followed by a late pulse
+
+So the current recommendation is:
+
+- keep `clip` as a separate descent primitive
+- do not force it into the `backstop` containment path
+- only revisit generalization after `follow` has its own primitive too
 
 ### Acceptance criteria for the next attempt
 

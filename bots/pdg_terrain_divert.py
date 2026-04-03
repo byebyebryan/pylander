@@ -31,6 +31,17 @@ class TerrainDivertPrefilter:
     first_limit_t: float | None = None
 
 
+@dataclass(frozen=True)
+class TerrainClipProbe:
+    active: bool
+    min_margin: float | None = None
+    first_limit_t: float | None = None
+    worst_x: float | None = None
+    worst_y: float | None = None
+    horizon_s: float = 0.0
+    sample_count: int = 0
+
+
 def _terrain_probe_enabled(bot) -> bool:
     cfg = getattr(bot, "_cfg", None)
     if cfg is None or not bool(getattr(cfg, "terrain_divert_enable", False)):
@@ -54,6 +65,15 @@ def _body_clearance(bot) -> float:
     return max(0.0, (0.5 * float(vehicle_info.height)) + body_margin)
 
 
+def _clip_body_clearance(bot) -> float:
+    vehicle_info = getattr(bot, "vehicle_info", None)
+    if vehicle_info is None:
+        return 0.0
+    cfg = bot._cfg
+    body_margin = max(0.0, float(getattr(cfg, "terrain_clip_body_margin", 0.0)))
+    return max(0.0, (0.5 * float(vehicle_info.height)) + body_margin)
+
+
 def _projected_landing_x(bot, projected_dx: float | None) -> float | None:
     if projected_dx is None:
         return None
@@ -68,6 +88,19 @@ def _boundary_for_direction(bot, direction: int) -> TerrainBoundary | None:
     if summary is None:
         return None
     return summary.right_boundary if direction > 0 else summary.left_boundary
+
+
+def _clip_probe_enabled(bot) -> bool:
+    cfg = getattr(bot, "_cfg", None)
+    if cfg is None or not bool(getattr(cfg, "terrain_clip_enable", False)):
+        return False
+    environment = getattr(bot, "environment", None)
+    if environment is None:
+        return False
+    if getattr(environment, "terrain", None) is None or getattr(environment, "target", None) is None:
+        return False
+    params = getattr(environment, "scenario_params", None) or {}
+    return params.get("hazard_driver") == "descent_clip"
 
 
 def _boundary_supports_containment(bot, boundary: TerrainBoundary | None) -> bool:
@@ -222,6 +255,69 @@ def evaluate_terrain_divert_probe(
     )
 
 
+def evaluate_terminal_clip_probe(
+    bot,
+    *,
+    passive: Sensors,
+    dx: float,
+    ax_cmd: float,
+    ay_cmd: float,
+) -> TerrainClipProbe:
+    if not _clip_probe_enabled(bot):
+        return TerrainClipProbe(active=False)
+    environment = getattr(bot, "environment", None)
+    if environment is None or environment.terrain is None or environment.target is None:
+        return TerrainClipProbe(active=False)
+    target_x = float(environment.target.x)
+    direction = 1 if float(dx) >= 0.0 else -1
+    distance_to_target = max(0.0, direction * (target_x - float(passive.x)))
+    if distance_to_target <= 1e-3:
+        return TerrainClipProbe(active=False)
+
+    horizon_s = max(0.0, float(bot._cfg.terrain_clip_horizon_s))
+    vx_toward = max(0.0, direction * float(passive.vx))
+    if vx_toward > 1.0:
+        horizon_s = min(horizon_s, distance_to_target / vx_toward)
+    if horizon_s <= 0.0:
+        return TerrainClipProbe(active=False)
+
+    sample_count = max(4, int(bot._cfg.terrain_clip_samples))
+    clearance_radius = _clip_body_clearance(bot)
+    net_ay = float(ay_cmd) - _GRAVITY_MAG
+
+    min_margin: float | None = None
+    first_limit_t: float | None = None
+    worst_x: float | None = None
+    worst_y: float | None = None
+
+    for idx in range(1, sample_count + 1):
+        t = horizon_s * (idx / sample_count)
+        x = float(passive.x) + (float(passive.vx) * t) + (0.5 * float(ax_cmd) * t * t)
+        if direction * (x - target_x) > 0.0:
+            break
+        y = float(passive.y) + (float(passive.vy_up) * t) + (0.5 * net_ay * t * t)
+        terrain_y = float(environment.terrain.sample_height(x, lod=0))
+        margin = y - terrain_y - clearance_radius
+        if min_margin is None or margin < min_margin:
+            min_margin = float(margin)
+            worst_x = float(x)
+            worst_y = float(terrain_y)
+        if margin <= 0.0 and first_limit_t is None:
+            first_limit_t = float(t)
+
+    if min_margin is None:
+        return TerrainClipProbe(active=False)
+    return TerrainClipProbe(
+        active=bool(min_margin <= float(bot._cfg.terrain_clip_trigger_margin)),
+        min_margin=float(min_margin),
+        first_limit_t=first_limit_t,
+        worst_x=worst_x,
+        worst_y=worst_y,
+        horizon_s=float(horizon_s),
+        sample_count=sample_count,
+    )
+
+
 def backstop_containment_override(
     bot,
     *,
@@ -259,10 +355,54 @@ def backstop_containment_override(
     return (-state.direction * inward_mag, desired_ay)
 
 
+def clip_targetward_override(
+    bot,
+    *,
+    passive: Sensors,
+    dx: float,
+    ax_cmd: float,
+    ay_cmd: float,
+    max_thrust_accel: float,
+) -> tuple[float, float] | None:
+    probe = evaluate_terminal_clip_probe(
+        bot,
+        passive=passive,
+        dx=dx,
+        ax_cmd=ax_cmd,
+        ay_cmd=ay_cmd,
+    )
+    if (
+        not probe.active
+        or probe.min_margin is None
+        or probe.min_margin > float(bot._cfg.terrain_clip_release_margin)
+    ):
+        return None
+
+    direction = 1.0 if float(dx) >= 0.0 else -1.0
+    depth = max(0.0, -float(probe.min_margin))
+    desired_ay = min(
+        float(max_thrust_accel),
+        _GRAVITY_MAG + float(bot._cfg.terrain_clip_net_up),
+    )
+    lateral_sq = max(0.0, (float(max_thrust_accel) ** 2) - (desired_ay**2))
+    targetward_mag = min(
+        math.sqrt(lateral_sq),
+        float(bot._cfg.terrain_clip_targetward_bias_max),
+        float(bot._cfg.terrain_clip_targetward_bias)
+        + (float(bot._cfg.terrain_clip_targetward_gain) * depth),
+    )
+    if targetward_mag <= 1e-3:
+        return None
+    return (direction * targetward_mag, desired_ay)
+
+
 __all__ = [
+    "TerrainClipProbe",
     "TerrainDivertPrefilter",
     "TerrainDivertProbe",
     "backstop_containment_override",
+    "clip_targetward_override",
     "evaluate_terrain_divert_probe",
+    "evaluate_terminal_clip_probe",
     "prefilter_terrain_divert",
 ]

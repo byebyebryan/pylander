@@ -11,7 +11,9 @@ from bots.pdg_stages import FlightStage
 from bots.pdg_terrain_divert import (
     TerrainDivertProbe,
     backstop_containment_override,
+    clip_targetward_override,
     evaluate_terrain_divert_probe,
+    evaluate_terminal_clip_probe,
 )
 from core.bot import (
     BotEnvironment,
@@ -72,6 +74,46 @@ class _FlatTerrain:
         return 2.0
 
 
+class _ClipTerrain:
+    def sample_height(self, x: float, lod: int = 0) -> float:
+        _ = lod
+        xx = float(x)
+        if xx <= 220.0:
+            return -xx
+        if xx <= 380.0:
+            return -220.0
+        return -220.0 - ((xx - 380.0) * 1.8)
+
+    def sample_slope(self, x: float, lod: int = 0) -> float:
+        _ = lod
+        xx = float(x)
+        if xx < 220.0:
+            return -1.0
+        if xx < 380.0:
+            return 0.0
+        return -1.8
+
+    def profile(
+        self,
+        x0: float,
+        x1: float,
+        *,
+        step: float,
+        lod: int = 0,
+    ) -> list[tuple[float, float]]:
+        _ = lod
+        xs: list[tuple[float, float]] = []
+        x = float(x0)
+        while x <= float(x1):
+            xs.append((x, self.sample_height(x)))
+            x += max(1.0, float(step))
+        return xs
+
+    def resolution(self, lod: int = 0) -> float:
+        _ = lod
+        return 2.0
+
+
 def _bot() -> Any:
     bot = cast(Any, create_bot("pdg"))
     bot.vehicle_info = SimpleNamespace(height=20.0)
@@ -123,6 +165,37 @@ def test_divert_probe_positive_clearance_on_flat_terrain() -> None:
 
     assert probe.active is False
     assert probe.mode is None
+
+
+def test_terminal_clip_probe_reports_terrain_intersection() -> None:
+    bot = _bot()
+    bot.environment = BotEnvironment(
+        terrain=_ClipTerrain(),
+        gravity_mag=9.8,
+        target=BotTarget(uid="target", x=398.0, y=-400.0, size=110.0),
+        terrain_summary=BotTerrainSummary(
+            target_ground_y=-400.0,
+            height_threshold=30.0,
+        ),
+        level_name="terrain",
+        scenario_name="terrain:downhill:mid:clip:half",
+        scenario_params={"hazard_driver": "descent_clip"},
+    )
+
+    probe = evaluate_terminal_clip_probe(
+        bot,
+        passive=_sensors(x=80.0, y=28.0, vx=32.0, vy_up=-3.0),
+        dx=318.0,
+        ax_cmd=0.0,
+        ay_cmd=0.0,
+    )
+
+    assert probe.active is True
+    assert probe.min_margin is not None
+    assert probe.min_margin < 0.0
+    assert probe.first_limit_t is not None
+    assert probe.worst_x is not None
+    assert 220.0 <= probe.worst_x <= 380.0
 
 
 def test_divert_probe_reports_negative_margin_for_terrain_penetration() -> None:
@@ -287,6 +360,44 @@ def test_terminal_gate_can_force_terrain_divert_entry(
     assert bot.state._terrain_divert_worst_x == pytest.approx(242.0)
 
 
+def test_terminal_gate_can_force_terrain_clip_entry() -> None:
+    bot = _bot()
+    bot.environment = BotEnvironment(
+        terrain=_ClipTerrain(),
+        gravity_mag=9.8,
+        target=BotTarget(uid="target", x=398.0, y=-400.0, size=110.0),
+        terrain_summary=BotTerrainSummary(
+            target_ground_y=-400.0,
+            height_threshold=30.0,
+        ),
+        level_name="terrain",
+        scenario_name="terrain:downhill:mid:clip:half",
+        scenario_params={"hazard_driver": "descent_clip"},
+    )
+    bot.state._active_stage = FlightStage.COAST
+
+    decision = terminal_gate.evaluate_terminal_gate(
+        bot,
+        dt=1.0 / 30.0,
+        passive=_sensors(x=80.0, y=28.0, vx=32.0, vy_up=-3.0),
+        dx=318.0,
+        projected_dx=48.0,
+        dy=-428.0,
+        alt=108.0,
+        max_thrust_accel=22.0,
+        min_thrust_accel=3.0,
+        nominal_thrust_accel=18.0,
+        thrust_ramp_up=2.0,
+    )
+
+    assert decision is not None
+    assert decision.mode == "terrain_clip"
+    assert bot.state._terminal_probe_count == 1
+    assert bot.state._terrain_divert_mode == "descent_clip"
+    assert bot.state._terrain_divert_margin_min is not None
+    assert bot.state._terrain_divert_margin_min < 0.0
+
+
 def test_containment_override_returns_inward_push() -> None:
     bot = _bot()
     bot.environment = BotEnvironment(
@@ -317,4 +428,34 @@ def test_containment_override_returns_inward_push() -> None:
     assert override is not None
     ax, ay = override
     assert ax < 0.0
+    assert ay > 9.8
+
+
+def test_clip_override_pulses_targetward() -> None:
+    bot = _bot()
+    bot.environment = BotEnvironment(
+        terrain=_ClipTerrain(),
+        gravity_mag=9.8,
+        target=BotTarget(uid="target", x=398.0, y=-400.0, size=110.0),
+        terrain_summary=BotTerrainSummary(
+            target_ground_y=-400.0,
+            height_threshold=30.0,
+        ),
+        level_name="terrain",
+        scenario_name="terrain:downhill:mid:clip:half",
+        scenario_params={"hazard_driver": "descent_clip"},
+    )
+
+    override = clip_targetward_override(
+        bot,
+        passive=_sensors(x=80.0, y=28.0, vx=32.0, vy_up=-3.0),
+        dx=318.0,
+        ax_cmd=0.0,
+        ay_cmd=0.0,
+        max_thrust_accel=22.0,
+    )
+
+    assert override is not None
+    ax, ay = override
+    assert ax > 0.0
     assert ay > 9.8

@@ -592,6 +592,49 @@ Current practical lesson:
 - the expensive part should not be "sampling smarter every tick"
 - it should be "classify which target-side terrain even deserves containment logic, once"
 
+## Prototype findings: simple descent-clip primitive
+
+The next successful terrain step did not come from broadening `backstop`.
+
+It used a separate `clip` primitive:
+
+- keep ownership in `COAST` / `TERMINAL`
+- run a short-horizon terrain intersection check against the current near path
+- if that near path clips terrain before target:
+  - force terminal entry immediately
+  - add a targetward, lift-preserving mix-in until the near path clears again
+
+This worked better than the earlier ideas of:
+
+- solving the shoulder by extending or reshaping `BOOST`
+- forcing `clip` through the same containment logic as `backstop`
+- relying on a purely passive-ballistic trigger
+
+Measured outcome of the first clean pass:
+
+- focused `terrain:downhill:mid:clip:half` improved from `0/10` to `10/10`
+- quick observe-only `clip` improved from `0/5` to `5/5`
+- normal quick-pack behavior stayed unchanged
+- quick normal-pack compute stayed effectively flat
+
+Implementation note:
+
+- this `clip` primitive is still intentionally narrower than the generic `backstop` arming path
+- its enable path is keyed to `hazard_driver=descent_clip`
+- that is acceptable for the current checkpoint because the main goal was to prove the control shape cleanly
+
+Quality caveat:
+
+- on the solved seeds, terminal entry happens almost immediately after boost cutoff
+- that is still coast/terminal ownership, not boost-side terrain planning
+- but it means the current solution looks like early terminal handoff plus local correction rather than a long passive coast followed by a late pulse
+
+So the current synthesis is:
+
+- `backstop`: solved with generic geometry-based arming plus a containment primitive
+- `clip`: solved with a separate short-horizon descent primitive
+- `follow`: still unresolved and should not be forced into either of the above shapes
+
 ## Sources
 
 - ZEM/ZEV guidance: Zhang et al., "Collision Avoidance ZEM/ZEV Guidance for Mars" (Acta Astronautica, 2017)
