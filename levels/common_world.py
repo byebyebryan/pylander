@@ -76,6 +76,37 @@ def compute_spawn_pos(
     return Vector2(x, max_ground + half_h + clearance)
 
 
+def build_level_physics_engine(
+    terrain,
+    *,
+    geo: LanderGeometry,
+    mass: float,
+    uid: str,
+    start_pos: Any,
+    start_angle: float,
+    landing_site_colliders: list[tuple[float, float, float]] | None = None,
+) -> PhysicsEngine:
+    engine = PhysicsEngine(
+        height_sampler=terrain,
+        gravity=(0.0, float(GRAVITY)),
+        segment_step=10.0,
+        half_width=12000.0,
+    )
+    if landing_site_colliders:
+        engine.set_landing_site_colliders(landing_site_colliders)
+    engine.attach_lander(
+        width=geo.width,
+        height=geo.height,
+        mass=mass,
+        uid=uid,
+        friction=0.9,
+        elasticity=0.0,
+        start_pos=start_pos,
+        start_angle=start_angle,
+    )
+    return engine
+
+
 def should_end_default(
     game,
     *,
@@ -522,17 +553,14 @@ class PresetLevel(EndResultMixin, Level):
             ):
                 continue
             elevated_sites.append((site_trans.pos.x, site_trans.pos.y, site_shape.size))
-        if elevated_sites:
-            engine.set_landing_site_colliders(elevated_sites)
-        engine.attach_lander(
-            width=player_geo.width,
-            height=player_geo.height,
+        engine = build_level_physics_engine(
+            terrain,
+            geo=player_geo,
             mass=get_mass(player_lander),
             uid=player_lander.uid,
-            friction=0.9,
-            elasticity=0.0,
             start_pos=start_pos,
             start_angle=player_trans.rotation,
+            landing_site_colliders=elevated_sites,
         )
 
         self.world = LevelWorld(

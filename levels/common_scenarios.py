@@ -32,14 +32,14 @@ from core.level_capabilities import (
     LevelBenchmarkProfile,
 )
 from core.maths import Vector2
-from core.physics import PhysicsEngine
 from core.bot import BoostCutoffMetrics
-from core.config import GRAVITY, GRAVITY_MAG
+from core.config import GRAVITY_MAG
 from core.eval_goals import EVAL_GOAL_LANDING
 from landers import create_lander
 from core.ecs import require_component
 from levels.common_world import (
     EndResultMixin,
+    build_level_physics_engine,
     compute_spawn_pos,
     get_mass,
 )
@@ -513,23 +513,17 @@ class ScenarioLevel(EndResultMixin, Level):
         lander.start_pos = Vector2(start_pos)
         trans.pos = Vector2(start_pos)
 
-        engine = PhysicsEngine(
-            height_sampler=terrain,
-            gravity=(0.0, float(GRAVITY)),
-            segment_step=10.0,
-            half_width=12000.0,
-        )
+        landing_site_colliders = None
         if not target_terrain_bound or spec.target_mode == "elevated_supports":
-            engine.set_landing_site_colliders([(target_x, target_y, spec.target_size)])
-        engine.attach_lander(
-            width=geo.width,
-            height=geo.height,
+            landing_site_colliders = [(target_x, target_y, spec.target_size)]
+        engine = build_level_physics_engine(
+            terrain,
+            geo=geo,
             mass=get_mass(lander),
             uid=lander.uid,
-            friction=0.9,
-            elasticity=0.0,
             start_pos=start_pos,
             start_angle=trans.rotation,
+            landing_site_colliders=landing_site_colliders,
         )
 
         self.world = LevelWorld(
