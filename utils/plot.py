@@ -14,7 +14,9 @@ from bots.common_ballistics import (
     time_to_target_y_crossing,
 )
 from core.components import Engine, FuelTank, LanderState, PhysicsState, Transform
+from core.config import GRAVITY_MAG
 from core.ecs import require_component
+from utils.tracebundle import sanitize_token
 
 
 PlotMode = Literal["none", "speed", "thrust", "all"]
@@ -95,26 +97,6 @@ class _IdealizedReferenceKinematics:
     vy_up: float
 
 
-def _sanitize_filename_token(token: str) -> str:
-    out_chars: list[str] = []
-    prev_underscore = False
-    for ch in token.strip().lower():
-        keep = ch.isalnum() or ch in {"-", "."}
-        if keep:
-            out_chars.append(ch)
-            prev_underscore = False
-        else:
-            if not prev_underscore:
-                out_chars.append("_")
-                prev_underscore = True
-    sanitized = "".join(out_chars).strip("._")
-    if not sanitized:
-        return "run"
-    while "__" in sanitized:
-        sanitized = sanitized.replace("__", "_")
-    return sanitized
-
-
 def _collision_safe_path(path: Path) -> Path:
     if not path.exists():
         return path
@@ -154,7 +136,9 @@ def _compute_figure_size(
     if layout == "all":
         if arrangement == "columns":
             panel_width = max(9.2, width)
-            return max(15.0, min(26.0, panel_width * 2.15)), max(18.8, min(31.5, (height * 2.0) + 9.4))
+            return max(15.0, min(26.0, panel_width * 2.15)), max(
+                18.8, min(31.5, (height * 2.0) + 9.4)
+            )
         return max(10.2, width), max(26.9, min(37.5, (height * 4.0) + 8.4))
     if layout == "series":
         return max(10.0, min(24.0, width * 1.1)), 3.6
@@ -169,11 +153,15 @@ def _is_tall_spatial(span_x: float, span_y: float) -> bool:
     return _spatial_ratio(span_x, span_y) < _TALL_SPATIAL_RATIO_CUTOFF
 
 
-def _combined_spatial_arrangement(span_x: float, span_y: float) -> Literal["rows", "columns"]:
+def _combined_spatial_arrangement(
+    span_x: float, span_y: float
+) -> Literal["rows", "columns"]:
     return "columns" if _is_tall_spatial(span_x, span_y) else "rows"
 
 
-def _spatial_colorbar_position(span_x: float, span_y: float) -> Literal["right", "bottom"]:
+def _spatial_colorbar_position(
+    span_x: float, span_y: float
+) -> Literal["right", "bottom"]:
     return "bottom" if _is_tall_spatial(span_x, span_y) else "right"
 
 
@@ -321,11 +309,15 @@ def _draw_events(ax, *, events: list[dict[str, float | str | None]] | None) -> N
     labeled_kinds: set[str] = set()
     for event in event_list:
         raw_name = event.get("name")
-        event_name = str(raw_name) if isinstance(raw_name, str) and raw_name else "event"
+        event_name = (
+            str(raw_name) if isinstance(raw_name, str) and raw_name else "event"
+        )
         event_x = float(event.get("x", 0.0) or 0.0)
         event_y = float(event.get("y", 0.0) or 0.0)
         color = _EVENT_COLORS.get(event_name, "#222222")
-        legend_label = _EVENT_DISPLAY_NAMES.get(event_name, event_name.replace("_", " "))
+        legend_label = _EVENT_DISPLAY_NAMES.get(
+            event_name, event_name.replace("_", " ")
+        )
         scatter_label = legend_label if event_name not in labeled_kinds else None
         labeled_kinds.add(event_name)
         ax.scatter(
@@ -340,7 +332,9 @@ def _draw_events(ax, *, events: list[dict[str, float | str | None]] | None) -> N
             label=scatter_label,
         )
         raw_label = event.get("label")
-        text_label = str(raw_label) if isinstance(raw_label, str) and raw_label else legend_label
+        text_label = (
+            str(raw_label) if isinstance(raw_label, str) and raw_label else legend_label
+        )
         ax.annotate(
             text_label,
             xy=(event_x, event_y),
@@ -575,7 +569,9 @@ def _curve_apex_point(xs: list[float], ys: list[float]) -> tuple[float, float] |
     apex_y = float(ys[apex_idx])
     rise_eps = 1e-6
     has_climb = any((apex_y - float(y_val)) > rise_eps for y_val in ys[:apex_idx])
-    has_descent = any((apex_y - float(y_val)) > rise_eps for y_val in ys[apex_idx + 1 : count])
+    has_descent = any(
+        (apex_y - float(y_val)) > rise_eps for y_val in ys[apex_idx + 1 : count]
+    )
     if not (has_climb and has_descent):
         return None
     return float(xs[apex_idx]), apex_y
@@ -586,7 +582,7 @@ def _projected_apex_point(
     *,
     target: dict[str, float | str | None] | None,
     events: list[dict[str, float | str | None]] | None = None,
-    gravity_mag: float = 9.8,
+    gravity_mag: float = GRAVITY_MAG,
 ) -> tuple[float, float] | None:
     if target is None:
         return None
@@ -677,7 +673,7 @@ def _projected_intercept_from_state(
     vy_up: float,
     target_x: float,
     target_y: float,
-    gravity_mag: float = 9.8,
+    gravity_mag: float = GRAVITY_MAG,
 ) -> _ProjectedIntercept:
     projection = estimate_target_y_projection(
         dx=float(target_x) - float(x),
@@ -696,7 +692,11 @@ def _projected_intercept_from_state(
         vy_up=float(vy_up),
         gravity_mag=gravity_mag,
     )
-    apex_x = float(apex.x_apex if apex.x_apex is not None else (float(x) + (float(vx) * float(apex.t_apex))))
+    apex_x = float(
+        apex.x_apex
+        if apex.x_apex is not None
+        else (float(x) + (float(vx) * float(apex.t_apex)))
+    )
     apex_y = float(apex.y_apex)
     if not projection.has_target_y_solution:
         return _ProjectedIntercept(
@@ -728,7 +728,7 @@ def _ballistic_curve_from_state(
     vy_up: float,
     target_x: float,
     target_y: float,
-    gravity_mag: float = 9.8,
+    gravity_mag: float = GRAVITY_MAG,
 ) -> tuple[list[float], list[float], bool]:
     import numpy as np
 
@@ -744,7 +744,10 @@ def _ballistic_curve_from_state(
     point_count = max(18, min(56, int(12 + (intercept.t_end * 10.0))))
     t_vals = np.linspace(0.0, max(0.0, intercept.t_end), point_count)
     xs = [float(x + (vx * t_val)) for t_val in t_vals]
-    ys = [float(y + (vy_up * t_val) - (0.5 * gravity_mag * t_val * t_val)) for t_val in t_vals]
+    ys = [
+        float(y + (vy_up * t_val) - (0.5 * gravity_mag * t_val * t_val))
+        for t_val in t_vals
+    ]
     if xs:
         xs[-1] = intercept.end_x
         ys[-1] = intercept.end_y
@@ -759,7 +762,7 @@ def _vx_corrected_ballistic_reference_curve(
     vy_up: float,
     target_x: float,
     target_y: float,
-    gravity_mag: float = 9.8,
+    gravity_mag: float = GRAVITY_MAG,
 ) -> tuple[list[float], list[float]] | None:
     import numpy as np
 
@@ -799,7 +802,7 @@ def _idealized_reference_curve(
     target_x: float,
     target_y: float,
     apex_y: float,
-    gravity_mag: float = 9.8,
+    gravity_mag: float = GRAVITY_MAG,
 ) -> tuple[list[float], list[float]] | None:
     import numpy as np
 
@@ -835,7 +838,7 @@ def _idealized_reference_kinematics(
     target_x: float,
     target_y: float,
     apex_y: float,
-    gravity_mag: float = 9.8,
+    gravity_mag: float = GRAVITY_MAG,
 ) -> _IdealizedReferenceKinematics | None:
     g = max(1e-6, abs(float(gravity_mag)))
     peak_y = max(float(start_y), float(apex_y))
@@ -861,7 +864,7 @@ def _idealized_reference_impact_angle_deg(
     target_x: float,
     target_y: float,
     apex_y: float,
-    gravity_mag: float = 9.8,
+    gravity_mag: float = GRAVITY_MAG,
 ) -> float | None:
     solution = _idealized_reference_kinematics(
         start_x=start_x,
@@ -886,7 +889,7 @@ def _idealized_reference_exit_angle_deg(
     target_x: float,
     target_y: float,
     apex_y: float,
-    gravity_mag: float = 9.8,
+    gravity_mag: float = GRAVITY_MAG,
 ) -> float | None:
     solution = _idealized_reference_kinematics(
         start_x=start_x,
@@ -911,7 +914,7 @@ def _idealized_reference_apex_y(
     min_descent_angle_deg: float = 45.0,
     min_exit_angle_deg: float = 45.0,
     downhill_policy: Literal["descent_angle", "exit_angle"] = "descent_angle",
-    gravity_mag: float = 9.8,
+    gravity_mag: float = GRAVITY_MAG,
 ) -> float:
     start_x = float(start_x)
     start_y = float(start_y)
@@ -948,7 +951,9 @@ def _idealized_reference_apex_y(
             apex_y=peak_y,
             gravity_mag=gravity_mag,
         )
-        return impact_angle_deg is not None and impact_angle_deg >= min_descent_angle_deg
+        return (
+            impact_angle_deg is not None and impact_angle_deg >= min_descent_angle_deg
+        )
 
     if meets_angle_floor(base_peak):
         return base_peak
@@ -1054,7 +1059,9 @@ def _draw_spatial_panel(
         vmin = 0.0
         cmap = "RdYlGn_r"
         cbar_label = "speed (world units/s)"
-    lc = LineCollection(ctx.segments, cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax))
+    lc = LineCollection(
+        ctx.segments, cmap=cmap, norm=plt.Normalize(vmin=vmin, vmax=vmax)
+    )
     lc.set_array(vals)
     lc.set_linewidth(2.0)
     ax.add_collection(lc)
@@ -1068,7 +1075,9 @@ def _draw_spatial_panel(
     projected_apex = _projected_apex_point(ctx, target=target, events=events)
     _draw_apex_marker(ax, point=actual_apex, label="apex", color="#1b263b")
     _draw_apex_marker(ax, point=projected_apex, label="projected apex", color="#cc0000")
-    extra_points = [point for point in (actual_apex, projected_apex) if point is not None]
+    extra_points = [
+        point for point in (actual_apex, projected_apex) if point is not None
+    ]
 
     _draw_spatial_common(
         ax,
@@ -1106,7 +1115,9 @@ def _draw_vector_spatial_panel(
         alpha=0.85,
         label="terrain",
     )
-    ax.plot(ctx.xs, ctx.ys, color="#777777", linewidth=1.25, alpha=0.42, label="trajectory")
+    ax.plot(
+        ctx.xs, ctx.ys, color="#777777", linewidth=1.25, alpha=0.42, label="trajectory"
+    )
 
     vector_len = 0.038 * max(ctx.span_x, ctx.span_y, 1.0)
     vx_dir = np.sin(ctx.angle_arr)
@@ -1163,7 +1174,9 @@ def _draw_vector_spatial_panel(
     projected_apex = _projected_apex_point(ctx, target=target, events=events)
     _draw_apex_marker(ax, point=actual_apex, label="apex", color="#1b263b")
     _draw_apex_marker(ax, point=projected_apex, label="projected apex", color="#cc0000")
-    extra_points = [point for point in (actual_apex, projected_apex) if point is not None]
+    extra_points = [
+        point for point in (actual_apex, projected_apex) if point is not None
+    ]
 
     _draw_spatial_common(
         ax,
@@ -1209,7 +1222,9 @@ def _draw_trajectory_comparison_spatial_panel(
         zorder=6,
         label="actual trajectory",
     )[0]
-    actual_line.set_path_effects([pe.Stroke(linewidth=6.0, foreground="#ffffff"), pe.Normal()])
+    actual_line.set_path_effects(
+        [pe.Stroke(linewidth=6.0, foreground="#ffffff"), pe.Normal()]
+    )
     ax.scatter(
         [ctx.xs[0], ctx.xs[-1]],
         [ctx.ys[0], ctx.ys[-1]],
@@ -1289,7 +1304,9 @@ def _draw_trajectory_comparison_spatial_panel(
             zorder=5,
             label="idealized reference",
         )[0]
-        ref_line.set_path_effects([pe.Stroke(linewidth=4.2, foreground="#111111"), pe.Normal()])
+        ref_line.set_path_effects(
+            [pe.Stroke(linewidth=4.2, foreground="#111111"), pe.Normal()]
+        )
         _draw_apex_marker(ax, point=ref_apex, label="reference apex", color="#00aa00")
 
     if boost_cutoff_event is not None:
@@ -1298,13 +1315,15 @@ def _draw_trajectory_comparison_spatial_panel(
         event_vx = boost_cutoff_event.get("vx")
         event_vy_up = boost_cutoff_event.get("vy_up")
         if event_vx is not None and event_vy_up is not None:
-            boost_curve_xs, boost_curve_ys, has_target_y_solution = _ballistic_curve_from_state(
-                x=event_x,
-                y=event_y,
-                vx=float(event_vx),
-                vy_up=float(event_vy_up),
-                target_x=target_x,
-                target_y=target_y,
+            boost_curve_xs, boost_curve_ys, has_target_y_solution = (
+                _ballistic_curve_from_state(
+                    x=event_x,
+                    y=event_y,
+                    vx=float(event_vx),
+                    vy_up=float(event_vy_up),
+                    target_x=target_x,
+                    target_y=target_y,
+                )
             )
             if has_target_y_solution:
                 boost_apex = _curve_apex_point(boost_curve_xs, boost_curve_ys)
@@ -1326,8 +1345,12 @@ def _draw_trajectory_comparison_spatial_panel(
                     zorder=6,
                     label="boost cutoff ballistic",
                 )[0]
-                boost_line.set_path_effects([pe.Stroke(linewidth=4.4, foreground="#111111"), pe.Normal()])
-                _draw_apex_marker(ax, point=boost_apex, label="boost ballistic apex", color="#cc0000")
+                boost_line.set_path_effects(
+                    [pe.Stroke(linewidth=4.4, foreground="#111111"), pe.Normal()]
+                )
+                _draw_apex_marker(
+                    ax, point=boost_apex, label="boost ballistic apex", color="#cc0000"
+                )
                 ax.scatter(
                     [boost_curve_xs[0], boost_curve_xs[-1]],
                     [boost_curve_ys[0], boost_curve_ys[-1]],
@@ -1367,9 +1390,9 @@ def _draw_speed_thrust_timeseries_panel(
     import numpy as np
 
     t = np.array(ctx.sample_times, dtype=float)
-    speed_line = ax.plot(
-        t, ctx.speeds, color="#d62728", linewidth=1.2, label="speed"
-    )[0]
+    speed_line = ax.plot(t, ctx.speeds, color="#d62728", linewidth=1.2, label="speed")[
+        0
+    ]
     ax.set_ylabel("speed")
     max_speed = max(ctx.speeds) if ctx.speeds else 1.0
     ax.set_ylim(0.0, max(1.0, max_speed * 1.14))
@@ -1398,7 +1421,7 @@ def _ballistic_projection_series(
     *,
     ctx: _PlotContext,
     target: dict[str, float | str | None] | None,
-    gravity_mag: float = 9.8,
+    gravity_mag: float = GRAVITY_MAG,
 ) -> tuple[list[float], list[float]]:
     target_x = float(target.get("x", 0.0) or 0.0) if target else 0.0
     target_y = float(target.get("y", 0.0) or 0.0) if target else 0.0
@@ -1434,7 +1457,9 @@ def _draw_ballistic_projection_timeseries_panel(
     import numpy as np
 
     t = np.array(ctx.sample_times, dtype=float)
-    apex_over_target, projected_dx = _ballistic_projection_series(ctx=ctx, target=target)
+    apex_over_target, projected_dx = _ballistic_projection_series(
+        ctx=ctx, target=target
+    )
     apex_arr = np.array(apex_over_target, dtype=float)
     dx_arr = np.array(projected_dx, dtype=float)
     ax.plot(
@@ -1836,7 +1861,11 @@ def _render_split_plots(
             )
             fig.subplots_adjust(left=0.08, right=0.95, bottom=0.08, top=0.96)
             out_paths.append(
-                _save_figure(fig, out_dir / "spatial_trajectory_comparison.png", max_side_px=max_side_px)
+                _save_figure(
+                    fig,
+                    out_dir / "spatial_trajectory_comparison.png",
+                    max_side_px=max_side_px,
+                )
             )
         fig, (ax, cax, legend_ax) = _new_spatial()
         _draw_spatial_panel(
@@ -1889,7 +1918,9 @@ def _render_split_plots(
         )
         fig.subplots_adjust(left=0.08, right=0.95, bottom=0.08, top=0.96)
         out_paths.append(
-            _save_figure(fig, out_dir / "spatial_thrust_vectors.png", max_side_px=max_side_px)
+            _save_figure(
+                fig, out_dir / "spatial_thrust_vectors.png", max_side_px=max_side_px
+            )
         )
 
     if mode == "all":
@@ -1906,7 +1937,11 @@ def _render_split_plots(
         )
         fig.tight_layout()
         out_paths.append(
-            _save_figure(fig, out_dir / "timeseries_ballistic_projection.png", max_side_px=max_side_px)
+            _save_figure(
+                fig,
+                out_dir / "timeseries_ballistic_projection.png",
+                max_side_px=max_side_px,
+            )
         )
 
         fig, ax = plt.subplots(figsize=(ts_w, ts_h))
@@ -1919,7 +1954,9 @@ def _render_split_plots(
         )
         fig.tight_layout()
         out_paths.append(
-            _save_figure(fig, out_dir / "timeseries_speed_thrust.png", max_side_px=max_side_px)
+            _save_figure(
+                fig, out_dir / "timeseries_speed_thrust.png", max_side_px=max_side_px
+            )
         )
 
         fig, ax = plt.subplots(figsize=(ts_w, ts_h))
@@ -1932,7 +1969,9 @@ def _render_split_plots(
         )
         fig.tight_layout()
         out_paths.append(
-            _save_figure(fig, out_dir / "timeseries_hv_speed.png", max_side_px=max_side_px)
+            _save_figure(
+                fig, out_dir / "timeseries_hv_speed.png", max_side_px=max_side_px
+            )
         )
 
         fig, ax = plt.subplots(figsize=(ts_w, ts_h))
@@ -1945,7 +1984,11 @@ def _render_split_plots(
         )
         fig.tight_layout()
         out_paths.append(
-            _save_figure(fig, out_dir / "timeseries_thrust_components.png", max_side_px=max_side_px)
+            _save_figure(
+                fig,
+                out_dir / "timeseries_thrust_components.png",
+                max_side_px=max_side_px,
+            )
         )
 
     return out_paths
@@ -1966,7 +2009,9 @@ def save_trajectory_plots(
     selector_tag: str | None = None,
 ) -> dict[str, Any]:
     """Save one or more trajectory plot PNGs and return artifact metadata."""
-    resolved_mode: Literal["speed", "thrust", "all"] = "all" if mode == "all" else ("thrust" if mode == "thrust" else "speed")
+    resolved_mode: Literal["speed", "thrust", "all"] = (
+        "all" if mode == "all" else ("thrust" if mode == "thrust" else "speed")
+    )
     profile = str(output_profile or "combined").strip().lower()
     if profile not in {"combined", "split", "both"}:
         profile = "combined"
@@ -1986,7 +2031,7 @@ def save_trajectory_plots(
         import datetime as _dt
 
         ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
-        tag = _sanitize_filename_token(selector_tag or "run")
+        tag = sanitize_token(selector_tag or "run")
         root = Path("outputs") / "plots"
         bundle_dir = _collision_safe_dir(root / f"{tag}_{ts}")
         bundle_dir.mkdir(parents=True, exist_ok=True)
@@ -2002,7 +2047,7 @@ def save_trajectory_plots(
             ts = _dt.datetime.now().strftime("%Y%m%d_%H%M%S")
             overview_root = Path(overview_dir)
             overview_root.mkdir(parents=True, exist_ok=True)
-            base = _sanitize_filename_token(selector_tag or "run")
+            base = sanitize_token(selector_tag or "run")
             combined_file = _collision_safe_path(overview_root / f"{base}_{ts}.png")
         else:
             combined_file = bundle_dir / "overview_combined.png"
@@ -2045,7 +2090,7 @@ def save_trajectory_plots(
     if include_manifest:
         manifest_path = bundle_dir / "manifest.json"
         manifest_payload = {
-            "selector_tag": _sanitize_filename_token(selector_tag or "run"),
+            "selector_tag": sanitize_token(selector_tag or "run"),
             "plot_mode": resolved_mode,
             "plot_output": profile,
             "plot_max_side_px": resolved_max_side,
@@ -2060,7 +2105,9 @@ def save_trajectory_plots(
             "events": list(events or []),
             "target": (dict(target) if target is not None else None),
         }
-        manifest_path.write_text(json.dumps(manifest_payload, indent=2, sort_keys=True), encoding="utf-8")
+        manifest_path.write_text(
+            json.dumps(manifest_payload, indent=2, sort_keys=True), encoding="utf-8"
+        )
         out["plot_manifest_path"] = str(manifest_path)
         out["plot_bundle_dir"] = str(bundle_dir)
     if deduped_paths:
@@ -2112,7 +2159,9 @@ class Plotter:
         self.terrain = terrain
         self.lander = lander
         self._selector_tag: str = "run"
-        self._samples: list[tuple[float, float, float, float, float, float, float, float]] = []
+        self._samples: list[
+            tuple[float, float, float, float, float, float, float, float]
+        ] = []
         self._events: list[dict[str, float | str | None]] = []
         self._target: dict[str, float | str | None] | None = None
         self._sample_period_s: float = 1.0
@@ -2131,7 +2180,7 @@ class Plotter:
         self.output_profile = mode  # type: ignore[assignment]
 
     def set_selector_tag(self, tag: str) -> None:
-        self._selector_tag = _sanitize_filename_token(tag)
+        self._selector_tag = sanitize_token(tag)
 
     def set_sampling_from_print_freq(self, print_freq: int, target_fps: float) -> None:
         if print_freq and print_freq > 0 and target_fps > 0:
@@ -2196,7 +2245,9 @@ class Plotter:
             )
         )
 
-    def get_samples(self) -> list[tuple[float, float, float, float, float, float, float, float]]:
+    def get_samples(
+        self,
+    ) -> list[tuple[float, float, float, float, float, float, float, float]]:
         return list(self._samples)
 
     def mark_event(
@@ -2231,7 +2282,11 @@ class Plotter:
         if state is None or trans is None:
             return None
         state_name = str(state.state)
-        if state_name not in {"landed", "crashed"} and tank is not None and tank.fuel <= 0.0:
+        if (
+            state_name not in {"landed", "crashed"}
+            and tank is not None
+            and tank.fuel <= 0.0
+        ):
             state_name = "out_of_fuel"
         outcome_name: str | None = None
         outcome_label: str | None = None
@@ -2270,7 +2325,7 @@ class Plotter:
                 resolved_mode = mode
             else:
                 resolved_mode = "speed"
-            tag = _sanitize_filename_token(self._selector_tag)
+            tag = sanitize_token(self._selector_tag)
             bundle_dir = _collision_safe_dir(Path("outputs") / "plots" / f"{tag}_{ts}")
             events = list(self._events)
             outcome_event = self._build_outcome_event()

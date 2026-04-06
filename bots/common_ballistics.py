@@ -5,11 +5,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from bots.common_math import coerce_finite
-from core.config import GRAVITY
+from bots.common_math import _GRAVITY_MAG, coerce_finite
 from core.terrain import ballistic_fall_time
-
-_GRAVITY_MAG = abs(float(GRAVITY))
 
 
 @dataclass(frozen=True)

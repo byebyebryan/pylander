@@ -79,9 +79,6 @@ class PDGPlan:
         def _shift(seq: tuple[float, ...]) -> tuple[float, ...]:
             return tuple(seq[1:]) + (seq[-1],)
 
-        def _shift_state(seq: tuple[float, ...]) -> tuple[float, ...]:
-            return tuple(seq[1:]) + (seq[-1],)
-
         return PDGPlan(
             feasible=self.feasible,
             status=self.status,
@@ -90,10 +87,10 @@ class PDGPlan:
             step_dt=self.step_dt,
             ax=_shift(self.ax),
             ay=_shift(self.ay),
-            x=_shift_state(self.x),
-            y=_shift_state(self.y),
-            vx=_shift_state(self.vx),
-            vy=_shift_state(self.vy),
+            x=_shift(self.x),
+            y=_shift(self.y),
+            vx=_shift(self.vx),
+            vy=_shift(self.vy),
         )
 
 

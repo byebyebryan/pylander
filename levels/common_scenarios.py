@@ -34,7 +34,7 @@ from core.level_capabilities import (
 from core.maths import Vector2
 from core.physics import PhysicsEngine
 from core.bot import BoostCutoffMetrics
-from core.config import GRAVITY
+from core.config import GRAVITY, GRAVITY_MAG
 from core.eval_goals import EVAL_GOAL_LANDING
 from landers import create_lander
 from core.ecs import require_component
@@ -46,7 +46,6 @@ from levels.common_world import (
 
 
 BenchmarkRandomMode = Literal["median", "sample"]
-_GRAVITY_MAG = abs(float(GRAVITY))
 
 
 @dataclass(frozen=True)
@@ -198,7 +197,9 @@ def validate_scenario_recoverability(
     engine = require_component(actor, Engine)
 
     total_mass = max(0.5, get_mass(actor))
-    max_up_acc = (float(engine.max_power) * float(engine.max_thrust) / total_mass) - 9.8
+    max_up_acc = (
+        float(engine.max_power) * float(engine.max_thrust) / total_mass
+    ) - GRAVITY_MAG
     if max_up_acc <= 1e-6:
         raise ValueError(
             f"Scenario '{scenario_name}' is unrecoverable: no upward acceleration"
@@ -265,8 +266,8 @@ def build_boost_cutoff_metrics_from_state(
     dy = float(target_y) - float(y)
     vy_pos = max(0.0, float(vy_up))
     apex_y = float(y)
-    if _GRAVITY_MAG > 1e-6:
-        apex_y += (vy_pos * vy_pos) / (2.0 * _GRAVITY_MAG)
+    if GRAVITY_MAG > 1e-6:
+        apex_y += (vy_pos * vy_pos) / (2.0 * GRAVITY_MAG)
     projected_apex_over_target = apex_y - float(target_y)
 
     has_target_y_solution = True
@@ -274,7 +275,7 @@ def build_boost_cutoff_metrics_from_state(
     projected_impact_angle_deg: float | None = None
     t_cross: float | None = None
 
-    if _GRAVITY_MAG <= 1e-6:
+    if GRAVITY_MAG <= 1e-6:
         if abs(float(vy_up)) > 1e-6:
             t_cross = dy / float(vy_up)
         elif abs(dy) <= 1e-6:
@@ -282,15 +283,15 @@ def build_boost_cutoff_metrics_from_state(
         else:
             has_target_y_solution = False
     else:
-        disc = (float(vy_up) * float(vy_up)) - (2.0 * _GRAVITY_MAG * dy)
+        disc = (float(vy_up) * float(vy_up)) - (2.0 * GRAVITY_MAG * dy)
         if disc < 0.0:
             has_target_y_solution = False
         else:
             sqrt_disc = math.sqrt(max(0.0, disc))
             roots = sorted(
                 (
-                    (float(vy_up) - sqrt_disc) / _GRAVITY_MAG,
-                    (float(vy_up) + sqrt_disc) / _GRAVITY_MAG,
+                    (float(vy_up) - sqrt_disc) / GRAVITY_MAG,
+                    (float(vy_up) + sqrt_disc) / GRAVITY_MAG,
                 )
             )
             positive = [value for value in roots if value >= 0.0]
@@ -305,7 +306,7 @@ def build_boost_cutoff_metrics_from_state(
 
     if has_target_y_solution and t_cross is not None:
         projected_impact_dx = dx - (float(vx) * float(t_cross))
-        vy_down = abs(float(vy_up) - (_GRAVITY_MAG * max(0.0, float(t_cross))))
+        vy_down = abs(float(vy_up) - (GRAVITY_MAG * max(0.0, float(t_cross))))
         projected_impact_angle_deg = math.degrees(math.atan2(vy_down, abs(float(vx))))
 
     return BoostCutoffMetrics(
@@ -514,7 +515,7 @@ class ScenarioLevel(EndResultMixin, Level):
 
         engine = PhysicsEngine(
             height_sampler=terrain,
-            gravity=(0.0, -9.8),
+            gravity=(0.0, float(GRAVITY)),
             segment_step=10.0,
             half_width=12000.0,
         )

@@ -2,22 +2,17 @@ from __future__ import annotations
 
 import math
 
-from bots.common_math import clamp, rate_limit_angle_command
+from bots.common_math import (
+    _GRAVITY_MAG,
+    clamp,
+    rate_limit_angle_command,
+    retrograde_angle_target,
+)
 from bots.pdg_terrain_divert import (
     backstop_containment_override,
     clip_targetward_override,
 )
 from core.bot import BotAction, Sensors
-from core.config import GRAVITY
-
-_GRAVITY_MAG = abs(float(GRAVITY))
-
-
-def _retrograde_angle_target(passive: Sensors) -> float:
-    speed = math.hypot(float(passive.vx), float(passive.vy_up))
-    if speed <= 1e-3:
-        return 0.0
-    return math.atan2(-float(passive.vx), -float(passive.vy_up))
 
 
 def command_passive_coast(
@@ -27,7 +22,7 @@ def command_passive_coast(
     passive: Sensors,
 ) -> BotAction:
     angle_cmd = rate_limit_angle_command(
-        _retrograde_angle_target(passive),
+        retrograde_angle_target(vx=float(passive.vx), vy_up=float(passive.vy_up)),
         bot._prev_angle_cmd,
         dt,
         max_rate=bot._cfg.angle_rate,

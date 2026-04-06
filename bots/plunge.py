@@ -11,6 +11,7 @@ from bots.common_ballistics import (
     estimate_target_y_projection,
 )
 from bots.common_math import (
+    _GRAVITY_MAG,
     clamp,
     engine_profile,
     finite_altitude,
@@ -21,10 +22,7 @@ from bots.common_math import (
 )
 from bots.common_targeting import pick_target
 from core.bot import Bot, BotAction, BotDisplayState, Sensors
-from core.config import GRAVITY
 from core.sensor import RadarContact
-
-_GRAVITY_MAG = abs(float(GRAVITY))
 
 
 @dataclass(frozen=True)

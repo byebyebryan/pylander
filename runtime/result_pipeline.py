@@ -10,6 +10,7 @@ from core.bot import (
     resolve_bot_name,
 )
 from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_BOOST
+from utils.botmetrics import bot_metric_prefix
 
 _SETUP_GATE_RESULT_TO_ATTR: tuple[tuple[str, str], ...] = (
     ("boost_cutoff_time", "time_s"),
@@ -56,8 +57,7 @@ def _safe_bot_telemetry(bot: Any) -> dict[str, Any]:
 
 def _bot_metric_prefix(bot: Bot) -> str:
     raw_name = resolve_bot_name(bot)
-    token = str(raw_name).strip().lower().replace("-", "_").replace(" ", "_")
-    return f"bot_{token}_"
+    return bot_metric_prefix(str(raw_name))
 
 
 def _safe_phase_snapshot(bot: Any) -> FlightPhaseSnapshot | None:

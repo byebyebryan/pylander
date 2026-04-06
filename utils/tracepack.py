@@ -42,6 +42,7 @@ from core.components import (
 )
 from core.ecs import Entity, World
 from runtime.actor_session import get_actor_control_role
+from runtime.result_pipeline import _safe_phase_snapshot
 from utils.plot import (
     _ballistic_curve_from_state,
     _build_plot_context,
@@ -54,6 +55,7 @@ from utils.plot import (
     _vx_corrected_ballistic_reference_curve,
     _vector_sample_indices,
 )
+from utils.tracebundle import sanitize_token
 
 TRACEPACK_SCHEMA = "pylander.tracepack.v1"
 RUN_TRACE_SCHEMA = "pylander.run_trace.v1"
@@ -91,23 +93,6 @@ def _safe_str(value: Any) -> str | None:
         return None
     token = str(value)
     return token if token else None
-
-
-def _sanitize_token(value: str) -> str:
-    out: list[str] = []
-    prev_us = False
-    for ch in str(value).lower().strip():
-        if ch.isalnum() or ch in ("-", "."):
-            out.append(ch)
-            prev_us = False
-        else:
-            if not prev_us:
-                out.append("_")
-                prev_us = True
-    token = "".join(out).strip("._")
-    while "__" in token:
-        token = token.replace("__", "_")
-    return token or "run"
 
 
 def _json_write(path: Path, payload: dict[str, Any]) -> None:
@@ -185,17 +170,6 @@ def _safe_display_state(bot: Any) -> BotDisplayState | None:
     except Exception:
         return None
     return display if isinstance(display, BotDisplayState) else None
-
-
-def _safe_phase_snapshot(bot: Any) -> FlightPhaseSnapshot | None:
-    getter = getattr(bot, "get_flight_phase_snapshot", None)
-    if not callable(getter):
-        return None
-    try:
-        snapshot = getter()
-    except Exception:
-        return None
-    return snapshot if isinstance(snapshot, FlightPhaseSnapshot) else None
 
 
 def _serialize_entity(entity: Entity, *, actor_bots: dict[str, Bot]) -> dict[str, Any]:
@@ -463,8 +437,10 @@ def _polyline_points(xs: list[Any], ys: list[Any]) -> list[tuple[float, float]]:
         if px is None or py is None:
             continue
         point = (float(px), float(py))
-        if points and math.isclose(point[0], points[-1][0], abs_tol=1e-9) and math.isclose(
-            point[1], points[-1][1], abs_tol=1e-9
+        if (
+            points
+            and math.isclose(point[0], points[-1][0], abs_tol=1e-9)
+            and math.isclose(point[1], points[-1][1], abs_tol=1e-9)
         ):
             continue
         points.append(point)
@@ -496,7 +472,9 @@ def _project_point_to_segment(
     seg_dy = float(end[1]) - float(start[1])
     seg_len_sq = (seg_dx * seg_dx) + (seg_dy * seg_dy)
     if seg_len_sq <= 1e-9:
-        distance = math.hypot(float(point[0]) - float(start[0]), float(point[1]) - float(start[1]))
+        distance = math.hypot(
+            float(point[0]) - float(start[0]), float(point[1]) - float(start[1])
+        )
         return start, 0.0, distance
     mix = (
         ((float(point[0]) - float(start[0])) * seg_dx)
@@ -578,7 +556,9 @@ def _reference_gap_metrics(
         return None
 
     gap_area = sum(
-        0.5 * (gaps[idx] + gaps[idx + 1]) * (actual_cumulative[idx + 1] - actual_cumulative[idx])
+        0.5
+        * (gaps[idx] + gaps[idx + 1])
+        * (actual_cumulative[idx + 1] - actual_cumulative[idx])
         for idx in range(len(gaps) - 1)
     )
     gap_mean = gap_area / actual_length
@@ -924,7 +904,7 @@ class TraceRecorder:
         self._primary_uid: str | None = None
 
     def set_selector_tag(self, tag: str) -> None:
-        self._selector_tag = _sanitize_token(tag)
+        self._selector_tag = sanitize_token(tag)
 
     def set_trace_root_dir(self, path: str | Path | None) -> None:
         self._trace_root_dir = None if path is None else Path(path).resolve()
@@ -1233,7 +1213,9 @@ class TraceRecorder:
                 continue
             trace_metric_extras[result_key] = float(metric_value)
         terrain_payload = (
-            _terrain_payload_from_samples(self.terrain, samples=samples, target=self._target)
+            _terrain_payload_from_samples(
+                self.terrain, samples=samples, target=self._target
+            )
             if samples
             else None
         )

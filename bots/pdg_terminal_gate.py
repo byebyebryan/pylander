@@ -9,6 +9,7 @@ from bots.common_ballistics import (
     estimate_ground_time_to_impact,
     estimate_target_y_projection,
 )
+from bots.common_math import _GRAVITY_MAG, clamp
 from bots.pdg_terrain_divert import (
     TerrainDivertPrefilter,
     TerrainDivertProbe,
@@ -17,9 +18,6 @@ from bots.pdg_terrain_divert import (
     prefilter_terrain_divert,
 )
 from core.bot import Sensors
-from core.config import GRAVITY
-
-_GRAVITY_MAG = abs(float(GRAVITY))
 
 
 def _clear_terrain_probe_state(state) -> None:
@@ -115,10 +113,6 @@ def _required_control_accel(
     return ax, ay
 
 
-def _clamp(value: float, lo: float, hi: float) -> float:
-    return max(float(lo), min(float(hi), float(value)))
-
-
 def _height_to_target(*, dy: float) -> float:
     return max(0.0, -float(dy))
 
@@ -198,7 +192,7 @@ def _burn_time_candidates(
     )
     t_v_nom = max(0.0, down_speed - target_down_speed) / vertical_up_accel
     t_x_nom = abs(float(passive.vx)) / lateral_accel
-    burn_time_nom = _clamp(
+    burn_time_nom = clamp(
         max(t_v_nom, t_x_nom) + float(bot._cfg.terminal_gate_nominal_buffer_s),
         float(bot._cfg.terminal_gate_burn_time_min_s),
         float(bot._cfg.terminal_gate_burn_time_max_s),
@@ -209,7 +203,7 @@ def _burn_time_candidates(
         burn_time_nom,
         burn_time_nom + float(bot._cfg.terminal_gate_burn_time_offset_long_s),
     ):
-        burn_time = _clamp(
+        burn_time = clamp(
             raw_time,
             float(bot._cfg.terminal_gate_burn_time_min_s),
             float(bot._cfg.terminal_gate_burn_time_max_s),
@@ -411,16 +405,16 @@ def _evaluate_terminal_gate_core(
         )
         for burn_time_s in candidate_times
     ]
-    ready_candidates = [candidate for candidate in nominal_candidates if candidate.ready]
+    ready_candidates = [
+        candidate for candidate in nominal_candidates if candidate.ready
+    ]
     best_nominal = (
         min(ready_candidates, key=_candidate_preference_key)
         if ready_candidates
         else None
     )
 
-    nominal_ready_ticks = (
-        current_ready_ticks + 1 if best_nominal is not None else 0
-    )
+    nominal_ready_ticks = current_ready_ticks + 1 if best_nominal is not None else 0
     required_accel_ratio = (
         best_nominal.required_accel_ratio
         if best_nominal is not None

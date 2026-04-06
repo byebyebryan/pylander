@@ -5,7 +5,7 @@ import random
 from dataclasses import dataclass
 from typing import Any
 
-from core.config import GRAVITY
+from core.config import GRAVITY_MAG
 from core.components import Engine, PhysicsState, Transform
 from core.ecs import require_component
 from core.maths import Vector2
@@ -22,7 +22,6 @@ from levels.common_scenarios import (
 from levels.common_world import get_mass
 
 
-_GRAVITY_MAG = abs(float(GRAVITY))
 _MAX_SETUP_ATTEMPTS = 64
 _FULL_MARGIN_T_MIN = 1.0
 _FULL_MARGIN_H_MIN = 30.0
@@ -107,7 +106,7 @@ def sample_terminal_normal_candidate(
     initial_vx = (float(target_pos.x) - float(start_pos.x)) / target_flight_time_s
     initial_vy_up = (
         (float(target_pos.y) - float(start_pos.y))
-        + (0.5 * _GRAVITY_MAG * target_flight_time_s * target_flight_time_s)
+        + (0.5 * GRAVITY_MAG * target_flight_time_s * target_flight_time_s)
     ) / target_flight_time_s
 
     return TerminalSpawnCandidate(
@@ -172,7 +171,7 @@ def resolve_terminal_error_spawn(
     initial_vx = (impact_target_x - float(start_pos.x)) / target_flight_time_s
     initial_vy_up = (
         (float(target_pos.y) - float(start_pos.y))
-        + (0.5 * _GRAVITY_MAG * target_flight_time_s * target_flight_time_s)
+        + (0.5 * GRAVITY_MAG * target_flight_time_s * target_flight_time_s)
     ) / target_flight_time_s
 
     candidate = TerminalSpawnCandidate(
@@ -208,7 +207,7 @@ def compute_terminal_accel_limits(actor) -> tuple[float, float]:
     total_mass = max(0.5, get_mass(actor))
     max_force = float(engine.max_power) * float(engine.max_thrust)
     a_total = max(0.1, max_force / total_mass)
-    a_up_max = max(0.1, a_total - _GRAVITY_MAG)
+    a_up_max = max(0.1, a_total - GRAVITY_MAG)
     a_lat_eff = max(0.5, 0.90 * a_total)
     return a_up_max, a_lat_eff
 

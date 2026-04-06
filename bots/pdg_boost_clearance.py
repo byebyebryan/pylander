@@ -3,11 +3,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from bots.common_math import rate_limit_angle_command
+from bots.common_math import _GRAVITY_MAG, rate_limit_angle_command
 from core.bot import BotAction, Sensors
-from core.config import GRAVITY
-
-_GRAVITY_MAG = abs(float(GRAVITY))
 
 
 @dataclass(frozen=True)

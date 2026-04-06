@@ -29,6 +29,7 @@ from core.landing_sites import (
 from core.level import Level, LevelWorld, get_entity_mass
 from core.maths import Vector2
 from core.physics import PhysicsEngine
+from core.config import GRAVITY
 from core.terrain import sample_terrain_height
 from landers import create_lander
 
@@ -505,7 +506,7 @@ class PresetLevel(EndResultMixin, Level):
 
         engine = PhysicsEngine(
             height_sampler=terrain,
-            gravity=(0.0, -9.8),
+            gravity=(0.0, float(GRAVITY)),
             segment_step=10.0,
             half_width=12000.0,
         )

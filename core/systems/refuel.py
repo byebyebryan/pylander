@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from core.components import (
     ControlIntent,
+    FlightState,
     FuelTank,
     LanderGeometry,
     LanderState,
@@ -45,7 +46,11 @@ class RefuelSystem(System):
         intent = entity.get_component(ControlIntent)
         if None in (ls, tank, wallet, trans, geo, cfg, intent):
             return
-        if ls.state != "landed" or not intent.refuel_requested or tank.fuel >= tank.max_fuel:
+        if (
+            ls.state != FlightState.LANDED
+            or not intent.refuel_requested
+            or tank.fuel >= tank.max_fuel
+        ):
             return
 
         nearby_sites = self.sites.get_sites(Range1D.from_center(trans.pos.x, geo.width))

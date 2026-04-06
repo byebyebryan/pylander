@@ -15,7 +15,6 @@ from levels.boost_transfer import (
 )
 from levels.common_scenarios import (
     has_randomized_values,
-    is_ranged_value,
     resolve_sample_value,
 )
 
@@ -31,21 +30,6 @@ class BoostLevel(BoostTransferLevel):
     def scenario_has_randomized_fields(self, _name: str | None = None) -> bool:
         scenario = self._active_scenario()
         return has_randomized_values((scenario.route_dx,))
-
-    @staticmethod
-    def _scenario_dx(scenario, *, dest_x: float | None = None) -> float:  # noqa: ANN001
-        if dest_x is not None:
-            return max(1e-6, float(dest_x) - float(SOURCE_PAD_X))
-        route_dx = scenario.route_dx
-        if is_ranged_value(route_dx):
-            return max(1e-6, route_dx.median())
-        return max(1e-6, float(route_dx))
-
-    @classmethod
-    def _scenario_slope(cls, scenario, *, dest_x: float | None = None) -> float:  # noqa: ANN001
-        if scenario.family == "flat":
-            return 0.0
-        return float(scenario.route_dy) / cls._scenario_dx(scenario, dest_x=dest_x)
 
     def _build_base_terrain(self, seed: int):
         _ = seed

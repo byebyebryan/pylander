@@ -16,6 +16,7 @@ from core.components import (
     Transform,
     Wallet,
 )
+from core.config import GRAVITY_MAG
 from core.maths import clearance_above_terrain
 
 
@@ -114,9 +115,11 @@ class HudOverlay:
         fuel_mass_t = fuel_mass / 1000.0
         cargo_mass_t = cargo_mass / 1000.0
         cargo_limit_t = cargo_limit / 1000.0
-        weight_newton = max(1e-6, wet_mass * 9.8)
+        weight_newton = max(1e-6, wet_mass * GRAVITY_MAG)
         normal_twr = max(0.0, float(eng.max_power)) / weight_newton
-        boost_twr = max(0.0, float(eng.max_power) * float(eng.max_thrust)) / weight_newton
+        boost_twr = (
+            max(0.0, float(eng.max_power) * float(eng.max_thrust)) / weight_newton
+        )
         ax = _stable(float(phys.acc.x), digits=2)
         ay = _stable(float(phys.acc.y), digits=2)
         acc_mag = _stable(math.hypot(ax, ay), digits=2)
@@ -132,10 +135,14 @@ class HudOverlay:
             _stable(float(prox_dist), digits=1) if prox_dist is not None else None
         )
         prox_angle_deg_stable = (
-            _stable(float(prox_angle_deg), digits=0) if prox_angle_deg is not None else None
+            _stable(float(prox_angle_deg), digits=0)
+            if prox_angle_deg is not None
+            else None
         )
 
-        lines: list[str] = [f"STATE: {ls.state.upper()}    CREDITS: {wallet.credits:.0f}"]
+        lines: list[str] = [
+            f"STATE: {ls.state.upper()}    CREDITS: {wallet.credits:.0f}"
+        ]
         if bot is not None:
             bot_name = resolve_bot_name(bot)
             display = resolve_bot_display_state(bot)
@@ -159,8 +166,12 @@ class HudOverlay:
             od_tag = " [OD]" if eng.thrust_level > 1.0 else ""
             lines.append(f"THRUST: {thrust_pct:.0f}%{od_tag}")
         else:
-            od_tag = " [OD]" if (eng.thrust_level > 1.0 or eng.target_thrust > 1.0) else ""
-            lines.append(f"THRUST: {thrust_pct:.0f}% -> {target_thrust_pct:.0f}%{od_tag}")
+            od_tag = (
+                " [OD]" if (eng.thrust_level > 1.0 or eng.target_thrust > 1.0) else ""
+            )
+            lines.append(
+                f"THRUST: {thrust_pct:.0f}% -> {target_thrust_pct:.0f}%{od_tag}"
+            )
         if cargo is not None:
             lines.append(
                 f"MASS: {wet_mass_t:.2f} t (dry {dry_mass_t:.2f}, fuel {fuel_mass_t:.2f}, "
@@ -181,7 +192,9 @@ class HudOverlay:
         else:
             lines.append(f"ANGLE: {rotation_deg:.1f}deg -> {target_rot_deg:.1f}deg")
         if prox_dist_stable is not None and prox_angle_deg_stable is not None:
-            lines.append(f"PROX: {prox_dist_stable:.1f} m @ {prox_angle_deg_stable:.0f}deg")
+            lines.append(
+                f"PROX: {prox_dist_stable:.1f} m @ {prox_angle_deg_stable:.0f}deg"
+            )
         else:
             lines.append("PROX: --")
         return lines

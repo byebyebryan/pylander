@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Iterable
 
-from app.selector import parse_selector
+from app.selector import parse_selector, parse_seed_spec
 from core.level_capabilities import (
     BenchmarkLevelPolicy,
     LevelBenchmarkProfile,
@@ -42,42 +42,21 @@ class ResolvedSelectorPack:
     observe_only_levels_effective: list[str]
 
 
-def _parse_seed_spec(spec: str) -> list[int]:
-    vals: list[int] = []
-    for token in (p.strip() for p in spec.split(",")):
-        if not token:
-            continue
-        if "-" in token:
-            left, right = token.split("-", 1)
-            start = int(left.strip())
-            end = int(right.strip())
-            step = 1 if end >= start else -1
-            vals.extend(range(start, end + step, step))
-        else:
-            vals.append(int(token))
-    out: list[int] = []
-    seen: set[int] = set()
-    for value in vals:
-        if value in seen:
-            continue
-        seen.add(value)
-        out.append(value)
-    return out
-
-
 def _seed_spec_str(spec: str) -> str:
-    seeds = _parse_seed_spec(spec)
+    seeds = parse_seed_spec(spec)
     if not seeds:
         raise ValueError(f"Seed spec '{spec}' produced no seeds")
     if len(seeds) == 1:
         return str(seeds[0])
     contiguous = seeds == list(range(seeds[0], seeds[-1] + 1))
-    return f"{seeds[0]}-{seeds[-1]}" if contiguous else ",".join(
-        str(seed) for seed in seeds
+    return (
+        f"{seeds[0]}-{seeds[-1]}"
+        if contiguous
+        else ",".join(str(seed) for seed in seeds)
     )
 
 
-def _split_csv(values: Iterable[str]) -> list[str]:
+def split_csv(values: Iterable[str]) -> list[str]:
     out: list[str] = []
     for item in values:
         for token in str(item).split(","):
@@ -97,7 +76,7 @@ def _split_focused_selectors(values: Iterable[str]) -> list[str]:
         if raw.count(":") >= 2:
             out.append(raw)
             continue
-        out.extend(_split_csv([raw]))
+        out.extend(split_csv([raw]))
     return out
 
 
@@ -146,7 +125,7 @@ def _parse_policy_override_levels(
     flag_name: str,
 ) -> set[str]:
     out: set[str] = set()
-    for token in _split_csv(values):
+    for token in split_csv(values):
         if token not in known_levels:
             known = ", ".join(sorted(known_levels))
             raise ValueError(
@@ -321,9 +300,7 @@ def _build_focused_mode(
             included.add(level_name)
             continue
 
-        selectors.append(
-            _selector(level_name, None, local_seed, eval_goal=local_goal)
-        )
+        selectors.append(_selector(level_name, None, local_seed, eval_goal=local_goal))
         included.add(level_name)
 
     _ = policy_by_level  # Explicit selectors win in focused mode.

@@ -6,13 +6,13 @@ import math
 import os
 from dataclasses import dataclass, field
 
-from core.config import GRAVITY
+from core.config import GRAVITY_MAG
 from core.components import Engine, FuelTank, LanderState, PhysicsState, Transform
 from core.ecs import require_component
 from core.eval_goals import EVAL_GOAL_BOOST, normalize_eval_goal
 from core.maths import Vector2
 
-_GRAVITY_MAG = abs(float(GRAVITY))
+_GRAVITY_MAG = GRAVITY_MAG
 
 
 def _projected_dx_and_time_to_target_y(
@@ -82,7 +82,9 @@ class RunMetricsTracker:
         tank = require_component(actor, FuelTank)
         return cls(
             start_pos=Vector2(start_pos),
-            eval_target_pos=Vector2(eval_target_pos) if eval_target_pos is not None else None,
+            eval_target_pos=Vector2(eval_target_pos)
+            if eval_target_pos is not None
+            else None,
             prev_actor_uid=actor.uid,
             prev_pos=Vector2(trans.pos),
             prev_fuel=float(tank.fuel),
@@ -99,7 +101,9 @@ class RunMetricsTracker:
             return
 
         eng = require_component(actor, Engine)
-        step_distance = math.hypot(trans.pos.x - self.prev_pos.x, trans.pos.y - self.prev_pos.y)
+        step_distance = math.hypot(
+            trans.pos.x - self.prev_pos.x, trans.pos.y - self.prev_pos.y
+        )
         self.distance_flown += step_distance
         self.fuel_consumed += max(0.0, self.prev_fuel - float(tank.fuel))
 
@@ -140,7 +144,9 @@ class RunMetricsTracker:
         total_t = max(0.0, float(elapsed_time))
         avg_speed = (self.distance_flown / total_t) if total_t > 1e-9 else 0.0
         fuel_per_distance = (
-            self.fuel_consumed / self.distance_flown if self.distance_flown > 1e-9 else 0.0
+            self.fuel_consumed / self.distance_flown
+            if self.distance_flown > 1e-9
+            else 0.0
         )
         overdrive_fraction = self.overdrive_time / total_t if total_t > 1e-9 else 0.0
 
@@ -155,7 +161,9 @@ class RunMetricsTracker:
             if result.get("state") == "landed":
                 landing_offset = abs(final_trans.pos.x - self.eval_target_pos.x)
                 if self.distance_flown > 1e-9:
-                    path_efficiency = min(1.0, spawn_to_target_distance / self.distance_flown)
+                    path_efficiency = min(
+                        1.0, spawn_to_target_distance / self.distance_flown
+                    )
 
         result.setdefault("distance_flown", self.distance_flown)
         result.setdefault("avg_speed", avg_speed)
@@ -179,11 +187,13 @@ class RunMetricsTracker:
             if self.eval_target_pos is not None:
                 dx = float(self.eval_target_pos.x) - float(final_trans.pos.x)
                 dy = float(self.eval_target_pos.y) - float(final_trans.pos.y)
-                setup_projected_dx, setup_time_to_target = _projected_dx_and_time_to_target_y(
-                    dx=dx,
-                    dy=dy,
-                    vx=float(final_phys.vel.x),
-                    vy_up=float(final_phys.vel.y),
+                setup_projected_dx, setup_time_to_target = (
+                    _projected_dx_and_time_to_target_y(
+                        dx=dx,
+                        dy=dy,
+                        vx=float(final_phys.vel.x),
+                        vy_up=float(final_phys.vel.y),
+                    )
                 )
             result.setdefault("boost_goal_projected_dx", setup_projected_dx)
             result.setdefault("boost_goal_time_to_target", setup_time_to_target)
@@ -265,7 +275,9 @@ class BotLoopProfiler:
         return counter
 
     @staticmethod
-    def _record_duration(counter: BotProfileCounter, field: str, seconds: float) -> None:
+    def _record_duration(
+        counter: BotProfileCounter, field: str, seconds: float
+    ) -> None:
         setattr(counter, field, getattr(counter, field) + max(0.0, float(seconds)))
 
     def record_tick(self, uid: str) -> None:
@@ -358,10 +370,24 @@ class BotLoopProfiler:
         total = self.total
         result["bot_profile_enabled"] = True
         result["bot_profile_ticks"] = total.ticks
-        result["bot_profile_passive_ms_per_tick"] = self._ms_per_tick(total.passive_build_s, total.ticks)
-        result["bot_profile_update_ms_per_tick"] = self._ms_per_tick(total.bot_update_s, total.ticks)
-        result["bot_profile_total_ms_per_tick"] = self._ms_per_tick(total.total_tick_s, total.ticks)
-        result["bot_profile_total_ms_per_tick_p90"] = self._percentile_ms(self.total_tick_samples_s, 0.90)
-        result["bot_profile_total_ms_per_tick_p99"] = self._percentile_ms(self.total_tick_samples_s, 0.99)
-        result["bot_profile_update_ms_per_tick_p90"] = self._percentile_ms(self.update_tick_samples_s, 0.90)
-        result["bot_profile_update_ms_per_tick_p99"] = self._percentile_ms(self.update_tick_samples_s, 0.99)
+        result["bot_profile_passive_ms_per_tick"] = self._ms_per_tick(
+            total.passive_build_s, total.ticks
+        )
+        result["bot_profile_update_ms_per_tick"] = self._ms_per_tick(
+            total.bot_update_s, total.ticks
+        )
+        result["bot_profile_total_ms_per_tick"] = self._ms_per_tick(
+            total.total_tick_s, total.ticks
+        )
+        result["bot_profile_total_ms_per_tick_p90"] = self._percentile_ms(
+            self.total_tick_samples_s, 0.90
+        )
+        result["bot_profile_total_ms_per_tick_p99"] = self._percentile_ms(
+            self.total_tick_samples_s, 0.99
+        )
+        result["bot_profile_update_ms_per_tick_p90"] = self._percentile_ms(
+            self.update_tick_samples_s, 0.90
+        )
+        result["bot_profile_update_ms_per_tick_p99"] = self._percentile_ms(
+            self.update_tick_samples_s, 0.99
+        )
