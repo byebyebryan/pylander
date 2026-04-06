@@ -6,39 +6,8 @@ import bots.common_math as common_math
 import bots.plunge as plunge_module
 from bots.common_ballistics import BallisticProjection
 from bots.plunge import PlungeBot
-from core.bot import Sensors
+from conftest import make_sensors
 from core.sensor import RadarContact
-
-
-def _sensors(
-    *,
-    x: float = 0.0,
-    y: float = 50.0,
-    altitude: float = 50.0,
-    vx: float = 0.0,
-    vy_up: float = -5.0,
-    mass: float = 10.0,
-    thrust_level: float = 0.0,
-) -> Sensors:
-    return Sensors(
-        x=x,
-        y=y,
-        altitude=altitude,
-        terrain_y=0.0,
-        terrain_slope=0.0,
-        vx=vx,
-        vy_up=vy_up,
-        angle=0.0,
-        ax=0.0,
-        ay_up=0.0,
-        mass=mass,
-        thrust_level=thrust_level,
-        fuel=100.0,
-        max_fuel=100.0,
-        state="flying",
-        radar_contacts=[],
-        proximity=None,
-    )
 
 
 def _target(*, x: float = 0.0, y: float = 0.0) -> RadarContact:
@@ -59,16 +28,20 @@ def _target(*, x: float = 0.0, y: float = 0.0) -> RadarContact:
 def test_vehicle_limits_uses_runtime_gravity(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(common_math, "_GRAVITY_MAG", 1.62)
 
-    mass, up_acc_max = common_math.vehicle_limits(_sensors(mass=8.0), 40.0)
+    mass, up_acc_max = common_math.vehicle_limits(
+        make_sensors(mass=8.0, y=50.0, altitude=50.0, vy_up=-5.0), 40.0
+    )
 
     assert mass == pytest.approx(8.0)
     assert up_acc_max == pytest.approx((40.0 / 8.0) - 1.62)
 
 
-def test_plunge_vertical_controller_uses_runtime_gravity(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_plunge_vertical_controller_uses_runtime_gravity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(plunge_module, "_GRAVITY_MAG", 1.62)
     bot = PlungeBot()
-    passive = _sensors(vy_up=-1.2)
+    passive = make_sensors(vy_up=-1.2, y=50.0, altitude=50.0, mass=10.0)
 
     terminal = bot._vertical_controller(
         passive,
@@ -97,7 +70,7 @@ def test_plunge_guidance_uses_half_runtime_gravity_for_spool_distance(
     monkeypatch.setattr(common_math, "_GRAVITY_MAG", 1.62)
     monkeypatch.setattr(plunge_module, "_GRAVITY_MAG", 1.62)
     bot = PlungeBot()
-    passive = _sensors()
+    passive = make_sensors(y=50.0, altitude=50.0, vy_up=-5.0, mass=10.0)
     projection = BallisticProjection(
         projected_dx=0.0,
         t_fall=100.0,

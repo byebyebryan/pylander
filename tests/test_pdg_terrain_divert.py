@@ -16,11 +16,11 @@ from bots.pdg_terrain_divert import (
     evaluate_terminal_clip_probe,
     prefilter_terrain_divert,
 )
+from conftest import make_sensors
 from core.bot import (
     BotEnvironment,
     BotTarget,
     BotTerrainSummary,
-    Sensors,
     TerrainBoundary,
 )
 
@@ -151,28 +151,6 @@ def _bot() -> Any:
     return bot
 
 
-def _sensors(*, x: float, y: float, vx: float, vy_up: float) -> Sensors:
-    return Sensors(
-        x=x,
-        y=y,
-        altitude=y,
-        terrain_y=0.0,
-        terrain_slope=0.0,
-        vx=vx,
-        vy_up=vy_up,
-        angle=0.0,
-        ax=0.0,
-        ay_up=0.0,
-        mass=1200.0,
-        thrust_level=0.0,
-        fuel=100.0,
-        max_fuel=100.0,
-        state="flying",
-        radar_contacts=[],
-        proximity=None,
-    )
-
-
 def test_divert_probe_positive_clearance_on_flat_terrain() -> None:
     bot = _bot()
     bot.environment = BotEnvironment(
@@ -189,7 +167,7 @@ def test_divert_probe_positive_clearance_on_flat_terrain() -> None:
 
     probe = evaluate_terrain_divert_probe(
         bot,
-        passive=_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
+        passive=make_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
         projected_dx=-40.0,
     )
 
@@ -213,7 +191,7 @@ def test_terminal_clip_probe_reports_terrain_intersection() -> None:
 
     probe = evaluate_terminal_clip_probe(
         bot,
-        passive=_sensors(x=80.0, y=28.0, vx=32.0, vy_up=-3.0),
+        passive=make_sensors(x=80.0, y=28.0, vx=32.0, vy_up=-3.0),
         dx=318.0,
         ax_cmd=0.0,
         ay_cmd=0.0,
@@ -243,7 +221,7 @@ def test_terminal_clip_probe_ignores_low_relief_near_target_ground() -> None:
 
     probe = evaluate_terminal_clip_probe(
         bot,
-        passive=_sensors(x=-120.0, y=24.0, vx=24.0, vy_up=-6.0),
+        passive=make_sensors(x=-120.0, y=24.0, vx=24.0, vy_up=-6.0),
         dx=120.0,
         ax_cmd=0.0,
         ay_cmd=0.0,
@@ -277,14 +255,14 @@ def test_terrain_awareness_master_toggle_disables_terminal_probes() -> None:
 
     clip_probe = evaluate_terminal_clip_probe(
         bot,
-        passive=_sensors(x=80.0, y=28.0, vx=32.0, vy_up=-3.0),
+        passive=make_sensors(x=80.0, y=28.0, vx=32.0, vy_up=-3.0),
         dx=318.0,
         ax_cmd=0.0,
         ay_cmd=0.0,
     )
     divert_probe = evaluate_terrain_divert_probe(
         bot,
-        passive=_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
+        passive=make_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
         projected_dx=-220.0,
     )
 
@@ -315,7 +293,7 @@ def test_divert_probe_reports_negative_margin_for_terrain_penetration() -> None:
 
     probe = evaluate_terrain_divert_probe(
         bot,
-        passive=_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
+        passive=make_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
         projected_dx=-220.0,
     )
 
@@ -352,7 +330,7 @@ def test_prefilter_accepts_borderline_backstop_boundary() -> None:
 
     probe = prefilter_terrain_divert(
         bot,
-        passive=_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
+        passive=make_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
         projected_dx=-220.0,
     )
 
@@ -384,7 +362,7 @@ def test_divert_probe_ignores_rising_target_side_continuation() -> None:
 
     probe = evaluate_terrain_divert_probe(
         bot,
-        passive=_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
+        passive=make_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
         projected_dx=-220.0,
     )
 
@@ -464,7 +442,7 @@ def test_terminal_gate_can_force_terrain_divert_entry(
     decision = terminal_gate.evaluate_terminal_gate(
         bot,
         dt=1.0 / 30.0,
-        passive=_sensors(x=160.0, y=70.0, vx=60.0, vy_up=-8.0),
+        passive=make_sensors(x=160.0, y=70.0, vx=60.0, vy_up=-8.0),
         dx=40.0,
         projected_dx=-40.0,
         dy=-70.0,
@@ -502,7 +480,7 @@ def test_terminal_gate_can_force_terrain_clip_entry() -> None:
     decision = terminal_gate.evaluate_terminal_gate(
         bot,
         dt=1.0 / 30.0,
-        passive=_sensors(x=80.0, y=28.0, vx=32.0, vy_up=-3.0),
+        passive=make_sensors(x=80.0, y=28.0, vx=32.0, vy_up=-3.0),
         dx=318.0,
         projected_dx=48.0,
         dy=-428.0,
@@ -543,7 +521,7 @@ def test_containment_override_returns_inward_push() -> None:
     )
     override = backstop_containment_override(
         bot,
-        passive=_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
+        passive=make_sensors(x=150.0, y=60.0, vx=70.0, vy_up=-5.0),
         projected_dx=-80.0,
         max_thrust_accel=22.0,
     )
@@ -570,7 +548,7 @@ def test_clip_override_pulses_targetward() -> None:
 
     override = clip_targetward_override(
         bot,
-        passive=_sensors(x=80.0, y=28.0, vx=32.0, vy_up=-3.0),
+        passive=make_sensors(x=80.0, y=28.0, vx=32.0, vy_up=-3.0),
         dx=318.0,
         ax_cmd=0.0,
         ay_cmd=0.0,
