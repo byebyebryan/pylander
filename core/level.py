@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from core.bot import Bot
     from core.ecs import Entity
     from core.landing_sites import LandingSiteSurfaceModel
-    from core.lander import Lander
     from core.terrain import Terrain
 
 
@@ -70,8 +69,8 @@ class LevelWorld:
 
     terrain: Terrain
     sites: LandingSiteSurfaceModel
-    lander: Lander
-    actors: list[Lander] = field(default_factory=list)
+    lander: Entity
+    actors: list[Entity] = field(default_factory=list)
     primary_actor_uid: str | None = None
     site_entities: list[Entity] = field(default_factory=list)
     extra_entities: list[Entity] = field(default_factory=list)

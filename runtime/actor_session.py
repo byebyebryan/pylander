@@ -5,7 +5,7 @@ This module re-exports functions from focused submodules for backward compatibil
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 from core.bot import Bot
 from core.components import PlayerControlled, PlayerSelectable
@@ -43,7 +43,7 @@ def set_active_actor(
             marker.active = is_active
     if level.world is not None:
         level.world.primary_actor_uid = uid
-        cast(Any, level.world).lander = actor
+        level.world.lander = actor
     engine_adapter.set_primary_actor(uid)
     return actor
 
