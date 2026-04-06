@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 
 from bots.common_ballistics import estimate_target_y_projection
-from bots.common_math import finite_altitude
+from bots.common_math import _GRAVITY_MAG, finite_altitude
 from bots.pdg_boost import (
     select_reference_times,
     boost_dx_limit,
@@ -11,9 +11,6 @@ from bots.pdg_boost import (
 )
 from bots.pdg_optimizer import PDGPlan
 from core.bot import Sensors
-from core.config import GRAVITY
-
-_GRAVITY_MAG = abs(float(GRAVITY))
 
 
 def solve_plan(
@@ -50,7 +47,9 @@ def solve_plan(
         ),
     )
     target_vy = bot._desired_terminal_vy(alt_guidance, nominal_thrust_accel, max_tilt)
-    descent_floor_vy = bot._descent_floor_vy(alt_guidance, nominal_thrust_accel, max_tilt)
+    descent_floor_vy = bot._descent_floor_vy(
+        alt_guidance, nominal_thrust_accel, max_tilt
+    )
     optimizer = bot._select_optimizer(
         phase=phase,
         alt=alt_guidance,
@@ -83,7 +82,9 @@ def solve_plan(
             plan=bot._plan,
         )
         # Keep projected target-y crossing grounded in a descending ballistic solution.
-        if boost_t_cross_ref <= boost_t_apex_ref and bool(projection.has_target_y_solution):
+        if boost_t_cross_ref <= boost_t_apex_ref and bool(
+            projection.has_target_y_solution
+        ):
             boost_t_cross_ref = max(boost_t_apex_ref + 0.05, float(projection.t_fall))
         if bool(projection.has_target_y_solution):
             boost_t_angle_ref = max(0.0, float(projection.t_fall))
@@ -95,7 +96,9 @@ def solve_plan(
             boost_t_cross_ref=boost_t_cross_ref,
         )
         if abs(float(dx)) > float(boost_dx_limit(bot)):
-            lateral_accel_cap = max(1e-3, float(max_thrust_accel) * math.sin(float(max_tilt)))
+            lateral_accel_cap = max(
+                1e-3, float(max_thrust_accel) * math.sin(float(max_tilt))
+            )
             lateral_dx = max(0.0, abs(float(dx)) - float(objective_geometry.dx_limit))
             boost_t_cross_ref = max(
                 boost_t_cross_ref,

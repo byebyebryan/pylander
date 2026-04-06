@@ -1,6 +1,6 @@
 import math
 
-from core.components import Engine, FuelTank, LanderState, Transform
+from core.components import Engine, FuelTank, LanderState, Transform, FlightState
 from core.ecs import Entity, System
 
 
@@ -32,7 +32,10 @@ class PropulsionSystem(System):
 
     @staticmethod
     def _should_disable_thrust(state: LanderState | None, tank: FuelTank) -> bool:
-        if state is not None and state.state in ("crashed", "out_of_fuel"):
+        if state is not None and state.state in (
+            FlightState.CRASHED,
+            FlightState.OUT_OF_FUEL,
+        ):
             return True
         return tank.fuel <= 0.0
 
@@ -73,7 +76,9 @@ class PropulsionSystem(System):
             return
         if delta_thrust < 0:
             step = engine.decrease_rate * dt
-            engine.thrust_level = max(0.0, engine.thrust_level - min(step, -delta_thrust))
+            engine.thrust_level = max(
+                0.0, engine.thrust_level - min(step, -delta_thrust)
+            )
 
     @staticmethod
     def _angle_diff(a: float, b: float) -> float:

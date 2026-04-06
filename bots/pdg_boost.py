@@ -9,11 +9,9 @@ from bots.common_ballistics import (
     ballistic_apex_from_state,
     estimate_target_y_projection,
 )
-from bots.common_math import engine_profile
+from bots.common_math import _GRAVITY_MAG, engine_profile, retrograde_angle_target
 from core.bot import Sensors
-from core.config import GRAVITY
 
-_GRAVITY_MAG = abs(float(GRAVITY))
 _SETTLE_ROTATION_RATE = math.radians(90.0)
 _SETTLE_THRUST_EFFECT_SCALE = 1.0
 _SETTLE_STEP_S = 0.05
@@ -167,13 +165,6 @@ def _angle_diff(current: float, target: float) -> float:
     return (float(target) - float(current) + math.pi) % (2.0 * math.pi) - math.pi
 
 
-def _retrograde_angle_target(*, vx: float, vy_up: float) -> float:
-    speed = math.hypot(float(vx), float(vy_up))
-    if speed <= 1e-3:
-        return 0.0
-    return math.atan2(-float(vx), -float(vy_up))
-
-
 def boost_objective_geometry(
     bot,
     *,
@@ -318,7 +309,7 @@ def evaluate_boost_quality_after_settle(
     while time_remaining > 1e-9:
         step_dt = min(_SETTLE_STEP_S, time_remaining)
         if settle_angle_target is None:
-            target_angle = _retrograde_angle_target(vx=vx_settle, vy_up=vy_settle)
+            target_angle = retrograde_angle_target(vx=vx_settle, vy_up=vy_settle)
         else:
             target_angle = float(settle_angle_target)
         angle_delta = _angle_diff(angle_settle, target_angle)

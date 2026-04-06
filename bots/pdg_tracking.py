@@ -3,11 +3,9 @@ from __future__ import annotations
 import math
 
 from bots.common_ballistics import BallisticProjection, ballistic_apex_from_state
+from bots.common_math import _GRAVITY_MAG
 from bots.pdg_boost import projected_impact_angle_deg as _projected_impact_angle_deg
 from core.bot import Sensors, BoostCutoffMetrics
-from core.config import GRAVITY
-
-_GRAVITY_MAG = abs(float(GRAVITY))
 
 
 def _projected_apex(y: float, vy_up: float, target_y: float) -> tuple[float, float]:
@@ -53,9 +51,7 @@ def finalize_terminal_entry_metrics(
     _capture_terminal_entry_state(bot, passive=passive)
     state._terminal_post_entry_apex_gain = 0.0
     state._terminal_post_entry_time_to_apex = 0.0
-    state._terminal_post_entry_peak_abs_dx = (
-        abs(float(dx)) if dx is not None else None
-    )
+    state._terminal_post_entry_peak_abs_dx = abs(float(dx)) if dx is not None else None
 
 
 def finalize_boost_cutoff_metrics(

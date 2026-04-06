@@ -10,6 +10,7 @@ from typing import Any
 
 from app.benchmark_cache import (
     git_rev_parse,
+    load_json,
     selector_pack_stem,
     tracepack_meta_path,
     workspace_key,
@@ -107,7 +108,12 @@ def first_parent_commits(start_ref: str, *, limit: int = 12) -> list[str]:
         return []
     try:
         return _git_lines(
-            ["rev-list", "--first-parent", f"--max-count={max(1, int(limit))}", start_ref]
+            [
+                "rev-list",
+                "--first-parent",
+                f"--max-count={max(1, int(limit))}",
+                start_ref,
+            ]
         )
     except subprocess.CalledProcessError:
         return []
@@ -193,10 +199,6 @@ def default_missing_baseline_policy(*, requested_ref: str | None) -> str:
     return "error"
 
 
-def load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
 def build_pack_preview(
     *,
     mode: str,
@@ -231,7 +233,9 @@ def build_pack_preview(
         bot_profile_interval_s=bot_profile_interval_s,
         bot_profile_log_lines=bool(bot_profile_log_lines),
     )
-    candidate_json = (results_root / current_commit / f"{stem}.tracepack.json").resolve()
+    candidate_json = (
+        results_root / current_commit / f"{stem}.tracepack.json"
+    ).resolve()
     candidate_meta = tracepack_meta_path(candidate_json)
     candidate_inspect = inspect_sidecar_path(candidate_json)
     preview: dict[str, Any] = {
@@ -249,10 +253,14 @@ def build_pack_preview(
         "candidate_intent": str(intent_sidecar_path(candidate_json)),
         "candidate_analysis": str(analysis_sidecar_path(candidate_json)),
         "candidate_inspect": str(candidate_inspect),
-        "candidate_cache_exists": bool(candidate_json.exists() and candidate_meta.exists()),
+        "candidate_cache_exists": bool(
+            candidate_json.exists() and candidate_meta.exists()
+        ),
     }
     if baseline_commit:
-        baseline_json = (results_root / baseline_commit / f"{stem}.tracepack.json").resolve()
+        baseline_json = (
+            results_root / baseline_commit / f"{stem}.tracepack.json"
+        ).resolve()
         baseline_meta = tracepack_meta_path(baseline_json)
         preview["baseline_json"] = str(baseline_json)
         preview["baseline_meta"] = str(baseline_meta)
@@ -359,7 +367,8 @@ def build_auto_intent(
     current_key = str(repo_context.get("workspace_key") or git_rev_parse("HEAD"))
     requested_ref = None if baseline_ref in {None, "", "none"} else str(baseline_ref)
     resolved_missing_baseline_policy = str(
-        missing_baseline_policy or default_missing_baseline_policy(requested_ref=requested_ref)
+        missing_baseline_policy
+        or default_missing_baseline_policy(requested_ref=requested_ref)
     )
     explicit_commit = baseline_payload.get("explicit_commit")
     auto_payload = dict(baseline_payload.get("auto") or {})
@@ -404,7 +413,9 @@ def build_auto_intent(
     )
     assumptions: list[str] = []
     if requested_ref == "auto" and resolved_commit is None:
-        assumptions.append("No auto baseline commit was resolved; compare output will be omitted.")
+        assumptions.append(
+            "No auto baseline commit was resolved; compare output will be omitted."
+        )
     if not notes:
         assumptions.append(
             "Conversation context was not provided explicitly; intent is based on CLI inputs and repo state only."
@@ -462,7 +473,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="Inspect benchmark context, baseline candidates, and cache paths"
     )
-    ap.add_argument("--mode", choices=("smoke", "quick", "full", "focused"), default=None)
+    ap.add_argument(
+        "--mode", choices=("smoke", "quick", "full", "focused"), default=None
+    )
     ap.add_argument("--seed-spec", default=None)
     ap.add_argument("--selectors", nargs="*", default=[])
     ap.add_argument("--exclude-levels", nargs="*", default=[])
@@ -517,7 +530,9 @@ def main(argv: Sequence[str] | None = None) -> None:
             pack_preview = dict(payload.get("pack_preview") or {})
             candidate_json = str(pack_preview.get("candidate_json") or "").strip()
             if not candidate_json:
-                raise SystemExit("--output-json auto requires a resolved pack preview (--mode ...)")
+                raise SystemExit(
+                    "--output-json auto requires a resolved pack preview (--mode ...)"
+                )
             output_path = inspect_sidecar_path(Path(candidate_json))
         else:
             output_path = Path(output_json).expanduser().resolve()

@@ -11,3 +11,4 @@ BOT_FPS = 60
 
 # Physics
 GRAVITY = -9.8
+GRAVITY_MAG = abs(float(GRAVITY))

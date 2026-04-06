@@ -4,10 +4,13 @@ from dataclasses import dataclass
 
 import core.terrain as _terrain
 from core.level import Level
-from levels.boost_transfer import SOURCE_PAD_X, BoostTransferLevel, build_boost_weight_params
+from levels.boost_transfer import (
+    SOURCE_PAD_X,
+    BoostTransferLevel,
+    build_boost_weight_params,
+)
 from levels.common_scenarios import (
     has_randomized_values,
-    is_ranged_value,
     resolve_sample_value,
 )
 from levels.terrain_catalog import (
@@ -102,21 +105,6 @@ class TerrainLevel(BoostTransferLevel):
         scenario = self._active_scenario()
         return has_randomized_values((scenario.route_dx,))
 
-    @staticmethod
-    def _scenario_dx(scenario, *, dest_x: float | None = None) -> float:  # noqa: ANN001
-        if dest_x is not None:
-            return max(1e-6, float(dest_x) - float(SOURCE_PAD_X))
-        route_dx = scenario.route_dx
-        if is_ranged_value(route_dx):
-            return max(1e-6, route_dx.median())
-        return max(1e-6, float(route_dx))
-
-    @classmethod
-    def _scenario_slope(cls, scenario, *, dest_x: float | None = None) -> float:  # noqa: ANN001
-        if scenario.family == "flat":
-            return 0.0
-        return float(scenario.route_dy) / cls._scenario_dx(scenario, dest_x=dest_x)
-
     def _resolve_backstop(self, scenario, *, dest_x: float) -> _ResolvedObstacle:  # noqa: ANN001
         obstacle = scenario.obstacle
         route_dx = max(1e-6, float(dest_x) - float(SOURCE_PAD_X))
@@ -150,12 +138,12 @@ class TerrainLevel(BoostTransferLevel):
             profile_points=profile_points,
         )
 
-    def _resolve_clip(
-        self, scenario, *, dest_x: float
-    ) -> _ResolvedObstacle:  # noqa: ANN001
+    def _resolve_clip(self, scenario, *, dest_x: float) -> _ResolvedObstacle:  # noqa: ANN001
         obstacle = scenario.obstacle
         if scenario.family != "downhill":
-            raise ValueError("Reactive v1 clip terrain is only defined for downhill cases")
+            raise ValueError(
+                "Reactive v1 clip terrain is only defined for downhill cases"
+            )
         route_dx = max(1e-6, float(dest_x) - float(SOURCE_PAD_X))
         route_dy = float(scenario.route_dy)
         top_width = float(obstacle.top_width)
@@ -196,15 +184,12 @@ class TerrainLevel(BoostTransferLevel):
             left_shoulder_width=0.0,
             right_shoulder_width=0.0,
             height_offset=float(
-                plateau_y
-                - (self._scenario_slope(scenario, dest_x=dest_x) * center_x)
+                plateau_y - (self._scenario_slope(scenario, dest_x=dest_x) * center_x)
             ),
             profile_points=profile_points,
         )
 
-    def _resolve_source_rise(
-        self, scenario, *, dest_x: float
-    ) -> _ResolvedObstacle:  # noqa: ANN001
+    def _resolve_source_rise(self, scenario, *, dest_x: float) -> _ResolvedObstacle:  # noqa: ANN001
         obstacle = scenario.obstacle
         route_dx = max(1e-6, float(dest_x) - float(SOURCE_PAD_X))
         route_dy = float(scenario.route_dy)
@@ -233,8 +218,9 @@ class TerrainLevel(BoostTransferLevel):
             )
         top_idx = max(
             range(support_start_idx, support_end_idx + 1),
-            key=lambda idx: scaled_points[idx][1]
-            - (route_dy / route_dx) * scaled_points[idx][0],
+            key=lambda idx: (
+                scaled_points[idx][1] - (route_dy / route_dx) * scaled_points[idx][0]
+            ),
         )
         center_x, center_y = scaled_points[top_idx]
         top_left_idx = max(support_start_idx, top_idx - 1)
@@ -248,9 +234,7 @@ class TerrainLevel(BoostTransferLevel):
             top_x0=float(scaled_points[top_left_idx][0]),
             top_x1=float(scaled_points[top_right_idx][0]),
             left_shoulder_width=float(center_x - scaled_points[top_left_idx][0]),
-            right_shoulder_width=float(
-                scaled_points[top_right_idx][0] - center_x
-            ),
+            right_shoulder_width=float(scaled_points[top_right_idx][0] - center_x),
             height_offset=float(
                 center_y - (self._scenario_slope(scenario, dest_x=dest_x) * center_x)
             ),
@@ -274,7 +258,9 @@ class TerrainLevel(BoostTransferLevel):
         scenario = self._active_scenario()
         dest_x = getattr(self, "_sampled_dest_x", None)
         if dest_x is None:
-            raise RuntimeError("TerrainLevel dest_x was not resolved before terrain build")
+            raise RuntimeError(
+                "TerrainLevel dest_x was not resolved before terrain build"
+            )
         resolved = self._resolve_obstacle(scenario, dest_x=float(dest_x))
 
         def height_fn(x: float) -> float:
@@ -297,7 +283,9 @@ class TerrainLevel(BoostTransferLevel):
         terrain = None
         if self.world is not None:
             terrain = getattr(self.world, "terrain", None)
-        sampled_profile_points = _sample_profile_points(terrain, resolved.profile_points)
+        sampled_profile_points = _sample_profile_points(
+            terrain, resolved.profile_points
+        )
         height_offset = float(resolved.height_offset)
         if terrain is not None:
             center_y = float(terrain(float(resolved.center_x), lod=0))

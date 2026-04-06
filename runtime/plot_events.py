@@ -3,25 +3,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from core.bot import BoostCutoffMetrics, FlightPhaseSnapshot, PlotMarker
+from core.bot import BoostCutoffMetrics, PlotMarker
 from core.components import Transform
+from runtime.result_pipeline import _safe_phase_snapshot
 
 _SHARED_MILESTONE_LABELS: dict[str, tuple[str, str]] = {
     "boost_cutoff": ("boost_cutoff", "boost cutoff"),
 }
-
-
-def _safe_phase_snapshot(bot: Any) -> FlightPhaseSnapshot | None:
-    getter = getattr(bot, "get_flight_phase_snapshot", None)
-    if not callable(getter):
-        return None
-    try:
-        snapshot = getter()
-    except Exception:
-        return None
-    if not isinstance(snapshot, FlightPhaseSnapshot):
-        return None
-    return snapshot
 
 
 def _safe_plot_markers(bot: Any) -> tuple[PlotMarker, ...]:

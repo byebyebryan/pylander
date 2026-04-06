@@ -23,7 +23,7 @@ from app.benchmark_context import (
     intent_sidecar_path,
     load_intent,
 )
-from app.benchmark_cache import tracepack_meta_path, write_json
+from app.benchmark_cache import load_json, tracepack_meta_path, write_json
 from app.output_viewer import (
     bundle_url,
     discover_viewer_hostname,
@@ -53,6 +53,8 @@ from utils.traceviewer import (
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
 @dataclass(frozen=True)
 class BundleRenderResult:
     bundle: dict[str, Any]
@@ -64,10 +66,6 @@ class BundleRenderResult:
     bundle_page_path: Path
     bundle_json_path: Path
     latest_page_path: Path
-
-
-def load_json(path: Path) -> Any:
-    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def run_command(cmd: list[str], *, cwd: Path) -> tuple[int, str]:
@@ -404,11 +402,15 @@ def _record_detail_rel_path(
     run_key = str(record.get("run_key") or "").strip()
     if not run_key:
         run_key = render_record_selector(record)
-    source_prefix = "runs" if source == "candidate" else f"runs/{_sanitize_token(source)}"
+    source_prefix = (
+        "runs" if source == "candidate" else f"runs/{_sanitize_token(source)}"
+    )
     return f"viewer/bundles/{bundle_id}/{source_prefix}/{_sanitize_token(run_key)}.html"
 
 
-def _baseline_candidate_json_path(bundle: dict[str, Any], *, outputs_root: Path) -> Path | None:
+def _baseline_candidate_json_path(
+    bundle: dict[str, Any], *, outputs_root: Path
+) -> Path | None:
     compare = dict(bundle.get("compare") or {})
     explicit_rel = str(compare.get("baseline_json_path") or "").strip()
     if explicit_rel:
@@ -819,7 +821,11 @@ def _build_bundle_report_model(
         source: str,
     ) -> dict[str, Any]:
         summary = dict(payload.get("summary") or {})
-        records = [dict(item) for item in payload.get("records") or [] if isinstance(item, dict)]
+        records = [
+            dict(item)
+            for item in payload.get("records") or []
+            if isinstance(item, dict)
+        ]
         records.sort(
             key=lambda record: (
                 _selector_sort_key(_scenario_selector_for_record(record)),
@@ -870,7 +876,7 @@ def _build_bundle_report_model(
         }
 
     def _index_scenario_trees(
-        trees_by_level: dict[str, list[dict[str, Any]]]
+        trees_by_level: dict[str, list[dict[str, Any]]],
     ) -> dict[str, dict[str, Any]]:
         out: dict[str, dict[str, Any]] = {}
 
@@ -893,13 +899,17 @@ def _build_bundle_report_model(
     candidate_payload = {
         "summary": dict(dict(benchmark.get("candidate") or {}).get("summary") or {}),
         "records": [
-            dict(item) for item in benchmark.get("records") or [] if isinstance(item, dict)
+            dict(item)
+            for item in benchmark.get("records") or []
+            if isinstance(item, dict)
         ],
     }
     candidate_report = _build_report_block(candidate_payload, source="candidate")
 
     baseline_payload: dict[str, Any] | None = None
-    baseline_json_path = _baseline_candidate_json_path(bundle, outputs_root=outputs_root)
+    baseline_json_path = _baseline_candidate_json_path(
+        bundle, outputs_root=outputs_root
+    )
     if baseline_json_path is not None and baseline_json_path.exists():
         loaded_payload = load_json(baseline_json_path)
         if isinstance(loaded_payload, dict):
@@ -923,6 +933,8 @@ def _build_bundle_report_model(
         "runs": list(candidate_report.get("runs") or [])
         + list((baseline_report or {}).get("runs") or []),
     }
+
+
 def _render_inline_list(items: list[str], *, code: bool = False) -> str:
     if not items:
         return '<span class="muted">(none)</span>'
@@ -1028,7 +1040,7 @@ def _render_metric_stack(items: list[tuple[str, str]]) -> str:
         rows.append(
             '<div class="metric-line">'
             f'<span class="metric-key">{html.escape(label)}</span>'
-            f'<span>{html.escape(value)}</span>'
+            f"<span>{html.escape(value)}</span>"
             "</div>"
         )
     if not rows:
@@ -1053,7 +1065,9 @@ def _render_run_preview_cell(
     )
     if not preview_href or not detail_href:
         return '<span class="muted">expand</span>'
-    alt_text = html.escape(str(run.get("selector") or run.get("scenario_selector") or "run"))
+    alt_text = html.escape(
+        str(run.get("selector") or run.get("scenario_selector") or "run")
+    )
     return (
         f'<a class="table-preview" href="{html.escape(detail_href)}">'
         f'<img src="{html.escape(preview_href)}" alt="{alt_text}">'
@@ -1061,7 +1075,9 @@ def _render_run_preview_cell(
     )
 
 
-def _scenario_metric_cell_html(summary_data: dict[str, Any], *, show_spread: bool) -> str:
+def _scenario_metric_cell_html(
+    summary_data: dict[str, Any], *, show_spread: bool
+) -> str:
     items: list[tuple[str, str]] = [
         ("offset mean", _format_float(summary_data.get("offset_mean"), 3)),
         ("ref gap mean", _format_float(summary_data.get("ref_gap_mean"), 3)),
@@ -1189,7 +1205,9 @@ def _summary_compare_delta_percent_points(
     digits: int = 2,
 ) -> str:
     try:
-        return f"{(float(candidate_value) - float(baseline_value)) * 100.0:+.{digits}f} pp"
+        return (
+            f"{(float(candidate_value) - float(baseline_value)) * 100.0:+.{digits}f} pp"
+        )
     except (TypeError, ValueError):
         return "-"
 
@@ -1207,7 +1225,9 @@ def _summary_compare_delta_count(
 def _load_baseline_payload(
     bundle: dict[str, Any], *, outputs_root: Path
 ) -> tuple[Path | None, dict[str, Any] | None]:
-    baseline_json_path = _baseline_candidate_json_path(bundle, outputs_root=outputs_root)
+    baseline_json_path = _baseline_candidate_json_path(
+        bundle, outputs_root=outputs_root
+    )
     if baseline_json_path is None or not baseline_json_path.is_file():
         return baseline_json_path, None
     loaded = load_json(baseline_json_path)
@@ -1224,7 +1244,10 @@ def _overview_result_cell(summary: dict[str, Any]) -> str:
     crashes = int(summary.get("crashed", 0) or 0)
     return _render_metric_stack(
         [
-            ("success", f"{successes}/{runs} ({_format_percent(summary.get('success_rate'))})"),
+            (
+                "success",
+                f"{successes}/{runs} ({_format_percent(summary.get('success_rate'))})",
+            ),
             ("crashes", str(crashes)),
         ]
     )
@@ -1233,10 +1256,26 @@ def _overview_result_cell(summary: dict[str, Any]) -> str:
 def _overview_efficiency_cell(summary: dict[str, Any]) -> str:
     return _render_metric_stack(
         [
-            ("fuel all", _format_float(_summary_metric_value(summary, "fuel_consumed", scope="all"))),
-            ("fuel success", _format_float(_summary_metric_value(summary, "fuel_consumed", scope="success"))),
-            ("time all", _format_float(_summary_metric_value(summary, "time", scope="all"))),
-            ("time success", _format_float(_summary_metric_value(summary, "time", scope="success"))),
+            (
+                "fuel all",
+                _format_float(
+                    _summary_metric_value(summary, "fuel_consumed", scope="all")
+                ),
+            ),
+            (
+                "fuel success",
+                _format_float(
+                    _summary_metric_value(summary, "fuel_consumed", scope="success")
+                ),
+            ),
+            (
+                "time all",
+                _format_float(_summary_metric_value(summary, "time", scope="all")),
+            ),
+            (
+                "time success",
+                _format_float(_summary_metric_value(summary, "time", scope="success")),
+            ),
         ]
     )
 
@@ -1244,8 +1283,24 @@ def _overview_efficiency_cell(summary: dict[str, Any]) -> str:
 def _overview_tracking_cell(summary: dict[str, Any]) -> str:
     return _render_metric_stack(
         [
-            ("gap mean", _format_float(_summary_metric_value(summary, "trace_ref_gap_mean", scope="success"), 3)),
-            ("gap peak", _format_float(_summary_metric_value(summary, "trace_ref_gap_max", scope="success", stat="max"), 3)),
+            (
+                "gap mean",
+                _format_float(
+                    _summary_metric_value(
+                        summary, "trace_ref_gap_mean", scope="success"
+                    ),
+                    3,
+                ),
+            ),
+            (
+                "gap peak",
+                _format_float(
+                    _summary_metric_value(
+                        summary, "trace_ref_gap_max", scope="success", stat="max"
+                    ),
+                    3,
+                ),
+            ),
         ]
     )
 
@@ -1253,8 +1308,24 @@ def _overview_tracking_cell(summary: dict[str, Any]) -> str:
 def _overview_compute_cell(summary: dict[str, Any]) -> str:
     return _render_metric_stack(
         [
-            ("bot mean", _format_float(_summary_metric_value(summary, "bot_profile_total_ms_per_tick", scope="all"), 3)),
-            ("bot p99", _format_float(_summary_metric_value(summary, "bot_profile_total_ms_per_tick_p99", scope="all"), 3)),
+            (
+                "bot mean",
+                _format_float(
+                    _summary_metric_value(
+                        summary, "bot_profile_total_ms_per_tick", scope="all"
+                    ),
+                    3,
+                ),
+            ),
+            (
+                "bot p99",
+                _format_float(
+                    _summary_metric_value(
+                        summary, "bot_profile_total_ms_per_tick_p99", scope="all"
+                    ),
+                    3,
+                ),
+            ),
         ]
     )
 
@@ -1469,7 +1540,10 @@ def _overview_diff_compute_cell(
             p99_delta = float(candidate_p99) - float(baseline_p99)
     return _render_metric_stack(
         [
-            ("bot mean", _format_float(mean_delta, 3) if mean_delta is not None else "-"),
+            (
+                "bot mean",
+                _format_float(mean_delta, 3) if mean_delta is not None else "-",
+            ),
             ("bot p99", _format_float(p99_delta, 3) if p99_delta is not None else "-"),
         ]
     )
@@ -1487,9 +1561,7 @@ def _overview_diff_wall_clock_cell(
     return _render_metric_stack([("bench", _format_float(delta, 3))])
 
 
-def _render_overview_section(
-    bundle: dict[str, Any], *, outputs_root: Path
-) -> str:
+def _render_overview_section(bundle: dict[str, Any], *, outputs_root: Path) -> str:
     benchmark = dict(bundle.get("benchmark") or {})
     candidate = dict(benchmark.get("candidate") or {})
     compare = dict(bundle.get("compare") or {})
@@ -1524,11 +1596,12 @@ def _render_overview_section(
         compare_candidate_summary = dict(compare.get("summary_candidate") or {})
         compare_baseline_summary = dict(compare.get("summary_baseline") or {})
         compare_basis = dict(compare.get("compare_basis") or {})
-        compare_available = (
-            str(compare_basis.get("mode") or "").strip() != "no_shared_runs"
-            and bool(compare.get("summary_available", True))
+        compare_available = str(
+            compare_basis.get("mode") or ""
+        ).strip() != "no_shared_runs" and bool(compare.get("summary_available", True))
+        baseline_json_rel = _rel_to_outputs(
+            baseline_json_path, outputs_root=outputs_root
         )
-        baseline_json_rel = _rel_to_outputs(baseline_json_path, outputs_root=outputs_root)
         rows.append(
             (
                 "baseline-summary-row baseline-row",
@@ -1594,7 +1667,15 @@ def _render_overview_section(
         "<h2>Overview</h2>"
         '<div class="table-wrap">'
         + _render_table_with_row_classes(
-            ["Pack", "Ref", "Result", "Wall Clock", "Efficiency", "Tracking", "Compute"],
+            [
+                "Pack",
+                "Ref",
+                "Result",
+                "Wall Clock",
+                "Efficiency",
+                "Tracking",
+                "Compute",
+            ],
             rows,
             table_class="summary-table",
         )
@@ -1638,7 +1719,9 @@ def _render_context_section(
         ],
         [
             "Changed Files",
-            _render_inline_list(list(intent.get("changed_files") or [])[:10], code=True),
+            _render_inline_list(
+                list(intent.get("changed_files") or [])[:10], code=True
+            ),
         ],
     ]
     details = _render_table(["Field", "Value"], rows)
@@ -1735,11 +1818,7 @@ def _render_scenario_sections(
         group_attr = f' data-group="{html.escape(group_id)}"' if group_id else ""
         expanded_attr = ' aria-expanded="false"' if expandable else ""
         tabindex_attr = ' tabindex="0"' if expandable else ""
-        row_class = (
-            "scenario-row"
-            if tone == "candidate"
-            else "baseline-scenario-row"
-        )
+        row_class = "scenario-row" if tone == "candidate" else "baseline-scenario-row"
         preview_cell = _render_run_preview_cell(
             representative_run, bundle_dir=bundle_dir, outputs_root=outputs_root
         )
@@ -1790,7 +1869,9 @@ def _render_scenario_sections(
                 "</a>"
             )
         metric_cell = _seed_metric_cell_html(record)
-        seed_label = f"seed {record.get('seed') if record.get('seed') is not None else '-'}"
+        seed_label = (
+            f"seed {record.get('seed') if record.get('seed') is not None else '-'}"
+        )
         if int(run.get("duplicate_count", 1) or 1) > 1:
             seed_label = f"{seed_label} #{int(run.get('run_instance_id', 1) or 1)}"
         row_class = "seed-row" if tone == "candidate" else "seed-row baseline-seed-row"
@@ -2043,7 +2124,9 @@ def _render_run_detail_html(
     source_json_rel = candidate.get("json_path")
     source_json_label = "candidate json"
     if source == "baseline":
-        baseline_json_path = _baseline_candidate_json_path(bundle, outputs_root=outputs_root)
+        baseline_json_path = _baseline_candidate_json_path(
+            bundle, outputs_root=outputs_root
+        )
         source_json_rel = _rel_to_outputs(baseline_json_path, outputs_root=outputs_root)
         source_json_label = "baseline json"
     candidate_href = _href_from(detail_dir, source_json_rel, outputs_root=outputs_root)
@@ -2622,7 +2705,10 @@ def _benchmark_command(
         cmd.append("--no-bot-profile-logs")
     if intent_json_path is None and args.baseline_ref:
         cmd.extend(["--baseline-ref", args.baseline_ref])
-    if intent_json_path is None and str(getattr(args, "goal_summary", "") or "").strip():
+    if (
+        intent_json_path is None
+        and str(getattr(args, "goal_summary", "") or "").strip()
+    ):
         cmd.extend(["--goal-summary", str(args.goal_summary)])
     if intent_json_path is None:
         for note in getattr(args, "context_note", []) or []:
@@ -2661,7 +2747,8 @@ def _bundle_payload(
         "bundle_id": bundle_id,
         "created_at_utc": created_at_utc,
         "title": _bundle_title(
-            candidate_json_path, compare=compare_path is not None and compare_payload is not None
+            candidate_json_path,
+            compare=compare_path is not None and compare_payload is not None,
         ),
         "latest_page_path": latest_page,
         "bundle_page_path": bundle_page,
@@ -2843,7 +2930,10 @@ def render_bundle(
     resolved_baseline_json_path = (
         baseline_json_path.resolve() if baseline_json_path is not None else None
     )
-    if resolved_baseline_json_path is not None and not resolved_baseline_json_path.exists():
+    if (
+        resolved_baseline_json_path is not None
+        and not resolved_baseline_json_path.exists()
+    ):
         raise SystemExit(
             f"Baseline benchmark JSON not found: {resolved_baseline_json_path}"
         )
@@ -2863,7 +2953,9 @@ def render_bundle(
         if analysis_path is not None
         else (
             local_analysis_path
-            if (local_analysis_path := analysis_sidecar_path(candidate_json_path)).exists()
+            if (
+                local_analysis_path := analysis_sidecar_path(candidate_json_path)
+            ).exists()
             else None
         )
     )
@@ -2883,9 +2975,7 @@ def render_bundle(
             _coerce_float(candidate_payload.get("benchmark_wall_clock_s")) or 0.0
         )
     compare_payload = (
-        load_json(resolved_compare_path)
-        if resolved_compare_path is not None
-        else None
+        load_json(resolved_compare_path) if resolved_compare_path is not None else None
     )
     if isinstance(compare_payload, dict):
         compare_candidate_json_path = _compare_tracepack_path(
@@ -2918,7 +3008,9 @@ def render_bundle(
                 "Explicit baseline benchmark JSON does not match compare JSON baseline: "
                 f"{resolved_baseline_json_path} != {compare_baseline_json_path}"
             )
-        expected_candidate_ref = str(compare_payload.get("candidate_commit") or "").strip()
+        expected_candidate_ref = str(
+            compare_payload.get("candidate_commit") or ""
+        ).strip()
         actual_candidate_ref = _tracepack_ref_from_path(candidate_json_path)
         if (
             compare_candidate_json_path is None
@@ -2930,7 +3022,9 @@ def render_bundle(
                 "Candidate benchmark JSON ref does not match compare JSON candidate ref: "
                 f"{actual_candidate_ref} != {expected_candidate_ref}"
             )
-        expected_baseline_ref = str(compare_payload.get("baseline_commit") or "").strip()
+        expected_baseline_ref = str(
+            compare_payload.get("baseline_commit") or ""
+        ).strip()
         actual_baseline_ref = _tracepack_ref_from_path(resolved_baseline_json_path)
         if (
             compare_baseline_json_path is None
@@ -2943,14 +3037,15 @@ def render_bundle(
                 "Baseline benchmark JSON ref does not match compare JSON baseline ref: "
                 f"{actual_baseline_ref} != {expected_baseline_ref}"
             )
-    if resolved_baseline_json_path is not None and not resolved_baseline_json_path.exists():
+    if (
+        resolved_baseline_json_path is not None
+        and not resolved_baseline_json_path.exists()
+    ):
         raise SystemExit(
             f"Baseline benchmark JSON not found: {resolved_baseline_json_path}"
         )
     intent_payload = (
-        load_intent(resolved_intent_path)
-        if resolved_intent_path is not None
-        else None
+        load_intent(resolved_intent_path) if resolved_intent_path is not None else None
     )
     analysis_payload = (
         load_json(resolved_analysis_path)
@@ -3091,7 +3186,9 @@ def build_bundle_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(
         description="Run the full benchmark workflow and write a static HTML bundle"
     )
-    ap.add_argument("--mode", choices=("smoke", "quick", "full", "focused"), default=None)
+    ap.add_argument(
+        "--mode", choices=("smoke", "quick", "full", "focused"), default=None
+    )
     ap.add_argument("--seed-spec", default=None)
     ap.add_argument("--selectors", nargs="*", default=[])
     ap.add_argument("--exclude-levels", nargs="*", default=[])
@@ -3297,7 +3394,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     benchmark_wall_clock_s = time.perf_counter() - benchmark_started
 
     intent_section = _parse_section(benchmark_output, "intent")
-    resolved_intent_path = _output_path(intent_section.get("json"), repo_root=_REPO_ROOT)
+    resolved_intent_path = _output_path(
+        intent_section.get("json"), repo_root=_REPO_ROOT
+    )
     if resolved_intent_path is not None:
         intent_path = resolved_intent_path
         intent_payload = load_intent(intent_path)

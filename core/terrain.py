@@ -9,7 +9,7 @@ from typing import Any, Protocol
 import numpy as np
 from opensimplex import OpenSimplex
 
-from core.config import GRAVITY
+from core.config import GRAVITY, GRAVITY_MAG
 from core.maths import Vector2
 
 
@@ -134,14 +134,14 @@ def ballistic_state(
 def ballistic_fall_time(
     altitude: float,
     vy_up: float,
-    g: float = 9.8,
+    g: float = GRAVITY_MAG,
     *,
     min_time: float = 0.5,
 ) -> float:
     """Return analytic engine-off time-to-ground for local altitude."""
     gravity = abs(float(g))
     if gravity <= 1e-9:
-        gravity = 9.8
+        gravity = GRAVITY_MAG
     disc = max(0.0, (vy_up * vy_up) + (2.0 * gravity * max(0.0, altitude)))
     t = (vy_up + math.sqrt(disc)) / gravity
     return max(float(min_time), t)
@@ -256,7 +256,9 @@ def sample_ballistic_trajectory(
             t_hi = t_next
             for _ in range(12):
                 t_mid = 0.5 * (t_lo + t_hi)
-                x_mid, y_mid = _ballistic_position(start_x, start_y, vx, vy_up, g, t_mid)
+                x_mid, y_mid = _ballistic_position(
+                    start_x, start_y, vx, vy_up, g, t_mid
+                )
                 terrain_mid = sample_terrain_height(height_func, x_mid, lod=lod)
                 if y_mid > (terrain_mid + clearance):
                     t_lo = t_mid
@@ -407,9 +409,7 @@ class LayeredTerrainGenerator:
     def _rand01(self, index: int, salt: int) -> float:
         value = (index * 1619) ^ (self.seed * 31337) ^ (salt * 6971)
         value = (value << 13) ^ value
-        hashed = (
-            value * (value * value * 15731 + 789221) + 1376312589
-        ) & 0x7FFFFFFF
+        hashed = (value * (value * value * 15731 + 789221) + 1376312589) & 0x7FFFFFFF
         return hashed / 2147483647.0
 
     def _macro(self, x: float) -> float:
@@ -419,7 +419,9 @@ class LayeredTerrainGenerator:
         )
 
     def _warped_x(self, x: float) -> float:
-        warp = self._warp_noise.noise2(x * self.warp_frequency, 91.0) * self.warp_amplitude
+        warp = (
+            self._warp_noise.noise2(x * self.warp_frequency, 91.0) * self.warp_amplitude
+        )
         return x + warp
 
     def _structure(self, x: float) -> float:
@@ -490,7 +492,9 @@ class LayeredTerrainGenerator:
 
     def __call__(self, x: float, lod: int = 0) -> float:
         _ = lod
-        return self.base_height + self._macro(x) + self._structure(x) + self._features(x)
+        return (
+            self.base_height + self._macro(x) + self._structure(x) + self._features(x)
+        )
 
 
 class UniformGridChunk:
@@ -557,7 +561,9 @@ class UniformGridGenerator:
     def profile(
         self, x0: float, x1: float, *, step: float | None = None
     ) -> list[tuple[float, float]]:
-        use_step = self.resolution if step is None else max(self.resolution, float(step))
+        use_step = (
+            self.resolution if step is None else max(self.resolution, float(step))
+        )
         return anchored_profile(self.height_func, x0, x1, step=use_step, lod=0)
 
 
@@ -633,4 +639,3 @@ class AddHeightModifier:
 
 class Terrain(Protocol):
     def __call__(self, x: float, lod: int = 0) -> float: ...
-

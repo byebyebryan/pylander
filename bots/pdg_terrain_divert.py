@@ -3,10 +3,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
+from bots.common_math import _GRAVITY_MAG
 from core.bot import Sensors, TerrainBoundary
-from core.config import GRAVITY
-
-_GRAVITY_MAG = abs(float(GRAVITY))
 
 
 @dataclass(frozen=True)

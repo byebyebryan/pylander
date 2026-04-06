@@ -15,7 +15,13 @@ from bots.common_ballistics import (
     BallisticProjection,
     estimate_target_y_projection,
 )
-from bots.common_math import clamp, engine_profile, finite_altitude, stable
+from bots.common_math import (
+    _GRAVITY_MAG,
+    clamp,
+    engine_profile,
+    finite_altitude,
+    stable,
+)
 from bots.common_targeting import pick_target, target_half_width
 from bots.pdg_actuation import (
     command_from_plan as _command_from_plan_impl,
@@ -73,10 +79,8 @@ from core.bot import (
     Sensors,
     BoostCutoffMetrics,
 )
-from core.config import GRAVITY
 from core.eval_goals import EVAL_GOAL_BOOST_CUTOFF, EVAL_GOAL_LANDING
 
-_GRAVITY_MAG = abs(float(GRAVITY))
 _TERMINAL_OPT_PATH_X_WEIGHT = 0.030
 _TERMINAL_OPT_PATH_Y_WEIGHT = 0.015
 _TERMINAL_OPT_UPWARD_VY_WEIGHT = 1.20
@@ -1379,7 +1383,11 @@ class PDGBot(Bot):
             settle_action.status = "pdg settle/boost pass"
             self._set_display_state(mode="passive", phase="boost", summary="cut pass")
             return StageTickResult(action=settle_action)
-        if state._boost_burn_started and (not quality.passed) and not boost_clearance_probe.active:
+        if (
+            state._boost_burn_started
+            and (not quality.passed)
+            and not boost_clearance_probe.active
+        ):
             burn_elapsed = state._elapsed_time_s - float(
                 state._boost_burn_start_time or state._elapsed_time_s
             )

@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from app.benchmark_cache import load_json
+from app.selector_pack import split_csv
 from core.selector_codec import render_record_selector, render_selector
 from utils.botmetrics import bot_metric_key
 from utils.tracebundle import (
@@ -20,23 +22,13 @@ from utils.tracebundle import (
     rel_to_outputs as _rel_to_outputs,
     sanitize_token as _sanitize_token,
 )
-from utils.traceviewer import PLOTLY_CDN_URL, ensure_viewer_assets, render_trace_detail_html
+from utils.traceviewer import (
+    PLOTLY_CDN_URL,
+    ensure_viewer_assets,
+    render_trace_detail_html,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-
-
-def load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def split_csv(values: list[str]) -> list[str]:
-    out: list[str] = []
-    for item in values:
-        for token in str(item).split(","):
-            t = token.strip()
-            if t:
-                out.append(t)
-    return out
 
 
 def selector_from_record(record: dict[str, Any]) -> str:

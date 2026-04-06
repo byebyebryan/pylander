@@ -15,7 +15,7 @@ from levels.common_world import (
     get_mass,
     resolve_landed_site_uid,
 )
-from levels.common_scenarios import ScenarioCatalogMixin
+from levels.common_scenarios import ScenarioCatalogMixin, is_ranged_value
 
 SOURCE_PAD_X = 0.0
 SOURCE_SITE_UID = "transfer_source"
@@ -76,6 +76,21 @@ class BoostTransferLevel(ScenarioCatalogMixin, PresetLevel):
             )
         self._benchmark_random_mode = key
 
+    @staticmethod
+    def _scenario_dx(scenario, *, dest_x: float | None = None) -> float:
+        if dest_x is not None:
+            return max(1e-6, float(dest_x) - float(SOURCE_PAD_X))
+        route_dx = scenario.route_dx
+        if is_ranged_value(route_dx):
+            return max(1e-6, route_dx.median())
+        return max(1e-6, float(route_dx))
+
+    @classmethod
+    def _scenario_slope(cls, scenario, *, dest_x: float | None = None) -> float:
+        if scenario.family == "flat":
+            return 0.0
+        return float(scenario.route_dy) / cls._scenario_dx(scenario, dest_x=dest_x)
+
     # -- hooks for subclasses -------------------------------------------------
 
     def _resolve_dest_x(self, scenario, rng) -> float:  # noqa: ANN001
@@ -92,7 +107,9 @@ class BoostTransferLevel(ScenarioCatalogMixin, PresetLevel):
         scenario = self._active_scenario()
         import random as _random
 
-        scenario_seed_key = str(getattr(scenario, "seed_key", scenario.name) or scenario.name)
+        scenario_seed_key = str(
+            getattr(scenario, "seed_key", scenario.name) or scenario.name
+        )
         scenario_name_hash = sum(ord(ch) for ch in scenario_seed_key)
         rng = _random.Random(seed ^ (scenario_name_hash << 1))
 

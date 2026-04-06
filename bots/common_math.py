@@ -6,10 +6,10 @@ import math
 from typing import Mapping, TypeVar
 
 from core.bot import Sensors, VehicleInfo
-from core.config import GRAVITY
+from core.config import GRAVITY_MAG
 
 _BehaviorT = TypeVar("_BehaviorT")
-_GRAVITY_MAG = abs(float(GRAVITY))
+_GRAVITY_MAG = GRAVITY_MAG
 
 
 def clamp(value: float, low: float, high: float) -> float:
@@ -64,7 +64,9 @@ def vehicle_limits(passive: Sensors, max_force: float) -> tuple[float, float]:
     return mass, up_acc_max
 
 
-def engine_profile(vehicle_info: VehicleInfo | None) -> tuple[float, float, float, float]:
+def engine_profile(
+    vehicle_info: VehicleInfo | None,
+) -> tuple[float, float, float, float]:
     if vehicle_info is None:
         # Keep fallback aligned with Engine defaults in SI-like units.
         return 240000.0, 0.25, 1.6, 1.1
@@ -87,3 +89,10 @@ def rate_limit_angle_command(
     limited_delta = clamp(delta, -max_delta, max_delta)
     limited = prev_angle + limited_delta
     return (limited + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def retrograde_angle_target(*, vx: float, vy_up: float) -> float:
+    speed = math.hypot(float(vx), float(vy_up))
+    if speed <= 1e-3:
+        return 0.0
+    return math.atan2(-float(vx), -float(vy_up))
