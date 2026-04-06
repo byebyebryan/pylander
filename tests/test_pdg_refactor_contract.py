@@ -8,6 +8,7 @@ import pytest
 from bots import create_bot
 from bots.common_ballistics import BallisticProjection
 from bots.pdg import FlightStage, UpdateContext
+from conftest import make_sensors
 from core.bot import (
     BotAction,
     BotEnvironment,
@@ -25,31 +26,12 @@ def _pdg_bot() -> Any:
     return cast(Any, create_bot("pdg"))
 
 
-def _sensors(*, state: str = "flying") -> Sensors:
-    return Sensors(
-        x=0.0,
-        y=120.0,
-        altitude=120.0,
-        terrain_y=0.0,
-        terrain_slope=0.0,
-        vx=3.0,
-        vy_up=-8.0,
-        angle=0.0,
-        ax=0.0,
-        ay_up=0.0,
-        mass=1200.0,
-        thrust_level=0.0,
-        fuel=100.0,
-        max_fuel=100.0,
-        state=state,
-        radar_contacts=[],
-        proximity=None,
-    )
-
-
 def test_pdg_update_returns_action_when_flying() -> None:
     bot = _pdg_bot()
-    action = bot.update(1.0 / 30.0, _sensors(state="flying"))
+    action = bot.update(
+        1.0 / 30.0,
+        make_sensors(y=120.0, vx=3.0, vy_up=-8.0, mass=1200.0, state="flying"),
+    )
     assert isinstance(action, BotAction)
 
 
@@ -59,7 +41,10 @@ def test_pdg_non_flying_status_resets_runtime_state() -> None:
     bot._auto_target_uid = "target-1"
     bot._launch_takeoff_active = True
 
-    action = bot.update(1.0 / 30.0, _sensors(state="crashed"))
+    action = bot.update(
+        1.0 / 30.0,
+        make_sensors(y=120.0, vx=3.0, vy_up=-8.0, mass=1200.0, state="crashed"),
+    )
     assert action.status == "pdg crashed"
     assert action.target_thrust == 0.0
     assert bot._solve_count == 0
@@ -225,25 +210,7 @@ def test_boost_cutoff_waits_for_actual_thrust_shutdown() -> None:
 
 def test_direct_descent_terminal_handoff_prefers_touchdown() -> None:
     bot = _pdg_bot()
-    passive = Sensors(
-        x=0.0,
-        y=60.0,
-        altitude=60.0,
-        terrain_y=0.0,
-        terrain_slope=0.0,
-        vx=0.0,
-        vy_up=-30.0,
-        angle=0.0,
-        ax=0.0,
-        ay_up=0.0,
-        mass=13500.0,
-        thrust_level=0.0,
-        fuel=100.0,
-        max_fuel=100.0,
-        state="flying",
-        radar_contacts=[],
-        proximity=None,
-    )
+    passive = make_sensors(y=60.0, vx=0.0, vy_up=-30.0, mass=13500.0, state="flying")
     stage = bot._refresh_stage_tracking(
         passive=passive,
         dx=0.0,
@@ -265,25 +232,7 @@ def test_boost_controller_honors_touchdown_stage_suggestion_before_boost_cutoff(
     None
 ):
     bot = _pdg_bot()
-    passive = Sensors(
-        x=0.0,
-        y=60.0,
-        altitude=60.0,
-        terrain_y=0.0,
-        terrain_slope=0.0,
-        vx=0.0,
-        vy_up=-30.0,
-        angle=0.0,
-        ax=0.0,
-        ay_up=0.0,
-        mass=13500.0,
-        thrust_level=0.0,
-        fuel=100.0,
-        max_fuel=100.0,
-        state="flying",
-        radar_contacts=[],
-        proximity=None,
-    )
+    passive = make_sensors(y=60.0, vx=0.0, vy_up=-30.0, mass=13500.0, state="flying")
     ctx = UpdateContext(
         dt=1.0 / 30.0,
         passive=passive,
@@ -377,24 +326,8 @@ def test_boost_clearance_vetoes_stage_transition_while_rise_is_unresolved() -> N
         ),
         bot,
     )
-    passive = Sensors(
-        x=40.0,
-        y=10.0,
-        altitude=10.0,
-        terrain_y=0.0,
-        terrain_slope=0.0,
-        vx=22.0,
-        vy_up=6.0,
-        angle=0.0,
-        ax=0.0,
-        ay_up=0.0,
-        mass=1200.0,
-        thrust_level=0.0,
-        fuel=100.0,
-        max_fuel=100.0,
-        state="flying",
-        radar_contacts=[],
-        proximity=None,
+    passive = make_sensors(
+        x=40.0, y=10.0, vx=22.0, vy_up=6.0, mass=1200.0, state="flying"
     )
     ctx = UpdateContext(
         dt=1.0 / 30.0,

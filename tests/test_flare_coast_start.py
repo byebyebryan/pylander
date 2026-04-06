@@ -9,38 +9,14 @@ import pytest
 import bots.pdg_terminal_gate as terminal_gate
 from bots import create_bot
 from bots.pdg_terminal_gate import _latest_safe_state
-from core.bot import Sensors
+from conftest import make_sensors
 from game import LanderGame
 from levels import create_level
 
 
-def _sensors(
-    *, vx: float, vy_up: float, altitude: float, thrust_level: float = 0.0
-) -> Sensors:
-    return Sensors(
-        x=0.0,
-        y=altitude,
-        altitude=altitude,
-        terrain_y=0.0,
-        terrain_slope=0.0,
-        vx=vx,
-        vy_up=vy_up,
-        angle=0.0,
-        ax=0.0,
-        ay_up=0.0,
-        mass=1000.0,
-        thrust_level=thrust_level,
-        fuel=100.0,
-        max_fuel=100.0,
-        state="flying",
-        radar_contacts=[],
-        proximity=None,
-    )
-
-
 def test_latest_safe_margin_shrinks_when_lateral_overshoot_requires_more_time() -> None:
     bot = cast(Any, create_bot("pdg"))
-    passive = _sensors(vx=28.0, vy_up=-12.0, altitude=120.0)
+    passive = make_sensors(vx=28.0, vy_up=-12.0, y=120.0, altitude=120.0)
 
     mild_overshoot = _latest_safe_state(
         bot,
@@ -72,7 +48,7 @@ def test_latest_safe_state_prefers_lower_required_ratio_over_shorter_burn(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bot = cast(Any, create_bot("pdg"))
-    passive = _sensors(vx=18.0, vy_up=-10.0, altitude=120.0)
+    passive = make_sensors(vx=18.0, vy_up=-10.0, y=120.0, altitude=120.0)
 
     monkeypatch.setattr(
         terminal_gate,
@@ -122,7 +98,7 @@ def test_should_defer_latest_safe_entry_when_future_nominal_ready(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bot = cast(Any, create_bot("pdg"))
-    passive = _sensors(vx=8.0, vy_up=12.0, altitude=120.0)
+    passive = make_sensors(vx=8.0, vy_up=12.0, y=120.0, altitude=120.0)
 
     monkeypatch.setattr(
         terminal_gate,
@@ -201,7 +177,7 @@ def test_should_defer_latest_safe_entry_when_future_latest_safe_is_easier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bot = cast(Any, create_bot("pdg"))
-    passive = _sensors(vx=8.0, vy_up=12.0, altitude=120.0)
+    passive = make_sensors(vx=8.0, vy_up=12.0, y=120.0, altitude=120.0)
 
     monkeypatch.setattr(
         terminal_gate,
@@ -276,7 +252,7 @@ def test_should_not_defer_latest_safe_entry_when_descending() -> None:
     assert not terminal_gate._should_defer_latest_safe_entry(
         bot,
         dt=0.25,
-        passive=_sensors(vx=8.0, vy_up=-2.0, altitude=120.0),
+        passive=make_sensors(vx=8.0, vy_up=-2.0, y=120.0, altitude=120.0),
         dx=0.0,
         dy=-120.0,
         projected_dx=0.0,
@@ -295,7 +271,7 @@ def test_should_not_defer_latest_safe_entry_when_outside_terminal_corridor() -> 
     assert not terminal_gate._should_defer_latest_safe_entry(
         bot,
         dt=0.25,
-        passive=_sensors(vx=8.0, vy_up=12.0, altitude=120.0),
+        passive=make_sensors(vx=8.0, vy_up=12.0, y=120.0, altitude=120.0),
         dx=0.0,
         dy=-120.0,
         projected_dx=200.0,
@@ -312,7 +288,7 @@ def test_should_defer_latest_safe_entry_when_future_latest_safe_becomes_feasible
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     bot = cast(Any, create_bot("pdg"))
-    passive = _sensors(vx=8.0, vy_up=12.0, altitude=120.0)
+    passive = make_sensors(vx=8.0, vy_up=12.0, y=120.0, altitude=120.0)
 
     monkeypatch.setattr(
         terminal_gate,

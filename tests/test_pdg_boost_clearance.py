@@ -10,7 +10,8 @@ from bots.pdg_boost_clearance import (
     apply_boost_clearance_guard,
     evaluate_boost_clearance_probe,
 )
-from core.bot import BotAction, BotEnvironment, BotTarget, Sensors
+from conftest import make_sensors
+from core.bot import BotAction, BotEnvironment, BotTarget
 
 
 class _SourceRiseTerrain:
@@ -74,35 +75,13 @@ def _bot() -> Any:
     return bot
 
 
-def _sensors(*, x: float, y: float, vx: float, vy_up: float) -> Sensors:
-    return Sensors(
-        x=x,
-        y=y,
-        altitude=max(0.0, y),
-        terrain_y=0.0,
-        terrain_slope=0.0,
-        vx=vx,
-        vy_up=vy_up,
-        angle=0.0,
-        ax=0.0,
-        ay_up=0.0,
-        mass=1200.0,
-        thrust_level=0.0,
-        fuel=100.0,
-        max_fuel=100.0,
-        state="flying",
-        radar_contacts=[],
-        proximity=None,
-    )
-
-
 def test_boost_clearance_probe_reports_negative_margin_for_targetward_progress() -> (
     None
 ):
     bot = _bot()
     probe = evaluate_boost_clearance_probe(
         bot,
-        passive=_sensors(x=40.0, y=10.0, vx=22.0, vy_up=6.0),
+        passive=make_sensors(x=40.0, y=10.0, vx=22.0, vy_up=6.0, mass=1200.0),
         dx=760.0,
         action=BotAction(target_thrust=0.95, target_angle=0.45, refuel=False),
         max_power=24000.0,
@@ -123,7 +102,7 @@ def test_boost_clearance_guard_clamps_targetward_angle_and_raises_thrust() -> No
     bot._prev_angle_cmd = 0.45
     action, probe = apply_boost_clearance_guard(
         bot,
-        passive=_sensors(x=40.0, y=10.0, vx=22.0, vy_up=6.0),
+        passive=make_sensors(x=40.0, y=10.0, vx=22.0, vy_up=6.0, mass=1200.0),
         dx=760.0,
         action=BotAction(target_thrust=0.50, target_angle=0.45, refuel=False),
         dt=0.05,
@@ -143,7 +122,7 @@ def test_boost_clearance_probe_stays_idle_after_rise_rejoin() -> None:
     bot = _bot()
     probe = evaluate_boost_clearance_probe(
         bot,
-        passive=_sensors(x=260.0, y=90.0, vx=18.0, vy_up=12.0),
+        passive=make_sensors(x=260.0, y=90.0, vx=18.0, vy_up=12.0, mass=1200.0),
         dx=540.0,
         action=BotAction(target_thrust=0.90, target_angle=0.20, refuel=False),
         max_power=24000.0,
@@ -158,7 +137,7 @@ def test_terrain_awareness_master_toggle_disables_boost_clearance_probe() -> Non
     bot.apply_config_override({"terrain_awareness_enable": False})
     probe = evaluate_boost_clearance_probe(
         bot,
-        passive=_sensors(x=40.0, y=10.0, vx=22.0, vy_up=6.0),
+        passive=make_sensors(x=40.0, y=10.0, vx=22.0, vy_up=6.0, mass=1200.0),
         dx=760.0,
         action=BotAction(target_thrust=0.95, target_angle=0.45, refuel=False),
         max_power=24000.0,
@@ -242,7 +221,7 @@ def test_boost_clearance_probe_checks_targetward_footprint() -> None:
 
     probe = evaluate_boost_clearance_probe(
         bot,
-        passive=_sensors(x=0.0, y=22.0, vx=100.0, vy_up=0.0),
+        passive=make_sensors(x=0.0, y=22.0, vx=100.0, vy_up=0.0, mass=1200.0),
         dx=800.0,
         action=BotAction(target_thrust=0.0, target_angle=0.0, refuel=False),
         max_power=24000.0,
@@ -272,7 +251,7 @@ def test_boost_clearance_probe_uses_release_margin_when_already_active() -> None
         level_name="boost",
         scenario_name="boost:flat:mid:full",
     )
-    passive = _sensors(x=40.0, y=17.0, vx=0.0, vy_up=0.0)
+    passive = make_sensors(x=40.0, y=17.0, vx=0.0, vy_up=0.0, mass=1200.0)
     action = BotAction(target_thrust=0.95, target_angle=0.0, refuel=False)
 
     inactive_probe = evaluate_boost_clearance_probe(
