@@ -26,6 +26,7 @@ This folder contains deeper documentation that would otherwise bloat the root `R
 ## Portable builds (PortMaster / pygbag)
 
 - Research notes and packaging strategy: [`portable_research.md`](portable_research.md)
+- Euler physics backend plan (web fallback): [`euler_backend_plan.md`](euler_backend_plan.md)
 
 ## Experiment notes
 
