@@ -50,10 +50,10 @@ class _Renderer:
     def __init__(self) -> None:
         self.main_camera = _Camera()
         self.ballistic_toggles = 0
-        self.bot = None
         self.updated = 0
         self.drawn = 0
         self.tick_fps = None
+        self.draw_bots: list = []
 
     def toggle_ballistic_overlay(self) -> None:
         self.ballistic_toggles += 1
@@ -61,8 +61,9 @@ class _Renderer:
     def update(self, _dt: float) -> None:
         self.updated += 1
 
-    def draw(self) -> None:
+    def draw(self, *, bot=None) -> None:
         self.drawn += 1
+        self.draw_bots.append(bot)
 
     def tick(self, fps: float) -> float:
         self.tick_fps = fps
@@ -210,7 +211,7 @@ def test_render_frame_updates_renderer_or_returns_fixed_headless_dt() -> None:
     )
 
     assert dt == 0.25
-    assert renderer.bot == "bot"
+    assert renderer.draw_bots == ["bot"]
     assert renderer.updated == 1
     assert renderer.drawn == 1
     assert renderer.tick_fps == 60.0

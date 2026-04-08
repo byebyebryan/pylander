@@ -89,7 +89,7 @@ def bootstrap_interactive_runtime(
     if not headless and InputHandler is not None and Renderer is not None:
         return InteractiveRuntimeBootstrap(
             input_handler=InputHandler(),
-            renderer=Renderer(level, width, height, bot=bot),
+            renderer=Renderer(level, width, height),
             player_controller=PlayerController(),
         )
     return InteractiveRuntimeBootstrap(

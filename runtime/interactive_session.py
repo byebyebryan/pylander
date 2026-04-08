@@ -135,8 +135,7 @@ def render_frame(
     target_fps: float,
 ) -> float:
     if not headless and renderer is not None:
-        renderer.bot = active_bot
         renderer.update(frame_dt)
-        renderer.draw()
+        renderer.draw(bot=active_bot)
         return float(renderer.tick(target_fps))
     return 1.0 / float(target_fps)

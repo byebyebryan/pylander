@@ -29,10 +29,9 @@ def _stable(value: float, digits: int = 1) -> float:
 class HudOverlay:
     """Draw heads-up display text for lander status and controls."""
 
-    def __init__(self, font, screen, bot=None):
+    def __init__(self, font, screen):
         self.font = font
         self.screen = screen
-        self.bot = bot
         # Pre-render control line surfaces (shadow, foreground) since they never change
         color = (200, 200, 200)
         shadow_color = (0, 0, 0)
@@ -51,10 +50,7 @@ class HudOverlay:
             return
         screen_rect = self.screen.get_rect()
 
-        # Caller can pass a bot override; fall back to the stored reference
-        effective_bot = bot if bot is not None else self.bot
-
-        info_lines = self._build_info_line_specs(level, focus_actor, effective_bot)
+        info_lines = self._build_info_line_specs(level, focus_actor, bot)
         self._draw_text_lines(info_lines, 10, (220, 220, 220))
 
         y_offset = screen_rect.bottom - 20 - (len(self._control_surfaces) * 18)

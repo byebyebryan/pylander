@@ -36,7 +36,6 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from core.level import Level
-    from core.bot import Bot
 
 
 class Renderer:
@@ -90,10 +89,9 @@ class Renderer:
             )
         ]
 
-    def __init__(self, level: "Level", width: int, height: int, bot: "Bot | None" = None):
+    def __init__(self, level: "Level", width: int, height: int):
         """Initialize renderer with level reference and manage display/clock."""
         self.level = level
-        self.bot = bot
         self.design_width = int(width)
         self.design_height = int(height)
         # Avoid forcing an OpenGL context; some environments set this and lack GLX.
@@ -143,7 +141,7 @@ class Renderer:
         # UI fonts
         self.font = pygame.font.SysFont("monospace", 14)
         self.large_font = pygame.font.SysFont("monospace", 32, bold=True)
-        self.hud = HudOverlay(self.font, self.screen, bot=self.bot)
+        self.hud = HudOverlay(self.font, self.screen)
 
         self.indicator_circle_size = 0.8
 
@@ -302,13 +300,16 @@ class Renderer:
         """Draw one actor if it has lander geometry and transform."""
         if entity is None:
             return
-        if entity.get_component(LanderGeometry) is None or entity.get_component(Transform) is None:
+        if (
+            entity.get_component(LanderGeometry) is None
+            or entity.get_component(Transform) is None
+        ):
             return
         poly_world = self._get_body_polygon(entity)
         rotated_points = []
         for world_pt in poly_world:
             rotated_points.append(camera.world_to_screen(world_pt))
-            
+
         if rotated_points:
             pygame.draw.polygon(self.screen, (255, 255, 255), rotated_points, 2)
 
@@ -361,13 +362,13 @@ class Renderer:
             tip_pos = camera.world_to_screen(Vector2(tip_x, tip_y))
             left_pos = camera.world_to_screen(Vector2(left_x, left_y))
             right_pos = camera.world_to_screen(Vector2(right_x, right_y))
-            
+
             pygame.draw.aaline(self.screen, color, tip_pos, left_pos)
             pygame.draw.aaline(self.screen, color, tip_pos, right_pos)
 
-    def draw_ui(self):
+    def draw_ui(self, *, bot=None):
         """Draw UI text: credits and focused-actor flight stats."""
-        self.hud.draw(self.level, self.bot)
+        self.hud.draw(self.level, bot=bot)
 
     def _ballistic_segment_world(self) -> float:
         zoom = max(0.02, float(self.main_camera.zoom))
@@ -419,7 +420,7 @@ class Renderer:
         if len(screen_points) >= 2:
             pygame.draw.aalines(self.screen, self.ballistic_color, False, screen_points)
 
-    def draw(self):
+    def draw(self, *, bot=None):
         """Render the complete scene."""
         # Clear background
         self.screen.fill(self.bg_color)
@@ -467,7 +468,7 @@ class Renderer:
             self.draw_lander_orientation_inset(trajectory_points=trajectory_points)
 
         # Draw UI overlay
-        self.draw_ui()
+        self.draw_ui(bot=bot)
 
         # Always draw FPS overlay (top-right)
         self.fps_overlay.draw()
