@@ -119,11 +119,23 @@ class PhysicsBackend(Protocol):
 
 def default_backend() -> PhysicsBackend:
     """Select backend based on environment."""
-    import core.physics_pymunk
+    import sys
 
     explicit = os.environ.get("PYLANDER_PHYSICS")
     if explicit == "pymunk":
+        import core.physics_pymunk
+
         return core.physics_pymunk.PymunkBackend()
+    if explicit == "euler":
+        from core.physics_euler import EulerBackend
+
+        return EulerBackend()
     if explicit is not None:
         raise ValueError(f"Unknown PYLANDER_PHYSICS value: {explicit!r}")
+    if sys.platform == "emscripten":
+        from core.physics_euler import EulerBackend
+
+        return EulerBackend()
+    import core.physics_pymunk
+
     return core.physics_pymunk.PymunkBackend()
