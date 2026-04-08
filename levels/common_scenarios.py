@@ -3,7 +3,16 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
-from typing import Any, Generic, Literal, Mapping, TypeGuard, TypeVar, cast
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Generic,
+    Literal,
+    Mapping,
+    TypeGuard,
+    TypeVar,
+    cast,
+)
 
 import core.terrain as _terrain
 from core.components import (
@@ -43,6 +52,9 @@ from levels.common_world import (
     compute_spawn_pos,
     get_mass,
 )
+
+if TYPE_CHECKING:
+    from core.physics import PhysicsEngine
 
 
 BenchmarkRandomMode = Literal["median", "sample"]
@@ -218,7 +230,7 @@ def validate_scenario_recoverability(
 
 
 def sync_engine_pose_velocity(
-    engine: object | None,
+    engine: PhysicsEngine,
     pos: Any,
     rotation: float,
     vx: float,
@@ -227,20 +239,14 @@ def sync_engine_pose_velocity(
     *,
     clear_velocity: bool = False,
 ) -> None:
-    """Teleport + velocity sync on an engine, guarded by hasattr checks."""
-    if engine is None:
-        return
-    teleport_lander = getattr(engine, "teleport_lander", None)
-    if callable(teleport_lander):
-        teleport_lander(
-            Vector2(pos),
-            angle=rotation,
-            clear_velocity=clear_velocity,
-            uid=uid,
-        )
-    set_lander_velocity = getattr(engine, "set_lander_velocity", None)
-    if callable(set_lander_velocity):
-        set_lander_velocity(Vector2(vx, vy), uid=uid)
+    """Teleport + velocity sync on a physics engine."""
+    engine.teleport(
+        Vector2(pos),
+        angle=rotation,
+        clear_velocity=clear_velocity,
+        uid=uid,
+    )
+    engine.set_velocity(Vector2(vx, vy), uid=uid)
 
 
 def angle_from_velocity(vx: float, vy_up: float, *, opposite: bool = False) -> float:

@@ -56,27 +56,27 @@ def test_capture_actor_states_and_sync_landed_to_flying_engine_state() -> None:
     actor.add_component(LanderState(state="landed"))
     actor.add_component(Transform())
 
-    class _EngineAdapter:
-        enabled = True
-
+    class _StubEngine:
         def __init__(self) -> None:
             self.teleports: list[tuple[str, bool]] = []
 
-        def teleport_lander(self, _pos, *, angle: float, clear_velocity: bool, uid: str) -> None:
+        def teleport(
+            self, _pos, *, angle: float, clear_velocity: bool, uid: str
+        ) -> None:
             _ = angle
             self.teleports.append((uid, clear_velocity))
 
     state_before = capture_actor_states([actor])
     actor.get_component(LanderState).state = FlightState.FLYING  # type: ignore[union-attr]
-    engine_adapter = _EngineAdapter()
+    engine = _StubEngine()
 
     sync_landed_to_flying_engine_state(
         actors=[actor],
-        engine_adapter=engine_adapter,
+        engine=engine,
         state_before=state_before,
     )
 
-    assert engine_adapter.teleports == [("lander", True)]
+    assert engine.teleports == [("lander", True)]
 
 
 def test_run_session_loop_stops_on_bot_eval_before_level_end() -> None:
@@ -110,7 +110,9 @@ def test_run_session_loop_stops_on_bot_eval_before_level_end() -> None:
             _ = elapsed_time_s
             calls.append("trace_recorder")
 
-        def record_controls_map(self, *, elapsed_time_s: float, controls_by_uid) -> None:
+        def record_controls_map(
+            self, *, elapsed_time_s: float, controls_by_uid
+        ) -> None:
             _ = elapsed_time_s, controls_by_uid
             calls.append("record_controls")
 
@@ -121,7 +123,7 @@ def test_run_session_loop_stops_on_bot_eval_before_level_end() -> None:
     context = SessionLoopContext(
         headless=True,
         actors=[actor],
-        engine_adapter=type("_Engine", (), {"enabled": False})(),
+        engine=type("_Engine", (), {"enabled": False})(),
         control_routing_system=_ControlRouting(),
         refuel_system=_System("refuel"),
         state_transition_system=_System("state_transition"),
@@ -152,7 +154,9 @@ def test_run_session_loop_stops_on_bot_eval_before_level_end() -> None:
 
     result = run_session_loop(
         context=context,
-        timers=LoopTimers(physics_dt=1.0 / 60.0, bot_dt=1.0 / 20.0, frame_dt=1.0 / 60.0),
+        timers=LoopTimers(
+            physics_dt=1.0 / 60.0, bot_dt=1.0 / 20.0, frame_dt=1.0 / 60.0
+        ),
         print_freq=0,
         max_time=10.0,
         max_steps=10,

@@ -17,11 +17,12 @@ if str(ROOT) not in sys.path:
 class FlatTerrain:
     """Shared flat-terrain mock for tests."""
 
-    def __call__(self, _x: float, lod: int = 0) -> float:
+    def __call__(self, x: float, lod: int = 0) -> float:
         _ = lod
         return 0.0
 
-    def get_resolution(self, _lod: int) -> float:
+    def get_resolution(self, lod: int) -> float:
+        _ = lod
         return 1.0
 
 

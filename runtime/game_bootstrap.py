@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from core.bot import Bot
 from core.controllers import PlayerController
 from core.ecs import World
-from core.engine_adapter import EngineAdapter
 from runtime.actor_session import attach_primary_bot, install_world_actor_bots
 from runtime.bootstrap import create_systems
 from runtime.bot_loop import BotLoopContext
@@ -24,12 +23,14 @@ from core.level_capabilities import (
 )
 from levels.common_world import get_mass
 
+if TYPE_CHECKING:
+    from core.physics import PhysicsEngine
+
 
 @dataclass(frozen=True)
 class CoreRuntimeBootstrap:
     sites: Any
-    engine: Any
-    engine_adapter: EngineAdapter
+    engine: PhysicsEngine
     ecs_world: World
     systems: Any
 
@@ -41,9 +42,12 @@ def bootstrap_core_runtime(
     active_uid: str,
 ) -> CoreRuntimeBootstrap:
     sites = level.world.sites
-    engine = getattr(level, "engine", None)
-    engine_adapter = EngineAdapter(engine)
-    engine_adapter.set_primary_actor(active_uid)
+    engine = level.engine
+    if engine is None:
+        raise RuntimeError(
+            "Level setup did not initialize the physics engine (level.engine is None)"
+        )
+    engine.set_primary_actor(active_uid)
 
     ecs_world = World()
     for actor in actors:
@@ -57,12 +61,11 @@ def bootstrap_core_runtime(
         ecs_world,
         terrain=level.world.terrain,
         sites=sites,
-        engine_adapter=engine_adapter,
+        engine=engine,
     )
     return CoreRuntimeBootstrap(
         sites=sites,
         engine=engine,
-        engine_adapter=engine_adapter,
         ecs_world=ecs_world,
         systems=systems,
     )
@@ -131,7 +134,7 @@ def bootstrap_bot_runtime(
     sensor_update_system: Any,
     profiler: BotLoopProfiler,
     terrain: Any,
-    engine_adapter: Any,
+    engine: PhysicsEngine,
     systems_owner: Any,
 ) -> BotRuntimeBootstrap:
     actor_bots: dict[str, Bot] = {}
@@ -162,7 +165,7 @@ def bootstrap_bot_runtime(
         ),
         physics_step_context=PhysicsStepContext(
             actors=actors,
-            engine_adapter=engine_adapter,
+            engine=engine,
             scripted_control_system=systems_owner.scripted_control_system,
             landing_site_motion_system=systems_owner.landing_site_motion_system,
             landing_site_projection_system=systems_owner.landing_site_projection_system,

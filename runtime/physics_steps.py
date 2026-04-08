@@ -1,35 +1,35 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable
 
-from core.components import FuelTank
 from runtime.loop_timing import LoopTimers
 
 if TYPE_CHECKING:
     from core.ecs import Entity, System
-    from core.engine_adapter import EngineAdapter
+    from core.physics import PhysicsEngine
 
 
 def sync_actor_masses_to_engine(
     *,
     actors: list[Entity],
-    engine_adapter: EngineAdapter,
+    engine: PhysicsEngine,
     mass_resolver: Callable[[Entity], float],
+    last_synced_mass_by_uid: dict[str, float],
 ) -> None:
     for actor in actors:
-        tank: FuelTank | None = getattr(actor, "get_component", lambda _: None)(FuelTank)
-        if tank is not None and not tank._mass_dirty:
+        current_mass = mass_resolver(actor)
+        last_mass = last_synced_mass_by_uid.get(actor.uid)
+        if last_mass is not None and abs(current_mass - last_mass) < 1e-9:
             continue
-        engine_adapter.set_actor_mass(actor.uid, mass_resolver(actor))
-        if tank is not None:
-            tank._mass_dirty = False
+        engine.set_mass(current_mass, uid=actor.uid)
+        last_synced_mass_by_uid[actor.uid] = current_mass
 
 
 @dataclass
 class PhysicsStepContext:
     actors: list[Entity]
-    engine_adapter: EngineAdapter
+    engine: PhysicsEngine
     scripted_control_system: System
     landing_site_motion_system: System
     landing_site_projection_system: System
@@ -38,6 +38,7 @@ class PhysicsStepContext:
     physics_sync_system: System
     contact_system: System
     mass_resolver: Callable[[Entity], float]
+    last_synced_mass_by_uid: dict[str, float] = field(default_factory=dict)
 
 
 def update_physics_steps(
@@ -53,12 +54,12 @@ def update_physics_steps(
         context.landing_site_projection_system.update(physics_dt)
         context.propulsion_system.update(physics_dt)
         context.force_application_system.update(physics_dt)
-        if getattr(context.engine_adapter, "enabled", False):
-            sync_actor_masses_to_engine(
-                actors=context.actors,
-                engine_adapter=context.engine_adapter,
-                mass_resolver=context.mass_resolver,
-            )
-            context.engine_adapter.step(physics_dt)
-            context.physics_sync_system.update(physics_dt)
-            context.contact_system.update(physics_dt)
+        sync_actor_masses_to_engine(
+            actors=context.actors,
+            engine=context.engine,
+            mass_resolver=context.mass_resolver,
+            last_synced_mass_by_uid=context.last_synced_mass_by_uid,
+        )
+        context.engine.step(physics_dt)
+        context.physics_sync_system.update(physics_dt)
+        context.contact_system.update(physics_dt)

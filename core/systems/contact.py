@@ -24,17 +24,19 @@ class ContactSystem(System):
 
     _LANDING_NORMAL_MIN_Y = 0.65
 
-    def __init__(self, engine_adapter, sites):
+    def __init__(self, engine, sites):
         super().__init__()
-        self.engine_adapter = engine_adapter
+        self.engine = engine
         self.sites = sites
 
     def update(self, dt: float) -> None:
         if not self.world:
             return
 
-        for entity in self.world.get_entities_with(LanderState, PhysicsState, Transform, FuelTank):
-            report = self.engine_adapter.get_contact_report(uid=entity.uid)
+        for entity in self.world.get_entities_with(
+            LanderState, PhysicsState, Transform, FuelTank
+        ):
+            report = self.engine.get_contact_report(uid=entity.uid)
             self._resolve(entity, report, dt)
 
     def _resolve(self, entity: Entity, report: ContactReport, dt: float) -> None:
@@ -52,7 +54,9 @@ class ContactSystem(System):
 
         site = None
         if self.sites is not None:
-            nearby_sites = self.sites.get_sites(Range1D.from_center(trans.pos.x, half_w))
+            nearby_sites = self.sites.get_sites(
+                Range1D.from_center(trans.pos.x, half_w)
+            )
             site = nearby_sites[0] if nearby_sites else None
 
         if site is not None and self._can_land_on_site(
@@ -69,11 +73,15 @@ class ContactSystem(System):
             self._apply_crash(entity)
             return
 
-        if site is not None and self._crossed_site_plane(entity, site, half_w, half_h, dt):
+        if site is not None and self._crossed_site_plane(
+            entity, site, half_w, half_h, dt
+        ):
             self._apply_crash(entity)
             return
 
-        self._resolve_terrain_contact(entity, report, phys, trans, site, half_w, half_h, dt)
+        self._resolve_terrain_contact(
+            entity, report, phys, trans, site, half_w, half_h, dt
+        )
 
     @staticmethod
     def _impact_speed(report: ContactReport) -> float:
@@ -82,7 +90,9 @@ class ContactSystem(System):
             return 0.0
         return speed
 
-    def _is_unsafe_colliding_impact(self, report: ContactReport, safe_speed: float) -> bool:
+    def _is_unsafe_colliding_impact(
+        self, report: ContactReport, safe_speed: float
+    ) -> bool:
         # Use solver-reported impact speed so hard impacts cannot "escape" crash
         # classification due to an immediate upward rebound in the same frame.
         if not report.colliding:
@@ -136,7 +146,11 @@ class ContactSystem(System):
         if ls is None or phys is None or trans is None:
             return False
 
-        if report is not None and report.colliding and not self._is_landing_surface_contact(report):
+        if (
+            report is not None
+            and report.colliding
+            and not self._is_landing_surface_contact(report)
+        ):
             return False
 
         if abs(trans.pos.x - site.x) > (site.size * 0.5 + half_w):
@@ -205,17 +219,14 @@ class ContactSystem(System):
         phys.vel.update(0.0, 0.0)
         trans.rotation = 0.0
 
-        # Snap position to the site plane.
         trans.pos.y = site.y + half_h
 
-        # Zero out engine intent
         eng = entity.get_component(Engine)
         if eng is not None:
             eng.thrust_level = 0.0
             eng.target_thrust = 0.0
             eng.target_angle = 0.0
 
-        # Award credits and mark site visited.
         award = 0.0
         if self.world is not None:
             site_entity = self.world.get_entity_by_id(site.uid)
@@ -227,13 +238,7 @@ class ContactSystem(System):
         if wallet is not None and award != 0.0:
             wallet.credits += award
 
-        if self.engine_adapter.enabled:
-            self.engine_adapter.teleport_lander(
-                Vector2(trans.pos.x, trans.pos.y),
-                angle=trans.rotation,
-                clear_velocity=True,
-                uid=entity.uid,
-            )
+        self._teleport_entity(entity, trans)
 
     def _apply_crash(self, entity: Entity) -> None:
         ls = entity.get_component(LanderState)
@@ -249,12 +254,14 @@ class ContactSystem(System):
             eng.thrust_level = 0.0
             eng.target_thrust = 0.0
 
-        if self.engine_adapter.enabled:
-            trans = entity.get_component(Transform)
-            if trans is not None:
-                self.engine_adapter.teleport_lander(
-                    Vector2(trans.pos.x, trans.pos.y),
-                    angle=trans.rotation,
-                    clear_velocity=True,
-                    uid=entity.uid,
-                )
+        trans = entity.get_component(Transform)
+        if trans is not None:
+            self._teleport_entity(entity, trans)
+
+    def _teleport_entity(self, entity: Entity, trans: Transform) -> None:
+        self.engine.teleport(
+            Vector2(trans.pos.x, trans.pos.y),
+            angle=trans.rotation,
+            clear_velocity=True,
+            uid=entity.uid,
+        )

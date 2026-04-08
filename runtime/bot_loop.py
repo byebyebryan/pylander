@@ -9,7 +9,7 @@ from core.components import LanderState
 from runtime.loop_timing import LoopTimers
 from runtime.metrics import BotLoopProfiler
 from runtime.sensors import build_sensors
-from utils.protocols import ControlTuple
+from core.control_types import ControlTuple
 
 if TYPE_CHECKING:
     from core.ecs import World
@@ -70,7 +70,9 @@ def update_bot_steps(
                         update_s=update_s,
                     )
                 if context.trace_recorder is not None:
-                    record_bot_action = getattr(context.trace_recorder, "record_bot_action", None)
+                    record_bot_action = getattr(
+                        context.trace_recorder, "record_bot_action", None
+                    )
                     if callable(record_bot_action):
                         record_bot_action(
                             uid=uid,

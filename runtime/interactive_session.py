@@ -1,11 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
-from core.components import ControlIntent, Engine, FlightState, FuelTank, LanderState, PhysicsState, Transform
+from core.components import (
+    ControlIntent,
+    Engine,
+    FlightState,
+    FuelTank,
+    LanderState,
+    PhysicsState,
+    Transform,
+)
 from core.ecs import require_component
 from core.maths import Vector2
+
+if TYPE_CHECKING:
+    from core.physics import PhysicsEngine
 
 
 def reset_lander_entity(entity: Any) -> None:
@@ -33,19 +44,18 @@ def reset_lander_entity(entity: Any) -> None:
 def reset_active_actor_session(
     *,
     active_actor: Any,
-    engine_adapter: Any,
+    engine: PhysicsEngine,
     renderer: Any,
     bot_override_delay: float,
 ) -> float:
     reset_lander_entity(active_actor)
     trans = require_component(active_actor, Transform)
-    if getattr(engine_adapter, "enabled", False):
-        engine_adapter.teleport_lander(
-            trans.pos,
-            angle=trans.rotation,
-            clear_velocity=True,
-            uid=active_actor.uid,
-        )
+    engine.teleport(
+        trans.pos,
+        angle=trans.rotation,
+        clear_velocity=True,
+        uid=active_actor.uid,
+    )
     if renderer is not None:
         cam = renderer.main_camera
         cam.x = trans.pos.x
@@ -77,7 +87,9 @@ def process_interactive_input(
 
     input_events = input_handler.get_events()
     if input_events.get("quit"):
-        return InputStepResult(user_controls=None, input_events=input_events, running=False)
+        return InputStepResult(
+            user_controls=None, input_events=input_events, running=False
+        )
 
     if input_events.get("reset"):
         on_reset()
@@ -109,7 +121,9 @@ def process_interactive_input(
             if callable(toggle_ballistic):
                 toggle_ballistic()
 
-    return InputStepResult(user_controls=user_controls, input_events=input_events, running=True)
+    return InputStepResult(
+        user_controls=user_controls, input_events=input_events, running=True
+    )
 
 
 def render_frame(

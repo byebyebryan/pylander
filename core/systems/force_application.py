@@ -7,9 +7,9 @@ from core.maths import Vector2
 class ForceApplicationSystem(System):
     """Pre-physics: push Engine forces and rotation override to the physics body."""
 
-    def __init__(self, engine_adapter):
+    def __init__(self, engine):
         super().__init__()
-        self.engine_adapter = engine_adapter
+        self.engine = engine
 
     def update(self, dt: float) -> None:
         if not self.world:
@@ -31,11 +31,11 @@ class ForceApplicationSystem(System):
         fx = math.sin(trans.rotation) * thrust
         fy = math.cos(trans.rotation) * thrust
         force = Vector2(fx, fy)
-        self.engine_adapter.apply_force_for(entity.uid, force)
+        self.engine.apply_force(force, uid=entity.uid)
 
     def _apply_rotation_override(self, entity: Entity) -> None:
         """Push current rotation to the physics body (kinematic override)."""
         trans = entity.get_component(Transform)
         # Rotation is kinematically driven by PropulsionSystem; we tell the
         # physics engine the current angle so the collision shape stays in sync.
-        self.engine_adapter.override_for(entity.uid, trans.rotation)
+        self.engine.override(trans.rotation, uid=entity.uid)

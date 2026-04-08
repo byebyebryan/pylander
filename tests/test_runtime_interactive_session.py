@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from core.components import ControlIntent, Engine, FuelTank, LanderState, PhysicsState, Transform
+from core.components import (
+    ControlIntent,
+    Engine,
+    FuelTank,
+    LanderState,
+    PhysicsState,
+    Transform,
+)
 from core.ecs import Entity
 from core.maths import Vector2
 from runtime.interactive_session import (
@@ -62,13 +69,11 @@ class _Renderer:
         return 0.25
 
 
-class _EngineAdapter:
-    enabled = True
-
+class _StubEngine:
     def __init__(self) -> None:
         self.calls: list[str] = []
 
-    def teleport_lander(self, _pos, *, angle: float, clear_velocity: bool, uid: str) -> None:
+    def teleport(self, _pos, *, angle: float, clear_velocity: bool, uid: str) -> None:
         _ = angle, clear_velocity
         self.calls.append(uid)
 
@@ -81,7 +86,9 @@ def _make_actor() -> Entity:
     actor.add_component(FuelTank(fuel=12.0, max_fuel=100.0))
     actor.add_component(Engine(thrust_level=1.0, target_thrust=0.7, target_angle=0.4))
     actor.add_component(LanderState(state="landed"))
-    actor.add_component(ControlIntent(target_thrust=0.1, target_angle=0.2, refuel_requested=True))
+    actor.add_component(
+        ControlIntent(target_thrust=0.1, target_angle=0.2, refuel_requested=True)
+    )
     return actor
 
 
@@ -110,7 +117,9 @@ def test_process_interactive_input_handles_quit_reset_switch_and_camera() -> Non
     assert result.input_events["switch_actor"] is False
     assert calls == ["reset", "switch"]
     assert renderer.ballistic_toggles == 1
-    assert renderer.main_camera.calls == [({"reset": False, "switch_actor": False, "toggle_ballistic": True}, 0.1)]
+    assert renderer.main_camera.calls == [
+        ({"reset": False, "switch_actor": False, "toggle_ballistic": True}, 0.1)
+    ]
     assert controller.calls == 1
 
 
@@ -133,11 +142,11 @@ def test_process_interactive_input_quit_stops_run() -> None:
 def test_reset_active_actor_session_resets_entity_and_camera() -> None:
     actor = _make_actor()
     renderer = _Renderer()
-    engine_adapter = _EngineAdapter()
+    engine = _StubEngine()
 
     override_timer = reset_active_actor_session(
         active_actor=actor,
-        engine_adapter=engine_adapter,
+        engine=engine,
         renderer=renderer,
         bot_override_delay=1.0,
     )
@@ -150,14 +159,36 @@ def test_reset_active_actor_session_resets_entity_and_camera() -> None:
     intent = actor.get_component(ControlIntent)
 
     assert override_timer == 1.0
-    assert trans is not None and (trans.pos.x, trans.pos.y, trans.rotation) == (10.0, 20.0, 0.0)
-    assert phys is not None and (phys.vel.x, phys.vel.y, phys.acc.x, phys.acc.y) == (0.0, 0.0, 0.0, 0.0)
+    assert trans is not None and (trans.pos.x, trans.pos.y, trans.rotation) == (
+        10.0,
+        20.0,
+        0.0,
+    )
+    assert phys is not None and (phys.vel.x, phys.vel.y, phys.acc.x, phys.acc.y) == (
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+    )
     assert tank is not None and tank.fuel == tank.max_fuel
-    assert eng is not None and (eng.thrust_level, eng.target_thrust, eng.target_angle) == (0.0, 0.0, 0.0)
+    assert eng is not None and (
+        eng.thrust_level,
+        eng.target_thrust,
+        eng.target_angle,
+    ) == (0.0, 0.0, 0.0)
     assert ls is not None and ls.state == "flying"
-    assert intent is not None and intent.target_thrust is None and intent.target_angle is None and intent.refuel_requested is False
-    assert engine_adapter.calls == ["lander"]
-    assert (renderer.main_camera.x, renderer.main_camera.y, renderer.main_camera.zoom) == (10.0, 20.0, 2.0)
+    assert (
+        intent is not None
+        and intent.target_thrust is None
+        and intent.target_angle is None
+        and intent.refuel_requested is False
+    )
+    assert engine.calls == ["lander"]
+    assert (
+        renderer.main_camera.x,
+        renderer.main_camera.y,
+        renderer.main_camera.zoom,
+    ) == (10.0, 20.0, 2.0)
 
 
 def test_render_frame_updates_renderer_or_returns_fixed_headless_dt() -> None:
