@@ -6,7 +6,6 @@ import math
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-import numpy as np
 from opensimplex import OpenSimplex
 
 from core.config import GRAVITY, GRAVITY_MAG
@@ -505,8 +504,14 @@ class UniformGridChunk:
         self.end_x = end_x
         self.resolution = resolution
 
-        for x in np.arange(self.start_x, self.end_x + 1.0, self.resolution):
+        span = self.end_x - self.start_x
+        steps = max(0, int(math.floor((span / self.resolution) + 1e-9)))
+        for i in range(steps + 1):
+            x = self.start_x + (i * self.resolution)
             self.points.append((x, height_func(x)))
+
+        if not self.points or self.points[-1][0] < self.end_x:
+            self.points.append((self.end_x, height_func(self.end_x)))
 
     def _interpolate(
         self, x0: float, y0: float, x1: float, y1: float, x: float
