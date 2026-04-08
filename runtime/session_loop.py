@@ -9,6 +9,7 @@ from core.ecs import Entity
 
 if TYPE_CHECKING:
     from core.physics import PhysicsEngine
+    from runtime.bootstrap import SystemsBundle
 from runtime.loop_timing import LoopTimers
 from runtime.metrics import BotLoopProfiler, RunMetricsTracker
 from core.control_types import ControlTuple
@@ -80,10 +81,7 @@ class SessionLoopContext:
     headless: bool
     actors: list[Entity]
     engine: PhysicsEngine
-    control_routing_system: Any
-    refuel_system: Any
-    state_transition_system: Any
-    sensor_update_system: Any
+    systems: SystemsBundle
     trace_recorder: Any
     bot_profiler: BotLoopProfiler
     metrics: RunMetricsTracker
@@ -162,7 +160,7 @@ def run_session_loop(
 
         state_before = capture_actor_states(context.actors)
 
-        context.control_routing_system.set_controls_map(controls_by_uid)
+        context.systems.control_routing.set_controls_map(controls_by_uid)
         record_controls_map = getattr(
             context.trace_recorder, "record_controls_map", None
         )
@@ -171,16 +169,16 @@ def run_session_loop(
                 elapsed_time_s=timers.elapsed_time,
                 controls_by_uid=controls_by_uid,
             )
-        context.control_routing_system.update(frame_dt)
-        context.refuel_system.update(frame_dt)
-        context.state_transition_system.update(frame_dt)
+        context.systems.control_routing.update(frame_dt)
+        context.systems.refuel.update(frame_dt)
+        context.systems.state_transition.update(frame_dt)
         sync_landed_to_flying_engine_state(
             actors=context.actors,
             engine=context.engine,
             state_before=state_before,
         )
 
-        context.sensor_update_system.update(frame_dt)
+        context.systems.sensor_update.update(frame_dt)
         context.level_update(frame_dt)
         context.track_plot_events()
         context.trace_recorder.update(frame_dt, elapsed_time_s=timers.elapsed_time)

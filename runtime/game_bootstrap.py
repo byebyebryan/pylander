@@ -7,7 +7,7 @@ from core.bot import Bot
 from core.controllers import PlayerController
 from core.ecs import World
 from runtime.actor_session import attach_primary_bot, install_world_actor_bots
-from runtime.bootstrap import create_systems
+from runtime.bootstrap import SystemsBundle, create_systems
 from runtime.bot_loop import BotLoopContext
 from runtime.metrics import BotLoopProfiler
 from runtime.physics_steps import PhysicsStepContext
@@ -71,23 +71,6 @@ def bootstrap_core_runtime(
     )
 
 
-def bind_system_aliases(owner: Any, systems: Any) -> None:
-    for attr_name in (
-        "control_routing",
-        "state_transition",
-        "scripted_control",
-        "landing_site_motion",
-        "landing_site_projection",
-        "refuel",
-        "propulsion",
-        "force_application",
-        "physics_sync",
-        "contact",
-        "sensor_update",
-    ):
-        setattr(owner, f"{attr_name}_system", getattr(systems, attr_name))
-
-
 @dataclass(frozen=True)
 class InteractiveRuntimeBootstrap:
     input_handler: Any
@@ -131,11 +114,10 @@ def bootstrap_bot_runtime(
     world_bots: Any,
     primary_bot: Bot | None,
     active_uid: str,
-    sensor_update_system: Any,
+    systems: SystemsBundle,
     profiler: BotLoopProfiler,
     terrain: Any,
     engine: PhysicsEngine,
-    systems_owner: Any,
 ) -> BotRuntimeBootstrap:
     actor_bots: dict[str, Bot] = {}
     install_world_actor_bots(
@@ -158,7 +140,7 @@ def bootstrap_bot_runtime(
         bot_loop_context=BotLoopContext(
             ecs_world=ecs_world,
             actor_bots=actor_bots,
-            sensor_update_system=sensor_update_system,
+            sensor_update_system=systems.sensor_update,
             profiler=profiler,
             terrain=terrain,
             trace_recorder=None,
@@ -166,13 +148,13 @@ def bootstrap_bot_runtime(
         physics_step_context=PhysicsStepContext(
             actors=actors,
             engine=engine,
-            scripted_control_system=systems_owner.scripted_control_system,
-            landing_site_motion_system=systems_owner.landing_site_motion_system,
-            landing_site_projection_system=systems_owner.landing_site_projection_system,
-            propulsion_system=systems_owner.propulsion_system,
-            force_application_system=systems_owner.force_application_system,
-            physics_sync_system=systems_owner.physics_sync_system,
-            contact_system=systems_owner.contact_system,
+            scripted_control_system=systems.scripted_control,
+            landing_site_motion_system=systems.landing_site_motion,
+            landing_site_projection_system=systems.landing_site_projection,
+            propulsion_system=systems.propulsion,
+            force_application_system=systems.force_application,
+            physics_sync_system=systems.physics_sync,
+            contact_system=systems.contact,
             mass_resolver=get_mass,
         ),
     )

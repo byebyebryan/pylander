@@ -22,7 +22,6 @@ from runtime.actor_session import (
 )
 from runtime.bot_loop import update_bot_steps
 from runtime.game_bootstrap import (
-    bind_system_aliases,
     bootstrap_bot_runtime,
     bootstrap_core_runtime,
     bootstrap_interactive_runtime,
@@ -58,18 +57,6 @@ from core.config import (
 
 class LanderGame:
     """Main application for lunar lander game."""
-
-    control_routing_system: Any
-    refuel_system: Any
-    state_transition_system: Any
-    sensor_update_system: Any
-    scripted_control_system: Any
-    landing_site_motion_system: Any
-    landing_site_projection_system: Any
-    propulsion_system: Any
-    force_application_system: Any
-    physics_sync_system: Any
-    contact_system: Any
 
     def __init__(
         self,
@@ -125,7 +112,6 @@ class LanderGame:
         self.ecs_world = core_runtime.ecs_world
         self.systems = core_runtime.systems
         self._set_active_actor(self.active_player_actor_uid)
-        bind_system_aliases(self, self.systems)
 
         self.bot_override_delay = 1.0
         self._bot_override_timer = 0.0
@@ -148,11 +134,10 @@ class LanderGame:
             world_bots=getattr(self.level.world, "actor_bots", None),
             primary_bot=self.bot,
             active_uid=self.active_player_actor_uid,
-            sensor_update_system=self.sensor_update_system,
+            systems=self.systems,
             profiler=self._bot_profiler,
             terrain=self.terrain,
             engine=self.engine,
-            systems_owner=self,
         )
         self.actor_bots = bot_runtime.actor_bots
         self._bot_loop_context = bot_runtime.bot_loop_context
@@ -307,10 +292,7 @@ class LanderGame:
                 headless=self.headless,
                 actors=self.actors,
                 engine=self.engine,
-                control_routing_system=self.control_routing_system,
-                refuel_system=self.refuel_system,
-                state_transition_system=self.state_transition_system,
-                sensor_update_system=self.sensor_update_system,
+                systems=self.systems,
                 trace_recorder=self.trace_recorder,
                 bot_profiler=self._bot_profiler,
                 metrics=metrics,
