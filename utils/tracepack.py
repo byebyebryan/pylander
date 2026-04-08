@@ -41,7 +41,7 @@ from core.components import (
     Wallet,
 )
 from core.ecs import Entity, World
-from runtime.actor_session import get_actor_control_role
+from runtime.actor_registry import get_actor_control_role
 from runtime.result_pipeline import _safe_phase_snapshot
 from utils.plot import (
     _ballistic_curve_from_state,

@@ -1,7 +1,4 @@
-"""Actor session management.
-
-This module re-exports functions from focused submodules for backward compatibility.
-"""
+"""Actor session management."""
 
 from __future__ import annotations
 
@@ -15,12 +12,7 @@ from core.level import Level
 if TYPE_CHECKING:
     from core.physics import PhysicsEngine
 
-from runtime.actor_policy import find_initial_player_actor_uid
-from runtime.actor_registry import (
-    collect_actor_entities,
-    find_first_actor_for_role,
-    get_actor_control_role,
-)
+from runtime.actor_registry import find_first_actor_for_role
 from runtime.sensors import build_vehicle_info
 from runtime.terrain_intel import build_bot_environment
 
@@ -167,12 +159,7 @@ def install_world_actor_bots(
 __all__ = [
     "active_actor_bot",
     "attach_primary_bot",
-    "build_bot_environment",
-    "collect_actor_entities",
     "ensure_bot_identity_fields",
-    "find_first_actor_for_role",
-    "find_initial_player_actor_uid",
-    "get_actor_control_role",
     "install_actor_bot",
     "install_world_actor_bots",
     "set_active_actor",
