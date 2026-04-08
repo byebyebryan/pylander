@@ -98,6 +98,13 @@ def test_run_session_loop_stops_on_bot_eval_before_level_end() -> None:
         def update(self, _dt: float) -> None:
             calls.append(self.name)
 
+    class _StubSystemsBundle:
+        def __init__(self) -> None:
+            self.control_routing = _ControlRouting()
+            self.refuel = _System("refuel")
+            self.state_transition = _System("state_transition")
+            self.sensor_update = _System("sensor_update")
+
     class _Metrics:
         def update_for_actor(self, _actor, *, dt_used: float) -> None:
             calls.append(f"metrics_dt:{dt_used:.3f}")
@@ -124,10 +131,7 @@ def test_run_session_loop_stops_on_bot_eval_before_level_end() -> None:
         headless=True,
         actors=[actor],
         engine=type("_Engine", (), {"enabled": False})(),
-        control_routing_system=_ControlRouting(),
-        refuel_system=_System("refuel"),
-        state_transition_system=_System("state_transition"),
-        sensor_update_system=_System("sensor_update"),
+        systems=_StubSystemsBundle(),
         trace_recorder=_TraceRecorder(),
         bot_profiler=BotLoopProfiler(enabled=False),
         metrics=_Metrics(),  # type: ignore[arg-type]

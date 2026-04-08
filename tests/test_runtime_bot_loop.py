@@ -28,12 +28,14 @@ def test_update_bot_steps_calls_update_and_records_tick() -> None:
             return BotAction(target_thrust=0.0, target_angle=0.0, refuel=False)
 
     bot = _CountingBot()
-    game = LanderGame(level=create_level_by_name("flat"), seed=0, bot=bot, headless=True)
+    game = LanderGame(
+        level=create_level_by_name("flat"), seed=0, bot=bot, headless=True
+    )
     profiler = BotLoopProfiler(enabled=True, interval_s=1.0, next_report_s=1.0)
     context = BotLoopContext(
         ecs_world=game.ecs_world,
         actor_bots=game.actor_bots,
-        sensor_update_system=game.sensor_update_system,
+        sensor_update_system=game.systems.sensor_update,
         profiler=profiler,
         terrain=game.terrain,
     )
@@ -47,7 +49,9 @@ def test_update_bot_steps_calls_update_and_records_tick() -> None:
 
 
 def test_bot_profiler_emits_total_and_percentiles() -> None:
-    profiler = BotLoopProfiler(enabled=True, interval_s=1.0, next_report_s=1.0, log_lines=False)
+    profiler = BotLoopProfiler(
+        enabled=True, interval_s=1.0, next_report_s=1.0, log_lines=False
+    )
     for update_s in (0.0010, 0.0015, 0.0020):
         profiler.record_tick("bot-1")
         profiler.record_passive_build("bot-1", 0.0005)
