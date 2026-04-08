@@ -556,7 +556,7 @@ def test_terrain_reactive_scenarios_expose_expected_median_geometry(
         "reactive:boost_clearance_late_rise",
     ),
 )
-def test_terrain_shapes_match_recorded_obstacle_profile(scenario_name: str) -> None:
+def test_terrain_segments_match_recorded_obstacle_profile(scenario_name: str) -> None:
     params, (y_x0, y_center, y_x1, y_dest) = _terrain_heights(
         scenario_name, 0, benchmark_mode="median"
     )

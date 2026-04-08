@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
 from core.bot import BotEvalDecision
 from core.components import LanderState, Transform
 from core.ecs import Entity
+
+if TYPE_CHECKING:
+    from core.physics import PhysicsEngine
 from runtime.loop_timing import LoopTimers
 from runtime.metrics import BotLoopProfiler, RunMetricsTracker
-from utils.protocols import ControlTuple
+from core.control_types import ControlTuple
 
 
 def update_bot_override_timer(
@@ -54,11 +57,9 @@ def capture_actor_states(actors: list[Entity]) -> dict[str, str]:
 def sync_landed_to_flying_engine_state(
     *,
     actors: list[Entity],
-    engine_adapter: Any,
+    engine: PhysicsEngine,
     state_before: dict[str, str],
 ) -> None:
-    if not getattr(engine_adapter, "enabled", False):
-        return
     for actor in actors:
         before = state_before.get(actor.uid)
         ls = actor.get_component(LanderState)
@@ -66,7 +67,7 @@ def sync_landed_to_flying_engine_state(
         if before != "landed" or ls is None or trans is None:
             continue
         if ls.state == "flying":
-            engine_adapter.teleport_lander(
+            engine.teleport(
                 trans.pos,
                 angle=trans.rotation,
                 clear_velocity=True,
@@ -78,7 +79,7 @@ def sync_landed_to_flying_engine_state(
 class SessionLoopContext:
     headless: bool
     actors: list[Entity]
-    engine_adapter: Any
+    engine: PhysicsEngine
     control_routing_system: Any
     refuel_system: Any
     state_transition_system: Any
@@ -124,7 +125,11 @@ def run_session_loop(
     bot_eval_decision: BotEvalDecision | None = None
 
     while context.is_running():
-        if context.headless and max_time is not None and timers.elapsed_time >= max_time:
+        if (
+            context.headless
+            and max_time is not None
+            and timers.elapsed_time >= max_time
+        ):
             break
         if max_steps is not None and step_count >= max_steps:
             break
@@ -158,7 +163,9 @@ def run_session_loop(
         state_before = capture_actor_states(context.actors)
 
         context.control_routing_system.set_controls_map(controls_by_uid)
-        record_controls_map = getattr(context.trace_recorder, "record_controls_map", None)
+        record_controls_map = getattr(
+            context.trace_recorder, "record_controls_map", None
+        )
         if callable(record_controls_map):
             record_controls_map(
                 elapsed_time_s=timers.elapsed_time,
@@ -169,7 +176,7 @@ def run_session_loop(
         context.state_transition_system.update(frame_dt)
         sync_landed_to_flying_engine_state(
             actors=context.actors,
-            engine_adapter=context.engine_adapter,
+            engine=context.engine,
             state_before=state_before,
         )
 
@@ -184,12 +191,18 @@ def run_session_loop(
             context.print_headless_stats(timers)
 
         active_actor = context.get_active_actor()
-        context.metrics.update_for_actor(active_actor, dt_used=max(0.0, float(frame_dt)))
-        context.metrics.update_state_counters(active_actor, elapsed_time=timers.elapsed_time)
+        context.metrics.update_for_actor(
+            active_actor, dt_used=max(0.0, float(frame_dt))
+        )
+        context.metrics.update_state_counters(
+            active_actor, elapsed_time=timers.elapsed_time
+        )
 
         decision = context.resolve_headless_bot_eval_decision()
         if decision is not None and decision.should_end:
-            record_eval_decision = getattr(context.trace_recorder, "record_eval_decision", None)
+            record_eval_decision = getattr(
+                context.trace_recorder, "record_eval_decision", None
+            )
             if callable(record_eval_decision):
                 record_eval_decision(
                     elapsed_time_s=timers.elapsed_time,

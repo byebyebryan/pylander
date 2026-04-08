@@ -115,4 +115,3 @@ class PropulsionSystem(System):
         burn = max(0.0, float(engine.base_burn_rate)) * burn_multiplier * dt
         if burn > 0.0:
             tank.fuel = max(0.0, tank.fuel - burn)
-            tank._mass_dirty = True

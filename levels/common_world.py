@@ -94,7 +94,7 @@ def build_level_physics_engine(
     )
     if landing_site_colliders:
         engine.set_landing_site_colliders(landing_site_colliders)
-    engine.attach_lander(
+    engine.attach_body(
         width=geo.width,
         height=geo.height,
         mass=mass,

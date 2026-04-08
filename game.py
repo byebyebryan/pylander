@@ -122,7 +122,6 @@ class LanderGame:
         )
         self.sites = core_runtime.sites
         self.engine = core_runtime.engine
-        self.engine_adapter = core_runtime.engine_adapter
         self.ecs_world = core_runtime.ecs_world
         self.systems = core_runtime.systems
         self._set_active_actor(self.active_player_actor_uid)
@@ -152,7 +151,7 @@ class LanderGame:
             sensor_update_system=self.sensor_update_system,
             profiler=self._bot_profiler,
             terrain=self.terrain,
-            engine_adapter=self.engine_adapter,
+            engine=self.engine,
             systems_owner=self,
         )
         self.actor_bots = bot_runtime.actor_bots
@@ -201,7 +200,7 @@ class LanderGame:
             actors=self.actors,
             ecs_world=self.ecs_world,
             level=self.level,
-            engine_adapter=self.engine_adapter,
+            engine=self.engine,
             uid=uid,
         )
         if actor is None:
@@ -214,7 +213,7 @@ class LanderGame:
             actors=self.actors,
             ecs_world=self.ecs_world,
             level=self.level,
-            engine_adapter=self.engine_adapter,
+            engine=self.engine,
             active_uid=self.active_player_actor_uid,
             delta=delta,
         )
@@ -293,7 +292,7 @@ class LanderGame:
                     "_bot_override_timer",
                     reset_active_actor_session(
                         active_actor=self.get_active_actor(),
-                        engine_adapter=self.engine_adapter,
+                        engine=self.engine,
                         renderer=self.renderer,
                         bot_override_delay=self.bot_override_delay,
                     ),
@@ -307,7 +306,7 @@ class LanderGame:
             context=SessionLoopContext(
                 headless=self.headless,
                 actors=self.actors,
-                engine_adapter=self.engine_adapter,
+                engine=self.engine,
                 control_routing_system=self.control_routing_system,
                 refuel_system=self.refuel_system,
                 state_transition_system=self.state_transition_system,

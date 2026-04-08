@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from utils.protocols import ControlTuple
+from core.control_types import ControlTuple
 from core.components import ControlIntent, Engine
 from core.ecs import System
 
@@ -13,7 +13,9 @@ class ControlRoutingSystem(System):
         self._pending_controls: dict[str, ControlTuple] = {}
         self._broadcast_controls: ControlTuple = (None, None, False)
 
-    def set_controls(self, controls: ControlTuple | None, actor_uid: str | None = None) -> None:
+    def set_controls(
+        self, controls: ControlTuple | None, actor_uid: str | None = None
+    ) -> None:
         normalized = controls if controls is not None else (None, None, False)
         if actor_uid is None:
             self._broadcast_controls = normalized

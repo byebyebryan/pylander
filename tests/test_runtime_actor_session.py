@@ -17,7 +17,6 @@ from core.components import (
     Transform,
 )
 from core.ecs import Entity, World
-from core.engine_adapter import EngineAdapter
 from core.maths import Vector2
 from runtime.actor_session import (
     active_actor_bot,
@@ -143,7 +142,10 @@ def test_find_initial_player_actor_uid_falls_back_to_lowest_selectable_order() -
 
 
 def test_set_active_actor_updates_world_and_engine_sync() -> None:
-    actors = [_make_actor("a", selectable_order=0, active=True), _make_actor("b", selectable_order=1)]
+    actors = [
+        _make_actor("a", selectable_order=0, active=True),
+        _make_actor("b", selectable_order=1),
+    ]
     ecs_world = World()
     for actor in actors:
         ecs_world.add_entity(actor)
@@ -154,7 +156,7 @@ def test_set_active_actor_updates_world_and_engine_sync() -> None:
         actors=actors,
         ecs_world=ecs_world,
         level=level,
-        engine_adapter=EngineAdapter(engine),
+        engine=engine,
         uid="b",
     )
 
@@ -177,13 +179,13 @@ def test_switch_active_actor_wraps_by_selectable_order() -> None:
     for actor in actors:
         ecs_world.add_entity(actor)
     level = SimpleNamespace(world=SimpleNamespace(primary_actor_uid=None, lander=None))
-    engine_adapter = EngineAdapter(_FakeEngine())
+    engine = _FakeEngine()
 
     switched = switch_active_actor(
         actors=actors,
         ecs_world=ecs_world,
         level=level,
-        engine_adapter=engine_adapter,
+        engine=engine,
         active_uid="c",
         delta=1,
     )
@@ -226,11 +228,14 @@ def test_attach_primary_bot_prefers_actor_with_bot_role() -> None:
         "hazard_driver": "demo_driver",
         "obstacle_support_x0": 88.0,
     }
-    assert active_actor_bot(
-        actor_bots=actor_bots,
-        active_uid="wingman",
-        primary_bot=None,
-    ) is bot
+    assert (
+        active_actor_bot(
+            actor_bots=actor_bots,
+            active_uid="wingman",
+            primary_bot=None,
+        )
+        is bot
+    )
 
 
 def test_attach_primary_bot_falls_back_to_non_active_actor() -> None:

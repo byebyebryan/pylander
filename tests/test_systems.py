@@ -36,7 +36,7 @@ from core.systems.sensor_update import SensorUpdateSystem
 from core.systems.state_transition import StateTransitionSystem
 
 
-class _FakeEngineAdapter:
+class _StubPhysicsEngine:
     def __init__(self):
         self.forces: list[tuple[float, float]] = []
         self.overrides: list[float] = []
@@ -46,21 +46,15 @@ class _FakeEngineAdapter:
         self.velocity_by_uid: dict[str, tuple[Vector2, float]] = {}
         self.actor_uids: set[str] = set()
 
-    def apply_force(self, force, _point=None, uid=None) -> None:
+    def apply_force(self, force, uid=None) -> None:
         self.forces.append((force.x, force.y))
         if uid is not None:
             self.actor_uids.add(uid)
-
-    def apply_force_for(self, uid, force, _point=None) -> None:
-        self.apply_force(force, _point, uid=uid)
 
     def override(self, angle: float, uid=None) -> None:
         self.overrides.append(angle)
         if uid is not None:
             self.actor_uids.add(uid)
-
-    def override_for(self, uid, angle: float) -> None:
-        self.override(angle, uid=uid)
 
     def get_pose(self, uid=None):
         if uid is not None and uid in self.pose_by_uid:
@@ -73,7 +67,7 @@ class _FakeEngineAdapter:
         return self.velocity
 
     def get_actor_uids(self):
-        return set(self.actor_uids)
+        return list(self.actor_uids)
 
 
 def test_propulsion_system_slews_controls_and_burns_fuel() -> None:
@@ -108,7 +102,9 @@ def test_propulsion_system_slews_controls_and_burns_fuel() -> None:
 
 def test_propulsion_system_forces_thrust_off_when_crashed() -> None:
     entity = Entity()
-    engine = Engine(thrust_level=0.8, target_thrust=1.0, target_angle=0.5, base_burn_rate=1.0)
+    engine = Engine(
+        thrust_level=0.8, target_thrust=1.0, target_angle=0.5, base_burn_rate=1.0
+    )
     tank = FuelTank(fuel=10.0)
     trans = Transform(rotation=0.0)
     state = LanderState(state="crashed")
@@ -192,23 +188,24 @@ def test_force_application_system_applies_thrust_and_override() -> None:
     world = World()
     world.add_entity(entity)
 
-    adapter = _FakeEngineAdapter()
-    system = ForceApplicationSystem(adapter)
+    engine = _StubPhysicsEngine()
+    system = ForceApplicationSystem(engine)
     system.world = world
     system.update(1.0)
 
-    assert adapter.forces == [(0.0, 50.0)]
-    assert adapter.overrides == [0.0]
+    assert engine.forces == [(0.0, 50.0)]
+    assert engine.overrides == [0.0]
 
 
 def test_physics_sync_updates_single_lander_entity() -> None:
-    adapter = _FakeEngineAdapter()
-    system = PhysicsSyncSystem(adapter)
+    engine = _StubPhysicsEngine()
+    system = PhysicsSyncSystem(engine)
 
     lander = Entity()
     lander.add_component(Transform(pos=Vector2(0.0, 0.0)))
     lander.add_component(PhysicsState(vel=Vector2(0.0, 0.0)))
     lander.add_component(LanderState())
+    engine.actor_uids.add(lander.uid)
 
     non_lander = Entity()
     non_lander_transform = Transform(pos=Vector2(99.0, 99.0))
@@ -304,17 +301,17 @@ def test_control_routing_clamps_to_engine_max_thrust() -> None:
 
 
 def test_physics_sync_updates_multiple_entities_with_actor_uids() -> None:
-    adapter = _FakeEngineAdapter()
-    adapter.actor_uids = {"a", "b"}
-    adapter.pose_by_uid = {
+    engine = _StubPhysicsEngine()
+    engine.actor_uids = {"a", "b"}
+    engine.pose_by_uid = {
         "a": (Vector2(1.0, 2.0), 0.0),
         "b": (Vector2(3.0, 4.0), 0.0),
     }
-    adapter.velocity_by_uid = {
+    engine.velocity_by_uid = {
         "a": (Vector2(5.0, 6.0), 0.0),
         "b": (Vector2(7.0, 8.0), 0.0),
     }
-    system = PhysicsSyncSystem(adapter)
+    system = PhysicsSyncSystem(engine)
 
     a = Entity(uid="a")
     a.add_component(Transform(pos=Vector2(0.0, 0.0)))
@@ -451,20 +448,20 @@ class _Targets:
         return [self.target]
 
 
-class _FakeContactAdapter:
+class _StubContactEngine:
     enabled = False
 
     def get_contact_report(self, uid=None) -> ContactReport:
         return ContactReport()
 
-    def teleport_lander(self, _pos, angle=None, clear_velocity=True, uid=None) -> None:
+    def teleport(self, _pos, angle=None, clear_velocity=True, uid=None) -> None:
         _ = angle, clear_velocity
 
     def get_actor_uids(self) -> set[str]:
         return set()
 
 
-class _FakeCollidingContactAdapter:
+class _StubCollidingContactEngine:
     enabled = False
 
     def __init__(self, *, rel_speed: float = 1.0) -> None:
@@ -478,11 +475,11 @@ class _FakeCollidingContactAdapter:
             point=(0.0, 0.0),
         )
 
-    def teleport_lander(self, _pos, angle=None, clear_velocity=True, uid=None) -> None:
+    def teleport(self, _pos, angle=None, clear_velocity=True, uid=None) -> None:
         _ = angle, clear_velocity
 
 
-class _FakeSideScrapeContactAdapter:
+class _StubSideScrapeContactEngine:
     enabled = False
 
     def get_contact_report(self, uid=None) -> ContactReport:
@@ -493,7 +490,7 @@ class _FakeSideScrapeContactAdapter:
             point=(0.0, 0.0),
         )
 
-    def teleport_lander(self, _pos, angle=None, clear_velocity=True, uid=None) -> None:
+    def teleport(self, _pos, angle=None, clear_velocity=True, uid=None) -> None:
         _ = angle, clear_velocity
 
 
@@ -532,10 +529,14 @@ def _make_site_entity(
     """Return a landing-site entity with standard components."""
     entity = Entity(uid=uid)
     entity.add_component(Transform(pos=Vector2(pos[0], pos[1])))
-    entity.add_component(LandingSite(size=size, terrain_mode=terrain_mode, terrain_bound=False))
+    entity.add_component(
+        LandingSite(size=size, terrain_mode=terrain_mode, terrain_bound=False)
+    )
     entity.add_component(LandingSiteEconomy(award=award, fuel_price=fuel_price))
     if kinematic_vel is not None:
-        entity.add_component(KinematicMotion(velocity=Vector2(kinematic_vel[0], kinematic_vel[1])))
+        entity.add_component(
+            KinematicMotion(velocity=Vector2(kinematic_vel[0], kinematic_vel[1]))
+        )
     return entity
 
 
@@ -597,7 +598,9 @@ def test_landing_site_motion_and_projection_update_model() -> None:
     world = World()
     site = Entity(uid="site_a")
     site.add_component(Transform(pos=Vector2(0.0, 0.0)))
-    site.add_component(LandingSite(size=30.0, terrain_mode="elevated_supports", terrain_bound=False))
+    site.add_component(
+        LandingSite(size=30.0, terrain_mode="elevated_supports", terrain_bound=False)
+    )
     site.add_component(LandingSiteEconomy(award=200.0, fuel_price=9.0))
     site.add_component(KinematicMotion(velocity=Vector2(3.0, 0.0)))
     world.add_entity(site)
@@ -631,7 +634,7 @@ def test_contact_system_lands_using_relative_site_velocity() -> None:
     projection.world = world
     projection.update(1.0 / 60.0)
 
-    system = ContactSystem(_FakeContactAdapter(), model)
+    system = ContactSystem(_StubContactEngine(), model)
     system.world = world
     system.update(1.0 / 60.0)
 
@@ -657,7 +660,7 @@ def test_contact_system_marks_zero_award_site_visited() -> None:
     projection.world = world
     projection.update(1.0 / 60.0)
 
-    system = ContactSystem(_FakeContactAdapter(), model)
+    system = ContactSystem(_StubContactEngine(), model)
     system.world = world
     system.update(1.0 / 60.0)
 
@@ -687,7 +690,7 @@ def test_contact_system_allows_wrapped_equivalent_upright_angle() -> None:
     projection.world = world
     projection.update(1.0 / 60.0)
 
-    system = ContactSystem(_FakeContactAdapter(), model)
+    system = ContactSystem(_StubContactEngine(), model)
     system.world = world
     system.update(1.0 / 60.0)
 
@@ -711,7 +714,7 @@ def test_contact_system_does_not_snap_land_when_far_below_site() -> None:
     projection.world = world
     projection.update(1.0 / 60.0)
 
-    system = ContactSystem(_FakeCollidingContactAdapter(), model)
+    system = ContactSystem(_StubCollidingContactEngine(), model)
     system.world = world
     system.update(1.0 / 60.0)
 
@@ -720,7 +723,9 @@ def test_contact_system_does_not_snap_land_when_far_below_site() -> None:
     assert ls.state == "crashed"
 
 
-def test_contact_system_crashes_on_high_speed_site_plane_cross_without_contact() -> None:
+def test_contact_system_crashes_on_high_speed_site_plane_cross_without_contact() -> (
+    None
+):
     world = World()
 
     # Unsafe downward speed; current pose is already below the site plane.
@@ -737,7 +742,7 @@ def test_contact_system_crashes_on_high_speed_site_plane_cross_without_contact()
     projection.update(dt)
 
     # No engine collision report this frame; crossing fallback should still crash.
-    system = ContactSystem(_FakeContactAdapter(), model)
+    system = ContactSystem(_StubContactEngine(), model)
     system.world = world
     system.update(dt)
 
@@ -762,7 +767,7 @@ def test_contact_system_crashes_on_high_speed_bounce_contact() -> None:
     dt = 1.0 / 60.0
     projection.update(dt)
 
-    system = ContactSystem(_FakeCollidingContactAdapter(rel_speed=45.0), model)
+    system = ContactSystem(_StubCollidingContactEngine(rel_speed=45.0), model)
     system.world = world
     system.update(dt)
 
@@ -787,7 +792,7 @@ def test_contact_system_crashes_on_side_scrape_contact() -> None:
     dt = 1.0 / 60.0
     projection.update(dt)
 
-    system = ContactSystem(_FakeSideScrapeContactAdapter(), model)
+    system = ContactSystem(_StubSideScrapeContactEngine(), model)
     system.world = world
     system.update(dt)
 

@@ -30,7 +30,7 @@ class SystemsBundle:
     sensor_update: SensorUpdateSystem
 
 
-def create_systems(ecs_world, *, terrain, sites, engine_adapter) -> SystemsBundle:
+def create_systems(ecs_world, *, terrain, sites, engine) -> SystemsBundle:
     bundle = SystemsBundle(
         control_routing=ControlRoutingSystem(),
         state_transition=StateTransitionSystem(),
@@ -39,9 +39,9 @@ def create_systems(ecs_world, *, terrain, sites, engine_adapter) -> SystemsBundl
         landing_site_projection=LandingSiteProjectionSystem(sites),
         refuel=RefuelSystem(sites),
         propulsion=PropulsionSystem(),
-        force_application=ForceApplicationSystem(engine_adapter),
-        physics_sync=PhysicsSyncSystem(engine_adapter),
-        contact=ContactSystem(engine_adapter, sites),
+        force_application=ForceApplicationSystem(engine),
+        physics_sync=PhysicsSyncSystem(engine),
+        contact=ContactSystem(engine, sites),
         sensor_update=SensorUpdateSystem(terrain, sites),
     )
 

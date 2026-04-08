@@ -5,13 +5,15 @@ This module re-exports functions from focused submodules for backward compatibil
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from core.bot import Bot
 from core.components import PlayerControlled, PlayerSelectable
 from core.ecs import Entity, World
-from core.engine_adapter import EngineAdapter
 from core.level import Level
+
+if TYPE_CHECKING:
+    from core.physics import PhysicsEngine
 
 from runtime.actor_policy import find_initial_player_actor_uid
 from runtime.actor_registry import (
@@ -28,7 +30,7 @@ def set_active_actor(
     actors: list[Entity],
     ecs_world: World,
     level: Level,
-    engine_adapter: EngineAdapter,
+    engine: PhysicsEngine,
     uid: str,
 ) -> Entity | None:
     actor = ecs_world.get_entity_by_id(uid)
@@ -44,7 +46,7 @@ def set_active_actor(
     if level.world is not None:
         level.world.primary_actor_uid = uid
         level.world.lander = actor
-    engine_adapter.set_primary_actor(uid)
+    engine.set_primary_actor(uid)
     return actor
 
 
@@ -53,7 +55,7 @@ def switch_active_actor(
     actors: list[Entity],
     ecs_world: World,
     level: Level,
-    engine_adapter: EngineAdapter,
+    engine: PhysicsEngine,
     active_uid: str,
     delta: int = 1,
 ) -> tuple[str, Entity] | None:
@@ -75,7 +77,7 @@ def switch_active_actor(
         actors=actors,
         ecs_world=ecs_world,
         level=level,
-        engine_adapter=engine_adapter,
+        engine=engine,
         uid=next_uid,
     )
     if actor is None:

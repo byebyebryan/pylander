@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from core.bot import Bot
     from core.ecs import Entity
     from core.landing_sites import LandingSiteSurfaceModel
+    from core.physics import PhysicsEngine
     from core.terrain import Terrain
 
 
@@ -89,7 +90,7 @@ class Level(ABC):
     """
 
     world: LevelWorld | None = None
-    engine: Any | None = None
+    engine: PhysicsEngine | None = None
     scenario_name: str = ""
     eval_target_pos: Any | None = None
     trace_selector_tag: str | None = None

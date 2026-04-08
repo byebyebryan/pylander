@@ -1,7 +1,7 @@
 """Controllers for handling user input and translating it to game actions."""
 
 import math
-from utils.protocols import ControlTuple
+from core.control_types import ControlTuple
 
 
 class PlayerController:
@@ -26,13 +26,13 @@ class PlayerController:
         """
         target_thrust = current_target_thrust
         target_angle = current_target_angle
-        
+
         # Thrust control
         if signals.get("thrust_up"):
             target_thrust = min(max_thrust, target_thrust + 1.5 * dt)
         if signals.get("thrust_down"):
             target_thrust = max(0.0, target_thrust - 1.5 * dt)
-        
+
         # Auto-round to nearest 0.1 when not actively changing
         if not signals.get("thrust_up") and not signals.get("thrust_down"):
             target_thrust = round(target_thrust * 10.0) / 10.0
@@ -43,7 +43,7 @@ class PlayerController:
             target_angle -= max_rotation_rate * dt
         if signals.get("rot_right"):
             target_angle += max_rotation_rate * dt
-            
+
         # Auto-snap to 45 degree increments when not actively rotating
         if not signals.get("rot_left") and not signals.get("rot_right"):
             deg = math.degrees(target_angle)
@@ -52,7 +52,7 @@ class PlayerController:
                 target_angle = math.radians(snapped)
 
         refuel = bool(signals.get("refuel"))
-        
+
         any_pressed = (
             signals.get("thrust_up")
             or signals.get("thrust_down")

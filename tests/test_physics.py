@@ -11,28 +11,23 @@ from core.physics import PhysicsEngine
 
 def test_closest_point_uses_vector_origin_signature() -> None:
     engine = PhysicsEngine(height_sampler=FlatTerrain(), gravity=(0.0, -9.8))
-    engine.attach_lander(
-        width=8.0, height=8.0, mass=10.0, start_pos=Vector2(0.0, 20.0)
-    )
+    engine.attach_body(width=8.0, height=8.0, mass=10.0, start_pos=Vector2(0.0, 20.0))
 
     out = engine.closest_point(Vector2(12.0, 30.0), search_radius=100.0)
 
-    assert isinstance(out, dict)
-    assert out["distance"] >= 0.0
-    assert math.isclose(out["y"], 0.0, abs_tol=1e-6)
+    assert out.distance >= 0.0
+    assert math.isclose(out.y, 0.0, abs_tol=1e-6)
 
 
-def test_teleport_lander_clears_velocity_when_requested() -> None:
+def test_teleport_clears_velocity_when_requested() -> None:
     engine = PhysicsEngine(height_sampler=FlatTerrain(), gravity=(0.0, -9.8))
-    engine.attach_lander(
-        width=8.0, height=8.0, mass=10.0, start_pos=Vector2(0.0, 50.0)
-    )
+    engine.attach_body(width=8.0, height=8.0, mass=10.0, start_pos=Vector2(0.0, 50.0))
     engine.step(0.1)
 
     pre_vel, _ = engine.get_velocity()
     assert pre_vel.y < 0.0  # gravity affected the body
 
-    engine.teleport_lander(Vector2(5.0, 40.0), angle=0.25, clear_velocity=True)
+    engine.teleport(Vector2(5.0, 40.0), angle=0.25, clear_velocity=True)
     pose, angle = engine.get_pose()
     vel, ang_vel = engine.get_velocity()
 
@@ -45,16 +40,16 @@ def test_teleport_lander_clears_velocity_when_requested() -> None:
 
 def test_engine_tracks_multiple_actor_bodies_by_uid() -> None:
     engine = PhysicsEngine(height_sampler=FlatTerrain(), gravity=(0.0, -9.8))
-    engine.attach_lander(
+    engine.attach_body(
         width=8.0, height=8.0, mass=10.0, uid="a", start_pos=Vector2(0.0, 50.0)
     )
-    engine.attach_lander(
+    engine.attach_body(
         width=8.0, height=8.0, mass=10.0, uid="b", start_pos=Vector2(20.0, 50.0)
     )
 
     assert set(engine.get_actor_uids()) == {"a", "b"}
 
-    engine.teleport_lander(Vector2(5.0, 40.0), uid="a")
+    engine.teleport(Vector2(5.0, 40.0), uid="a")
     pose_a, _ = engine.get_pose(uid="a")
     pose_b, _ = engine.get_pose(uid="b")
 
@@ -70,12 +65,12 @@ def test_landing_site_colliders_are_queryable_by_raycast() -> None:
 
     hit = engine.raycast(Vector2(0.0, 100.0), -math.pi / 2.0, 120.0)
 
-    assert hit["hit"] is True
-    assert hit["distance"] is not None
-    assert hit["hit_y"] == pytest.approx(40.0, abs=2.0)
+    assert hit.hit is True
+    assert hit.distance is not None
+    assert hit.point_y == pytest.approx(40.0, abs=2.0)
 
     engine.set_landing_site_colliders([])
-    assert len(engine._landing_site_shapes) == 0
+    assert len(engine._landing_site_handles) == 0
 
 
 class _WavyTerrain:
@@ -86,11 +81,13 @@ class _WavyTerrain:
 
 def _window_vertices(engine: PhysicsEngine) -> list[tuple[float, float]]:
     out: list[tuple[float, float]] = []
-    for seg in engine._terrain_shapes:
-        out.append((float(seg.a.x), float(seg.a.y)))
-    if engine._terrain_shapes:
-        last = engine._terrain_shapes[-1]
-        out.append((float(last.b.x), float(last.b.y)))
+    segments = engine.terrain_segments
+    for seg in segments:
+        a, b = seg
+        out.append((float(a[0]), float(a[1])))
+    if segments:
+        last = segments[-1]
+        out.append((float(last[1][0]), float(last[1][1])))
     return out
 
 
@@ -107,7 +104,7 @@ def test_terrain_window_rebuild_is_step_anchored_and_stable() -> None:
         segment_step=step,
         half_width=120.0,
     )
-    engine.attach_lander(width=8.0, height=8.0, mass=10.0, start_pos=Vector2(13.0, 80.0))
+    engine.attach_body(width=8.0, height=8.0, mass=10.0, start_pos=Vector2(13.0, 80.0))
     verts_a = _window_vertices(engine)
 
     # Force a second window build around a different center.

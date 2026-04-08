@@ -141,9 +141,11 @@ class BoostTransferLevel(ScenarioCatalogMixin, PresetLevel):
             cargo_mass = max(0.0, float(getattr(scenario, "cargo_mass", 0.0) or 0.0))
             cargo.cargo_mass = min(cargo_mass, float(cargo.max_cargo_mass))
         engine = self.engine
-        set_lander_mass = getattr(engine, "set_lander_mass", None)
-        if callable(set_lander_mass):
-            set_lander_mass(get_mass(actor), uid=actor.uid)
+        if engine is None:
+            raise RuntimeError(
+                "BoostTransferLevel engine was not initialized after setup"
+            )
+        engine.set_mass(get_mass(actor), uid=actor.uid)
 
         self.set_runtime_identity(scenario_name=scenario.name)
         setattr(self, "_scenario_params", self._build_scenario_params(scenario, dest_x))
