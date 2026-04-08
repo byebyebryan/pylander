@@ -21,6 +21,7 @@ from runtime.actor_session import (
     switch_active_actor,
 )
 from runtime.bot_loop import update_bot_steps
+from runtime.boost_cutoff import prime_boost_cutoff_for_primary_bot
 from runtime.game_bootstrap import (
     bootstrap_bot_runtime,
     bootstrap_core_runtime,
@@ -148,6 +149,8 @@ class LanderGame:
                 active_uid=self.active_player_actor_uid,
                 primary_bot=self.bot,
             )
+
+        prime_boost_cutoff_for_primary_bot(self.level, self.actor_bots)
 
         self.level.start(self)
         trace_runtime = bootstrap_trace_runtime(

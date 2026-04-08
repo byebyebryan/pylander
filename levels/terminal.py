@@ -6,7 +6,6 @@ from levels.common_scenarios import (
     ScenarioCatalogMixin,
     ScenarioLevel,
     make_flat_scenario_spec,
-    prime_boost_cutoff_for_primary_bot,
 )
 from levels.terminal_catalog import (
     TERMINAL_DEFAULT_SCENARIO,
@@ -45,9 +44,6 @@ class TerminalLevel(ScenarioCatalogMixin[TerminalScenario], ScenarioLevel):
 
     def scenario_has_randomized_fields(self, _name: str | None = None) -> bool:
         return terminal_scenario_has_randomized_fields(self._active_scenario())
-
-    def start(self, game) -> None:
-        prime_boost_cutoff_for_primary_bot(self, game)
 
     def setup(self, game, seed: int) -> None:
         scenario = self._active_scenario()
