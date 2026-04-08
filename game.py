@@ -143,12 +143,6 @@ class LanderGame:
         self.actor_bots = bot_runtime.actor_bots
         self._bot_loop_context = bot_runtime.bot_loop_context
         self._physics_step_context = bot_runtime.physics_step_context
-        if self.renderer is not None:
-            self.renderer.bot = active_actor_bot(
-                actor_bots=self.actor_bots,
-                active_uid=self.active_player_actor_uid,
-                primary_bot=self.bot,
-            )
 
         prime_boost_cutoff_for_primary_bot(self.level, self.actor_bots)
 
