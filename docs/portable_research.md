@@ -26,6 +26,46 @@ Investigation into running pylander as-is on low-power devices (PortMaster / rg3
 
 ---
 
+## Remote desktop fallback (SSH X11)
+
+Before committing to a web build, it is possible to run the desktop pygame build remotely over SSH X11 forwarding for occasional smoke tests.
+
+### What worked
+
+- Remote host can be headless (no active local Wayland session required)
+- `sshd` must have:
+  - `X11Forwarding yes`
+  - `X11UseLocalhost yes`
+- Local machine must have a valid Xauthority cookie for its Xwayland display
+- On the remote side, force SDL to X11/software rendering
+
+### Firewall / sshd notes
+
+- LAN access debugging exposed a firewalld rule on `starship` that blocked custom ports even in the `home` zone. Do not assume `home` means "all ports open."
+- `sshd` defaults on Arch had `X11Forwarding` commented out, which effectively disabled it until a drop-in was added.
+
+### Known-good SSH X11 smoke test
+
+```bash
+ssh -Y starship.lan 'unset WAYLAND_DISPLAY; export SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy SDL_VIDEO_X11_FORCE_EGL=0 SDL_RENDER_DRIVER=software; /home/bryan/code/pylander/.venv/bin/python -c "import pygame, time; pygame.init(); print(\"driver=\", pygame.display.get_driver()); pygame.display.set_mode((640,480)); time.sleep(3)"'
+```
+
+Expected result:
+- pygame window appears locally over SSH
+- output includes `driver= x11`
+
+### Pylander interactive smoke test over SSH X11
+
+```bash
+ssh -Y starship.lan 'cd /home/bryan/code/pylander && unset WAYLAND_DISPLAY; export SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy SDL_VIDEO_X11_FORCE_EGL=0 SDL_RENDER_DRIVER=software PYLANDER_PHYSICS=euler; uv run python main.py play'
+```
+
+### Caveat
+
+This is useful for occasional visual verification, but it is too slow to be a comfortable daily workflow. Treat it as a fallback path, not the primary portable-dev loop.
+
+---
+
 ## What to strip (human-player portable build)
 
 The goal is a single repo with a build manifest that selects which files to package. No fork, no branch, no separate version.
