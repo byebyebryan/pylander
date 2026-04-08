@@ -13,10 +13,10 @@ from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal
 from core.level import GameRunState, Level
 from core.level_capabilities import level_name_tag, level_scenario_tag
 from core.maths import Range1D, Vector2
+from runtime.actor_policy import find_initial_player_actor_uid
+from runtime.actor_registry import collect_actor_entities
 from runtime.actor_session import (
     active_actor_bot,
-    collect_actor_entities,
-    find_initial_player_actor_uid,
     set_active_actor,
     switch_active_actor,
 )
