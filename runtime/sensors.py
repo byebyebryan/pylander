@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from typing import Any, Iterable, cast
 
 from core.bot import BotTarget, Sensors, VehicleInfo
@@ -84,7 +83,9 @@ def resolve_eval_target(level: Level, sites: Any, start_pos: Any) -> BotTarget |
     if target_pos is None:
         return None
     nearest_site = _nearest_target_site(sites, Vector2(target_pos))
-    target_uid = getattr(nearest_site, "uid", None) if nearest_site is not None else None
+    target_uid = (
+        getattr(nearest_site, "uid", None) if nearest_site is not None else None
+    )
     target_size = (
         float(getattr(nearest_site, "size", 0.0) or 0.0)
         if nearest_site is not None
@@ -169,25 +170,4 @@ def build_sensors(entity, terrain) -> Sensors:
         state=ls.state,
         radar_contacts=readings.radar_contacts,
         proximity=readings.proximity,
-    )
-
-
-def build_headless_stats(entity, terrain) -> str:
-    trans = require_component(entity, Transform)
-    phys = require_component(entity, PhysicsState)
-    eng = require_component(entity, Engine)
-    tank = require_component(entity, FuelTank)
-    _ = terrain
-    angle_deg = math.degrees(trans.rotation)
-    thrust_pct = eng.thrust_level * 100.0
-    fuel_pct = 100.0 * tank.fuel / max(1e-6, tank.max_fuel)
-    return (
-        "ship "
-        f"x={trans.pos.x:6.1f} "
-        f"y={trans.pos.y:6.1f} "
-        f"vx={phys.vel.x:6.2f} "
-        f"vy={phys.vel.y:6.2f} "
-        f"ang={angle_deg:5.1f} "
-        f"thr={thrust_pct:3.0f}% "
-        f"fuel={fuel_pct:5.1f}%"
     )

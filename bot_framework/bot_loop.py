@@ -6,7 +6,6 @@ from core.bot import BotAction
 from core.components import LanderState
 from runtime.loop_timing import LoopTimers
 
-from runtime.sensors import build_sensors
 from core.control_types import ControlTuple
 from runtime.types import BotLoopContext
 
@@ -19,6 +18,7 @@ def update_bot_steps(
     bot_controls_by_uid: dict[str, ControlTuple | None] = {}
     bot_dt = timers.bot_dt
     profiler = context.profiler
+    build_sensors = context.build_sensors
     while timers.should_step_bot():
         timers.consume_bot()
         if context.actor_bots:

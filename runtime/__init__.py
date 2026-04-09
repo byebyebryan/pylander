@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from runtime.bootstrap import SystemsBundle, create_systems
+from runtime.eval.headless_stats import build_headless_stats
 from runtime.types import BotLoopContext
 from runtime.loop_timing import LoopTimers
 from runtime.run_metrics import RunMetricsTracker
 from runtime.sensors import (
-    build_headless_stats,
     build_sensors,
     build_vehicle_info,
     resolve_eval_target_pos,

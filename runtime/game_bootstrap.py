@@ -11,6 +11,7 @@ from runtime.bootstrap import SystemsBundle, create_systems
 from runtime.types import BotLoopContext
 from runtime.bot_profiler import BotLoopProfiler
 from runtime.physics_steps import PhysicsStepContext
+from runtime.sensors import build_sensors
 from ui.renderer import Renderer
 from utils.input import InputHandler
 from utils.tracepack import TraceRecorder
@@ -144,6 +145,7 @@ def bootstrap_bot_runtime(
             profiler=profiler,
             terrain=terrain,
             trace_recorder=None,
+            build_sensors=build_sensors,
         ),
         physics_step_context=PhysicsStepContext(
             actors=actors,
@@ -230,6 +232,7 @@ def bootstrap_empty_bot_runtime(
             profiler=profiler,
             terrain=terrain,
             trace_recorder=None,
+            build_sensors=build_sensors,
         ),
         physics_step_context=PhysicsStepContext(
             actors=actors,
