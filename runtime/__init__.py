@@ -1,9 +1,9 @@
+from __future__ import annotations
+
 from runtime.bootstrap import SystemsBundle, create_systems
 from runtime.types import BotLoopContext
-from runtime.bot_loop import update_bot_steps
 from runtime.loop_timing import LoopTimers
 from runtime.run_metrics import RunMetricsTracker
-from runtime.bot_profiler import BotLoopProfiler
 from runtime.sensors import (
     build_headless_stats,
     build_sensors,
@@ -24,3 +24,15 @@ __all__ = [
     "build_sensors",
     "build_headless_stats",
 ]
+
+
+def __getattr__(name: str):
+    if name == "update_bot_steps":
+        from bot_framework.bot_loop import update_bot_steps
+
+        return update_bot_steps
+    if name == "BotLoopProfiler":
+        from bot_framework.bot_profiler import BotLoopProfiler
+
+        return BotLoopProfiler
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
