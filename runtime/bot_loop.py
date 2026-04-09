@@ -1,30 +1,14 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from time import perf_counter
-from typing import TYPE_CHECKING
 
-from core.bot import Bot, BotAction
+from core.bot import BotAction
 from core.components import LanderState
 from runtime.loop_timing import LoopTimers
-from runtime.bot_profiler import BotLoopProfiler
+
 from runtime.sensors import build_sensors
 from core.control_types import ControlTuple
-
-if TYPE_CHECKING:
-    from core.ecs import World
-    from core.systems.sensor_update import SensorUpdateSystem
-    from core.terrain import Terrain
-
-
-@dataclass
-class BotLoopContext:
-    ecs_world: World
-    actor_bots: dict[str, Bot]
-    sensor_update_system: SensorUpdateSystem
-    profiler: BotLoopProfiler
-    terrain: Terrain
-    trace_recorder: object | None = None
+from runtime.types import BotLoopContext
 
 
 def update_bot_steps(

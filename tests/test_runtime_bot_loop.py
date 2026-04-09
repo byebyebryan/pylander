@@ -5,7 +5,8 @@ import pytest
 from core.bot import Bot, BotAction, Sensors
 from game import LanderGame
 from levels import create_level as create_level_by_name
-from runtime.bot_loop import BotLoopContext, update_bot_steps
+from runtime.types import BotLoopContext
+from runtime.bot_loop import update_bot_steps
 from runtime.loop_timing import LoopTimers
 from runtime.bot_profiler import BotLoopProfiler
 
