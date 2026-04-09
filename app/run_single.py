@@ -13,10 +13,12 @@ from core.level_capabilities import (
     set_eval_goal_checked,
     set_eval_scenario_checked,
 )
-from game import LanderGame
+from game import LanderGame, _default_eval_hooks
 from levels import create_level
 from levels.registry import is_public_level
 from levels.benchmark_catalog import resolve_selector_binding
+from runtime.game_bootstrap import bootstrap_bot_runtime, bootstrap_trace_runtime
+
 from app.config import RunSettings
 from app.reporting import print_headless_results
 
@@ -193,6 +195,9 @@ def run_once(
         bot_profile_enabled=settings.bot_profile_enabled,
         bot_profile_interval_s=settings.bot_profile_interval_s,
         bot_profile_log_lines=settings.bot_profile_log_lines,
+        bot_runtime_factory=bootstrap_bot_runtime,
+        trace_runtime_factory=bootstrap_trace_runtime,
+        eval_hooks=_default_eval_hooks(),
     )
     result = game.run(
         print_freq=settings.print_freq,

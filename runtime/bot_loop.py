@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from core.bot import Bot, BotAction
 from core.components import LanderState
 from runtime.loop_timing import LoopTimers
-from runtime.metrics import BotLoopProfiler
+from runtime.bot_profiler import BotLoopProfiler
 from runtime.sensors import build_sensors
 from core.control_types import ControlTuple
 

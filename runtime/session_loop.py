@@ -11,7 +11,8 @@ if TYPE_CHECKING:
     from core.physics import PhysicsEngine
     from runtime.bootstrap import SystemsBundle
 from runtime.loop_timing import LoopTimers
-from runtime.metrics import BotLoopProfiler, RunMetricsTracker
+from runtime.run_metrics import RunMetricsTracker
+from runtime.bot_profiler import BotLoopProfiler
 from core.control_types import ControlTuple
 
 

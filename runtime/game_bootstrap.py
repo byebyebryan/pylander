@@ -9,7 +9,7 @@ from core.ecs import World
 from runtime.actor_session import attach_primary_bot, install_world_actor_bots
 from runtime.bootstrap import SystemsBundle, create_systems
 from runtime.bot_loop import BotLoopContext
-from runtime.metrics import BotLoopProfiler
+from runtime.bot_profiler import BotLoopProfiler
 from runtime.physics_steps import PhysicsStepContext
 from ui.renderer import Renderer
 from utils.input import InputHandler
@@ -201,6 +201,68 @@ def bootstrap_trace_runtime(
             tag_parts.append(scenario_name)
         tag_parts.append(str(seed))
         trace_recorder.set_selector_tag("_".join(tag_parts))
+    return TraceRuntimeBootstrap(
+        trace_recorder=trace_recorder,
+        events_seen=set(),
+    )
+
+
+def bootstrap_empty_bot_runtime(
+    *,
+    level: Any,
+    actors: list[Any],
+    ecs_world: World,
+    world_bots: Any,
+    primary_bot: Bot | None,
+    active_uid: str,
+    systems: SystemsBundle,
+    profiler: BotLoopProfiler,
+    terrain: Any,
+    engine: Any,
+) -> BotRuntimeBootstrap:
+    actor_bots: dict[str, Bot] = {}
+    return BotRuntimeBootstrap(
+        actor_bots=actor_bots,
+        bot_loop_context=BotLoopContext(
+            ecs_world=ecs_world,
+            actor_bots=actor_bots,
+            sensor_update_system=systems.sensor_update,
+            profiler=profiler,
+            terrain=terrain,
+            trace_recorder=None,
+        ),
+        physics_step_context=PhysicsStepContext(
+            actors=actors,
+            engine=engine,
+            scripted_control_system=systems.scripted_control,
+            landing_site_motion_system=systems.landing_site_motion,
+            landing_site_projection_system=systems.landing_site_projection,
+            propulsion_system=systems.propulsion,
+            force_application_system=systems.force_application,
+            physics_sync_system=systems.physics_sync,
+            contact_system=systems.contact,
+            mass_resolver=get_mass,
+        ),
+    )
+
+
+def bootstrap_null_trace_runtime(
+    *,
+    terrain: Any,
+    ecs_world: World,
+    actor_bots: dict[str, Bot],
+    active_uid_getter: Any,
+    headless: bool,
+    level: Any,
+    seed: int,
+) -> TraceRuntimeBootstrap:
+    trace_recorder = TraceRecorder(
+        terrain,
+        ecs_world,
+        actor_bots,
+        active_uid_getter,
+        enabled=False,
+    )
     return TraceRuntimeBootstrap(
         trace_recorder=trace_recorder,
         events_seen=set(),

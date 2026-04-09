@@ -4,7 +4,7 @@ from core.bot import BoostCutoffMetrics, FlightPhaseSnapshot, PlotMarker
 from core.components import Transform
 from core.ecs import Entity, World
 from core.maths import Vector2
-from runtime.plot_events import track_plot_events
+from runtime.eval.plot_events import track_plot_events
 
 
 class _Bot:
@@ -26,7 +26,9 @@ class _Bot:
 
 class _Plotter:
     def __init__(self) -> None:
-        self.events: list[tuple[str, float, float, str, dict[str, float | str | None] | None]] = []
+        self.events: list[
+            tuple[str, float, float, str, dict[str, float | str | None] | None]
+        ] = []
 
     def mark_event(
         self,
@@ -120,12 +122,20 @@ def test_track_plot_events_marks_setup_and_terminal_entry_once() -> None:
     )
 
     assert plotter.events == [
-        ("boost_cutoff", 16.0, 28.0, "boost cutoff", {"time_s": 2.0, "vx": 4.5, "vy_up": -6.0}),
+        (
+            "boost_cutoff",
+            16.0,
+            28.0,
+            "boost cutoff",
+            {"time_s": 2.0, "vx": 4.5, "vy_up": -6.0},
+        ),
         ("terminal_entry", 10.0, 20.0, "terminal entry pdx=-4.6", {}),
     ]
 
 
-def test_track_plot_events_falls_back_to_marker_when_shared_boost_cutoff_is_missing() -> None:
+def test_track_plot_events_falls_back_to_marker_when_shared_boost_cutoff_is_missing() -> (
+    None
+):
     actor = Entity("lander")
     actor.add_component(Transform(pos=Vector2(10.0, 20.0)))
     world = World()
@@ -135,7 +145,9 @@ def test_track_plot_events_falls_back_to_marker_when_shared_boost_cutoff_is_miss
     track_plot_events(
         actor_bots={
             "lander": _Bot(
-                phase_snapshot=FlightPhaseSnapshot(phase="coast", milestones=("boost_cutoff",)),
+                phase_snapshot=FlightPhaseSnapshot(
+                    phase="coast", milestones=("boost_cutoff",)
+                ),
                 plot_markers=(
                     PlotMarker(
                         id="boost_cutoff",
@@ -153,7 +165,9 @@ def test_track_plot_events_falls_back_to_marker_when_shared_boost_cutoff_is_miss
         events_seen=set(),
     )
 
-    assert plotter.events == [("boost_cutoff", 14.0, 26.0, "boost cutoff", {"vx": 3.5, "vy_up": -7.0})]
+    assert plotter.events == [
+        ("boost_cutoff", 14.0, 26.0, "boost cutoff", {"vx": 3.5, "vy_up": -7.0})
+    ]
 
 
 def test_track_plot_events_uses_marker_coordinates_when_provided() -> None:
