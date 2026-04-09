@@ -7,7 +7,7 @@ from typing import Any, Iterable, cast
 from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal, normalize_eval_goals
 from core.eval import normalize_run_result
 from core.level_capabilities import (
-    resolve_default_bot_name,
+    level_name_tag,
     set_benchmark_mode_checked,
     set_eval_goal_checked,
     set_eval_scenario_checked,
@@ -18,7 +18,7 @@ from levels import create_level
 from levels.registry import is_public_level
 from levels.benchmark_catalog import resolve_selector_binding
 
-from app.config import RunSettings
+from app.config import RunSettings, resolve_default_bot as _resolve_default_bot
 from app.reporting import print_headless_results
 
 
@@ -44,14 +44,15 @@ def resolve_default_bot(level_name: str) -> str | None:
     runtime_level_name = level_name
     if is_public_level(level_name):
         runtime_level_name = resolve_selector_binding(level_name).runtime_level_name
-    level = create_level_checked(runtime_level_name)
-    return resolve_default_bot_name(level)
+    return _resolve_default_bot(runtime_level_name)
 
 
 def resolve_run_bot_name(settings: RunSettings, level) -> str | None:
     if settings.bot_name:
         return str(settings.bot_name).strip()
-    return resolve_default_bot_name(level)
+    level_name = level_name_tag(level)
+    base_level = level_name.split(":")[0].strip()
+    return _resolve_default_bot(base_level)
 
 
 def set_eval_scenario(level, name: str | None) -> None:

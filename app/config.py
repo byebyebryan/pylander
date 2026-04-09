@@ -2,6 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+LEVEL_DEFAULT_BOTS: dict[str, str] = {
+    "terminal": "pdg",
+    "plunge": "pdg",
+    "boost": "pdg",
+    "terrain": "pdg",
+}
+
+
+def resolve_default_bot(level_name: str) -> str | None:
+    return LEVEL_DEFAULT_BOTS.get(str(level_name).strip().lower())
+
 
 @dataclass(frozen=True)
 class BenchTarget:

@@ -1001,9 +1001,15 @@ def test_parse_seed_spec_keeps_order_and_deduplicates() -> None:
     assert parse_seed_spec("0-2,2,5,4-3") == [0, 1, 2, 5, 4, 3]
 
 
-def test_resolve_default_bot_invalid_level_fails_fast() -> None:
-    with pytest.raises(ValueError, match="Failed to load level 'missing_level'"):
-        run_single_module.resolve_default_bot("missing_level")
+def test_resolve_default_bot_invalid_level_returns_none() -> None:
+    assert run_single_module.resolve_default_bot("missing_level") is None
+
+
+def test_resolve_default_bot_valid_levels() -> None:
+    assert run_single_module.resolve_default_bot("terminal") == "pdg"
+    assert run_single_module.resolve_default_bot("plunge") == "pdg"
+    assert run_single_module.resolve_default_bot("boost") == "pdg"
+    assert run_single_module.resolve_default_bot("terrain") == "pdg"
 
 
 def test_resolve_benchmark_plan_invalid_level_fails_fast() -> None:

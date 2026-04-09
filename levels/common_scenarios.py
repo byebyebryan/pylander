@@ -301,10 +301,9 @@ def _build_base_terrain(seed: int, spec: ScenarioLevelSpec):
 
 
 class ScenarioLevel(EndResultMixin, Level):
-    """Single-scenario level with deterministic world setup and optional default bot."""
+    """Single-scenario level with deterministic world setup."""
 
     scenario: ScenarioLevelSpec | None = None
-    default_bot_name: str | None = None
     _benchmark_random_mode: BenchmarkRandomMode = "sample"
 
     def set_benchmark_mode(self, mode: str) -> None:

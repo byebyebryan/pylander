@@ -11,7 +11,6 @@ from core.level_capabilities import (
     level_trace_sample_period_s,
     level_scenario_tag,
     list_batch_scenarios_safe,
-    resolve_default_bot_name,
     resolve_level_eval_goals,
     resolve_level_benchmark_profile,
     scenario_has_randomized_fields_safe,
@@ -20,13 +19,6 @@ from core.level_capabilities import (
     set_eval_scenario_checked,
 )
 from levels import create_level, list_available_levels
-
-
-def test_resolve_default_bot_name_normalizes_whitespace() -> None:
-    class _Level:
-        default_bot_name = "  pdg  "
-
-    assert resolve_default_bot_name(_Level()) == "pdg"
 
 
 def test_set_eval_scenario_checked_requires_capability() -> None:
