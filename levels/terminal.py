@@ -25,7 +25,6 @@ from levels.terminal_spawn import (
 
 
 class TerminalLevel(ScenarioCatalogMixin[TerminalScenario], ScenarioLevel):
-    default_bot_name = "pdg"
     _scenario_by_name = TERMINAL_SCENARIO_BY_NAME
     _default_scenario_name = TERMINAL_DEFAULT_SCENARIO
     _smoke_benchmark_scenarios = TERMINAL_SMOKE_SCENARIOS

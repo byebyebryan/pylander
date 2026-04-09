@@ -59,14 +59,6 @@ class SupportsBenchmarkProfile(Protocol):
     def benchmark_profile(self) -> LevelBenchmarkProfile: ...
 
 
-def resolve_default_bot_name(level) -> str | None:
-    default_bot = getattr(level, "default_bot_name", None)
-    if not isinstance(default_bot, str):
-        return None
-    normalized = default_bot.strip()
-    return normalized if normalized else None
-
-
 def set_eval_scenario_checked(level, name: str | None) -> None:
     if name is None:
         return

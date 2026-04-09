@@ -15,7 +15,7 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - `game.py`: game orchestration (ECS systems + render loop).
 - `core/`: simulation primitives (ECS, physics, terrain, sensors, systems).
 - `core/systems/`: per-tick systems (treat as hot-path code).
-- `levels/`: scenarios/levels (often define `default_bot_name` + scenario selection).
+- `levels/`: scenarios/levels and scenario selection.
 - `bots/`: bot implementations (must use sensor/action API).
 - `ui/`: rendering, camera, HUD/overlays.
 - `tests/`: pytest suite.
