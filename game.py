@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
-from typing import Any, TYPE_CHECKING
-from typing import Callable, Iterable, cast
+from typing import Any, Iterable, cast
 
 from core.bot import Bot, BotEvalDecision, resolve_bot_name
 from core.components import Transform
@@ -23,12 +21,8 @@ from runtime.actor_session import (
 )
 from runtime.bot_loop import update_bot_steps
 from runtime.game_bootstrap import (
-    bootstrap_bot_runtime,
     bootstrap_core_runtime,
-    bootstrap_empty_bot_runtime,
     bootstrap_interactive_runtime,
-    bootstrap_null_trace_runtime,
-    bootstrap_trace_runtime,
 )
 from runtime.loop_timing import LoopTimers
 from runtime.run_metrics import RunMetricsTracker
@@ -38,6 +32,11 @@ from runtime.interactive_session import (
     process_interactive_input,
     render_frame,
     reset_active_actor_session,
+)
+from runtime.runtime_adapter import (
+    BotRuntimeAdapter,
+    EvalHooks,
+    make_runtime_adapter,
 )
 from runtime.session_loop import SessionLoopContext, run_session_loop
 from runtime.sensors import resolve_eval_target_pos
@@ -50,70 +49,6 @@ from core.config import (
     PHYSICS_FPS,
     TARGET_RENDERING_FPS,
 )
-
-
-@dataclass(frozen=True)
-class EvalHooks:
-    prime_boost_cutoff_for_primary_bot: Callable[[Any, dict[str, Bot]], None]
-    track_plot_events: Callable[..., None]
-    print_headless_stats: Callable[..., None]
-    resolve_headless_bot_eval_decision: Callable[..., BotEvalDecision | None]
-    merge_bot_snapshots_into_result: Callable[..., None]
-    apply_bot_eval_to_result: Callable[..., None]
-
-
-def _default_eval_hooks() -> EvalHooks:
-    from runtime.eval.boost_cutoff import prime_boost_cutoff_for_primary_bot
-    from runtime.eval.headless_stats import print_headless_stats
-    from runtime.eval.plot_events import track_plot_events
-    from runtime.eval.result_pipeline import (
-        apply_bot_eval_to_result,
-        merge_bot_snapshots_into_result,
-        resolve_headless_bot_eval_decision,
-    )
-
-    return EvalHooks(
-        prime_boost_cutoff_for_primary_bot=prime_boost_cutoff_for_primary_bot,
-        track_plot_events=track_plot_events,
-        print_headless_stats=print_headless_stats,
-        resolve_headless_bot_eval_decision=resolve_headless_bot_eval_decision,
-        merge_bot_snapshots_into_result=merge_bot_snapshots_into_result,
-        apply_bot_eval_to_result=apply_bot_eval_to_result,
-    )
-
-
-def build_noop_eval_hooks() -> EvalHooks:
-    def noop_prime(level, actor_bots):
-        pass
-
-    def noop_track_plot_events(**kwargs):
-        pass
-
-    def noop_print_headless_stats(**kwargs):
-        pass
-
-    def noop_resolve_headless_bot_eval_decision(**kwargs):
-        return None
-
-    def noop_merge_bot_snapshots_into_result(**kwargs):
-        pass
-
-    def noop_apply_bot_eval_to_result(result, eval_goal, **kwargs):
-        result["eval_goal"] = eval_goal
-        result["eval_early_end"] = False
-
-    return EvalHooks(
-        prime_boost_cutoff_for_primary_bot=noop_prime,
-        track_plot_events=noop_track_plot_events,
-        print_headless_stats=noop_print_headless_stats,
-        resolve_headless_bot_eval_decision=noop_resolve_headless_bot_eval_decision,
-        merge_bot_snapshots_into_result=noop_merge_bot_snapshots_into_result,
-        apply_bot_eval_to_result=noop_apply_bot_eval_to_result,
-    )
-
-
-if TYPE_CHECKING:
-    from runtime.game_bootstrap import BotRuntimeBootstrap, TraceRuntimeBootstrap
 
 
 class LanderGame:
@@ -131,18 +66,12 @@ class LanderGame:
         bot_profile_enabled: bool | None = None,
         bot_profile_interval_s: float | None = None,
         bot_profile_log_lines: bool | None = None,
-        bot_runtime_factory: Callable[..., BotRuntimeBootstrap] | None = None,
-        trace_runtime_factory: Callable[..., TraceRuntimeBootstrap] | None = None,
         eval_hooks: EvalHooks | None = None,
+        runtime_adapter: BotRuntimeAdapter | None = None,
     ):
         self.headless = headless
         self.bot = bot
-        if eval_hooks is not None:
-            self._eval_hooks = eval_hooks
-        elif bot is None:
-            self._eval_hooks = build_noop_eval_hooks()
-        else:
-            self._eval_hooks = _default_eval_hooks()
+        self._injected_eval_hooks = eval_hooks
         self.level = level
         self.eval_goal = normalize_eval_goal(eval_goal)
         seed = random.randint(0, 1000000) if seed is None else seed
@@ -197,45 +126,40 @@ class LanderGame:
         self.renderer = interactive_runtime.renderer
         self.player_controller = interactive_runtime.player_controller
 
-        if bot_runtime_factory is None:
-            if bot is None:
-                bot_runtime_factory = bootstrap_empty_bot_runtime
-            else:
-                bot_runtime_factory = bootstrap_bot_runtime
-        bot_runtime = bot_runtime_factory(
+        if runtime_adapter is None:
+            runtime_adapter = make_runtime_adapter(bot, headless)
+        (
+            bot_runtime,
+            trace_runtime,
+            resolved_eval_hooks,
+            plot_events_seen,
+        ) = runtime_adapter.resolve(
             level=self.level,
             actors=self.actors,
             ecs_world=self.ecs_world,
             world_bots=getattr(self.level.world, "actor_bots", None),
             primary_bot=self.bot,
             active_uid=self.active_player_actor_uid,
+            active_uid_getter=lambda: self.active_player_actor_uid,
             systems=self.systems,
             profiler=self._bot_profiler,
             terrain=self.terrain,
             engine=self.engine,
+            seed=self.seed,
+            headless=headless,
+            eval_goal=self.eval_goal,
         )
         self.actor_bots = bot_runtime.actor_bots
         self._bot_loop_context = bot_runtime.bot_loop_context
         self._physics_step_context = bot_runtime.physics_step_context
-
-        self._eval_hooks.prime_boost_cutoff_for_primary_bot(self.level, self.actor_bots)
-
-        self.level.start(self)
-        if trace_runtime_factory is None:
-            if bot is None:
-                trace_runtime_factory = bootstrap_null_trace_runtime
-            else:
-                trace_runtime_factory = bootstrap_trace_runtime
-        trace_runtime = trace_runtime_factory(
-            terrain=self.terrain,
-            ecs_world=self.ecs_world,
-            actor_bots=self.actor_bots,
-            active_uid_getter=lambda: self.active_player_actor_uid,
-            headless=self.headless,
-            level=self.level,
-            seed=self.seed,
-        )
         self.trace_recorder = trace_runtime.trace_recorder
+        self._bot_loop_context.trace_recorder = self.trace_recorder
+        self._plot_events_seen = plot_events_seen
+        if self._injected_eval_hooks is None:
+            self._eval_hooks = resolved_eval_hooks
+        else:
+            self._eval_hooks = self._injected_eval_hooks
+
         self.trace_recorder.set_identity(
             level_name=level_name_tag(self.level),
             scenario_name=level_scenario_tag(self.level) or None,
@@ -246,8 +170,9 @@ class LanderGame:
         self.trace_recorder.set_trace_root_dir(
             getattr(self.level, "trace_root_dir", None)
         )
-        self._bot_loop_context.trace_recorder = self.trace_recorder
-        self._plot_events_seen = trace_runtime.events_seen
+        self._eval_hooks.prime_boost_cutoff_for_primary_bot(self.level, self.actor_bots)
+
+        self.level.start(self)
         self._bot_eval_decision: BotEvalDecision | None = None
 
     def get_active_actor(self) -> Entity:
