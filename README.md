@@ -35,7 +35,11 @@ overdrive cheap.
 ## Setup
 
 ```bash
+# Base install (interactive play only, no bots)
 uv sync
+
+# With bot support (includes cvxpy for PDG optimizer)
+uv sync --extra bot
 ```
 
 ## Testing

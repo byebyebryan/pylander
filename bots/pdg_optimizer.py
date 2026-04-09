@@ -3,18 +3,29 @@
 This module provides a small receding-horizon trajectory optimizer used by
 `pdg`. It keeps the formulation convex (QP/SOCP) so solves are robust and
 warm-start friendly at runtime.
+
+cvxpy and numpy are imported lazily on first PDGOptimizer instantiation to
+allow the base game to run without the bot dependency group installed.
 """
 
 from __future__ import annotations
 
-import importlib
 import math
 import time
 from dataclasses import dataclass
 from typing import Any
 
-cp = importlib.import_module("cvxpy")
-np = importlib.import_module("numpy")
+
+def _lazy_import_cvxpy():
+    import importlib
+
+    return importlib.import_module("cvxpy")
+
+
+def _lazy_import_numpy():
+    import importlib
+
+    return importlib.import_module("numpy")
 
 
 @dataclass(frozen=True)
@@ -95,10 +106,16 @@ class PDGPlan:
 
 
 class PDGOptimizer:
-    """Small convex powered-descent optimizer with reusable problem graph."""
+    """Small convex powered-descent optimizer with reusable problem graph.
+
+    cvxpy and numpy are imported lazily on first instantiation to allow
+    the base game to run without the bot dependency group installed.
+    """
 
     def __init__(self, cfg: PDGOptimizerConfig | None = None) -> None:
         self._cfg = cfg or PDGOptimizerConfig()
+        self._cp = _lazy_import_cvxpy()
+        self._np = _lazy_import_numpy()
         self._problem: Any | None = None
 
         self._x: Any | None = None
@@ -159,6 +176,7 @@ class PDGOptimizer:
         target_y: float,
         altitude_hint: float,
     ) -> tuple[Any, Any]:
+        np = self._np
         cfg = self._cfg
         n = int(cfg.horizon_steps)
         x_ref = np.linspace(float(x), float(target_x), n + 1)
@@ -188,6 +206,8 @@ class PDGOptimizer:
         return x_ref, y_ref
 
     def _build_problem(self) -> None:
+        cp = self._cp
+        np = self._np
         cfg = self._cfg
         n = int(cfg.horizon_steps)
         dt = float(cfg.step_dt)
@@ -464,6 +484,7 @@ class PDGOptimizer:
     ) -> PDGPlan | None:
         if self._problem is None:
             return None
+        np = self._np
         state = self._require_solver_state()
         problem = state["problem"]
         x_var = state["x"]
