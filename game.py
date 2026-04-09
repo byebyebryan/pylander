@@ -25,7 +25,9 @@ from runtime.bot_loop import update_bot_steps
 from runtime.game_bootstrap import (
     bootstrap_bot_runtime,
     bootstrap_core_runtime,
+    bootstrap_empty_bot_runtime,
     bootstrap_interactive_runtime,
+    bootstrap_null_trace_runtime,
     bootstrap_trace_runtime,
 )
 from runtime.loop_timing import LoopTimers
@@ -133,9 +135,14 @@ class LanderGame:
         trace_runtime_factory: Callable[..., TraceRuntimeBootstrap] | None = None,
         eval_hooks: EvalHooks | None = None,
     ):
-        self._eval_hooks = eval_hooks or _default_eval_hooks()
         self.headless = headless
         self.bot = bot
+        if eval_hooks is not None:
+            self._eval_hooks = eval_hooks
+        elif bot is None:
+            self._eval_hooks = build_noop_eval_hooks()
+        else:
+            self._eval_hooks = _default_eval_hooks()
         self.level = level
         self.eval_goal = normalize_eval_goal(eval_goal)
         seed = random.randint(0, 1000000) if seed is None else seed
@@ -191,7 +198,10 @@ class LanderGame:
         self.player_controller = interactive_runtime.player_controller
 
         if bot_runtime_factory is None:
-            bot_runtime_factory = bootstrap_bot_runtime
+            if bot is None:
+                bot_runtime_factory = bootstrap_empty_bot_runtime
+            else:
+                bot_runtime_factory = bootstrap_bot_runtime
         bot_runtime = bot_runtime_factory(
             level=self.level,
             actors=self.actors,
@@ -212,7 +222,10 @@ class LanderGame:
 
         self.level.start(self)
         if trace_runtime_factory is None:
-            trace_runtime_factory = bootstrap_trace_runtime
+            if bot is None:
+                trace_runtime_factory = bootstrap_null_trace_runtime
+            else:
+                trace_runtime_factory = bootstrap_trace_runtime
         trace_runtime = trace_runtime_factory(
             terrain=self.terrain,
             ecs_world=self.ecs_world,

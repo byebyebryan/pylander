@@ -11,7 +11,6 @@ from app.config import (
     RunCommand,
     RunSettings,
 )
-from bots import list_available_bots
 from landers import list_available_landers
 from app.selector import parse_seed_spec, parse_selector, render_selector
 from core.trace_policy import (
@@ -25,6 +24,15 @@ from levels.benchmark_catalog import (
     expand_selector_bindings,
     resolve_selector_binding,
 )
+
+
+def _list_available_bots() -> list[str]:
+    try:
+        from bots import list_available_bots
+
+        return list_available_bots()
+    except ImportError:
+        return []
 
 
 def _format_list(title: str, items: list[str]) -> str:
@@ -127,7 +135,7 @@ def _add_common_run_args(
 
 def build_parser() -> argparse.ArgumentParser:
     levels = list_public_levels()
-    bots = list_available_bots()
+    bots = _list_available_bots()
     landers = list_available_landers()
 
     epilog = "\n".join(
@@ -325,7 +333,7 @@ def parse_command(
 
     levels_list = list_public_levels()
     levels = set(levels_list)
-    bots = set(list_available_bots())
+    bots = set(_list_available_bots())
     landers = set(list_available_landers())
     default_level = _default_level(levels_list)
 
