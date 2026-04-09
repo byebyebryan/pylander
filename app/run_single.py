@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 from typing import Any, Iterable, cast
 
-from bots import create_bot
 from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal, normalize_eval_goals
 from core.eval import normalize_run_result
 from core.level_capabilities import (
@@ -13,14 +12,25 @@ from core.level_capabilities import (
     set_eval_goal_checked,
     set_eval_scenario_checked,
 )
-from game import LanderGame, _default_eval_hooks
+from game import LanderGame, _default_eval_hooks, build_noop_eval_hooks
 from levels import create_level
 from levels.registry import is_public_level
 from levels.benchmark_catalog import resolve_selector_binding
-from runtime.game_bootstrap import bootstrap_bot_runtime, bootstrap_trace_runtime
+from runtime.game_bootstrap import (
+    bootstrap_bot_runtime,
+    bootstrap_empty_bot_runtime,
+    bootstrap_null_trace_runtime,
+    bootstrap_trace_runtime,
+)
 
 from app.config import RunSettings
 from app.reporting import print_headless_results
+
+
+def _create_bot(name: str, *, config_override: dict[str, Any] | None = None):
+    from bots import create_bot
+
+    return create_bot(name, config_override=config_override)
 
 
 def create_level_checked(level_name: str):
@@ -166,7 +176,7 @@ def run_once(
     run_bot_name = resolve_run_bot_name(settings, level)
     bot_config = _load_bot_config(settings.bot_config_path)
     bot = (
-        create_bot(run_bot_name, config_override=bot_config)
+        _create_bot(run_bot_name, config_override=bot_config)
         if run_bot_name is not None
         else None
     )
@@ -195,9 +205,13 @@ def run_once(
         bot_profile_enabled=settings.bot_profile_enabled,
         bot_profile_interval_s=settings.bot_profile_interval_s,
         bot_profile_log_lines=settings.bot_profile_log_lines,
-        bot_runtime_factory=bootstrap_bot_runtime,
-        trace_runtime_factory=bootstrap_trace_runtime,
-        eval_hooks=_default_eval_hooks(),
+        bot_runtime_factory=bootstrap_empty_bot_runtime
+        if bot is None
+        else bootstrap_bot_runtime,
+        trace_runtime_factory=bootstrap_null_trace_runtime
+        if bot is None
+        else bootstrap_trace_runtime,
+        eval_hooks=build_noop_eval_hooks() if bot is None else _default_eval_hooks(),
     )
     result = game.run(
         print_freq=settings.print_freq,
