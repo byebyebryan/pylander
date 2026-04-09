@@ -5,10 +5,10 @@ from typing import Any, cast
 
 import pytest
 
-import bots.pdg_terminal_gate as terminal_gate
-from bots import create_bot
-from bots.pdg_stages import FlightStage
-from bots.pdg_terrain_divert import (
+import bot_framework.bots.pdg_terminal_gate as terminal_gate
+from bot_framework.bots import create_bot
+from bot_framework.bots.pdg_stages import FlightStage
+from bot_framework.bots.pdg_terrain_divert import (
     TerrainDivertProbe,
     backstop_containment_override,
     clip_targetward_override,

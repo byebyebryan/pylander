@@ -5,9 +5,9 @@ from typing import Any, cast
 
 import pytest
 
-from bots import create_bot
-from bots.common_ballistics import BallisticProjection
-from bots.pdg import FlightStage, UpdateContext
+from bot_framework.bots import create_bot
+from bot_framework.bots.common_ballistics import BallisticProjection
+from bot_framework.bots.pdg import FlightStage, UpdateContext
 from conftest import make_sensors
 from core.bot import (
     BotAction,

@@ -5,8 +5,8 @@ from typing import Any, cast
 
 from dataclasses import replace
 
-from bots import create_bot
-from bots.pdg_boost_clearance import (
+from bot_framework.bots import create_bot
+from bot_framework.bots.pdg_boost_clearance import (
     apply_boost_clearance_guard,
     evaluate_boost_clearance_probe,
 )

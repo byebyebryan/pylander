@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-import bots.common_math as common_math
-import bots.plunge as plunge_module
-from bots.common_ballistics import BallisticProjection
-from bots.plunge import PlungeBot
+import bot_framework.bots.common_math as common_math
+import bot_framework.bots.plunge as plunge_module
+from bot_framework.bots.common_ballistics import BallisticProjection
+from bot_framework.bots.plunge import PlungeBot
 from conftest import make_sensors
 from core.sensor import RadarContact
 

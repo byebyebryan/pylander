@@ -6,9 +6,9 @@ from typing import Any, cast
 
 import pytest
 
-import bots.pdg_terminal_gate as terminal_gate
-from bots import create_bot
-from bots.pdg_terminal_gate import _latest_safe_state
+import bot_framework.bots.pdg_terminal_gate as terminal_gate
+from bot_framework.bots import create_bot
+from bot_framework.bots.pdg_terminal_gate import _latest_safe_state
 from conftest import make_sensors
 from game import LanderGame
 from levels import create_level

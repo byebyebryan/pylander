@@ -3,9 +3,9 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
-from bots.pdg_config import PDGConfig
+from bot_framework.bots.pdg_config import PDGConfig
 
-from bots.pdg_eval import (
+from bot_framework.bots.pdg_eval import (
     build_evaluation_decision,
     build_evaluation_snapshot,
     reset_evaluation_state,

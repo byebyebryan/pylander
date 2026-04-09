@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from bots import create_bot
-from bots.common_ballistics import (
+from bot_framework.bots import create_bot
+from bot_framework.bots.common_ballistics import (
     BallisticProjection,
     estimate_ground_time_to_impact,
     estimate_target_y_projection,
@@ -14,7 +14,9 @@ from game import LanderGame
 from levels import create_level as create_level_by_name
 
 
-def test_sensors_only_bot_path_and_profile_metrics(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_sensors_only_bot_path_and_profile_metrics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     class _CountingBot(Bot):
         def __init__(self) -> None:
             super().__init__()
@@ -53,7 +55,9 @@ def test_target_y_projection_returns_crossing_for_descending_target() -> None:
     assert projection.t_fall > 0.0
     assert projection.target_x == pytest.approx(30.0)
     assert projection.impact_x is not None
-    assert projection.projected_dx == pytest.approx(projection.target_x - projection.impact_x)
+    assert projection.projected_dx == pytest.approx(
+        projection.target_x - projection.impact_x
+    )
 
 
 def test_target_y_projection_reports_no_solution_when_apex_below_target() -> None:
