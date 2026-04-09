@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.eval_goals import EVAL_GOAL_BOOST_CUTOFF, KNOWN_EVAL_GOAL_SET, normalize_eval_goal
-from levels.registry import list_public_levels, selector_path_looks_like_seed
+from core.eval_goals import (
+    EVAL_GOAL_BOOST_CUTOFF,
+    KNOWN_EVAL_GOAL_SET,
+    normalize_eval_goal,
+)
+from levels.registry import list_public_levels
+from levels.benchmark_catalog import selector_path_looks_like_seed
 from core.selector_codec import (
     render_record_selector as _render_record_selector,
     render_selector as _render_selector,
@@ -99,7 +104,12 @@ def parse_selector(
         known = ", ".join(sorted(known_levels))
         raise ValueError(f"Unknown level '{level_name}'. Expected one of: {known}")
 
-    if goal is None and len(tokens) >= 2 and tokens[-1] == "boost" and level_name == "boost":
+    if (
+        goal is None
+        and len(tokens) >= 2
+        and tokens[-1] == "boost"
+        and level_name == "boost"
+    ):
         replacement_tokens = [*tokens[:-1], EVAL_GOAL_BOOST_CUTOFF]
         if seed_token is not None:
             replacement_tokens.append(seed_token)
@@ -126,12 +136,18 @@ def _legacy_selector_hint(
     *,
     known_levels: set[str],
 ) -> str | None:
-    parts = [part.strip().lower() for part in str(raw_selector or "").split(":") if part.strip()]
+    parts = [
+        part.strip().lower()
+        for part in str(raw_selector or "").split(":")
+        if part.strip()
+    ]
     if not parts:
         return None
 
     legacy_level = parts[0]
-    known_public_levels = {level for level in list_public_levels() if level in known_levels}
+    known_public_levels = {
+        level for level in list_public_levels() if level in known_levels
+    }
     if legacy_level in known_public_levels:
         return None
 

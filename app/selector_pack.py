@@ -11,9 +11,9 @@ from core.level_capabilities import (
     LevelBenchmarkProfile,
 )
 from core.selector_codec import render_selector
-from levels.registry import (
+from levels.registry import list_public_levels
+from levels.benchmark_catalog import (
     expand_selector_bindings,
-    list_public_levels,
     resolve_selector_binding,
     resolve_public_level_benchmark_profile,
 )

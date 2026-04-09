@@ -15,8 +15,8 @@ from core.level_capabilities import (
 )
 from game import LanderGame
 from levels import create_level
-from levels.registry import is_public_level, resolve_selector_binding
-
+from levels.registry import is_public_level
+from levels.benchmark_catalog import resolve_selector_binding
 from app.config import RunSettings
 from app.reporting import print_headless_results
 
