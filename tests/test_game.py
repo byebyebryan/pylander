@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -1686,3 +1687,154 @@ def test_plot_command_enables_trace_by_default() -> None:
     assert command.run.trace_enabled is True
     assert command.run.trace_sample_period_s == 0.25
     assert command.run.trace_detail == "debug"
+
+
+def test_landergame_uses_injected_bot_runtime_factory() -> None:
+    from runtime.game_bootstrap import BotRuntimeBootstrap
+
+    call_count = 0
+
+    def counting_bot_factory(**kwargs: Any) -> BotRuntimeBootstrap:
+        nonlocal call_count
+        call_count += 1
+        from runtime.game_bootstrap import bootstrap_bot_runtime
+
+        return bootstrap_bot_runtime(**kwargs)
+
+    level = create_level_by_name("flat")
+    game = LanderGame(
+        level=level,
+        seed=0,
+        bot=create_bot("pdg"),
+        headless=True,
+        bot_runtime_factory=counting_bot_factory,
+    )
+    assert call_count == 1
+    assert game.actor_bots is not None
+    assert game._bot_loop_context is not None
+    assert game._physics_step_context is not None
+
+
+def test_landergame_uses_injected_trace_runtime_factory() -> None:
+    from runtime.game_bootstrap import TraceRuntimeBootstrap
+
+    call_count = 0
+
+    def counting_trace_factory(**kwargs: Any) -> TraceRuntimeBootstrap:
+        nonlocal call_count
+        call_count += 1
+        from runtime.game_bootstrap import bootstrap_trace_runtime
+
+        return bootstrap_trace_runtime(**kwargs)
+
+    level = create_level_by_name("flat")
+    game = LanderGame(
+        level=level,
+        seed=0,
+        bot=create_bot("pdg"),
+        headless=True,
+        trace_runtime_factory=counting_trace_factory,
+    )
+    assert call_count == 1
+    assert game.trace_recorder is not None
+    assert game._plot_events_seen is not None
+
+
+def test_landergame_uses_both_injected_factories() -> None:
+    from runtime.game_bootstrap import BotRuntimeBootstrap, TraceRuntimeBootstrap
+
+    bot_call_count = 0
+    trace_call_count = 0
+
+    def counting_bot_factory(**kwargs: Any) -> BotRuntimeBootstrap:
+        nonlocal bot_call_count
+        bot_call_count += 1
+        from runtime.game_bootstrap import bootstrap_bot_runtime
+
+        return bootstrap_bot_runtime(**kwargs)
+
+    def counting_trace_factory(**kwargs: Any) -> TraceRuntimeBootstrap:
+        nonlocal trace_call_count
+        trace_call_count += 1
+        from runtime.game_bootstrap import bootstrap_trace_runtime
+
+        return bootstrap_trace_runtime(**kwargs)
+
+    level = create_level_by_name("flat")
+    game = LanderGame(
+        level=level,
+        seed=0,
+        bot=create_bot("pdg"),
+        headless=True,
+        bot_runtime_factory=counting_bot_factory,
+        trace_runtime_factory=counting_trace_factory,
+    )
+    assert bot_call_count == 1
+    assert trace_call_count == 1
+    assert game.actor_bots is not None
+    assert game.trace_recorder is not None
+
+
+def test_landergame_uses_injected_eval_hooks_for_prime_boost_cutoff() -> None:
+    from game import EvalHooks
+
+    calls: list[tuple[Any, Any]] = []
+
+    def stub_prime(level, actor_bots):
+        calls.append((level, actor_bots))
+
+    hooks = EvalHooks(
+        prime_boost_cutoff_for_primary_bot=stub_prime,
+        track_plot_events=lambda **kw: None,
+        print_headless_stats=lambda **kw: None,
+        resolve_headless_bot_eval_decision=lambda **kw: None,
+        merge_bot_snapshots_into_result=lambda **kw: None,
+        apply_bot_eval_to_result=lambda **kw: None,
+    )
+    level = create_level_by_name("terminal")
+    game = LanderGame(
+        level=level,
+        seed=0,
+        bot=create_bot("pdg"),
+        headless=True,
+        eval_hooks=hooks,
+    )
+    assert len(calls) == 1
+    assert calls[0][0] is level
+    assert calls[0][1] is game.actor_bots
+
+
+def test_landergame_uses_injected_eval_hooks_in_result_path() -> None:
+    from game import EvalHooks
+
+    merge_calls: list[tuple[Any, Any]] = []
+    apply_calls: list[tuple[Any, Any, Any]] = []
+
+    def stub_merge(actor_bots, result):
+        merge_calls.append((actor_bots, result))
+
+    def stub_apply(result, eval_goal, decision):
+        apply_calls.append((result, eval_goal, decision))
+
+    hooks = EvalHooks(
+        prime_boost_cutoff_for_primary_bot=lambda *a, **kw: None,
+        track_plot_events=lambda **kw: None,
+        print_headless_stats=lambda **kw: None,
+        resolve_headless_bot_eval_decision=lambda **kw: None,
+        merge_bot_snapshots_into_result=stub_merge,
+        apply_bot_eval_to_result=stub_apply,
+    )
+    level = create_level_by_name("flat")
+    game = LanderGame(
+        level=level,
+        seed=0,
+        bot=create_bot("pdg"),
+        headless=True,
+        eval_hooks=hooks,
+    )
+    result = game.run(print_freq=0, max_steps=2, max_time=2.0)
+    assert len(merge_calls) == 1
+    assert merge_calls[0][0] is game.actor_bots
+    assert merge_calls[0][1] is result
+    assert len(apply_calls) == 1
+    assert apply_calls[0][1] == "landing"

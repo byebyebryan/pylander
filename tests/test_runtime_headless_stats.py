@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import runtime.headless_stats as headless_stats
+import runtime.eval.headless_stats as headless_stats
 
 
 class _Bot:
@@ -15,7 +15,9 @@ def test_print_headless_stats_formats_actor_and_bot_lines(
     monkeypatch,
     capsys,
 ) -> None:
-    monkeypatch.setattr(headless_stats, "build_headless_stats", lambda _actor, _terrain: "ship:ok")
+    monkeypatch.setattr(
+        headless_stats, "build_headless_stats", lambda _actor, _terrain: "ship:ok"
+    )
 
     headless_stats.print_headless_stats(
         elapsed_time=12.34,

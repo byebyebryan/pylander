@@ -7,7 +7,7 @@ from game import LanderGame
 from levels import create_level as create_level_by_name
 from runtime.bot_loop import BotLoopContext, update_bot_steps
 from runtime.loop_timing import LoopTimers
-from runtime.metrics import BotLoopProfiler
+from runtime.bot_profiler import BotLoopProfiler
 
 
 def _make_timers() -> LoopTimers:
