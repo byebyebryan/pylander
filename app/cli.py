@@ -3,7 +3,14 @@ from __future__ import annotations
 import argparse
 import os
 
-from app.config import BenchCommand, BenchSettings, BenchTarget, Command, RunCommand, RunSettings
+from app.config import (
+    BenchCommand,
+    BenchSettings,
+    BenchTarget,
+    Command,
+    RunCommand,
+    RunSettings,
+)
 from bots import list_available_bots
 from landers import list_available_landers
 from app.selector import parse_seed_spec, parse_selector, render_selector
@@ -13,9 +20,9 @@ from core.trace_policy import (
     TRACE_DETAIL_REPORT,
     normalize_trace_detail,
 )
-from levels.registry import (
+from levels.registry import list_public_levels
+from levels.benchmark_catalog import (
     expand_selector_bindings,
-    list_public_levels,
     resolve_selector_binding,
 )
 
@@ -115,9 +122,7 @@ def _add_common_run_args(
         action="store_true",
         help="Terminate after first landing",
     )
-    parser.add_argument(
-        "-l", "--lander", help="Choose lander variant"
-    )
+    parser.add_argument("-l", "--lander", help="Choose lander variant")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -173,8 +178,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to JSON bot override config (supported bots only)",
     )
     bench.add_argument("-l", "--lander")
-    bench.add_argument("-n", "--steps", type=int, default=None, help="Limit simulation to N steps")
-    bench.add_argument("-t", "--time", type=float, default=None, help="Limit simulation to S seconds")
+    bench.add_argument(
+        "-n", "--steps", type=int, default=None, help="Limit simulation to N steps"
+    )
+    bench.add_argument(
+        "-t", "--time", type=float, default=None, help="Limit simulation to S seconds"
+    )
     bench.add_argument(
         "--trace-sample-period-s",
         type=float,
@@ -278,7 +287,9 @@ def _build_run_settings(
         if args.trace_sample_period_s is None
         else max(0.05, float(args.trace_sample_period_s))
     )
-    trace_detail = normalize_trace_detail(args.trace_detail, default=default_trace_detail)
+    trace_detail = normalize_trace_detail(
+        args.trace_detail, default=default_trace_detail
+    )
     return RunSettings(
         level_name=binding.level_name,
         runtime_level_name=binding.runtime_level_name,
@@ -306,7 +317,9 @@ def _build_run_settings(
     )
 
 
-def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParser, Command]:
+def parse_command(
+    argv: list[str] | None = None,
+) -> tuple[argparse.ArgumentParser, Command]:
     parser = build_parser()
     args = parser.parse_args(argv)
 
@@ -427,7 +440,9 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
             max_steps=args.steps,
             trace_enabled=True,
             trace_sample_period_s=max(0.05, float(args.trace_sample_period_s)),
-            trace_detail=normalize_trace_detail(args.trace_detail, default=TRACE_DETAIL_REPORT),
+            trace_detail=normalize_trace_detail(
+                args.trace_detail, default=TRACE_DETAIL_REPORT
+            ),
             json_path=args.json,
             bot_profile_enabled=bool(args.bot_profile),
             bot_profile_interval_s=(
@@ -444,13 +459,19 @@ def parse_command(argv: list[str] | None = None) -> tuple[argparse.ArgumentParse
 
 def announce_command(command: Command) -> None:
     if isinstance(command, RunCommand):
-        print("Mode: interactive run" if not command.run.headless else "Mode: headless run")
+        print(
+            "Mode: interactive run"
+            if not command.run.headless
+            else "Mode: headless run"
+        )
         _print_run_summary(command.run)
         return
     if isinstance(command, BenchCommand):
         print("Mode: benchmark")
         cfg = command.bench
-        print(f"Selectors: {', '.join(_render_bench_target(sel) for sel in cfg.selectors)}")
+        print(
+            f"Selectors: {', '.join(_render_bench_target(sel) for sel in cfg.selectors)}"
+        )
         print(f"Workers requested: {cfg.workers}")
         if cfg.bot_config_path:
             print(f"Bot config: {cfg.bot_config_path}")

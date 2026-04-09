@@ -23,7 +23,7 @@ from core.level_capabilities import (
     set_eval_goal_checked,
     set_eval_scenario_checked,
 )
-from levels.registry import expand_selector_bindings
+from levels.benchmark_catalog import expand_selector_bindings
 from utils.tracepack import TRACEPACK_SCHEMA, TRACEPACK_SCHEMA_VERSION
 
 _AUTO_RANDOMIZED_BATCH_SEEDS: tuple[int, ...] = tuple(range(10))
@@ -41,7 +41,9 @@ class ResolvedBenchRun:
     run_key: str | None = None
 
     def display_label(self) -> str:
-        goal_label = "" if self.eval_goal_name == "landing" else f" goal={self.eval_goal_name}"
+        goal_label = (
+            "" if self.eval_goal_name == "landing" else f" goal={self.eval_goal_name}"
+        )
         if self.scenario_name is not None:
             return (
                 f"seed={self.seed} level={self.level_name} "
@@ -70,7 +72,9 @@ def _assign_run_keys(run_plan: list[ResolvedBenchRun]) -> list[ResolvedBenchRun]
         selector = _run_selector(target)
         instance_id = seen.get(selector, 0) + 1
         seen[selector] = instance_id
-        run_key = selector if totals.get(selector, 0) <= 1 else f"{selector}#{instance_id}"
+        run_key = (
+            selector if totals.get(selector, 0) <= 1 else f"{selector}#{instance_id}"
+        )
         assigned.append(replace(target, run_instance_id=instance_id, run_key=run_key))
     return assigned
 
@@ -108,7 +112,9 @@ def _resolve_output_path(
     return Path(path_value).resolve()
 
 
-def _scenario_has_randomized_fields(runtime_level_name: str, runtime_scenario_name: str | None) -> bool:
+def _scenario_has_randomized_fields(
+    runtime_level_name: str, runtime_scenario_name: str | None
+) -> bool:
     level = create_level_checked(runtime_level_name)
     set_eval_scenario_checked(level, runtime_scenario_name)
     return scenario_has_randomized_fields_safe(level, runtime_scenario_name)
@@ -170,7 +176,9 @@ def resolve_benchmark_plan(cfg: BenchSettings) -> list[ResolvedBenchRun]:
     scenario_randomized_cache: dict[tuple[str, str | None], bool] = {}
     goal_cache: dict[tuple[str, str], str] = {}
 
-    def scenario_has_randomized_cached(runtime_level_name: str, runtime_scenario_name: str | None) -> bool:
+    def scenario_has_randomized_cached(
+        runtime_level_name: str, runtime_scenario_name: str | None
+    ) -> bool:
         key = (runtime_level_name, runtime_scenario_name)
         if key not in scenario_randomized_cache:
             scenario_randomized_cache[key] = _scenario_has_randomized_fields(
@@ -197,7 +205,9 @@ def resolve_benchmark_plan(cfg: BenchSettings) -> list[ResolvedBenchRun]:
     return _assign_run_keys(run_plan)
 
 
-def _to_run_settings(cfg: BenchSettings, *, trace_root_dir: Path | None = None) -> RunSettings:
+def _to_run_settings(
+    cfg: BenchSettings, *, trace_root_dir: Path | None = None
+) -> RunSettings:
     first_binding = expand_selector_bindings(
         cfg.selectors[0].level_name,
         scenario_path=cfg.selectors[0].scenario_path,
@@ -241,20 +251,20 @@ def _run_batch_sequential(
     for run_idx, target in enumerate(run_plan, start=1):
         print(f"[{run_idx}/{total}] {target.display_label()}")
         records.append(
-                run_once_record(
-                    run_settings,
-                    seed=target.seed,
-                    level_name=target.runtime_level_name,
-                    eval_scenario_name=target.runtime_scenario_name,
-                    eval_goal_name=target.eval_goal_name,
-                    record_level_name=target.level_name,
-                    record_scenario_name=target.scenario_name,
-                    benchmark_mode=benchmark_mode,
-                    trace_selector_tag=target.run_key,
-                    run_key=target.run_key,
-                    run_instance_id=target.run_instance_id,
-                )
+            run_once_record(
+                run_settings,
+                seed=target.seed,
+                level_name=target.runtime_level_name,
+                eval_scenario_name=target.runtime_scenario_name,
+                eval_goal_name=target.eval_goal_name,
+                record_level_name=target.level_name,
+                record_scenario_name=target.scenario_name,
+                benchmark_mode=benchmark_mode,
+                trace_selector_tag=target.run_key,
+                run_key=target.run_key,
+                run_instance_id=target.run_instance_id,
             )
+        )
     return records
 
 
@@ -267,7 +277,9 @@ def run_benchmark(cfg: BenchSettings) -> int:
     unique_levels = sorted({target.level_name for target in run_plan})
     if cfg.bot_name is None:
         missing_defaults = [
-            level_name for level_name in unique_levels if resolve_default_bot(level_name) is None
+            level_name
+            for level_name in unique_levels
+            if resolve_default_bot(level_name) is None
         ]
         if missing_defaults:
             missing_csv = ",".join(missing_defaults)
@@ -393,10 +405,13 @@ def run_benchmark(cfg: BenchSettings) -> int:
             "trace_enabled": bool(cfg.trace_enabled),
             "trace_sample_period_s": float(cfg.trace_sample_period_s),
             "trace_detail": str(cfg.trace_detail),
-            "trace_root_path": (str(trace_root_dir) if trace_root_dir is not None else None),
+            "trace_root_path": (
+                str(trace_root_dir) if trace_root_dir is not None else None
+            ),
             "trace_root_rel": (
                 trace_root_dir.relative_to(outputs_root).as_posix()
-                if trace_root_dir is not None and trace_root_dir.is_relative_to(outputs_root)
+                if trace_root_dir is not None
+                and trace_root_dir.is_relative_to(outputs_root)
                 else None
             ),
             "run_index": trace_index,
