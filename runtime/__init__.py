@@ -1,5 +1,6 @@
 from runtime.bootstrap import SystemsBundle, create_systems
-from runtime.bot_loop import BotLoopContext, update_bot_steps
+from runtime.types import BotLoopContext
+from runtime.bot_loop import update_bot_steps
 from runtime.loop_timing import LoopTimers
 from runtime.run_metrics import RunMetricsTracker
 from runtime.bot_profiler import BotLoopProfiler

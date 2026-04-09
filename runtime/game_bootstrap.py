@@ -8,7 +8,7 @@ from core.controllers import PlayerController
 from core.ecs import World
 from runtime.actor_session import attach_primary_bot, install_world_actor_bots
 from runtime.bootstrap import SystemsBundle, create_systems
-from runtime.bot_loop import BotLoopContext
+from runtime.types import BotLoopContext
 from runtime.bot_profiler import BotLoopProfiler
 from runtime.physics_steps import PhysicsStepContext
 from ui.renderer import Renderer
