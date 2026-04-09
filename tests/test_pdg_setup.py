@@ -5,15 +5,15 @@ from typing import Any, cast
 
 import pytest
 
-from bots.common_ballistics import estimate_target_y_projection
-from bots.pdg_boost import (
+from bot_framework.bots.common_ballistics import estimate_target_y_projection
+from bot_framework.bots.pdg_boost import (
     evaluate_boost_quality,
     evaluate_boost_quality_after_settle,
     boost_cut_wind_down_s,
     boost_objective_geometry,
 )
-from bots.pdg_config import PDGConfig
-from bots.pdg_tracking import (
+from bot_framework.bots.pdg_config import PDGConfig
+from bot_framework.bots.pdg_tracking import (
     finalize_terminal_entry_metrics,
     update_terminal_post_entry_metrics,
 )

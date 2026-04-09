@@ -5,8 +5,8 @@ from typing import Any, cast
 
 import pytest
 
-from bots import create_bot
-from bots.pdg_optimizer import PDGOptimizer, PDGOptimizerConfig
+from bot_framework.bots import create_bot
+from bot_framework.bots.pdg_optimizer import PDGOptimizer, PDGOptimizerConfig
 from game import LanderGame
 from levels import create_level as create_level_by_name
 
