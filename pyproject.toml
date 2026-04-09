@@ -8,7 +8,12 @@ dependencies = [
     "pymunk>=7.1.0",
     "matplotlib>=3.9.2",
     "pygame-ce>=2.5.6",
+]
+
+[project.optional-dependencies]
+bot = [
     "cvxpy>=1.8.1",
+    "numpy>=2.0.0",
 ]
 
 [dependency-groups]
@@ -18,6 +23,9 @@ dev = [
     "ruff>=0.13.2",
     "vulture>=2.14",
 ]
+# Bot extras (includes cvxpy for PDG optimizer):
+#   uv install --optional bot
+#   uv sync --extra bot
 
 [tool.pytest.ini_options]
 addopts = "-n auto --dist load"
