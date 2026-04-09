@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from bot_framework.bot_actor_session import attach_primary_bot, install_world_actor_bots
 from core.bot import Bot
 from core.controllers import PlayerController
 from core.ecs import World
-from runtime.actor_session import attach_primary_bot, install_world_actor_bots
 from runtime.bootstrap import SystemsBundle, create_systems
 from runtime.types import BotLoopContext
 from runtime.bot_profiler import BotLoopProfiler

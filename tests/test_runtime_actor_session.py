@@ -18,8 +18,8 @@ from core.components import (
 )
 from core.ecs import Entity, World
 from core.maths import Vector2
+from bot_framework.bot_actor_session import active_actor_bot, attach_primary_bot
 from runtime.actor_policy import find_initial_player_actor_uid
-from runtime.actor_session import active_actor_bot, attach_primary_bot
 from runtime.player_session import set_active_actor, switch_active_actor
 from runtime.terrain_intel import build_bot_environment
 
