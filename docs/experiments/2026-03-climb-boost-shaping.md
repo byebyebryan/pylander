@@ -38,7 +38,7 @@ Historical touched files in the current layout:
 - `bot_framework/bots/pdg_tracking.py`
 - `bot_framework/bots/pdg_config.py`
 - `bot_framework/bots/pdg.py`
-- `game/levels/boost.py` (formerly `levels/climb.py`)
+- `bot_framework/scenarios/boost.py` (formerly `levels/climb.py`)
 
 Main themes:
 

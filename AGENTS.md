@@ -15,11 +15,13 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 - `game/`: game engine package (core simulation, runtime, levels, ui).
 - `game/core/`: simulation primitives (ECS, physics, terrain, sensors, systems).
 - `game/core/systems/`: per-tick systems (treat as hot-path code).
-- `game/levels/`: scenarios/levels and scenario selection.
+- `game/levels/`: player-facing gameplay levels.
+- `game/shared/`: neutral world/scenario construction helpers shared by gameplay and bot scenarios.
 - `game/runtime/`: runtime loop, session, bootstrap.
 - `game/ui/`: rendering, camera, HUD/overlays.
-- `landers/`: lander vehicle definitions (simple, classic, differential).
+- `game/landers/`: lander vehicle definitions (simple, classic, differential).
 - `bot_framework/bots/`: bot implementations (pdg, plunge).
+- `bot_framework/scenarios/`: bot/eval scenario packs and selector catalogs.
 - `app/`: CLI, benchmark orchestration, batch runner.
 - `utils/`: plotting, trace utilities.
 - `tests/`: pytest suite.

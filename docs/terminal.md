@@ -1,8 +1,8 @@
 # Terminal Level (`terminal`)
 
 `terminal` is the coast-to-terminal descent benchmark root. The runtime level is
-implemented in [`game/levels/terminal.py`](../game/levels/terminal.py), with scenario
-catalog and spawn helpers in `game/levels/terminal_*`.
+implemented in [`bot_framework/scenarios/terminal.py`](../bot_framework/scenarios/terminal.py), with scenario
+catalog and spawn helpers in `bot_framework/scenarios/terminal_*`.
 
 ## Selector layers
 

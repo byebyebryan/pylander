@@ -139,7 +139,7 @@ This framing is useful because it describes the reactive problem in control term
 
 Relevant code today:
 
-- `boost` terrain/catalog: [`../game/levels/boost.py`](../game/levels/boost.py), [`../game/levels/boost_catalog.py`](../game/levels/boost_catalog.py)
+- `boost` terrain/catalog: [`../bot_framework/scenarios/boost.py`](../bot_framework/scenarios/boost.py), [`../bot_framework/scenarios/boost_catalog.py`](../bot_framework/scenarios/boost_catalog.py)
 - per-frame bot sensor build: [`../game/runtime/sensors.py`](../game/runtime/sensors.py)
 - sensor update system: [`../game/core/systems/sensor_update.py`](../game/core/systems/sensor_update.py)
 - bot API: [`../game/core/bot.py`](../game/core/bot.py)
