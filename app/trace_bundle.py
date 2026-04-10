@@ -33,12 +33,12 @@ from app.output_viewer import (
 from app.selector_pack import build_selectors
 
 from game.core.selector_codec import render_record_selector
-from game.levels.registry import list_public_levels
-from game.levels.benchmark_catalog import (
-    resolve_selector_binding,
-    selector_children,
+from bot_framework.scenarios import (
+    resolve_scenario_binding as resolve_selector_binding,
+    scenario_children,
     selector_path_looks_like_seed,
 )
+from game.levels.registry import list_public_levels
 from utils.tracebundle import (
     artifact_path as _artifact_path,
     href_from_outputs as _href_from,
@@ -51,6 +51,8 @@ from utils.traceviewer import (
     ensure_viewer_assets,
     render_trace_detail_html,
 )
+
+selector_children = scenario_children
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
