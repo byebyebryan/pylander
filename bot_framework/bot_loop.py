@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from time import perf_counter
+from typing import TYPE_CHECKING
 
 from core.bot import BotAction
 from core.components import LanderState
-from runtime.loop_timing import LoopTimers
 
 from core.control_types import ControlTuple
-from runtime.types import BotLoopContext
+
+if TYPE_CHECKING:
+    from runtime.loop_timing import LoopTimers
+    from runtime.types import BotLoopContext
 
 
 def update_bot_steps(
