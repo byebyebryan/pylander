@@ -17,7 +17,7 @@ from bot_framework.bots.pdg_terrain_divert import (
     prefilter_terrain_divert,
 )
 from conftest import make_sensors
-from core.bot import (
+from game.core.bot import (
     BotEnvironment,
     BotTarget,
     BotTerrainSummary,

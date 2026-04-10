@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.eval_schema import (
+from game.core.eval_schema import (
     BOT_PDG_RESULT_FIELDS,
     EFFICIENCY_METRIC_FIELDS,
     FINAL_RESULT_SECTIONS,
 )
+
 _FINAL_RESULTS_BAR_WIDTH = 60
 _FINAL_RESULTS_VALUE_GAP = 4
 
@@ -36,7 +37,9 @@ def _label_width(
 
 def _print_rows(rows: list[tuple[str, Any]], *, label_width: int) -> int:
     for field, value in rows:
-        print(f"{field:<{label_width}}{' ' * _FINAL_RESULTS_VALUE_GAP}{_format_value(value)}")
+        print(
+            f"{field:<{label_width}}{' ' * _FINAL_RESULTS_VALUE_GAP}{_format_value(value)}"
+        )
     return len(rows)
 
 
@@ -60,7 +63,9 @@ def _collect_section_rows(
     return rows
 
 
-def _collect_bot_sections(result: dict[str, Any]) -> list[tuple[str, list[tuple[str, Any]]]]:
+def _collect_bot_sections(
+    result: dict[str, Any],
+) -> list[tuple[str, list[tuple[str, Any]]]]:
     grouped: dict[str, list[tuple[str, Any]]] = {}
     for key, value in result.items():
         if not isinstance(key, str) or not key.startswith("bot_"):
@@ -89,7 +94,8 @@ def print_headless_results(result: dict[str, Any]) -> None:
     print("FINAL RESULTS")
     print("=" * _FINAL_RESULTS_BAR_WIDTH)
     section_rows = [
-        _collect_section_rows(result, fields) for _title, fields in FINAL_RESULT_SECTIONS
+        _collect_section_rows(result, fields)
+        for _title, fields in FINAL_RESULT_SECTIONS
     ]
     bot_sections = _collect_bot_sections(result)
     trace_rows: list[tuple[str, Any]] = []
@@ -105,7 +111,9 @@ def print_headless_results(result: dict[str, Any]) -> None:
         trace_rows.append(("preview_rel_path", result["trace_preview_rel_path"]))
     label_width = _label_width(section_rows, bot_sections, trace_rows)
     printed = 0
-    for (title, _fields), rows in zip(FINAL_RESULT_SECTIONS, section_rows, strict=False):
+    for (title, _fields), rows in zip(
+        FINAL_RESULT_SECTIONS, section_rows, strict=False
+    ):
         printed += _print_section(title, rows, label_width=label_width)
     for bot_name, rows in bot_sections:
         if not rows:
@@ -115,7 +123,11 @@ def print_headless_results(result: dict[str, Any]) -> None:
     if trace_rows:
         print("\n[Trace Files]")
         _print_rows(trace_rows, label_width=label_width)
-    if printed == 0 and not result.get("trace_path") and not result.get("trace_rel_path"):
+    if (
+        printed == 0
+        and not result.get("trace_path")
+        and not result.get("trace_rel_path")
+    ):
         print("(no result fields)")
     print("=" * _FINAL_RESULTS_BAR_WIDTH)
 
@@ -136,8 +148,7 @@ def _print_efficiency_block(title: str, block: dict[str, Any] | None) -> None:
         median = float(stats.get("median", 0.0) or 0.0)
         p90 = float(stats.get("p90", 0.0) or 0.0)
         print(
-            f"  - {metric}: n={count} mean={mean:.2f} "
-            f"median={median:.2f} p90={p90:.2f}"
+            f"  - {metric}: n={count} mean={mean:.2f} median={median:.2f} p90={p90:.2f}"
         )
         printed += 1
     if printed == 0:
@@ -162,7 +173,9 @@ def print_batch_summary(
     print(f"Other:             {summary['other']}")
     print(f"Success rate:      {summary['success_rate']:.2%}")
 
-    _print_efficiency_block("Efficiency (successful runs)", summary.get("efficiency_success"))
+    _print_efficiency_block(
+        "Efficiency (successful runs)", summary.get("efficiency_success")
+    )
     _print_efficiency_block("Efficiency (all runs)", summary.get("efficiency_all"))
 
     if summary.get("by_scenario"):

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from core.bot import BoostCutoffMetrics, FlightPhaseSnapshot, PlotMarker
-from core.components import Transform
-from core.ecs import Entity, World
-from core.maths import Vector2
+from game.core.bot import BoostCutoffMetrics, FlightPhaseSnapshot, PlotMarker
+from game.core.components import Transform
+from game.core.ecs import Entity, World
+from game.core.maths import Vector2
 from bot_framework.eval.plot_events import track_plot_events
 
 

@@ -5,8 +5,8 @@ import math
 import pytest
 
 from conftest import FlatTerrain
-from core.maths import Vector2
-from core.physics import PhysicsEngine
+from game.core.maths import Vector2
+from game.core.physics import PhysicsEngine
 
 
 def test_closest_point_uses_vector_origin_signature() -> None:

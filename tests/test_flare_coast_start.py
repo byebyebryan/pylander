@@ -11,7 +11,7 @@ from bot_framework.bots import create_bot
 from bot_framework.bots.pdg_terminal_gate import _latest_safe_state
 from conftest import make_sensors
 from game import LanderGame
-from levels import create_level
+from game.levels import create_level
 
 
 def test_latest_safe_margin_shrinks_when_lateral_overshoot_requires_more_time() -> None:

@@ -3,10 +3,10 @@
 import math
 import pytest
 from conftest import FlatTerrain
-from core.maths import Vector2
-from core.physics import PhysicsEngine
-from core.physics_euler import EulerBackend
-from core.physics_pymunk import PymunkBackend
+from game.core.maths import Vector2
+from game.core.physics import PhysicsEngine
+from game.core.physics_euler import EulerBackend
+from game.core.physics_pymunk import PymunkBackend
 
 
 def _make_engine(backend):

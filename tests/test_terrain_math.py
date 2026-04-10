@@ -4,14 +4,14 @@ import math
 
 import pytest
 
-import core.terrain as terrain
-from core.landing_sites import (
+import game.core.terrain as terrain
+from game.core.landing_sites import (
     LandingSiteSurfaceModel,
     LandingSiteTerrainModifier,
     build_seeded_sites,
     to_view,
 )
-from core.maths import Range1D, Vector2
+from game.core.maths import Range1D, Vector2
 
 
 def _site(

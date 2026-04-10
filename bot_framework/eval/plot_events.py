@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from core.bot import BoostCutoffMetrics, PlotMarker
-from core.components import Transform
+from game.core.bot import BoostCutoffMetrics, PlotMarker
+from game.core.components import Transform
 from .result_pipeline import _safe_phase_snapshot
 
 _SHARED_MILESTONE_LABELS: dict[str, tuple[str, str]] = {

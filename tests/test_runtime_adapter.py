@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from runtime.runtime_adapter import (
+from game.runtime.runtime_adapter import (
     FullBotRuntimeAdapter,
     NoBotRuntimeAdapter,
     build_noop_eval_hooks,

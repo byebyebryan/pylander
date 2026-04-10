@@ -1,0 +1,123 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from game.core.components import PhysicsState, Transform
+from game.core.level import Level
+from game.core.maths import Vector2
+from game.core.ecs import require_component
+from game.levels.common_scenarios import (
+    ScenarioCatalogMixin,
+    ScenarioLevel,
+    ScenarioLevelSpec,
+    sync_engine_pose_velocity,
+    validate_scenario_recoverability,
+)
+
+
+@dataclass(frozen=True)
+class PlungeScenario:
+    name: str
+    spawn_clearance: float
+    initial_vx: float = 0.0
+    initial_vy_up: float = 0.0
+    initial_angle: float = 0.0
+    cargo_mass: float = 2250.0
+
+
+_ALTITUDE_TIERS: tuple[tuple[str, float], ...] = (
+    ("low", 100.0),
+    ("mid", 400.0),
+    ("high", 1600.0),
+)
+_WEIGHT_TIERS: tuple[tuple[str, float], ...] = (
+    ("empty", 0.0),
+    ("half", 2250.0),
+    ("full", 4500.0),
+)
+
+
+def _scenario_name(alt_tier: str, weight_tier: str) -> str:
+    return f"{alt_tier}:{weight_tier}"
+
+
+_SCENARIOS: tuple[PlungeScenario, ...] = tuple(
+    PlungeScenario(
+        name=_scenario_name(alt_tier, weight_tier),
+        spawn_clearance=spawn_clearance,
+        cargo_mass=cargo_mass,
+    )
+    for alt_tier, spawn_clearance in _ALTITUDE_TIERS
+    for weight_tier, cargo_mass in _WEIGHT_TIERS
+)
+
+_SCENARIO_BY_NAME = {item.name: item for item in _SCENARIOS}
+_DEFAULT_SCENARIO = _scenario_name("mid", "half")
+_SMOKE_BENCHMARK_SCENARIOS: tuple[str, ...] = (_scenario_name("mid", "half"),)
+_QUICK_BENCHMARK_SCENARIOS: tuple[str, ...] = (
+    _scenario_name("low", "half"),
+    _scenario_name("mid", "half"),
+    _scenario_name("high", "half"),
+)
+
+
+def _make_spec(scenario: PlungeScenario) -> ScenarioLevelSpec:
+    return ScenarioLevelSpec(
+        name=scenario.name,
+        start_x=0.0,
+        target_x=0.0,
+        spawn_clearance=scenario.spawn_clearance,
+        terrain_kind="flat",
+        target_mode="flush_flatten",
+        target_offset_y=0.0,
+        target_size=110.0,
+        cargo_mass=scenario.cargo_mass,
+    )
+
+
+class PlungeLevel(ScenarioCatalogMixin[PlungeScenario], ScenarioLevel):
+    _scenario_by_name = _SCENARIO_BY_NAME
+    _default_scenario_name = _DEFAULT_SCENARIO
+    _smoke_benchmark_scenarios = _SMOKE_BENCHMARK_SCENARIOS
+    _quick_benchmark_scenarios = _QUICK_BENCHMARK_SCENARIOS
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._init_scenario_catalog()
+        self.scenario = _make_spec(_SCENARIO_BY_NAME[self._eval_scenario_name])
+
+    def setup(self, game, seed: int) -> None:
+        _ = seed
+        scenario = self._active_scenario()
+        self.scenario = _make_spec(scenario)
+        super().setup(game, seed)
+        if self.world is None:
+            raise RuntimeError("PlungeLevel world was not initialized")
+
+        actor = self.world.actors[0]
+        validate_scenario_recoverability(
+            actor,
+            scenario_name=scenario.name,
+            spawn_clearance=scenario.spawn_clearance,
+            initial_vy_up=scenario.initial_vy_up,
+        )
+
+        trans = require_component(actor, Transform)
+        phys = require_component(actor, PhysicsState)
+        trans.rotation = float(scenario.initial_angle)
+        phys.vel = Vector2(float(scenario.initial_vx), float(scenario.initial_vy_up))
+
+        sync_engine_pose_velocity(
+            self.engine,
+            trans.pos,
+            trans.rotation,
+            float(scenario.initial_vx),
+            float(scenario.initial_vy_up),
+            actor.uid,
+        )
+
+        self.set_runtime_identity(scenario_name=scenario.name)
+
+
+def create_level() -> Level:
+    return PlungeLevel()

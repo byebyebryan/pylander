@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 
-from core.bot import BotAction
+from game.core.bot import BotAction
 
 
 class FlightStage(str, Enum):
@@ -41,15 +41,22 @@ class TakeoffBootstrapController(StageController):
         super().__init__(FlightStage.TAKEOFF)
 
     def update(self, bot, ctx) -> StageTickResult:
-        if ctx.passive.state == "landed" or ctx.alt < bot._cfg.launch_takeoff_clear_altitude:
-            summary = "departing pad" if ctx.passive.state == "landed" else "clearing pad"
+        if (
+            ctx.passive.state == "landed"
+            or ctx.alt < bot._cfg.launch_takeoff_clear_altitude
+        ):
+            summary = (
+                "departing pad" if ctx.passive.state == "landed" else "clearing pad"
+            )
             action = BotAction(
                 bot._takeoff_thrust(ctx.max_throttle),
                 0.0,
                 False,
                 status=f"pdg {self.stage.value}",
             )
-            bot._set_display_state(mode="takeoff", phase=self.stage.value, summary=summary)
+            bot._set_display_state(
+                mode="takeoff", phase=self.stage.value, summary=summary
+            )
             return StageTickResult(action=action)
         return StageTickResult(next_stage=FlightStage.BOOST)
 

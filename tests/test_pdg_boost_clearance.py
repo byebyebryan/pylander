@@ -11,7 +11,7 @@ from bot_framework.bots.pdg_boost_clearance import (
     evaluate_boost_clearance_probe,
 )
 from conftest import make_sensors
-from core.bot import BotAction, BotEnvironment, BotTarget
+from game.core.bot import BotAction, BotEnvironment, BotTarget
 
 
 class _SourceRiseTerrain:

@@ -14,7 +14,7 @@ from typing import Any
 
 from app.benchmark_cache import load_json
 from app.selector_pack import split_csv
-from core.selector_codec import render_record_selector, render_selector
+from game.core.selector_codec import render_record_selector, render_selector
 from utils.botmetrics import bot_metric_key
 from utils.tracebundle import (
     href_from as _href_from,

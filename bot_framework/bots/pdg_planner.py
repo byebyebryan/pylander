@@ -10,7 +10,7 @@ from .pdg_boost import (
     boost_objective_geometry,
 )
 from .pdg_optimizer import PDGPlan
-from core.bot import Sensors
+from game.core.bot import Sensors
 
 
 def solve_plan(

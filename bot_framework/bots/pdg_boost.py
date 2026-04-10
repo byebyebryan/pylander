@@ -10,7 +10,7 @@ from .common_ballistics import (
     estimate_target_y_projection,
 )
 from .common_math import _GRAVITY_MAG, engine_profile, retrograde_angle_target
-from core.bot import Sensors
+from game.core.bot import Sensors
 
 _SETTLE_ROTATION_RATE = math.radians(90.0)
 _SETTLE_THRUST_EFFECT_SCALE = 1.0

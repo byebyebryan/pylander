@@ -7,7 +7,7 @@ import bot_framework.bots.plunge as plunge_module
 from bot_framework.bots.common_ballistics import BallisticProjection
 from bot_framework.bots.plunge import PlungeBot
 from conftest import make_sensors
-from core.sensor import RadarContact
+from game.core.sensor import RadarContact
 
 
 def _target(*, x: float = 0.0, y: float = 0.0) -> RadarContact:

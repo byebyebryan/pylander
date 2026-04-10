@@ -3,10 +3,10 @@ from __future__ import annotations
 from time import perf_counter
 from typing import Protocol, runtime_checkable, Any
 
-from core.bot import BotAction
-from core.components import LanderState
+from game.core.bot import BotAction
+from game.core.components import LanderState
 
-from core.control_types import ControlTuple
+from game.core.control_types import ControlTuple
 
 
 @runtime_checkable

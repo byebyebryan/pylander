@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from core.components import LanderGeometry
-from core.lander import Lander
+from game.core.components import LanderGeometry
+from game.core.lander import Lander
 
 
 class DifferentialLander(Lander):

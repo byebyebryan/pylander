@@ -4,7 +4,7 @@ import math
 from dataclasses import dataclass
 
 from .common_math import _GRAVITY_MAG
-from core.bot import Sensors, TerrainBoundary
+from game.core.bot import Sensors, TerrainBoundary
 
 
 @dataclass(frozen=True)

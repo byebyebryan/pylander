@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from core.components import (
+from game.core.components import (
     ControlIntent,
     Engine,
     FuelTank,
@@ -8,9 +8,9 @@ from core.components import (
     PhysicsState,
     Transform,
 )
-from core.ecs import Entity
-from core.maths import Vector2
-from runtime.interactive_session import (
+from game.core.ecs import Entity
+from game.core.maths import Vector2
+from game.runtime.interactive_session import (
     process_interactive_input,
     render_frame,
     reset_active_actor_session,

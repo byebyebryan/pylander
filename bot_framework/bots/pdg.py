@@ -69,7 +69,7 @@ from .pdg_tracking import (
     update_terminal_post_entry_metrics as _update_terminal_post_entry_metrics_impl,
     update_shape_window_metrics as _update_shape_window_metrics_impl,
 )
-from core.bot import (
+from game.core.bot import (
     Bot,
     BotAction,
     BotDisplayState,
@@ -79,7 +79,7 @@ from core.bot import (
     Sensors,
     BoostCutoffMetrics,
 )
-from core.eval_goals import EVAL_GOAL_BOOST_CUTOFF, EVAL_GOAL_LANDING
+from game.core.eval_goals import EVAL_GOAL_BOOST_CUTOFF, EVAL_GOAL_LANDING
 
 _TERMINAL_OPT_PATH_X_WEIGHT = 0.030
 _TERMINAL_OPT_PATH_Y_WEIGHT = 0.015

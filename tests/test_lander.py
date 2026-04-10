@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from core.components import CargoHold, Engine, FuelTank, PhysicsState
-from core.lander import Lander
+from game.core.components import CargoHold, Engine, FuelTank, PhysicsState
+from game.core.lander import Lander
 
 
 def test_default_lander_profile_matches_rebalanced_vehicle_budget() -> None:

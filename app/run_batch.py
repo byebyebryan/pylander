@@ -13,17 +13,17 @@ from app.config import BenchSettings, BenchTarget, RunSettings
 from app.reporting import print_batch_summary
 from app.run_single import create_level_checked, resolve_default_bot, run_once_record
 from app.selector import parse_seed_spec, render_selector_group
-from core.eval import (
+from game.core.eval import (
     aggregate_eval_records,
     collision_safe_path,
     default_artifact_path,
 )
-from core.level_capabilities import (
+from game.core.level_capabilities import (
     scenario_has_randomized_fields_safe,
     set_eval_goal_checked,
     set_eval_scenario_checked,
 )
-from levels.benchmark_catalog import expand_selector_bindings
+from game.levels.benchmark_catalog import expand_selector_bindings
 from utils.tracepack import TRACEPACK_SCHEMA, TRACEPACK_SCHEMA_VERSION
 
 _AUTO_RANDOMIZED_BATCH_SEEDS: tuple[int, ...] = tuple(range(10))

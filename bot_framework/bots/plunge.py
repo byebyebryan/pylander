@@ -21,8 +21,8 @@ from .common_math import (
     vehicle_limits,
 )
 from .common_targeting import pick_target
-from core.bot import Bot, BotAction, BotDisplayState, Sensors
-from core.sensor import RadarContact
+from game.core.bot import Bot, BotAction, BotDisplayState, Sensors
+from game.core.sensor import RadarContact
 
 
 @dataclass(frozen=True)

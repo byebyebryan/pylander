@@ -12,13 +12,19 @@ import app.run_single as run_single_module
 from app.cli import build_parser, parse_command
 from app.config import BenchCommand, BenchSettings, BenchTarget, RunCommand
 from bot_framework.bots import create_bot, list_available_bots
-from core.bot import Bot, BotAction, BotDisplayState, Sensors, resolve_bot_display_state
-from core.components import CargoHold, LandingSite, PhysicsState, Transform
-from core.ecs import require_component
-from core.eval import aggregate_eval_records, normalize_run_result
+from game.core.bot import (
+    Bot,
+    BotAction,
+    BotDisplayState,
+    Sensors,
+    resolve_bot_display_state,
+)
+from game.core.components import CargoHold, LandingSite, PhysicsState, Transform
+from game.core.ecs import require_component
+from game.core.eval import aggregate_eval_records, normalize_run_result
 from game import LanderGame
-from levels import create_level as create_level_by_name, list_available_levels
-from levels.terrain_catalog import TERRAIN_SCENARIO_BY_NAME
+from game.levels import create_level as create_level_by_name, list_available_levels
+from game.levels.terrain_catalog import TERRAIN_SCENARIO_BY_NAME
 from app.run_batch import ResolvedBenchRun, parse_seed_spec, resolve_benchmark_plan
 
 
@@ -1696,7 +1702,7 @@ def test_plot_command_enables_trace_by_default() -> None:
 
 
 def test_landergame_uses_injected_runtime_adapter() -> None:
-    from runtime.runtime_adapter import BotRuntimeAdapter, make_runtime_adapter
+    from game.runtime.runtime_adapter import BotRuntimeAdapter, make_runtime_adapter
 
     call_count = 0
 
@@ -1723,7 +1729,7 @@ def test_landergame_uses_injected_runtime_adapter() -> None:
 
 
 def test_landergame_uses_injected_eval_hooks_for_prime_boost_cutoff() -> None:
-    from runtime.runtime_adapter import EvalHooks
+    from game.runtime.runtime_adapter import EvalHooks
 
     calls: list[tuple[Any, Any]] = []
 
@@ -1752,7 +1758,7 @@ def test_landergame_uses_injected_eval_hooks_for_prime_boost_cutoff() -> None:
 
 
 def test_landergame_uses_injected_eval_hooks_in_result_path() -> None:
-    from runtime.runtime_adapter import EvalHooks
+    from game.runtime.runtime_adapter import EvalHooks
 
     merge_calls: list[tuple[Any, Any]] = []
     apply_calls: list[tuple[Any, Any, Any]] = []

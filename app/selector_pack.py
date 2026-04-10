@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from app.selector import parse_selector, parse_seed_spec
-from core.level_capabilities import (
+from game.core.level_capabilities import (
     BenchmarkLevelPolicy,
     LevelBenchmarkProfile,
 )
-from core.selector_codec import render_selector
-from levels.registry import list_public_levels
-from levels.benchmark_catalog import (
+from game.core.selector_codec import render_selector
+from game.levels.registry import list_public_levels
+from game.levels.benchmark_catalog import (
     expand_selector_bindings,
     resolve_selector_binding,
     resolve_public_level_benchmark_profile,

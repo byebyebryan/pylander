@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import math
 
-from core.bot import Sensors
-from core.sensor import RadarContact
+from game.core.bot import Sensors
+from game.core.sensor import RadarContact
 
 
 def pick_target(
@@ -35,4 +35,3 @@ def target_half_width(target_size: float | None) -> float:
     if not math.isfinite(numeric):
         return 55.0
     return max(6.0, 0.5 * numeric)
-

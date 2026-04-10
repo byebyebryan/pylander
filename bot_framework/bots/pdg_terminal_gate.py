@@ -17,7 +17,7 @@ from .pdg_terrain_divert import (
     evaluate_terminal_clip_probe,
     prefilter_terrain_divert,
 )
-from core.bot import Sensors
+from game.core.bot import Sensors
 
 
 def _clear_terrain_probe_state(state) -> None:

@@ -12,9 +12,10 @@ import inspect
 import os
 import pkgutil
 from types import ModuleType
-from typing import List, Type
+from typing import List, Type, TYPE_CHECKING
 
-from core.lander import Lander
+if TYPE_CHECKING:
+    from game.core.lander import Lander
 
 
 def _package_path() -> str:
@@ -33,15 +34,15 @@ def list_available_landers() -> List[str]:
     return modules
 
 
-def _find_lander_class_in_module(module: ModuleType) -> Type[Lander] | None:
-    # If module provides an explicit factory, prefer that path
+def _find_lander_class_in_module(module: ModuleType) -> Type["Lander"] | None:
+    from game.core.lander import Lander
+
     factory = getattr(module, "create_lander", None)
     if callable(factory):
         instance = factory()
         if isinstance(instance, Lander):
             return type(instance)
 
-    # Otherwise, search for a subclass of Lander defined in the module
     candidates: list[type] = []
     for _, cls in inspect.getmembers(module, inspect.isclass):
         if (
@@ -77,9 +78,7 @@ def load_lander_class(name: str) -> Type[Lander]:
     module = importlib.import_module(f"landers.{module_name}")
     lander_cls = _find_lander_class_in_module(module)
     if lander_cls is None:
-        raise ValueError(
-            f"No Lander subclass found in module 'landers.{module_name}'"
-        )
+        raise ValueError(f"No Lander subclass found in module 'landers.{module_name}'")
     return lander_cls
 
 
@@ -94,6 +93,3 @@ __all__ = [
     "load_lander_class",
     "create_lander",
 ]
-
-
-

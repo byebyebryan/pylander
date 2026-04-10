@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from core.bot import (
+from game.core.bot import (
     Bot,
     BotAction,
     BotEvalDecision,

@@ -9,12 +9,16 @@ Controls:
 import sys
 import pygame
 
-from core.components import Transform
-from core.ecs import require_component
-from core.maths import Range1D, Vector2
-from core.terrain import pick_lod_for_world_step, sample_terrain_height, terrain_resolution
-from ui.camera import Camera
-from levels import create_level, list_available_levels
+from game.core.components import Transform
+from game.core.ecs import require_component
+from game.core.maths import Range1D, Vector2
+from game.core.terrain import (
+    pick_lod_for_world_step,
+    sample_terrain_height,
+    terrain_resolution,
+)
+from game.ui.camera import Camera
+from game.levels import create_level, list_available_levels
 
 
 class LevelViewer:
@@ -119,7 +123,9 @@ class LevelViewer:
         wx = start_world_x
         while wx <= end_world_x:
             world_y = sample_terrain_height(self.terrain, wx, lod=lod)
-            sx, sy = self.camera.world_to_screen(Vector2(wx, world_y * self.height_scale))
+            sx, sy = self.camera.world_to_screen(
+                Vector2(wx, world_y * self.height_scale)
+            )
             pts.append((sx, sy))
             wx += world_step
 

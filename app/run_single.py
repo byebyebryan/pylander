@@ -4,19 +4,23 @@ import json
 from pathlib import Path
 from typing import Any, Iterable, cast
 
-from core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal, normalize_eval_goals
-from core.eval import normalize_run_result
-from core.level_capabilities import (
+from game.core.eval_goals import (
+    EVAL_GOAL_LANDING,
+    normalize_eval_goal,
+    normalize_eval_goals,
+)
+from game.core.eval import normalize_run_result
+from game.core.level_capabilities import (
     level_name_tag,
     set_benchmark_mode_checked,
     set_eval_goal_checked,
     set_eval_scenario_checked,
 )
 from game import LanderGame
-from runtime.runtime_adapter import make_runtime_adapter
-from levels import create_level
-from levels.registry import is_public_level
-from levels.benchmark_catalog import resolve_selector_binding
+from game.runtime.runtime_adapter import make_runtime_adapter
+from game.levels import create_level
+from game.levels.registry import is_public_level
+from game.levels.benchmark_catalog import resolve_selector_binding
 
 from app.config import RunSettings, resolve_default_bot as _resolve_default_bot
 from app.reporting import print_headless_results

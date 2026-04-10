@@ -8,7 +8,7 @@ import pytest
 from bot_framework.bots import create_bot
 from bot_framework.bots.pdg_optimizer import PDGOptimizer, PDGOptimizerConfig
 from game import LanderGame
-from levels import create_level as create_level_by_name
+from game.levels import create_level as create_level_by_name
 
 
 def _run_level(

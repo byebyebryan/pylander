@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from app.selector import parse_selector
-from core.selector_codec import (
+from game.core.selector_codec import (
     render_record_selector,
     render_selector,
     render_selector_group,

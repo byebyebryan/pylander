@@ -12,7 +12,7 @@ from .pdg_terrain_divert import (
     backstop_containment_override,
     clip_targetward_override,
 )
-from core.bot import BotAction, Sensors
+from game.core.bot import BotAction, Sensors
 
 
 def command_passive_coast(

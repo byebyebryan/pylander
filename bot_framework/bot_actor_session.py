@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from core.bot import Bot
-from core.ecs import World
-from core.ecs import Entity
-from core.level import Level
+from game.core.bot import Bot
+from game.core.ecs import World
+from game.core.ecs import Entity
+from game.core.level import Level
 
 
 def active_actor_bot(

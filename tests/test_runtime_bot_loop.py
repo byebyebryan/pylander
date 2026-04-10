@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from core.bot import Bot, BotAction, Sensors
+from game.core.bot import Bot, BotAction, Sensors
 from game import LanderGame
-from levels import create_level as create_level_by_name
-from runtime.types import BotLoopContext
+from game.levels import create_level as create_level_by_name
+from game.runtime.types import BotLoopContext
 from bot_framework.bot_loop import update_bot_steps
-from runtime.sensors import build_sensors
-from runtime.loop_timing import LoopTimers
+from game.runtime.sensors import build_sensors
+from game.runtime.loop_timing import LoopTimers
 from bot_framework.bot_profiler import BotLoopProfiler
 
 
