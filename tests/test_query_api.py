@@ -8,10 +8,17 @@ from bot_framework.bots.common_ballistics import (
     estimate_ground_time_to_impact,
     estimate_target_y_projection,
 )
+from bot_framework.scenarios import create_scenario_level
 from game.core.bot import Bot, BotAction, Sensors
 from game.core.terrain import ballistic_fall_time
 from game import LanderGame
-from game.levels import create_level as create_level_by_name
+from game.levels import create_level as create_gameplay_level
+
+
+def _create_level(name: str):
+    if name in ("flat", "mountains"):
+        return create_gameplay_level(name)
+    return create_scenario_level(name)
 
 
 def test_sensors_only_bot_path_and_profile_metrics(
@@ -29,7 +36,7 @@ def test_sensors_only_bot_path_and_profile_metrics(
 
     monkeypatch.setenv("PYLANDER_BOT_PROFILE", "1")
     monkeypatch.setenv("PYLANDER_BOT_PROFILE_INTERVAL_S", "0.25")
-    level = create_level_by_name("flat")
+    level = _create_level("flat")
     bot = _CountingBot()
     game = LanderGame(level=level, seed=0, bot=bot, headless=True)
     result = game.run(print_freq=0, max_steps=30, max_time=10.0)
@@ -86,7 +93,7 @@ def test_plunge_and_pdg_are_bots(monkeypatch: pytest.MonkeyPatch) -> None:
     plunge = create_bot("plunge")
     assert isinstance(plunge, Bot)
     plunge_game = LanderGame(
-        level=create_level_by_name("plunge"),
+        level=_create_level("plunge"),
         seed=0,
         bot=plunge,
         headless=True,
@@ -97,7 +104,7 @@ def test_plunge_and_pdg_are_bots(monkeypatch: pytest.MonkeyPatch) -> None:
     pdg = create_bot("pdg")
     assert isinstance(pdg, Bot)
     pdg_game = LanderGame(
-        level=create_level_by_name("terminal"),
+        level=_create_level("terminal"),
         seed=0,
         bot=pdg,
         headless=True,

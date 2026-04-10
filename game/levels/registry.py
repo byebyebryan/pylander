@@ -4,15 +4,6 @@ from typing import Type
 
 from game.core.level import Level
 
-_PUBLIC_LEVEL_ORDER: tuple[str, ...] = (
-    "flat",
-    "mountains",
-    "boost",
-    "terrain",
-    "terminal",
-    "plunge",
-)
-
 _PUBLIC_GAMEPLAY_LEVELS: tuple[str, ...] = (
     "flat",
     "mountains",
@@ -24,7 +15,7 @@ def list_public_levels() -> list[str]:
 
 
 def list_available_levels() -> list[str]:
-    return list(_PUBLIC_LEVEL_ORDER)
+    return list(_PUBLIC_GAMEPLAY_LEVELS)
 
 
 def is_public_level(level_name: str) -> bool:
@@ -35,8 +26,8 @@ def load_level_class(name: str) -> Type[Level]:
     key = str(name or "").strip().lower().replace("-", "_")
     factories = _level_classes()
     if key not in factories:
-        known = ", ".join(_PUBLIC_LEVEL_ORDER)
-        raise ValueError(f"Unknown level '{name}'. Expected one of: {known}")
+        known = ", ".join(_PUBLIC_GAMEPLAY_LEVELS)
+        raise ValueError(f"Unknown gameplay level '{name}'. Expected one of: {known}")
     return factories[key]
 
 
@@ -45,18 +36,10 @@ def create_level(name: str) -> Level:
 
 
 def _level_classes() -> dict[str, Type[Level]]:
-    from bot_framework.scenarios.boost import BoostLevel
     from game.levels.flat import FlatLevel
     from game.levels.mountains import MountainsLevel
-    from bot_framework.scenarios.plunge import PlungeLevel
-    from bot_framework.scenarios.terrain import TerrainLevel
-    from bot_framework.scenarios.terminal import TerminalLevel
 
     return {
         "flat": FlatLevel,
         "mountains": MountainsLevel,
-        "boost": BoostLevel,
-        "terrain": TerrainLevel,
-        "terminal": TerminalLevel,
-        "plunge": PlungeLevel,
     }

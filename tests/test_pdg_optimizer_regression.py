@@ -7,8 +7,15 @@ import pytest
 
 from bot_framework.bots import create_bot
 from bot_framework.bots.pdg_optimizer import PDGOptimizer, PDGOptimizerConfig
+from bot_framework.scenarios import create_scenario_level
 from game import LanderGame
-from game.levels import create_level as create_level_by_name
+from game.levels import create_level as create_gameplay_level
+
+
+def _create_level(name: str):
+    if name in ("flat", "mountains"):
+        return create_gameplay_level(name)
+    return create_scenario_level(name)
 
 
 def _run_level(
@@ -19,7 +26,7 @@ def _run_level(
     max_time: float = 300.0,
     eval_goal: str | None = None,
 ):
-    level = cast(Any, create_level_by_name(level_name))
+    level = cast(Any, _create_level(level_name))
     if hasattr(level, "set_eval_scenario"):
         level.set_eval_scenario(scenario)
     # Keep smoke runs bounded and stop as soon as a terminal condition is reached.
