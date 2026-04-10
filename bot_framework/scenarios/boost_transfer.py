@@ -8,14 +8,14 @@ from game.core.components import CargoHold, Transform
 from game.core.ecs import require_component
 from game.core.eval_goals import EVAL_GOAL_BOOST_CUTOFF, EVAL_GOAL_LANDING
 from game.core.maths import Vector2
-from game.levels.common_world import (
+from game.shared.common_world import (
     PresetLevel,
     SiteSpec,
     apply_transfer_result,
     get_mass,
     resolve_landed_site_uid,
 )
-from game.levels.common_scenarios import ScenarioCatalogMixin, is_ranged_value
+from game.shared.common_scenarios import ScenarioCatalogMixin, is_ranged_value
 
 SOURCE_PAD_X = 0.0
 SOURCE_SITE_UID = "transfer_source"

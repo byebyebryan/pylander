@@ -9,7 +9,7 @@ from game.core.config import GRAVITY_MAG
 from game.core.components import Engine, PhysicsState, Transform
 from game.core.ecs import require_component
 from game.core.maths import Vector2
-from game.levels.common_scenarios import (
+from game.shared.common_scenarios import (
     BenchmarkRandomMode,
     SampleRange,
     angle_from_velocity,
@@ -19,7 +19,7 @@ from game.levels.common_scenarios import (
     sync_engine_pose_velocity,
     validate_scenario_recoverability,
 )
-from game.levels.common_world import get_mass
+from game.shared.common_world import get_mass
 
 
 _MAX_SETUP_ATTEMPTS = 64

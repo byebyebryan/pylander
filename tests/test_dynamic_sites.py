@@ -3,7 +3,7 @@ from __future__ import annotations
 from game.core.components import Transform
 from game.core.ecs import Entity
 from game.core.maths import Vector2
-from game.levels.common_world import PresetLevel
+from game.shared.common_world import PresetLevel
 
 
 class _DynamicSiteLevel(PresetLevel):

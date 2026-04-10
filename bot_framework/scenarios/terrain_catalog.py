@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from bot_framework.scenarios.boost_transfer import BOOST_WEIGHT_TIERS
-from game.levels.common_scenarios import SampleRange
+from game.shared.common_scenarios import SampleRange
 
 
 TerrainDistance = float | SampleRange

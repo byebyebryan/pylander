@@ -13,7 +13,7 @@ from bot_framework.scenarios.boost_transfer import (
     BoostTransferLevel,
     build_boost_weight_params,
 )
-from game.levels.common_scenarios import (
+from game.shared.common_scenarios import (
     has_randomized_values,
     resolve_sample_value,
 )

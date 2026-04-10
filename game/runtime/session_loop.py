@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from game.runtime.bootstrap import SystemsBundle
 from game.runtime.loop_timing import LoopTimers
 from game.runtime.run_metrics import RunMetricsTracker
-from bot_framework.bot_profiler import BotLoopProfiler
+from game.integration import BotLoopProfiler
 from game.core.control_types import ControlTuple
 
 
