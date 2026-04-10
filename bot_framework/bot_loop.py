@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from time import perf_counter
+from typing import Protocol, runtime_checkable, Any
 
 from core.bot import BotAction
 from core.components import LanderState
@@ -8,10 +9,31 @@ from core.components import LanderState
 from core.control_types import ControlTuple
 
 
+@runtime_checkable
+class LoopTimersLike(Protocol):
+    bot_dt: float
+    elapsed_time: float
+
+    def should_step_bot(self) -> bool: ...
+
+    def consume_bot(self) -> None: ...
+
+
+@runtime_checkable
+class BotLoopContextLike(Protocol):
+    profiler: Any
+    actor_bots: dict[str, Any]
+    ecs_world: Any
+    sensor_update_system: Any
+    terrain: Any
+    trace_recorder: Any
+    build_sensors: Any
+
+
 def update_bot_steps(
-    timers: "runtime.loop_timing.LoopTimers",  # noqa: F821
+    timers: LoopTimersLike,
     *,
-    context: "runtime.types.BotLoopContext",  # noqa: F821
+    context: BotLoopContextLike,
 ) -> dict[str, ControlTuple | None]:
     bot_controls_by_uid: dict[str, ControlTuple | None] = {}
     bot_dt = timers.bot_dt
