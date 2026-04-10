@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import game.core.terrain as _terrain
 from game.core.level import Level
-from game.levels.boost_transfer import (
+from bot_framework.scenarios.boost_transfer import (
     SOURCE_PAD_X,
     BoostTransferLevel,
     build_boost_weight_params,
@@ -13,7 +13,7 @@ from game.levels.common_scenarios import (
     has_randomized_values,
     resolve_sample_value,
 )
-from game.levels.terrain_catalog import (
+from bot_framework.scenarios.terrain_catalog import (
     TERRAIN_DEFAULT_SCENARIO,
     TERRAIN_QUICK_SCENARIOS,
     TERRAIN_SCENARIO_BY_NAME,

@@ -12,6 +12,7 @@ import app.run_single as run_single_module
 from app.cli import build_parser, parse_command
 from app.config import BenchCommand, BenchSettings, BenchTarget, RunCommand
 from bot_framework.bots import create_bot, list_available_bots
+from bot_framework.scenarios.terrain_catalog import TERRAIN_SCENARIO_BY_NAME
 from game.core.bot import (
     Bot,
     BotAction,
@@ -24,7 +25,6 @@ from game.core.ecs import require_component
 from game.core.eval import aggregate_eval_records, normalize_run_result
 from game import LanderGame
 from game.levels import create_level as create_level_by_name, list_available_levels
-from game.levels.terrain_catalog import TERRAIN_SCENARIO_BY_NAME
 from app.run_batch import ResolvedBenchRun, parse_seed_spec, resolve_benchmark_plan
 
 
