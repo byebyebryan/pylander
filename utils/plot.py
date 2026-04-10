@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from bots.common_ballistics import (
+from bot_framework.bots.common_ballistics import (
     ballistic_apex_from_state,
     estimate_target_y_projection,
     time_to_target_y_crossing,
