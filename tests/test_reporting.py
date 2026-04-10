@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.reporting import print_headless_results
+from tooling.reporting import print_headless_results
 
 
 def test_print_headless_results_includes_trace_metadata(capsys) -> None:

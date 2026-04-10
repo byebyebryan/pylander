@@ -12,7 +12,7 @@ from game.core.bot import BotAction, BotEvalDecision
 from game.core.components import Engine, FuelTank, LanderState, PhysicsState, Transform
 from game.core.ecs import Entity, World
 from game.core.maths import Vector2
-from utils import tracepack
+from tooling import tracepack
 
 
 def test_write_preview_png_draws_actual_and_reference_paths(
@@ -123,7 +123,9 @@ def test_derive_plot_payload_uses_boost_cutoff_for_ballistic_curve(
     assert payload["reference_metrics"]["gap_max"] >= 0.0
 
 
-def test_derive_plot_payload_uses_vx_adjusted_ballistic_reference_for_terminal_runs() -> None:
+def test_derive_plot_payload_uses_vx_adjusted_ballistic_reference_for_terminal_runs() -> (
+    None
+):
     class _Terrain:
         def __call__(self, x: float, lod: int = 0) -> float:
             _ = (x, lod)

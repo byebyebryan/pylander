@@ -6,7 +6,8 @@ import urllib.request
 from functools import partial
 from http.server import ThreadingHTTPServer
 
-import app.serve_outputs as serve_outputs
+import tooling.serve_outputs as serve_outputs
+
 
 def test_health_endpoint_reports_service_and_root(tmp_path) -> None:
     handler = partial(serve_outputs._NoCacheHandler, directory=str(tmp_path))

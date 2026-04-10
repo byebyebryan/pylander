@@ -4,7 +4,7 @@ import sys
 
 import pytest
 
-import app.plot_pack as plot_pack
+import tooling.plot_pack as plot_pack
 
 
 def test_build_cases_from_records_uses_selected_bot_terminal_metric_namespace() -> None:

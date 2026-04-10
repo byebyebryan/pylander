@@ -5,8 +5,8 @@ import json
 import re
 from pathlib import Path
 
-import app.output_viewer as output_viewer
-import app.trace_bundle as trace_bundle
+import tooling.output_viewer as output_viewer
+import tooling.trace_bundle as trace_bundle
 import tooling.traceviewer as traceviewer
 
 

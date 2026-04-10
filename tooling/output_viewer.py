@@ -140,7 +140,10 @@ def _stop_existing_server(root: Path, port: int) -> bool:
             loaded = json.loads(state_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError, ValueError):
             loaded = None
-        if isinstance(loaded, dict) and str(loaded.get("service") or "") == SERVICE_NAME:
+        if (
+            isinstance(loaded, dict)
+            and str(loaded.get("service") or "") == SERVICE_NAME
+        ):
             payload = loaded
     pid = None if payload is None else payload.get("pid")
     try:
@@ -195,7 +198,7 @@ def write_server_state(
 
 
 def default_server_command() -> list[str]:
-    return [sys.executable, "-m", "app.serve_outputs"]
+    return [sys.executable, "-m", "tooling.serve_outputs"]
 
 
 def ensure_outputs_server(
