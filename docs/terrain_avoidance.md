@@ -139,11 +139,11 @@ This framing is useful because it describes the reactive problem in control term
 
 Relevant code today:
 
-- `boost` terrain/catalog: [`../levels/boost.py`](../levels/boost.py), [`../levels/boost_catalog.py`](../levels/boost_catalog.py)
-- per-frame bot sensor build: [`../runtime/sensors.py`](../runtime/sensors.py)
-- sensor update system: [`../core/systems/sensor_update.py`](../core/systems/sensor_update.py)
-- bot API: [`../core/bot.py`](../core/bot.py)
-- terrain helpers: [`../core/terrain.py`](../core/terrain.py), [`../core/sensor.py`](../core/sensor.py)
+- `boost` terrain/catalog: [`../game/levels/boost.py`](../game/levels/boost.py), [`../game/levels/boost_catalog.py`](../game/levels/boost_catalog.py)
+- per-frame bot sensor build: [`../game/runtime/sensors.py`](../game/runtime/sensors.py)
+- sensor update system: [`../game/core/systems/sensor_update.py`](../game/core/systems/sensor_update.py)
+- bot API: [`../game/core/bot.py`](../game/core/bot.py)
+- terrain helpers: [`../game/core/terrain.py`](../game/core/terrain.py), [`../game/core/sensor.py`](../game/core/sensor.py)
 - trace/plot overlays: [`../utils/plot.py`](../utils/plot.py), [`../utils/traceviewer.py`](../utils/traceviewer.py)
 
 Observed constraints:

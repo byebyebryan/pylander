@@ -102,7 +102,7 @@ The goal is a single repo with a build manifest that selects which files to pack
 | `opensimplex` | **Keep** | Pure Python, tiny. Terrain generation. |
 | `cvxpy` | **Remove** | Convex optimizer — bot-only, heavy C deps. |
 | `matplotlib` | **Remove** | Plotting — benchmark-only, enormous. |
-| `numpy` | **Remove** | Only used by `bots/pdg_optimizer.py`. |
+| `numpy` | **Remove** | Only used by `bot_framework/bots/pdg_optimizer.py`. |
 
 Final portable deps: **pymunk + pygame-ce + opensimplex** (three packages on PortMaster), **pygame-ce + opensimplex** plus a physics fallback on pygbag.
 

@@ -4,7 +4,7 @@ from typing import Any, Mapping
 
 from game.core.eval import aggregate_eval_records
 from game.core.selector_codec import render_record_selector
-from utils.botmetrics import bot_metric_key
+from bot_framework.botmetrics import bot_metric_key
 
 _COMPUTE_FIELDS: tuple[str, ...] = (
     "bot_profile_total_ms_per_tick",

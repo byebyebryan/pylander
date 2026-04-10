@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pygame
 
-from utils.input import InputHandler
+from game.runtime.input import InputHandler
 
 
 class _Pressed(dict):

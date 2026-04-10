@@ -42,7 +42,7 @@ from game.core.level_capabilities import (
 from game.core.maths import Vector2
 from game.core.config import GRAVITY_MAG
 from game.core.eval_goals import EVAL_GOAL_LANDING
-from landers import create_lander
+from game.landers import create_lander
 from game.core.ecs import require_component
 from game.levels.common_world import (
     EndResultMixin,

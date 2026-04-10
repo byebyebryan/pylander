@@ -20,7 +20,7 @@ The work intentionally biased toward climb boost behavior first, then checked br
 These commits are already on `main`:
 
 1. `9cd0ef2` `refactor: add reusable ballistic apex helpers`
-- added shared ballistic helpers in `bots/common_ballistics.py` (`ballistic_apex_from_state`, analytic target-y crossing projection, apex fallback signaling).
+- added shared ballistic helpers in `bot_framework/bots/common_ballistics.py` (`ballistic_apex_from_state`, analytic target-y crossing projection, apex fallback signaling).
 
 2. `30187dc` `feat: add setup gate apex telemetry fields`
 - added boost-cutoff telemetry for projected apex (`zem_boost_cutoff_projected_apex_y`, `zem_boost_cutoff_projected_apex_over_target`) and wired through eval snapshots/results.
@@ -32,13 +32,13 @@ These commits are already on `main`:
 
 Historical touched files in the current layout:
 
-- `bots/pdg_optimizer.py`
-- `bots/pdg_planner.py`
-- `bots/pdg_actuation.py`
-- `bots/pdg_tracking.py`
-- `bots/pdg_config.py`
-- `bots/pdg.py`
-- `levels/climb.py`
+- `bot_framework/bots/pdg_optimizer.py`
+- `bot_framework/bots/pdg_planner.py`
+- `bot_framework/bots/pdg_actuation.py`
+- `bot_framework/bots/pdg_tracking.py`
+- `bot_framework/bots/pdg_config.py`
+- `bot_framework/bots/pdg.py`
+- `game/levels/boost.py` (formerly `levels/climb.py`)
 
 Main themes:
 

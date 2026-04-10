@@ -11,7 +11,7 @@ from app.config import (
     RunCommand,
     RunSettings,
 )
-from landers import list_available_landers
+from game.landers import list_available_landers
 from app.selector import parse_seed_spec, parse_selector, render_selector
 from game.core.trace_policy import (
     TRACE_DETAIL_DEBUG,

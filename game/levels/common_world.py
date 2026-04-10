@@ -31,7 +31,7 @@ from game.core.maths import Vector2
 from game.core.physics import PhysicsEngine
 from game.core.config import GRAVITY
 from game.core.terrain import sample_terrain_height
-from landers import create_lander
+from game.landers import create_lander
 
 
 @dataclass(frozen=True)
