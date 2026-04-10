@@ -39,6 +39,7 @@ def _create_level_by_name(name: str):
     return create_scenario_level(name)
 
 
+@pytest.mark.bot_extra
 def test_bot_registry_exposes_only_supported_bots() -> None:
     bots = list_available_bots()
     assert "plunge" in bots
@@ -61,6 +62,7 @@ def test_create_bot_rejects_config_override_for_unsupported_bot() -> None:
         create_bot("plunge", config_override={"boost_cutoff_projected_dx_abs": 42.0})
 
 
+@pytest.mark.bot_extra
 def test_create_bot_applies_pdg_bot_config_override() -> None:
     bot = create_bot(
         "pdg",
@@ -74,6 +76,7 @@ def test_create_bot_applies_pdg_bot_config_override() -> None:
     assert int(cfg.fallback_hold_steps) == 10
 
 
+@pytest.mark.bot_extra
 def test_create_bot_applies_pdg_terrain_awareness_override() -> None:
     bot = create_bot(
         "pdg",
@@ -247,6 +250,7 @@ def test_setup_levels_reject_legacy_bare_scenarios(
         level.set_eval_scenario(legacy_scenario)
 
 
+@pytest.mark.bot_extra
 def test_boost_defaults_to_flat_mid_half() -> None:
     level_name = "boost"
     level = _create_level_by_name(level_name)
@@ -254,6 +258,7 @@ def test_boost_defaults_to_flat_mid_half() -> None:
     assert game.level.scenario_name == "flat:mid:half"
 
 
+@pytest.mark.bot_extra
 def test_terrain_defaults_to_flat_far_backstop_half() -> None:
     level_name = "terrain"
     level = _create_level_by_name(level_name)
@@ -267,6 +272,7 @@ def test_terrain_rejects_removed_legacy_scenario_names() -> None:
         level.set_eval_scenario("flat:far:backstop:half")
 
 
+@pytest.mark.bot_extra
 def test_boost_climb_target_is_terrain_bound_flush_pad() -> None:
     level = _create_level_by_name("boost")
     level.set_eval_scenario("climb:mid:half")
@@ -280,6 +286,7 @@ def test_boost_climb_target_is_terrain_bound_flush_pad() -> None:
     assert shape.terrain_bound is True
 
 
+@pytest.mark.bot_extra
 @pytest.mark.parametrize(
     "scenario_name",
     ["climb:mid:half", "flat:mid:half", "downhill:mid:half"],
@@ -384,6 +391,7 @@ def _terrain_profile_heights(
     )
 
 
+@pytest.mark.bot_extra
 def test_setup_and_terminal_error_scenarios_are_seed_deterministic() -> None:
     setup_a = _spawn_state("boost", "downhill:mid:half", 42)
     setup_b = _spawn_state("boost", "downhill:mid:half", 42)
@@ -402,6 +410,7 @@ def test_setup_and_terminal_error_scenarios_are_seed_deterministic() -> None:
     assert terrain_a == pytest.approx(terrain_b)
 
 
+@pytest.mark.bot_extra
 @pytest.mark.parametrize(
     ("level_name", "scenario_name", "expected_cargo_mass", "expected_cargo_fraction"),
     (
@@ -432,6 +441,7 @@ def test_setup_levels_apply_weight_tier_mass_and_params(
     )
 
 
+@pytest.mark.bot_extra
 @pytest.mark.parametrize(
     ("scenario_name", "expected_dx", "expected_dy"),
     (
@@ -452,6 +462,7 @@ def test_boost_route_tiers_expose_expected_median_geometry(
     assert scenario_params["dy"] == pytest.approx(expected_dy)
 
 
+@pytest.mark.bot_extra
 @pytest.mark.parametrize(
     (
         "scenario_name",
@@ -560,6 +571,7 @@ def test_terrain_reactive_scenarios_expose_expected_median_geometry(
     assert float(scenario_params["obstacle_height_offset"]) * expected_height_sign > 0.0
 
 
+@pytest.mark.bot_extra
 @pytest.mark.parametrize(
     "scenario_name",
     (
@@ -605,6 +617,7 @@ def test_terrain_segments_match_recorded_obstacle_profile(scenario_name: str) ->
     assert y_dest == pytest.approx(slope * dx)
 
 
+@pytest.mark.bot_extra
 @pytest.mark.parametrize(
     "scenario_name",
     (
@@ -629,6 +642,7 @@ def test_boost_clearance_records_local_hazard_span_not_full_route(
     assert float(params["obstacle_support_x1"]) < float(params["dx"])
 
 
+@pytest.mark.bot_extra
 def test_boost_clearance_is_source_side_rise_with_local_rejoin() -> None:
     params = _terrain_scenario_params(
         "reactive:boost_clearance", 0, benchmark_mode="median"
@@ -646,6 +660,7 @@ def test_boost_clearance_is_source_side_rise_with_local_rejoin() -> None:
     assert 50.0 < height < 100.0
 
 
+@pytest.mark.bot_extra
 def test_boost_clearance_variants_expand_timing_and_duration() -> None:
     base = _terrain_scenario_params(
         "reactive:boost_clearance", 0, benchmark_mode="median"
@@ -663,6 +678,7 @@ def test_boost_clearance_variants_expand_timing_and_duration() -> None:
     assert float(late["obstacle_center_x"]) > float(base["obstacle_center_x"])
 
 
+@pytest.mark.bot_extra
 def test_backstop_variants_expand_containment_timing_and_severity() -> None:
     base = _terrain_scenario_params(
         "reactive:terminal_backstop", 0, benchmark_mode="median"
@@ -684,6 +700,7 @@ def test_backstop_variants_expand_containment_timing_and_severity() -> None:
     assert float(tall["obstacle_height_offset"]) > float(base["obstacle_height_offset"])
 
 
+@pytest.mark.bot_extra
 def test_downhill_clip_is_target_relative_late_shoulder() -> None:
     params = _terrain_scenario_params(
         "reactive:terminal_clip", 0, benchmark_mode="median"
@@ -702,6 +719,7 @@ def test_downhill_clip_is_target_relative_late_shoulder() -> None:
     assert support_x0 > 0.5 * dx
 
 
+@pytest.mark.bot_extra
 def test_clip_variants_expand_descent_delay_window() -> None:
     base = _terrain_scenario_params(
         "reactive:terminal_clip", 0, benchmark_mode="median"
@@ -724,6 +742,7 @@ def test_clip_variants_expand_descent_delay_window() -> None:
     assert float(wide["obstacle_support_x0"]) < float(base["obstacle_support_x0"])
 
 
+@pytest.mark.bot_extra
 @pytest.mark.parametrize(
     "scenario_names",
     (
@@ -750,6 +769,7 @@ def test_boost_weight_tiers_share_same_sampled_route_for_same_seed(
     assert target_x_by_weight[second] == pytest.approx(target_x_by_weight[third])
 
 
+@pytest.mark.bot_extra
 @pytest.mark.parametrize(
     "scenario_name",
     (
@@ -765,6 +785,7 @@ def test_boost_routes_sample_new_target_x_across_seeds(scenario_name: str) -> No
     assert len(target_xs) == 3
 
 
+@pytest.mark.bot_extra
 def test_pdg_boost_goal_ends_headless_run_early() -> None:
     level = _create_level_by_name("boost")
     level.set_eval_scenario("downhill:mid:half")
@@ -920,6 +941,7 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
     ] == pytest.approx(33.0)
 
 
+@pytest.mark.bot_extra
 def test_boost_flat_run_merges_bot_telemetry_fields_into_result() -> None:
     level = _create_level_by_name("boost")
     level.set_eval_scenario("flat:near:half")
@@ -1712,6 +1734,7 @@ def test_plot_command_enables_trace_by_default() -> None:
     assert command.run.trace_detail == "debug"
 
 
+@pytest.mark.bot_extra
 def test_landergame_uses_injected_runtime_adapter() -> None:
     from game.runtime.runtime_adapter import BotRuntimeAdapter, make_runtime_adapter
 
@@ -1739,6 +1762,7 @@ def test_landergame_uses_injected_runtime_adapter() -> None:
     assert game._physics_step_context is not None
 
 
+@pytest.mark.bot_extra
 def test_landergame_uses_injected_eval_hooks_for_prime_boost_cutoff() -> None:
     from game.runtime.runtime_adapter import EvalHooks
 
@@ -1768,6 +1792,7 @@ def test_landergame_uses_injected_eval_hooks_for_prime_boost_cutoff() -> None:
     assert calls[0][1] is game.actor_bots
 
 
+@pytest.mark.bot_extra
 def test_landergame_uses_injected_eval_hooks_in_result_path() -> None:
     from game.runtime.runtime_adapter import EvalHooks
 

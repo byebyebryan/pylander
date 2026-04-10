@@ -4,9 +4,37 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 
 if TYPE_CHECKING:
     from game.core.bot import Sensors
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    try:
+        import cvxpy  # noqa: F401
+    except ImportError:
+        config.addinivalue_line(
+            "markers", "bot_extra: tests requiring bot extras (cvxpy/pdg)"
+        )
+
+
+def pytest_collection_modifyitems(
+    config: pytest.Config, items: list[pytest.Item]
+) -> None:
+    try:
+        import cvxpy  # noqa: F401
+
+        cvxpy_available = True
+    except ImportError:
+        cvxpy_available = False
+
+    if not cvxpy_available:
+        skip_bot_extra = pytest.mark.skip(reason="cvxpy not installed (bot extra)")
+        for item in items:
+            if "bot_extra" in item.keywords:
+                item.add_marker(skip_bot_extra)
 
 
 ROOT = Path(__file__).resolve().parents[1]
