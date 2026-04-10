@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from opensimplex import OpenSimplex
+from game.core.noise import SimplexNoise
 
 from game.core.config import GRAVITY, GRAVITY_MAG
 from game.core.maths import Vector2
@@ -337,7 +337,7 @@ class SimplexNoiseGenerator:
         lacunarity: float = 4.0,
     ):
         self.seed = seed
-        self.noise = OpenSimplex(seed)
+        self.noise = SimplexNoise(seed)
         self.octaves = octaves
         self.persistence = persistence
         self.lacunarity = lacunarity
@@ -395,10 +395,10 @@ class LayeredTerrainGenerator:
         self.feature_cell_size = max(200.0, float(feature_cell_size))
         self.feature_density = max(0.0, min(1.0, float(feature_density)))
 
-        self._macro_noise = OpenSimplex(self.seed + 101)
-        self._structure_noise = OpenSimplex(self.seed + 211)
-        self._ridge_noise = OpenSimplex(self.seed + 307)
-        self._warp_noise = OpenSimplex(self.seed + 401)
+        self._macro_noise = SimplexNoise(self.seed + 101)
+        self._structure_noise = SimplexNoise(self.seed + 211)
+        self._ridge_noise = SimplexNoise(self.seed + 307)
+        self._warp_noise = SimplexNoise(self.seed + 401)
 
     @staticmethod
     def _smoothstep(t: float) -> float:
