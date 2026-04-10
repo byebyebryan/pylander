@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bot_framework.scenarios._catalog_mixin import ScenarioCatalogMixin
 from bot_framework.scenarios.catalog import (
     ScenarioBinding,
     ScenarioLeaf,
@@ -23,6 +24,7 @@ from bot_framework.scenarios.registry import (
 )
 
 __all__ = [
+    "ScenarioCatalogMixin",
     "create_scenario_level",
     "expand_scenario_bindings",
     "is_public_scenario_root",

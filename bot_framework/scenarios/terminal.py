@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from game.core.level import Level
 from game.core.maths import Vector2
+from bot_framework.scenarios._catalog_mixin import ScenarioCatalogMixin
 from game.shared.common_scenarios import (
-    ScenarioCatalogMixin,
     ScenarioLevel,
     make_flat_scenario_spec,
 )

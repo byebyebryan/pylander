@@ -6,8 +6,8 @@ from game.core.components import PhysicsState, Transform
 from game.core.level import Level
 from game.core.maths import Vector2
 from game.core.ecs import require_component
+from bot_framework.scenarios._catalog_mixin import ScenarioCatalogMixin
 from game.shared.common_scenarios import (
-    ScenarioCatalogMixin,
     ScenarioLevel,
     ScenarioLevelSpec,
     sync_engine_pose_velocity,

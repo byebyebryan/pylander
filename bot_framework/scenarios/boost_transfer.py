@@ -15,7 +15,8 @@ from game.shared.common_world import (
     get_mass,
     resolve_landed_site_uid,
 )
-from game.shared.common_scenarios import ScenarioCatalogMixin, is_ranged_value
+from bot_framework.scenarios._catalog_mixin import ScenarioCatalogMixin
+from game.shared.common_scenarios import is_ranged_value
 
 SOURCE_PAD_X = 0.0
 SOURCE_SITE_UID = "transfer_source"
