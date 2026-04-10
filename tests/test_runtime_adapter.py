@@ -28,6 +28,7 @@ def test_make_runtime_adapter_returns_nobot_when_no_bot():
     assert not isinstance(adapter, FullBotRuntimeAdapter)
 
 
+@pytest.mark.bot_extra
 def test_make_runtime_adapter_returns_full_when_bot_provided():
     from bot_framework.bots import create_bot
 

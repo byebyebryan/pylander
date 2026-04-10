@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any, cast
 
+import pytest
 from dataclasses import replace
 
 from bot_framework.bots import create_bot
@@ -12,6 +13,8 @@ from bot_framework.bots.pdg_boost_clearance import (
 )
 from conftest import make_sensors
 from game.core.bot import BotAction, BotEnvironment, BotTarget
+
+pytestmark = pytest.mark.bot_extra
 
 
 class _SourceRiseTerrain:

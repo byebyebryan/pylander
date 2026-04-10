@@ -11,6 +11,8 @@ from bot_framework.scenarios import create_scenario_level
 from game import LanderGame
 from game.levels import create_level as create_gameplay_level
 
+pytestmark = pytest.mark.bot_extra
+
 
 def _create_level(name: str):
     if name in ("flat", "mountains"):

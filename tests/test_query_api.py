@@ -87,6 +87,7 @@ def test_estimate_ground_time_to_impact_matches_ballistic_fall_time() -> None:
     assert t == pytest.approx(expected)
 
 
+@pytest.mark.bot_extra
 def test_plunge_and_pdg_are_bots(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("PYLANDER_BOT_PROFILE", "1")
 

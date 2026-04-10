@@ -24,6 +24,8 @@ from game.core.bot import (
     TerrainBoundary,
 )
 
+pytestmark = pytest.mark.bot_extra
+
 
 class _RisingTerrain:
     def sample_height(self, x: float, lod: int = 0) -> float:

@@ -28,3 +28,6 @@ dev = [
 
 [tool.pytest.ini_options]
 addopts = "-n auto --dist load"
+markers = [
+    "bot_extra: tests that require bot extras (cvxpy/pdg optimizer)",
+]
