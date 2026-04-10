@@ -1039,7 +1039,7 @@ Important evaluation note:
 - the terrain-blind bot can therefore show a mix of clean landings and terrain crashes in the same reactive scenario without invalidating the scenario design
 - the current validation path for "terrain-blind PDG" is the master config override
   `terrain_awareness_enable=false`; the repo ships a ready-made preset at
-  `configs/pdg_terrain_blind.json`
+  `bot_framework/configs/pdg_terrain_blind.json`
 
 Scenario redesign guidance:
 

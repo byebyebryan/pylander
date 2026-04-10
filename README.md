@@ -105,7 +105,7 @@ Selector format:
 - Canonical examples: `boost:flat:near:half`, `terminal:error:mid:wide`, `plunge:high:full`.
 - Experimental terrain examples: `terrain:reactive:terminal_backstop`, `terrain:reactive:terminal_clip`, `terrain:reactive:boost_clearance`.
 - Terrain-blind validation example:
-  `terrain:reactive:terminal_backstop --bot-config configs/pdg_terrain_blind.json`
+  `terrain:reactive:terminal_backstop --bot-config bot_framework/configs/pdg_terrain_blind.json`
 - Use eval goal `boost_cutoff` under the `boost` selector root for early-stop boost checks.
 - Bot selector remains bot-only: `--bot <name>`.
 

@@ -166,9 +166,9 @@ Terrain-awareness validation:
 - path-specific switches remain available underneath it:
   `terrain_divert_enable`, `terrain_clip_enable`, `progress_clearance_enable`
 - repo preset for terrain-blind PDG runs:
-  `configs/pdg_terrain_blind.json`
+  `bot_framework/configs/pdg_terrain_blind.json`
 - example:
-  `uv run python main.py sim terrain:reactive:terminal_backstop:0 --bot pdg --bot-config configs/pdg_terrain_blind.json`
+  `uv run python main.py sim terrain:reactive:terminal_backstop:0 --bot pdg --bot-config bot_framework/configs/pdg_terrain_blind.json`
 - intended use:
   compare terrain-aware vs terrain-blind runs on the same selector/seed to validate that the scenario is testing a real reactive hazard rather than a generic transfer
 
