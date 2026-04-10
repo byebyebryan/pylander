@@ -1,22 +1,17 @@
 from __future__ import annotations
 
 from time import perf_counter
-from typing import TYPE_CHECKING
 
 from core.bot import BotAction
 from core.components import LanderState
 
 from core.control_types import ControlTuple
 
-if TYPE_CHECKING:
-    from runtime.loop_timing import LoopTimers
-    from runtime.types import BotLoopContext
-
 
 def update_bot_steps(
-    timers: LoopTimers,
+    timers: "runtime.loop_timing.LoopTimers",  # noqa: F821
     *,
-    context: BotLoopContext,
+    context: "runtime.types.BotLoopContext",  # noqa: F821
 ) -> dict[str, ControlTuple | None]:
     bot_controls_by_uid: dict[str, ControlTuple | None] = {}
     bot_dt = timers.bot_dt

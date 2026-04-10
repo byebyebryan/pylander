@@ -6,10 +6,10 @@ from core.bot import Bot, BotAction, Sensors
 from game import LanderGame
 from levels import create_level as create_level_by_name
 from runtime.types import BotLoopContext
-from runtime.bot_loop import update_bot_steps
+from bot_framework.bot_loop import update_bot_steps
 from runtime.sensors import build_sensors
 from runtime.loop_timing import LoopTimers
-from runtime.bot_profiler import BotLoopProfiler
+from bot_framework.bot_profiler import BotLoopProfiler
 
 
 def _make_timers() -> LoopTimers:

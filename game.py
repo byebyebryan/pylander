@@ -16,14 +16,14 @@ from bot_framework.bot_actor_session import active_actor_bot
 from runtime.actor_policy import find_initial_player_actor_uid
 from runtime.actor_registry import collect_actor_entities
 from runtime.player_session import set_active_actor, switch_active_actor
-from runtime.bot_loop import update_bot_steps
+from bot_framework.bot_loop import update_bot_steps
 from runtime.game_bootstrap import (
     bootstrap_core_runtime,
     bootstrap_interactive_runtime,
 )
 from runtime.loop_timing import LoopTimers
 from runtime.run_metrics import RunMetricsTracker
-from runtime.bot_profiler import BotLoopProfiler
+from bot_framework.bot_profiler import BotLoopProfiler
 from runtime.physics_steps import update_physics_steps
 from runtime.interactive_session import (
     process_interactive_input,

@@ -1,15 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable
 
-from bot_framework.bot_actor_session import attach_primary_bot, install_world_actor_bots
 from core.bot import Bot
 from core.controllers import PlayerController
 from core.ecs import World
 from runtime.bootstrap import SystemsBundle, create_systems
 from runtime.types import BotLoopContext
-from runtime.bot_profiler import BotLoopProfiler
 from runtime.physics_steps import PhysicsStepContext
 from runtime.sensors import build_sensors
 from runtime.actor_registry import find_first_actor_for_role
@@ -29,6 +27,7 @@ from levels.common_world import get_mass
 
 if TYPE_CHECKING:
     from core.physics import PhysicsEngine
+    from bot_framework.bot_profiler import BotLoopProfiler
 
 
 @dataclass(frozen=True)
@@ -119,9 +118,11 @@ def bootstrap_bot_runtime(
     primary_bot: Bot | None,
     active_uid: str,
     systems: SystemsBundle,
-    profiler: BotLoopProfiler,
+    profiler: "BotLoopProfiler",
     terrain: Any,
     engine: PhysicsEngine,
+    install_world_actor_bots: Callable[..., Any],
+    attach_primary_bot: Callable[..., Any],
 ) -> BotRuntimeBootstrap:
     actor_bots: dict[str, Bot] = {}
     install_world_actor_bots(
@@ -226,9 +227,11 @@ def bootstrap_empty_bot_runtime(
     primary_bot: Bot | None,
     active_uid: str,
     systems: SystemsBundle,
-    profiler: BotLoopProfiler,
+    profiler: "BotLoopProfiler",
     terrain: Any,
     engine: Any,
+    install_world_actor_bots: Callable[..., Any] | None = None,
+    attach_primary_bot: Callable[..., Any] | None = None,
 ) -> BotRuntimeBootstrap:
     actor_bots: dict[str, Bot] = {}
     return BotRuntimeBootstrap(
