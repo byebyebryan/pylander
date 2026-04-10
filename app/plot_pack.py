@@ -16,13 +16,13 @@ from app.benchmark_cache import load_json
 from app.selector_pack import split_csv
 from game.core.selector_codec import render_record_selector, render_selector
 from bot_framework.botmetrics import bot_metric_key
-from utils.tracebundle import (
+from tooling.tracebundle import (
     href_from as _href_from,
     output_path as _output_path,
     rel_to_outputs as _rel_to_outputs,
     sanitize_token as _sanitize_token,
 )
-from utils.traceviewer import (
+from tooling.traceviewer import (
     PLOTLY_CDN_URL,
     ensure_viewer_assets,
     render_trace_detail_html,

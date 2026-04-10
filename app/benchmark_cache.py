@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from utils.tracebundle import artifact_path, sanitize_token
+from tooling.tracebundle import artifact_path, sanitize_token
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 

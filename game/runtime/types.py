@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from game.core.ecs import World
     from game.core.systems.sensor_update import SensorUpdateSystem
     from game.core.terrain import Terrain
-    from utils.tracepack import TraceRecorder
+    from tooling.tracepack import TraceRecorder
 
 
 @dataclass

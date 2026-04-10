@@ -27,7 +27,7 @@ from app.selector_pack import (
     build_bench_command,
     build_selectors,
 )
-from utils.tracebundle import sanitize_token
+from tooling.tracebundle import sanitize_token
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _MISSING_CACHE_PREFIXES = ("Missing cache for commit", "Incomplete cache for commit")
@@ -178,7 +178,14 @@ def _resolve_inputs(
             if baseline_ref is not None
             else None
         )
-        return pack, intent_payload, intent_path, baseline_commit, current_commit, results_root
+        return (
+            pack,
+            intent_payload,
+            intent_path,
+            baseline_commit,
+            current_commit,
+            results_root,
+        )
 
     if not args.mode:
         raise SystemExit("--mode is required unless --intent-json is provided")
@@ -239,7 +246,14 @@ def _resolve_inputs(
         dict(intent_payload.get("repo_context") or {}).get("workspace_key")
         or git_rev_parse("HEAD")
     )
-    return pack, intent_payload, intent_path, baseline_commit, current_commit, results_root
+    return (
+        pack,
+        intent_payload,
+        intent_path,
+        baseline_commit,
+        current_commit,
+        results_root,
+    )
 
 
 def _effective_missing_baseline_policy(

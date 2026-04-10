@@ -43,7 +43,7 @@ from game.core.components import (
 from game.core.ecs import Entity, World
 from bot_framework.eval.result_pipeline import _safe_phase_snapshot
 from game.runtime.actor_registry import get_actor_control_role
-from utils.plot import (
+from tooling.plot import (
     _ballistic_curve_from_state,
     _build_plot_context,
     _curve_apex_point,
@@ -55,7 +55,7 @@ from utils.plot import (
     _vx_corrected_ballistic_reference_curve,
     _vector_sample_indices,
 )
-from utils.tracebundle import sanitize_token
+from tooling.tracebundle import sanitize_token
 
 TRACEPACK_SCHEMA = "pylander.tracepack.v1"
 RUN_TRACE_SCHEMA = "pylander.run_trace.v1"

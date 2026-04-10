@@ -39,14 +39,14 @@ from bot_framework.scenarios import (
     selector_path_looks_like_seed,
 )
 from game.levels.registry import list_public_levels
-from utils.tracebundle import (
+from tooling.tracebundle import (
     artifact_path as _artifact_path,
     href_from_outputs as _href_from,
     output_path as _output_path,
     rel_to_outputs as _rel_to_outputs,
     sanitize_token as _sanitize_token,
 )
-from utils.traceviewer import (
+from tooling.traceviewer import (
     PLOTLY_CDN_URL,
     ensure_viewer_assets,
     render_trace_detail_html,
