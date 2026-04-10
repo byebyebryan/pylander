@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from game.levels.boost_transfer import BOOST_WEIGHT_TIERS
+from bot_framework.scenarios.boost_transfer import BOOST_WEIGHT_TIERS
 from game.levels.common_scenarios import SampleRange
 
 

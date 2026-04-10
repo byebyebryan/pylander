@@ -7,14 +7,14 @@ from game.levels.common_scenarios import (
     ScenarioLevel,
     make_flat_scenario_spec,
 )
-from game.levels.terminal_catalog import (
+from bot_framework.scenarios.terminal_catalog import (
     TERMINAL_DEFAULT_SCENARIO,
     TERMINAL_QUICK_SCENARIOS,
     TERMINAL_SCENARIO_BY_NAME,
     TERMINAL_SMOKE_SCENARIOS,
     TerminalScenario,
 )
-from game.levels.terminal_spawn import (
+from bot_framework.scenarios.terminal_spawn import (
     apply_terminal_spawn,
     resolve_terminal_error_spawn,
     sample_terminal_normal_candidate,

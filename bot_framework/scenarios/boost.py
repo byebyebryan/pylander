@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import game.core.terrain as _terrain
 from game.core.level import Level
-from game.levels.boost_catalog import (
+from bot_framework.scenarios.boost_catalog import (
     BOOST_DEFAULT_SCENARIO,
     BOOST_QUICK_SCENARIOS,
     BOOST_SCENARIO_BY_NAME,
     BOOST_SMOKE_SCENARIOS,
 )
-from game.levels.boost_transfer import (
+from bot_framework.scenarios.boost_transfer import (
     SOURCE_PAD_X,
     BoostTransferLevel,
     build_boost_weight_params,

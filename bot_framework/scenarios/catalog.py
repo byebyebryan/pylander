@@ -308,7 +308,7 @@ def _make_leaf(
 
 
 def _build_leaves() -> tuple[ScenarioLeaf, ...]:
-    from game.levels.terrain_catalog import (
+    from bot_framework.scenarios.terrain_catalog import (
         TERRAIN_QUICK_SCENARIOS,
         TERRAIN_SCENARIOS,
         TERRAIN_SMOKE_SCENARIOS,

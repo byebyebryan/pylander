@@ -45,12 +45,12 @@ def create_level(name: str) -> Level:
 
 
 def _level_classes() -> dict[str, Type[Level]]:
-    from game.levels.boost import BoostLevel
+    from bot_framework.scenarios.boost import BoostLevel
     from game.levels.flat import FlatLevel
     from game.levels.mountains import MountainsLevel
-    from game.levels.plunge import PlungeLevel
-    from game.levels.terrain import TerrainLevel
-    from game.levels.terminal import TerminalLevel
+    from bot_framework.scenarios.plunge import PlungeLevel
+    from bot_framework.scenarios.terrain import TerrainLevel
+    from bot_framework.scenarios.terminal import TerminalLevel
 
     return {
         "flat": FlatLevel,
