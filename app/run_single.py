@@ -23,7 +23,7 @@ from app.reporting import print_headless_results
 
 
 def _create_bot(name: str, *, config_override: dict[str, Any] | None = None):
-    from bots import create_bot
+    from bot_framework.bots import create_bot
 
     return create_bot(name, config_override=config_override)
 

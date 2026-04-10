@@ -4,7 +4,7 @@ from core.bot import BoostCutoffMetrics, FlightPhaseSnapshot, PlotMarker
 from core.components import Transform
 from core.ecs import Entity, World
 from core.maths import Vector2
-from runtime.eval.plot_events import track_plot_events
+from bot_framework.eval.plot_events import track_plot_events
 
 
 class _Bot:

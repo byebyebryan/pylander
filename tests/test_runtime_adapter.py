@@ -29,7 +29,7 @@ def test_make_runtime_adapter_returns_nobot_when_no_bot():
 
 
 def test_make_runtime_adapter_returns_full_when_bot_provided():
-    from bots import create_bot
+    from bot_framework.bots import create_bot
 
     bot = create_bot("pdg")
     adapter = make_runtime_adapter(bot=bot, headless=False)

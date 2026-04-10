@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import runtime.eval.headless_stats as headless_stats
+import bot_framework.eval.headless_stats as headless_stats
 
 
 class _Bot:

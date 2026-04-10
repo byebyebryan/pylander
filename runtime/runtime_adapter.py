@@ -32,7 +32,7 @@ class EvalHooks:
 
 def build_default_eval_hooks() -> EvalHooks:
     from bot_framework.eval.boost_cutoff import prime_boost_cutoff_for_primary_bot
-    from runtime.eval.headless_stats import print_headless_stats
+    from bot_framework.eval.headless_stats import print_headless_stats
     from bot_framework.eval.plot_events import track_plot_events
     from bot_framework.eval.result_pipeline import (
         apply_bot_eval_to_result,

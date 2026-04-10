@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from bots import registry
+from bot_framework.bots import registry
 
 
 def test_list_available_bots_only_reports_loadable_bots(
