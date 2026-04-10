@@ -33,10 +33,6 @@ _LAZY_IMPORTS = {
         "bot_framework.bot_loop",
         "update_bot_steps",
     ),
-    "BotLoopProfiler": (
-        "bot_framework.bot_profiler",
-        "BotLoopProfiler",
-    ),
     "prime_boost_cutoff_for_primary_bot": (
         "bot_framework.eval.boost_cutoff",
         "prime_boost_cutoff_for_primary_bot",
@@ -97,7 +93,6 @@ __all__ = [
     "attach_primary_bot",
     "install_world_actor_bots",
     "update_bot_steps",
-    "BotLoopProfiler",
     "prime_boost_cutoff_for_primary_bot",
     "track_plot_events",
     "print_headless_stats",

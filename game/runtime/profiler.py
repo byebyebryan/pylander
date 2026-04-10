@@ -1,4 +1,4 @@
-"""Profiler interface owned by game: runtime depends on this protocol, not the concrete bot profiler."""
+"""Profiler interface owned by game runtime."""
 
 from __future__ import annotations
 
@@ -15,8 +15,8 @@ if TYPE_CHECKING:
 class BotProfiler(Protocol):
     """Protocol for bot loop profiling.
 
-    Runtime code depends on this interface rather than the concrete
-    BotLoopProfiler class from bot_framework.
+    Runtime code depends on this interface rather than any concrete
+    bot-framework profiler implementation.
     """
 
     enabled: bool
