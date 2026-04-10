@@ -12,6 +12,8 @@ import app.run_single as run_single_module
 from app.cli import build_parser, parse_command
 from app.config import BenchCommand, BenchSettings, BenchTarget, RunCommand
 from bot_framework.bots import create_bot, list_available_bots
+from bot_framework.scenarios import create_scenario_level
+from bot_framework.scenarios import list_available_scenarios
 from bot_framework.scenarios.terrain_catalog import TERRAIN_SCENARIO_BY_NAME
 from game.core.bot import (
     Bot,
@@ -24,8 +26,17 @@ from game.core.components import CargoHold, LandingSite, PhysicsState, Transform
 from game.core.ecs import require_component
 from game.core.eval import aggregate_eval_records, normalize_run_result
 from game import LanderGame
-from game.levels import create_level as create_level_by_name, list_available_levels
+from game.levels import (
+    create_level as create_gameplay_level,
+    list_available_levels as list_gameplay_levels,
+)
 from app.run_batch import ResolvedBenchRun, parse_seed_spec, resolve_benchmark_plan
+
+
+def _create_level_by_name(name: str):
+    if name in ("flat", "mountains"):
+        return create_gameplay_level(name)
+    return create_scenario_level(name)
 
 
 def test_bot_registry_exposes_only_supported_bots() -> None:
@@ -75,22 +86,22 @@ def test_create_bot_applies_pdg_terrain_awareness_override() -> None:
 
 
 def test_level_registry_still_includes_phase_levels() -> None:
-    levels = list_available_levels()
-    assert "flare_plunge" not in levels
-    for name in ("flat", "mountains", "boost", "terrain", "terminal", "plunge"):
-        assert name in levels
-    for removed in (
-        "terminal_normal",
-        "terminal_error",
-        "boost_downhill",
-        "boost_flat",
-        "boost_climb",
-    ):
-        assert removed not in levels
+    gameplay_levels = list_gameplay_levels()
+    assert "flare_plunge" not in gameplay_levels
+    for name in ("flat", "mountains"):
+        assert name in gameplay_levels
+    for removed in ("boost", "terrain", "terminal", "plunge"):
+        assert removed not in gameplay_levels
+
+    scenario_roots = list_available_scenarios()
+    for name in ("boost", "terrain", "terminal", "plunge"):
+        assert name in scenario_roots
+    for removed in ("flat", "mountains"):
+        assert removed not in scenario_roots
 
 
 def test_terminal_level_scenario_names_are_canonical() -> None:
-    level = create_level_by_name("terminal")
+    level = _create_level_by_name("terminal")
     assert level.list_batch_scenarios() == [
         "normal:shallower",
         "normal:shallow",
@@ -119,7 +130,7 @@ def test_terminal_level_scenario_names_are_canonical() -> None:
 
 
 def test_boost_level_scenario_names_are_canonical() -> None:
-    level = create_level_by_name("boost")
+    level = _create_level_by_name("boost")
     assert level.list_batch_scenarios() == [
         "flat:near:empty",
         "flat:near:half",
@@ -167,7 +178,7 @@ def test_boost_level_scenario_names_are_canonical() -> None:
 
 
 def test_terrain_level_scenario_names_are_canonical() -> None:
-    level = create_level_by_name("terrain")
+    level = _create_level_by_name("terrain")
     assert level.list_batch_scenarios() == [
         "reactive:terminal_backstop",
         "reactive:terminal_backstop_close",
@@ -210,13 +221,13 @@ def test_terrain_reactive_seed_keys_follow_route_hazard_groups(
 
 
 def test_boost_rejects_unknown_scenario() -> None:
-    level = create_level_by_name("boost")
+    level = _create_level_by_name("boost")
     with pytest.raises(ValueError, match="Unknown boost scenario"):
         level.set_eval_scenario("bad")
 
 
 def test_terrain_rejects_unknown_scenario() -> None:
-    level = create_level_by_name("terrain")
+    level = _create_level_by_name("terrain")
     with pytest.raises(ValueError, match="Unknown terrain scenario"):
         level.set_eval_scenario("bad")
 
@@ -231,33 +242,33 @@ def test_terrain_rejects_unknown_scenario() -> None:
 def test_setup_levels_reject_legacy_bare_scenarios(
     level_name: str, legacy_scenario: str
 ) -> None:
-    level = create_level_by_name(level_name)
+    level = _create_level_by_name(level_name)
     with pytest.raises(ValueError, match="Unknown"):
         level.set_eval_scenario(legacy_scenario)
 
 
 def test_boost_defaults_to_flat_mid_half() -> None:
     level_name = "boost"
-    level = create_level_by_name(level_name)
+    level = _create_level_by_name(level_name)
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     assert game.level.scenario_name == "flat:mid:half"
 
 
 def test_terrain_defaults_to_flat_far_backstop_half() -> None:
     level_name = "terrain"
-    level = create_level_by_name(level_name)
+    level = _create_level_by_name(level_name)
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     assert game.level.scenario_name == "reactive:terminal_backstop"
 
 
 def test_terrain_rejects_removed_legacy_scenario_names() -> None:
-    level = create_level_by_name("terrain")
+    level = _create_level_by_name("terrain")
     with pytest.raises(ValueError, match="Unknown terrain scenario"):
         level.set_eval_scenario("flat:far:backstop:half")
 
 
 def test_boost_climb_target_is_terrain_bound_flush_pad() -> None:
-    level = create_level_by_name("boost")
+    level = _create_level_by_name("boost")
     level.set_eval_scenario("climb:mid:half")
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     target = next(
@@ -274,7 +285,7 @@ def test_boost_climb_target_is_terrain_bound_flush_pad() -> None:
     ["climb:mid:half", "flat:mid:half", "downhill:mid:half"],
 )
 def test_landed_site_uid_requires_pad_overlap(scenario_name: str) -> None:
-    level = create_level_by_name("boost")
+    level = _create_level_by_name("boost")
     level.set_eval_scenario(scenario_name)
     _game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     target = next(spec for spec in level.site_specs if spec.uid == "transfer_target")
@@ -286,7 +297,7 @@ def test_landed_site_uid_requires_pad_overlap(scenario_name: str) -> None:
 def _spawn_state(
     level_name: str, scenario: str, seed: int
 ) -> tuple[float, float, float, float, float]:
-    level = create_level_by_name(level_name)
+    level = _create_level_by_name(level_name)
     level.set_eval_scenario(scenario)
     game = LanderGame(level=level, seed=seed, bot=create_bot("pdg"), headless=True)
     actor = game.level.world.actors[0]
@@ -302,7 +313,7 @@ def _spawn_state(
 
 
 def _target_site_x(level_name: str, scenario: str, seed: int) -> float:
-    level = create_level_by_name(level_name)
+    level = _create_level_by_name(level_name)
     level.set_eval_scenario(scenario)
     _game = LanderGame(level=level, seed=seed, bot=create_bot("pdg"), headless=True)
     target = next(spec for spec in level.site_specs if spec.uid == "transfer_target")
@@ -312,7 +323,7 @@ def _target_site_x(level_name: str, scenario: str, seed: int) -> float:
 def _boost_scenario_params(
     scenario: str, seed: int, *, benchmark_mode: str | None = None
 ) -> dict[str, float | str]:
-    level = create_level_by_name("boost")
+    level = _create_level_by_name("boost")
     if benchmark_mode is not None:
         level.set_benchmark_mode(benchmark_mode)
     level.set_eval_scenario(scenario)
@@ -323,7 +334,7 @@ def _boost_scenario_params(
 def _terrain_scenario_params(
     scenario: str, seed: int, *, benchmark_mode: str | None = None
 ) -> dict[str, float | str]:
-    level = create_level_by_name("terrain")
+    level = _create_level_by_name("terrain")
     if benchmark_mode is not None:
         level.set_benchmark_mode(benchmark_mode)
     level.set_eval_scenario(scenario)
@@ -334,7 +345,7 @@ def _terrain_scenario_params(
 def _terrain_heights(
     scenario: str, seed: int, *, benchmark_mode: str | None = None
 ) -> tuple[dict[str, float | str], tuple[float, float, float, float]]:
-    level = create_level_by_name("terrain")
+    level = _create_level_by_name("terrain")
     if benchmark_mode is not None:
         level.set_benchmark_mode(benchmark_mode)
     level.set_eval_scenario(scenario)
@@ -358,7 +369,7 @@ def _terrain_heights(
 def _terrain_profile_heights(
     scenario: str, seed: int, *, benchmark_mode: str | None = None
 ) -> tuple[dict[str, float | str], tuple[float, ...]]:
-    level = create_level_by_name("terrain")
+    level = _create_level_by_name("terrain")
     if benchmark_mode is not None:
         level.set_benchmark_mode(benchmark_mode)
     level.set_eval_scenario(scenario)
@@ -407,7 +418,7 @@ def test_setup_levels_apply_weight_tier_mass_and_params(
     expected_cargo_mass: float,
     expected_cargo_fraction: float,
 ) -> None:
-    level = create_level_by_name(level_name)
+    level = _create_level_by_name(level_name)
     level.set_eval_scenario(scenario_name)
     game = LanderGame(level=level, seed=7, bot=create_bot("pdg"), headless=True)
 
@@ -755,7 +766,7 @@ def test_boost_routes_sample_new_target_x_across_seeds(scenario_name: str) -> No
 
 
 def test_pdg_boost_goal_ends_headless_run_early() -> None:
-    level = create_level_by_name("boost")
+    level = _create_level_by_name("boost")
     level.set_eval_scenario("downhill:mid:half")
     bot = create_bot("pdg")
     bot.set_eval_goal("boost_cutoff")
@@ -797,7 +808,7 @@ def test_non_landing_goal_without_decision_fails_goal_not_reached() -> None:
     bot = _NoGoalBot()
     bot.set_eval_goal("boost_cutoff")
     game = LanderGame(
-        level=create_level_by_name("flat"),
+        level=_create_level_by_name("flat"),
         seed=0,
         bot=bot,
         headless=True,
@@ -910,7 +921,7 @@ def test_normalize_run_result_uses_canonical_eval_fields() -> None:
 
 
 def test_boost_flat_run_merges_bot_telemetry_fields_into_result() -> None:
-    level = create_level_by_name("boost")
+    level = _create_level_by_name("boost")
     level.set_eval_scenario("flat:near:half")
     game = LanderGame(level=level, seed=0, bot=create_bot("pdg"), headless=True)
     result = game.run(print_freq=0, max_steps=2, max_time=2.0)
@@ -1714,7 +1725,7 @@ def test_landergame_uses_injected_runtime_adapter() -> None:
                 kwargs["primary_bot"], kwargs["headless"]
             ).resolve(**kwargs)
 
-    level = create_level_by_name("flat")
+    level = _create_level_by_name("flat")
     game = LanderGame(
         level=level,
         seed=0,
@@ -1744,7 +1755,7 @@ def test_landergame_uses_injected_eval_hooks_for_prime_boost_cutoff() -> None:
         merge_bot_snapshots_into_result=lambda **kw: None,
         apply_bot_eval_to_result=lambda **kw: None,
     )
-    level = create_level_by_name("terminal")
+    level = _create_level_by_name("terminal")
     game = LanderGame(
         level=level,
         seed=0,
@@ -1777,7 +1788,7 @@ def test_landergame_uses_injected_eval_hooks_in_result_path() -> None:
         merge_bot_snapshots_into_result=stub_merge,
         apply_bot_eval_to_result=stub_apply,
     )
-    level = create_level_by_name("flat")
+    level = _create_level_by_name("flat")
     game = LanderGame(
         level=level,
         seed=0,

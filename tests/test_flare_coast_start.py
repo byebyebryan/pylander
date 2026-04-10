@@ -9,9 +9,16 @@ import pytest
 import bot_framework.bots.pdg_terminal_gate as terminal_gate
 from bot_framework.bots import create_bot
 from bot_framework.bots.pdg_terminal_gate import _latest_safe_state
+from bot_framework.scenarios import create_scenario_level
 from conftest import make_sensors
 from game import LanderGame
-from game.levels import create_level
+from game.levels import create_level as create_gameplay_level
+
+
+def _create_level(name: str):
+    if name in ("flat", "mountains"):
+        return create_gameplay_level(name)
+    return create_scenario_level(name)
 
 
 def test_latest_safe_margin_shrinks_when_lateral_overshoot_requires_more_time() -> None:
@@ -435,7 +442,7 @@ def test_flare_flight_levels_prime_boost_cutoff_and_start_in_coast(
     level_name: str,
     scenario_name: str,
 ) -> None:
-    level = cast(Any, create_level(level_name))
+    level = cast(Any, _create_level(level_name))
     level.set_eval_scenario(scenario_name)
     bot = cast(Any, create_bot("pdg"))
 
@@ -460,7 +467,7 @@ def test_flare_flight_levels_prime_boost_cutoff_and_start_in_coast(
 
 
 def test_terminal_error_wide_triggers_terminal_gate_before_impact() -> None:
-    level = cast(Any, create_level("terminal"))
+    level = cast(Any, _create_level("terminal"))
     level.set_eval_scenario("error:mid:wide")
     bot = cast(Any, create_bot("pdg"))
 
@@ -476,7 +483,7 @@ def test_terminal_error_wide_triggers_terminal_gate_before_impact() -> None:
 
 
 def test_terminal_normal_shallower_seed_one_delays_terminal_gate_entry() -> None:
-    level = cast(Any, create_level("terminal"))
+    level = cast(Any, _create_level("terminal"))
     level.set_eval_scenario("normal:shallower")
     bot = cast(Any, create_bot("pdg"))
 
@@ -490,7 +497,7 @@ def test_terminal_normal_shallower_seed_one_delays_terminal_gate_entry() -> None
 
 
 def test_flare_flight_levels_can_force_flare_from_spawn() -> None:
-    level = cast(Any, create_level("terminal"))
+    level = cast(Any, _create_level("terminal"))
     level.set_eval_scenario("normal:mid")
     bot = cast(Any, create_bot("pdg"))
     bot.apply_config_override({"force_terminal_from_start": True})
@@ -518,7 +525,7 @@ def test_terminal_gate_handoff_does_not_execute_probe_pulse(
     scenario_name: str,
     max_time: float,
 ) -> None:
-    level = cast(Any, create_level(level_name))
+    level = cast(Any, _create_level(level_name))
     level.set_eval_scenario(scenario_name)
     bot = cast(Any, create_bot("pdg"))
 

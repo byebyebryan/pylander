@@ -18,7 +18,17 @@ from game.core.level_capabilities import (
     set_eval_goal_checked,
     set_eval_scenario_checked,
 )
-from game.levels import create_level, list_available_levels
+from bot_framework.scenarios import create_scenario_level, list_available_scenarios
+from game.levels import (
+    create_level as create_gameplay_level,
+    list_available_levels as list_gameplay_levels,
+)
+
+
+def _create_level(name: str):
+    if name in ("flat", "mountains"):
+        return create_gameplay_level(name)
+    return create_scenario_level(name)
 
 
 def test_set_eval_scenario_checked_requires_capability() -> None:
@@ -37,16 +47,16 @@ def test_resolve_level_eval_goals_defaults_to_landing() -> None:
 
 
 def test_level_eval_goal_support_matches_declared_catalogs() -> None:
-    assert resolve_level_eval_goals(create_level("boost")) == (
+    assert resolve_level_eval_goals(_create_level("boost")) == (
         "landing",
         "boost_cutoff",
     )
-    assert resolve_level_eval_goals(create_level("terrain")) == (
+    assert resolve_level_eval_goals(_create_level("terrain")) == (
         "landing",
         "boost_cutoff",
     )
-    assert resolve_level_eval_goals(create_level("terminal")) == ("landing",)
-    assert resolve_level_eval_goals(create_level("plunge")) == ("landing",)
+    assert resolve_level_eval_goals(_create_level("terminal")) == ("landing",)
+    assert resolve_level_eval_goals(_create_level("plunge")) == ("landing",)
 
 
 def test_set_eval_goal_checked_rejects_unsupported_goal() -> None:
@@ -104,7 +114,7 @@ def test_level_tag_helpers_apply_defaults() -> None:
 
 
 def test_level_tag_helpers_prefer_level_runtime_context_for_real_levels() -> None:
-    level = create_level("boost")
+    level = _create_level("boost")
     level.scenario_name = "wrong"
     level.trace_enabled = False
     level.trace_sample_period_s = 9.0
@@ -222,14 +232,17 @@ def test_resolve_level_benchmark_profile_rejects_quick_not_in_full() -> None:
 
 
 def test_all_levels_expose_valid_benchmark_profile() -> None:
-    for level_name in sorted(list_available_levels()):
-        level = create_level(level_name)
+    all_level_names = sorted(list_gameplay_levels()) + sorted(
+        list_available_scenarios()
+    )
+    for level_name in all_level_names:
+        level = _create_level(level_name)
         profile = resolve_level_benchmark_profile(level, level_name)
         assert profile.policy in {"normal", "observe_only", "excluded"}
 
 
 def test_terrain_level_is_public_and_observe_only_in_auto_benchmarks() -> None:
-    level = create_level("terrain")
+    level = _create_level("terrain")
     profile = resolve_level_benchmark_profile(level, "terrain")
     assert profile.policy == "observe_only"
     assert profile.scenarios.smoke == (
