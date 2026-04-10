@@ -27,7 +27,7 @@ from game.shared.common_world import get_mass
 
 if TYPE_CHECKING:
     from game.core.physics import PhysicsEngine
-    from game.integration import BotLoopProfiler
+    from game.runtime.profiler import BotProfiler
 
 
 @dataclass(frozen=True)
@@ -118,7 +118,7 @@ def bootstrap_bot_runtime(
     primary_bot: Bot | None,
     active_uid: str,
     systems: SystemsBundle,
-    profiler: "BotLoopProfiler",
+    profiler: "BotProfiler",
     terrain: Any,
     engine: PhysicsEngine,
     install_world_actor_bots: Callable[..., Any],
@@ -227,7 +227,7 @@ def bootstrap_empty_bot_runtime(
     primary_bot: Bot | None,
     active_uid: str,
     systems: SystemsBundle,
-    profiler: "BotLoopProfiler",
+    profiler: "BotProfiler",
     terrain: Any,
     engine: Any,
     install_world_actor_bots: Callable[..., Any] | None = None,

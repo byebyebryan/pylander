@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
-from game.integration import BotLoopProfiler
+from game.runtime.profiler import BotProfiler
 
 if TYPE_CHECKING:
     from game.core.bot import Bot, BotEvalDecision
@@ -100,7 +100,7 @@ class BotRuntimeAdapter(ABC):
         active_uid: str,
         active_uid_getter: Callable[[], str],
         systems: SystemsBundle,
-        profiler: BotLoopProfiler,
+        profiler: BotProfiler,
         terrain: Any,
         engine: PhysicsEngine,
         seed: int,
@@ -131,7 +131,7 @@ class FullBotRuntimeAdapter(BotRuntimeAdapter):
         active_uid: str,
         active_uid_getter: Callable[[], str],
         systems: SystemsBundle,
-        profiler: BotLoopProfiler,
+        profiler: BotProfiler,
         terrain: Any,
         engine: PhysicsEngine,
         seed: int,
@@ -191,7 +191,7 @@ class NoBotRuntimeAdapter(BotRuntimeAdapter):
         active_uid: str,
         active_uid_getter: Callable[[], str],
         systems: SystemsBundle,
-        profiler: BotLoopProfiler,
+        profiler: BotProfiler,
         terrain: Any,
         engine: PhysicsEngine,
         seed: int,

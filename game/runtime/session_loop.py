@@ -11,8 +11,8 @@ if TYPE_CHECKING:
     from game.core.physics import PhysicsEngine
     from game.runtime.bootstrap import SystemsBundle
 from game.runtime.loop_timing import LoopTimers
+from game.runtime.profiler import BotProfiler
 from game.runtime.run_metrics import RunMetricsTracker
-from game.integration import BotLoopProfiler
 from game.core.control_types import ControlTuple
 
 
@@ -84,7 +84,7 @@ class SessionLoopContext:
     engine: PhysicsEngine
     systems: SystemsBundle
     trace_recorder: Any
-    bot_profiler: BotLoopProfiler
+    bot_profiler: BotProfiler
     metrics: RunMetricsTracker
     bot_override_delay: float
     bot_override_timer: float
