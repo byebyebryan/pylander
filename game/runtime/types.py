@@ -6,7 +6,7 @@ if TYPE_CHECKING:
     from game.core.ecs import World
     from game.core.systems.sensor_update import SensorUpdateSystem
     from game.core.terrain import Terrain
-    from bot_framework.bot_profiler import BotLoopProfiler
+    from game.integration import BotLoopProfiler
     from utils.tracepack import TraceRecorder
 
 

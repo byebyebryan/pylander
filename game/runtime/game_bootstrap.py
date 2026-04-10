@@ -27,7 +27,7 @@ from game.shared.common_world import get_mass
 
 if TYPE_CHECKING:
     from game.core.physics import PhysicsEngine
-    from bot_framework.bot_profiler import BotLoopProfiler
+    from game.integration import BotLoopProfiler
 
 
 @dataclass(frozen=True)
