@@ -11,11 +11,12 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
+from game.integration import BotLoopProfiler
+
 if TYPE_CHECKING:
     from game.core.bot import Bot, BotEvalDecision
     from game.core.ecs import World
     from game.runtime.bootstrap import SystemsBundle
-    from bot_framework.bot_profiler import BotLoopProfiler
     from game.runtime.game_bootstrap import BotRuntimeBootstrap, TraceRuntimeBootstrap
     from game.core.physics import PhysicsEngine
 
@@ -31,13 +32,13 @@ class EvalHooks:
 
 
 def build_default_eval_hooks() -> EvalHooks:
-    from bot_framework.eval.boost_cutoff import prime_boost_cutoff_for_primary_bot
-    from bot_framework.eval.headless_stats import print_headless_stats
-    from bot_framework.eval.plot_events import track_plot_events
-    from bot_framework.eval.result_pipeline import (
-        apply_bot_eval_to_result,
-        merge_bot_snapshots_into_result,
+    from game.integration import (
+        prime_boost_cutoff_for_primary_bot,
+        print_headless_stats,
+        track_plot_events,
         resolve_headless_bot_eval_decision,
+        merge_bot_snapshots_into_result,
+        apply_bot_eval_to_result,
     )
 
     return EvalHooks(
@@ -142,10 +143,7 @@ class FullBotRuntimeAdapter(BotRuntimeAdapter):
         EvalHooks,
         set[tuple[str, str]],
     ]:
-        from bot_framework.bot_actor_session import (
-            attach_primary_bot,
-            install_world_actor_bots,
-        )
+        from game.integration import attach_primary_bot, install_world_actor_bots
         from game.runtime.game_bootstrap import (
             bootstrap_bot_runtime,
             bootstrap_trace_runtime,
