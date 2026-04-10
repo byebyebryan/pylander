@@ -12,6 +12,9 @@ from runtime.types import BotLoopContext
 from runtime.bot_profiler import BotLoopProfiler
 from runtime.physics_steps import PhysicsStepContext
 from runtime.sensors import build_sensors
+from runtime.actor_registry import find_first_actor_for_role
+from runtime.sensors import build_vehicle_info
+from runtime.terrain_intel import build_bot_environment
 from ui.renderer import Renderer
 from utils.input import InputHandler
 from utils.tracepack import TraceRecorder
@@ -126,6 +129,8 @@ def bootstrap_bot_runtime(
         ecs_world=ecs_world,
         level=level,
         world_bots=world_bots,
+        build_vehicle_info=build_vehicle_info,
+        build_bot_environment=build_bot_environment,
     )
     if primary_bot is not None:
         attach_primary_bot(
@@ -135,6 +140,9 @@ def bootstrap_bot_runtime(
             level=level,
             active_uid=active_uid,
             bot=primary_bot,
+            find_first_actor_for_role=find_first_actor_for_role,
+            build_vehicle_info=build_vehicle_info,
+            build_bot_environment=build_bot_environment,
         )
     return BotRuntimeBootstrap(
         actor_bots=actor_bots,
