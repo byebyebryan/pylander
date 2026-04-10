@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from game.core.level import Level
 from game.core.maths import Vector2
-from game.levels.common_scenarios import (
+from game.shared.common_scenarios import (
     ScenarioCatalogMixin,
     ScenarioLevel,
     make_flat_scenario_spec,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from game.levels.common_scenarios import SampleRange
+from game.shared.common_scenarios import SampleRange
 
 
 TERMINAL_ANGLE_PROFILES: tuple[tuple[str, float], ...] = (

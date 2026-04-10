@@ -5,7 +5,7 @@ import math
 import game.core.terrain as _terrain
 from game.core.level_capabilities import BenchmarkScenarioSets, LevelBenchmarkProfile
 from game.core.level import Level
-from game.levels.common_world import PresetLevel, SiteSpec
+from game.shared.common_world import PresetLevel, SiteSpec
 
 
 def _build_mountain_terrain(seed: int):

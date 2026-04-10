@@ -6,7 +6,7 @@ from game.core.components import PhysicsState, Transform
 from game.core.level import Level
 from game.core.maths import Vector2
 from game.core.ecs import require_component
-from game.levels.common_scenarios import (
+from game.shared.common_scenarios import (
     ScenarioCatalogMixin,
     ScenarioLevel,
     ScenarioLevelSpec,

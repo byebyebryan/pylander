@@ -23,7 +23,7 @@ from game.core.level_capabilities import (
     level_trace_sample_period_s,
     level_scenario_tag,
 )
-from game.levels.common_world import get_mass
+from game.shared.common_world import get_mass
 
 if TYPE_CHECKING:
     from game.core.physics import PhysicsEngine

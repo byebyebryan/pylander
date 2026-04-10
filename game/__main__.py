@@ -12,18 +12,16 @@ from game.core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal
 from game.core.level import GameRunState, Level
 from game.core.level_capabilities import level_name_tag, level_scenario_tag
 from game.core.maths import Range1D, Vector2
-from bot_framework.bot_actor_session import active_actor_bot
+from game.integration import active_actor_bot, update_bot_steps, BotLoopProfiler
 from game.runtime.actor_policy import find_initial_player_actor_uid
 from game.runtime.actor_registry import collect_actor_entities
 from game.runtime.player_session import set_active_actor, switch_active_actor
-from bot_framework.bot_loop import update_bot_steps
 from game.runtime.game_bootstrap import (
     bootstrap_core_runtime,
     bootstrap_interactive_runtime,
 )
 from game.runtime.loop_timing import LoopTimers
 from game.runtime.run_metrics import RunMetricsTracker
-from bot_framework.bot_profiler import BotLoopProfiler
 from game.runtime.physics_steps import update_physics_steps
 from game.runtime.interactive_session import (
     process_interactive_input,
