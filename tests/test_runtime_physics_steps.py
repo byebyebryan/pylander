@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from runtime.loop_timing import LoopTimers
-from runtime.physics_steps import (
+from game.runtime.loop_timing import LoopTimers
+from game.runtime.physics_steps import (
     PhysicsStepContext,
     sync_actor_masses_to_engine,
     update_physics_steps,

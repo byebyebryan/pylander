@@ -4,7 +4,7 @@ import math
 from dataclasses import dataclass
 
 from .common_math import _GRAVITY_MAG, rate_limit_angle_command
-from core.bot import BotAction, Sensors
+from game.core.bot import BotAction, Sensors
 
 
 @dataclass(frozen=True)

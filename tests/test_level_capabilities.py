@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from core.level_capabilities import (
+from game.core.level_capabilities import (
     BenchmarkScenarioSets,
     LevelBenchmarkProfile,
     level_name_tag,
@@ -18,7 +18,7 @@ from core.level_capabilities import (
     set_eval_goal_checked,
     set_eval_scenario_checked,
 )
-from levels import create_level, list_available_levels
+from game.levels import create_level, list_available_levels
 
 
 def test_set_eval_scenario_checked_requires_capability() -> None:

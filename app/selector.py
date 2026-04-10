@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from core.eval_goals import (
+from game.core.eval_goals import (
     EVAL_GOAL_BOOST_CUTOFF,
     KNOWN_EVAL_GOAL_SET,
     normalize_eval_goal,
 )
-from levels.registry import list_public_levels
-from levels.benchmark_catalog import selector_path_looks_like_seed
-from core.selector_codec import (
+from game.levels.registry import list_public_levels
+from game.levels.benchmark_catalog import selector_path_looks_like_seed
+from game.core.selector_codec import (
     render_record_selector as _render_record_selector,
     render_selector as _render_selector,
     render_selector_group as _render_selector_group,

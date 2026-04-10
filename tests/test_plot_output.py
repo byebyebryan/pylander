@@ -6,9 +6,9 @@ from pathlib import Path
 import matplotlib.image as mpimg
 import pytest
 
-from core.components import FlightState, FuelTank, LanderState, Transform
-from core.lander import Lander
-from core.maths import Vector2
+from game.core.components import FlightState, FuelTank, LanderState, Transform
+from game.core.lander import Lander
+from game.core.maths import Vector2
 from conftest import FlatTerrain
 from utils.plot import (
     _ballistic_projection_series,

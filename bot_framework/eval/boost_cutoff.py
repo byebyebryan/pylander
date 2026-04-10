@@ -3,12 +3,12 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from core.bot import BoostCutoffMetrics
-from core.components import PhysicsState, Transform
-from core.config import GRAVITY_MAG
-from core.ecs import require_component
-from core.level_capabilities import level_name_tag
-from core.maths import Vector2
+from game.core.bot import BoostCutoffMetrics
+from game.core.components import PhysicsState, Transform
+from game.core.config import GRAVITY_MAG
+from game.core.ecs import require_component
+from game.core.level_capabilities import level_name_tag
+from game.core.maths import Vector2
 
 
 def build_boost_cutoff_metrics_from_state(

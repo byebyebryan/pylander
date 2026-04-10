@@ -17,7 +17,7 @@ from bot_framework.bots.pdg_tracking import (
     finalize_terminal_entry_metrics,
     update_terminal_post_entry_metrics,
 )
-from core.config import GRAVITY
+from game.core.config import GRAVITY
 
 
 class _Bot:

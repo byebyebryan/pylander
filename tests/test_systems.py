@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from core.components import (
+from game.core.components import (
     ContactReport,
     ControlIntent,
     Engine,
@@ -21,19 +21,19 @@ from core.components import (
     Wallet,
 )
 from conftest import FlatTerrain
-from core.ecs import Entity, World
-from core.landing_sites import LandingSiteSurfaceModel
-from core.maths import Range1D, Vector2
-from core.systems.contact import ContactSystem
-from core.systems.control_routing import ControlRoutingSystem
-from core.systems.force_application import ForceApplicationSystem
-from core.systems.landing_site_motion import LandingSiteMotionSystem
-from core.systems.landing_site_projection import LandingSiteProjectionSystem
-from core.systems.physics_sync import PhysicsSyncSystem
-from core.systems.propulsion import PropulsionSystem
-from core.systems.refuel import RefuelSystem
-from core.systems.sensor_update import SensorUpdateSystem
-from core.systems.state_transition import StateTransitionSystem
+from game.core.ecs import Entity, World
+from game.core.landing_sites import LandingSiteSurfaceModel
+from game.core.maths import Range1D, Vector2
+from game.core.systems.contact import ContactSystem
+from game.core.systems.control_routing import ControlRoutingSystem
+from game.core.systems.force_application import ForceApplicationSystem
+from game.core.systems.landing_site_motion import LandingSiteMotionSystem
+from game.core.systems.landing_site_projection import LandingSiteProjectionSystem
+from game.core.systems.physics_sync import PhysicsSyncSystem
+from game.core.systems.propulsion import PropulsionSystem
+from game.core.systems.refuel import RefuelSystem
+from game.core.systems.sensor_update import SensorUpdateSystem
+from game.core.systems.state_transition import StateTransitionSystem
 
 
 class _StubPhysicsEngine:

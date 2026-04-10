@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from core.level import Level
-import runtime.game_bootstrap as game_bootstrap
+from game.core.level import Level
+import game.runtime.game_bootstrap as game_bootstrap
 
 
 def test_bootstrap_trace_runtime_sets_selector_tag(monkeypatch) -> None:

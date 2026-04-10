@@ -32,9 +32,9 @@ from app.output_viewer import (
 )
 from app.selector_pack import build_selectors
 
-from core.selector_codec import render_record_selector
-from levels.registry import list_public_levels
-from levels.benchmark_catalog import (
+from game.core.selector_codec import render_record_selector
+from game.levels.registry import list_public_levels
+from game.levels.benchmark_catalog import (
     resolve_selector_binding,
     selector_children,
     selector_path_looks_like_seed,

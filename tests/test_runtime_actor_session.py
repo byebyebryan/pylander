@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from core.bot import Bot, BotAction, Sensors
-from core.components import (
+from game.core.bot import Bot, BotAction, Sensors
+from game.core.components import (
     ActorControlRole,
     Engine,
     FuelTank,
@@ -16,14 +16,14 @@ from core.components import (
     RefuelConfig,
     Transform,
 )
-from core.ecs import Entity, World
-from core.maths import Vector2
+from game.core.ecs import Entity, World
+from game.core.maths import Vector2
 from bot_framework.bot_actor_session import active_actor_bot, attach_primary_bot
-from runtime.actor_policy import find_initial_player_actor_uid
-from runtime.actor_registry import find_first_actor_for_role
-from runtime.player_session import set_active_actor, switch_active_actor
-from runtime.sensors import build_vehicle_info
-from runtime.terrain_intel import build_bot_environment
+from game.runtime.actor_policy import find_initial_player_actor_uid
+from game.runtime.actor_registry import find_first_actor_for_role
+from game.runtime.player_session import set_active_actor, switch_active_actor
+from game.runtime.sensors import build_vehicle_info
+from game.runtime.terrain_intel import build_bot_environment
 
 
 class _FakeEngine:

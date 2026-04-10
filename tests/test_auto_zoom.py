@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ui.auto_zoom import AutoZoomController
+from game.ui.auto_zoom import AutoZoomController
 
 
 class _Camera:

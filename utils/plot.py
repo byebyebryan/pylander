@@ -13,9 +13,9 @@ from bot_framework.bots.common_ballistics import (
     estimate_target_y_projection,
     time_to_target_y_crossing,
 )
-from core.components import Engine, FuelTank, LanderState, PhysicsState, Transform
-from core.config import GRAVITY_MAG
-from core.ecs import require_component
+from game.core.components import Engine, FuelTank, LanderState, PhysicsState, Transform
+from game.core.config import GRAVITY_MAG
+from game.core.ecs import require_component
 from utils.tracebundle import sanitize_token
 
 

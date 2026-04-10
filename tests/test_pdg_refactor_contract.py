@@ -9,7 +9,7 @@ from bot_framework.bots import create_bot
 from bot_framework.bots.common_ballistics import BallisticProjection
 from bot_framework.bots.pdg import FlightStage, UpdateContext
 from conftest import make_sensors
-from core.bot import (
+from game.core.bot import (
     BotAction,
     BotEnvironment,
     BotTarget,
@@ -19,7 +19,7 @@ from core.bot import (
     BoostCutoffMetrics,
 )
 from game import LanderGame
-from levels import create_level as create_level_by_name
+from game.levels import create_level as create_level_by_name
 
 
 def _pdg_bot() -> Any:

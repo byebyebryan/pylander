@@ -13,14 +13,14 @@ from app.config import (
 )
 from landers import list_available_landers
 from app.selector import parse_seed_spec, parse_selector, render_selector
-from core.trace_policy import (
+from game.core.trace_policy import (
     TRACE_DETAIL_DEBUG,
     TRACE_DETAIL_MODES,
     TRACE_DETAIL_REPORT,
     normalize_trace_detail,
 )
-from levels.registry import list_public_levels
-from levels.benchmark_catalog import (
+from game.levels.registry import list_public_levels
+from game.levels.benchmark_catalog import (
     expand_selector_bindings,
     resolve_selector_binding,
 )

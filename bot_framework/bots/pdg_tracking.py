@@ -5,7 +5,7 @@ import math
 from .common_ballistics import BallisticProjection, ballistic_apex_from_state
 from .common_math import _GRAVITY_MAG
 from .pdg_boost import projected_impact_angle_deg as _projected_impact_angle_deg
-from core.bot import Sensors, BoostCutoffMetrics
+from game.core.bot import Sensors, BoostCutoffMetrics
 
 
 def _projected_apex(y: float, vy_up: float, target_y: float) -> tuple[float, float]:

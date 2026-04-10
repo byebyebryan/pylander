@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from core.bot import BotEvalDecision
-from core.eval_goals import EVAL_GOAL_BOOST_CUTOFF
+from game.core.bot import BotEvalDecision
+from game.core.eval_goals import EVAL_GOAL_BOOST_CUTOFF
 
 from .common_math import clamp
 from .pdg_boost import boost_dx_limit

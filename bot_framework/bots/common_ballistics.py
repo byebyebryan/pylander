@@ -6,7 +6,7 @@ import math
 from dataclasses import dataclass
 
 from .common_math import _GRAVITY_MAG, coerce_finite
-from core.terrain import ballistic_fall_time
+from game.core.terrain import ballistic_fall_time
 
 
 @dataclass(frozen=True)

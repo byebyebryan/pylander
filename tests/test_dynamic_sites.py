@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from core.components import Transform
-from core.ecs import Entity
-from core.maths import Vector2
-from levels.common_world import PresetLevel
+from game.core.components import Transform
+from game.core.ecs import Entity
+from game.core.maths import Vector2
+from game.levels.common_world import PresetLevel
 
 
 class _DynamicSiteLevel(PresetLevel):

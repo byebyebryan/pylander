@@ -5,8 +5,8 @@ from __future__ import annotations
 import math
 from typing import Mapping, TypeVar
 
-from core.bot import Sensors, VehicleInfo
-from core.config import GRAVITY_MAG
+from game.core.bot import Sensors, VehicleInfo
+from game.core.config import GRAVITY_MAG
 
 _BehaviorT = TypeVar("_BehaviorT")
 _GRAVITY_MAG = GRAVITY_MAG

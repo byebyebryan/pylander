@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from core.eval import aggregate_eval_records
-from core.selector_codec import render_record_selector
+from game.core.eval import aggregate_eval_records
+from game.core.selector_codec import render_record_selector
 from utils.botmetrics import bot_metric_key
 
 _COMPUTE_FIELDS: tuple[str, ...] = (
@@ -474,33 +474,43 @@ def scenario_regressions(
         c_ref_area = c_ref_area_success if use_ref_success else c_ref_area_all
         b_ref_peak = b_ref_peak_success if use_ref_success else b_ref_peak_all
         c_ref_peak = c_ref_peak_success if use_ref_success else c_ref_peak_all
-        b_terminal_apex_gain_success, b_terminal_apex_gain_n, b_terminal_apex_gain_all = (
-            _metric_stat_from_summary(b_row, "bot_pdg_terminal_post_entry_apex_gain")
-        )
-        c_terminal_apex_gain_success, c_terminal_apex_gain_n, c_terminal_apex_gain_all = (
-            _metric_stat_from_summary(c_row, "bot_pdg_terminal_post_entry_apex_gain")
-        )
-        b_terminal_time_to_apex_success, _b_terminal_time_to_apex_n, b_terminal_time_to_apex_all = (
-            _metric_stat_from_summary(b_row, "bot_pdg_terminal_post_entry_time_to_apex")
-        )
-        c_terminal_time_to_apex_success, _c_terminal_time_to_apex_n, c_terminal_time_to_apex_all = (
-            _metric_stat_from_summary(c_row, "bot_pdg_terminal_post_entry_time_to_apex")
-        )
-        b_terminal_peak_abs_dx_success, _b_terminal_peak_abs_dx_n, b_terminal_peak_abs_dx_all = (
-            _metric_stat_from_summary(b_row, "bot_pdg_terminal_post_entry_peak_abs_dx")
-        )
-        c_terminal_peak_abs_dx_success, _c_terminal_peak_abs_dx_n, c_terminal_peak_abs_dx_all = (
-            _metric_stat_from_summary(c_row, "bot_pdg_terminal_post_entry_peak_abs_dx")
-        )
+        (
+            b_terminal_apex_gain_success,
+            b_terminal_apex_gain_n,
+            b_terminal_apex_gain_all,
+        ) = _metric_stat_from_summary(b_row, "bot_pdg_terminal_post_entry_apex_gain")
+        (
+            c_terminal_apex_gain_success,
+            c_terminal_apex_gain_n,
+            c_terminal_apex_gain_all,
+        ) = _metric_stat_from_summary(c_row, "bot_pdg_terminal_post_entry_apex_gain")
+        (
+            b_terminal_time_to_apex_success,
+            _b_terminal_time_to_apex_n,
+            b_terminal_time_to_apex_all,
+        ) = _metric_stat_from_summary(b_row, "bot_pdg_terminal_post_entry_time_to_apex")
+        (
+            c_terminal_time_to_apex_success,
+            _c_terminal_time_to_apex_n,
+            c_terminal_time_to_apex_all,
+        ) = _metric_stat_from_summary(c_row, "bot_pdg_terminal_post_entry_time_to_apex")
+        (
+            b_terminal_peak_abs_dx_success,
+            _b_terminal_peak_abs_dx_n,
+            b_terminal_peak_abs_dx_all,
+        ) = _metric_stat_from_summary(b_row, "bot_pdg_terminal_post_entry_peak_abs_dx")
+        (
+            c_terminal_peak_abs_dx_success,
+            _c_terminal_peak_abs_dx_n,
+            c_terminal_peak_abs_dx_all,
+        ) = _metric_stat_from_summary(c_row, "bot_pdg_terminal_post_entry_peak_abs_dx")
         _b_terminal_apex_gain_success_n, b_terminal_apex_gain_all_n = (
             _metric_counts_from_summary(b_row, "bot_pdg_terminal_post_entry_apex_gain")
         )
         _c_terminal_apex_gain_success_n, c_terminal_apex_gain_all_n = (
             _metric_counts_from_summary(c_row, "bot_pdg_terminal_post_entry_apex_gain")
         )
-        use_terminal_success = (
-            b_terminal_apex_gain_n > 0 and c_terminal_apex_gain_n > 0
-        )
+        use_terminal_success = b_terminal_apex_gain_n > 0 and c_terminal_apex_gain_n > 0
         use_terminal_all = (
             b_terminal_apex_gain_all_n > 0 and c_terminal_apex_gain_all_n > 0
         )
@@ -545,7 +555,8 @@ def scenario_regressions(
                 ),
                 "delta_terminal_post_entry_time_to_apex": (
                     None
-                    if b_terminal_time_to_apex is None or c_terminal_time_to_apex is None
+                    if b_terminal_time_to_apex is None
+                    or c_terminal_time_to_apex is None
                     else c_terminal_time_to_apex - b_terminal_time_to_apex
                 ),
                 "delta_terminal_post_entry_peak_abs_dx": (
@@ -889,36 +900,40 @@ def print_compare(
             and c["terminal_post_entry_apex_gain_all_count"] > 0
         )
         if use_terminal_success_primary:
-            primary_terminal_apex_gain_b = b["terminal_post_entry_apex_gain_mean_success"]
-            primary_terminal_apex_gain_c = c["terminal_post_entry_apex_gain_mean_success"]
-            primary_terminal_time_to_apex_b = (
-                b["terminal_post_entry_time_to_apex_mean_success"]
-            )
-            primary_terminal_time_to_apex_c = (
-                c["terminal_post_entry_time_to_apex_mean_success"]
-            )
-            primary_terminal_peak_abs_dx_b = (
-                b["terminal_post_entry_peak_abs_dx_mean_success"]
-            )
-            primary_terminal_peak_abs_dx_c = (
-                c["terminal_post_entry_peak_abs_dx_mean_success"]
-            )
+            primary_terminal_apex_gain_b = b[
+                "terminal_post_entry_apex_gain_mean_success"
+            ]
+            primary_terminal_apex_gain_c = c[
+                "terminal_post_entry_apex_gain_mean_success"
+            ]
+            primary_terminal_time_to_apex_b = b[
+                "terminal_post_entry_time_to_apex_mean_success"
+            ]
+            primary_terminal_time_to_apex_c = c[
+                "terminal_post_entry_time_to_apex_mean_success"
+            ]
+            primary_terminal_peak_abs_dx_b = b[
+                "terminal_post_entry_peak_abs_dx_mean_success"
+            ]
+            primary_terminal_peak_abs_dx_c = c[
+                "terminal_post_entry_peak_abs_dx_mean_success"
+            ]
             primary_terminal_basis = "success_only"
         elif use_terminal_all_primary:
             primary_terminal_apex_gain_b = b["terminal_post_entry_apex_gain_mean_all"]
             primary_terminal_apex_gain_c = c["terminal_post_entry_apex_gain_mean_all"]
-            primary_terminal_time_to_apex_b = (
-                b["terminal_post_entry_time_to_apex_mean_all"]
-            )
-            primary_terminal_time_to_apex_c = (
-                c["terminal_post_entry_time_to_apex_mean_all"]
-            )
-            primary_terminal_peak_abs_dx_b = (
-                b["terminal_post_entry_peak_abs_dx_mean_all"]
-            )
-            primary_terminal_peak_abs_dx_c = (
-                c["terminal_post_entry_peak_abs_dx_mean_all"]
-            )
+            primary_terminal_time_to_apex_b = b[
+                "terminal_post_entry_time_to_apex_mean_all"
+            ]
+            primary_terminal_time_to_apex_c = c[
+                "terminal_post_entry_time_to_apex_mean_all"
+            ]
+            primary_terminal_peak_abs_dx_b = b[
+                "terminal_post_entry_peak_abs_dx_mean_all"
+            ]
+            primary_terminal_peak_abs_dx_c = c[
+                "terminal_post_entry_peak_abs_dx_mean_all"
+            ]
             primary_terminal_basis = "all_runs"
         else:
             primary_terminal_apex_gain_b = None
@@ -1055,7 +1070,8 @@ def print_compare(
                     None
                     if primary_terminal_time_to_apex_b is None
                     or primary_terminal_time_to_apex_c is None
-                    else primary_terminal_time_to_apex_c - primary_terminal_time_to_apex_b
+                    else primary_terminal_time_to_apex_c
+                    - primary_terminal_time_to_apex_b
                 ),
                 "terminal_post_entry_peak_abs_dx_primary": (
                     None
@@ -1133,11 +1149,13 @@ def print_compare(
     )
     baseline_global_compare = _filter_payload_to_keys(
         baseline_parts["global"],
-        _record_key_set(baseline_parts["global"]) & _record_key_set(candidate_parts["global"]),
+        _record_key_set(baseline_parts["global"])
+        & _record_key_set(candidate_parts["global"]),
     )
     candidate_global_compare = _filter_payload_to_keys(
         candidate_parts["global"],
-        _record_key_set(baseline_parts["global"]) & _record_key_set(candidate_parts["global"]),
+        _record_key_set(baseline_parts["global"])
+        & _record_key_set(candidate_parts["global"]),
     )
     baseline_observation_compare = _filter_payload_to_keys(
         baseline_parts["observation"],
@@ -1174,24 +1192,36 @@ def print_compare(
         f"observe_or_excluded={len(_payload_records(candidate_parts['observation']))}"
     )
 
-    global_summary = _summary_block(
-        "global",
-        baseline_block=baseline_global_compare,
-        candidate_block=candidate_global_compare,
-        crash_block=crash_global,
-        crash_notable=len(crash_global["new_crashes"]) > 0,
-    ) if int(global_compare_basis.get("shared_runs", 0) or 0) > 0 else _summary_unavailable_block()
-    observation_summary = _summary_block(
-        "observation",
-        baseline_block=baseline_observation_compare,
-        candidate_block=candidate_observation_compare,
-        crash_block=crash_observation,
-        crash_notable=False,
-    ) if int(observation_compare_basis.get("shared_runs", 0) or 0) > 0 else _summary_unavailable_block()
+    global_summary = (
+        _summary_block(
+            "global",
+            baseline_block=baseline_global_compare,
+            candidate_block=candidate_global_compare,
+            crash_block=crash_global,
+            crash_notable=len(crash_global["new_crashes"]) > 0,
+        )
+        if int(global_compare_basis.get("shared_runs", 0) or 0) > 0
+        else _summary_unavailable_block()
+    )
+    observation_summary = (
+        _summary_block(
+            "observation",
+            baseline_block=baseline_observation_compare,
+            candidate_block=candidate_observation_compare,
+            crash_block=crash_observation,
+            crash_notable=False,
+        )
+        if int(observation_compare_basis.get("shared_runs", 0) or 0) > 0
+        else _summary_unavailable_block()
+    )
     if int(global_compare_basis.get("shared_runs", 0) or 0) <= 0:
-        print("warning: global compare has no shared runs; summary deltas are unavailable.")
+        print(
+            "warning: global compare has no shared runs; summary deltas are unavailable."
+        )
     if int(observation_compare_basis.get("shared_runs", 0) or 0) <= 0:
-        print("warning: observation compare has no shared runs; summary deltas are unavailable.")
+        print(
+            "warning: observation compare has no shared runs; summary deltas are unavailable."
+        )
     compute_global = _compute_compare(
         baseline_payload=baseline_global_compare,
         candidate_payload=candidate_global_compare,

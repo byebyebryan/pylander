@@ -8,10 +8,10 @@ from bot_framework.bots.common_ballistics import (
     estimate_ground_time_to_impact,
     estimate_target_y_projection,
 )
-from core.bot import Bot, BotAction, Sensors
-from core.terrain import ballistic_fall_time
+from game.core.bot import Bot, BotAction, Sensors
+from game.core.terrain import ballistic_fall_time
 from game import LanderGame
-from levels import create_level as create_level_by_name
+from game.levels import create_level as create_level_by_name
 
 
 def test_sensors_only_bot_path_and_profile_metrics(

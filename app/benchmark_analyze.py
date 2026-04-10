@@ -8,9 +8,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from app.benchmark_context import analysis_sidecar_path, discover_compare_path, load_intent
+from app.benchmark_context import (
+    analysis_sidecar_path,
+    discover_compare_path,
+    load_intent,
+)
 from app.benchmark_context import load_json as load_json_file
-from core.selector_codec import render_record_selector
+from game.core.selector_codec import render_record_selector
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -58,8 +62,7 @@ def _measure_evidence(
 ) -> list[str]:
     summary = dict(candidate_payload.get("summary") or {})
     evidence = [
-        "candidate success_rate="
-        f"{_coerce_float(summary.get('success_rate')):.3f}"
+        f"candidate success_rate={_coerce_float(summary.get('success_rate')):.3f}"
         if _coerce_float(summary.get("success_rate")) is not None
         else "candidate success_rate=n/a",
         f"candidate runs={int(summary.get('runs', 0) or 0)}",
@@ -98,7 +101,9 @@ def _measure_evidence(
     compare_basis = dict(global_block.get("compare_basis") or {})
     if str(compare_basis.get("mode") or "").strip() == "no_shared_runs":
         evidence.append("compare basis=no_shared_runs")
-        evidence.append("global deltas unavailable because candidate and baseline share no runs")
+        evidence.append(
+            "global deltas unavailable because candidate and baseline share no runs"
+        )
         return evidence
     summary_delta = dict(global_block.get("summary_delta") or {})
     crash_block = dict(global_block.get("crash") or {})
@@ -127,21 +132,22 @@ def _measure_evidence(
         total_avg = dict(deltas.get("bot_profile_total_ms_per_tick") or {})
         total_p99 = dict(deltas.get("bot_profile_total_ms_per_tick_p99") or {})
         evidence.append(
-            "compute total avg ms/tick="
-            f"{_format_delta(total_avg.get('delta_abs'))}"
+            f"compute total avg ms/tick={_format_delta(total_avg.get('delta_abs'))}"
         )
         evidence.append(
-            "compute total p99 ms/tick="
-            f"{_format_delta(total_p99.get('delta_abs'))}"
+            f"compute total p99 ms/tick={_format_delta(total_p99.get('delta_abs'))}"
         )
     return evidence
 
 
 def _affected_levels(compare_payload: dict[str, Any]) -> list[str]:
     levels: list[str] = []
-    for item in dict(compare_payload.get("global") or {}).get("crash", {}).get(
-        "new_crashes", []
-    ) or []:
+    for item in (
+        dict(compare_payload.get("global") or {})
+        .get("crash", {})
+        .get("new_crashes", [])
+        or []
+    ):
         if isinstance(item, dict):
             levels.append(str(item.get("level") or "").strip())
     for row in dict(compare_payload.get("global") or {}).get("worst_scenarios") or []:
@@ -259,9 +265,7 @@ def build_analysis_payload(
         compare_basis = dict(global_block.get("compare_basis") or {})
         if str(compare_basis.get("mode") or "").strip() == "no_shared_runs":
             verdict = "investigate"
-            summary = (
-                "Candidate and baseline tracepacks do not share any common selector/seed runs, so compare deltas are unavailable."
-            )
+            summary = "Candidate and baseline tracepacks do not share any common selector/seed runs, so compare deltas are unavailable."
         else:
             summary_delta = dict(global_block.get("summary_delta") or {})
             crash_block = dict(global_block.get("crash") or {})
@@ -285,9 +289,7 @@ def build_analysis_payload(
                 )
             elif compute_notable:
                 verdict = "mixed"
-                summary = (
-                    "Outcome metrics are broadly stable, but compute cost regressed enough to warrant investigation."
-                )
+                summary = "Outcome metrics are broadly stable, but compute cost regressed enough to warrant investigation."
             else:
                 near_zero = (
                     abs(success_delta) <= 0.01
@@ -397,7 +399,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         candidate_json_path=candidate_json,
     )
     output_json.parent.mkdir(parents=True, exist_ok=True)
-    output_json.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    output_json.write_text(
+        json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8"
+    )
 
     print("# analysis")
     print(f"json={output_json}")

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from core.maths import Range1D, RigidTransform2, Size2, Vector2
-from ui.camera import Camera
+from game.core.maths import Range1D, RigidTransform2, Size2, Vector2
+from game.ui.camera import Camera
 
 
 def test_camera_visible_world_rect() -> None:

@@ -5,13 +5,13 @@ import math
 from pathlib import Path
 from typing import Any, Callable, cast
 
-from core.trace_policy import (
+from game.core.trace_policy import (
     TRACE_DETAIL_DEBUG,
     TRACE_DETAIL_REPLAY,
     TRACE_DETAIL_REPORT,
     normalize_trace_detail,
 )
-from core.bot import (
+from game.core.bot import (
     Bot,
     BotAction,
     BotDisplayState,
@@ -19,7 +19,7 @@ from core.bot import (
     FlightPhaseSnapshot,
     resolve_bot_name,
 )
-from core.components import (
+from game.core.components import (
     ActorProfile,
     ContactReport,
     ControlIntent,
@@ -40,9 +40,9 @@ from core.components import (
     Transform,
     Wallet,
 )
-from core.ecs import Entity, World
+from game.core.ecs import Entity, World
 from bot_framework.eval.result_pipeline import _safe_phase_snapshot
-from runtime.actor_registry import get_actor_control_role
+from game.runtime.actor_registry import get_actor_control_role
 from utils.plot import (
     _ballistic_curve_from_state,
     _build_plot_context,

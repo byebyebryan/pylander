@@ -8,10 +8,10 @@ from typing import Any, cast
 import pytest
 from matplotlib.axes import Axes
 
-from core.bot import BotAction, BotEvalDecision
-from core.components import Engine, FuelTank, LanderState, PhysicsState, Transform
-from core.ecs import Entity, World
-from core.maths import Vector2
+from game.core.bot import BotAction, BotEvalDecision
+from game.core.components import Engine, FuelTank, LanderState, PhysicsState, Transform
+from game.core.ecs import Entity, World
+from game.core.maths import Vector2
 from utils import tracepack
 
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from core.components import Engine, FuelTank, PhysicsState, Transform
-from core.ecs import require_component
+from game.core.components import Engine, FuelTank, PhysicsState, Transform
+from game.core.ecs import require_component
 
 
 def build_headless_stats(entity, terrain) -> str:

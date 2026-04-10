@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Type
 
-from core.bot import Bot
+from game.core.bot import Bot
 
 _PUBLIC_BOT_ORDER: tuple[str, ...] = ("pdg", "plunge")
 _BOT_SPECS: tuple[tuple[str, str], ...] = (

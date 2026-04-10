@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    from core.bot import Sensors
+    from game.core.bot import Sensors
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,7 +37,7 @@ def make_sensors(
     thrust_level: float = 0.0,
     state: str = "flying",
 ) -> Sensors:
-    from core.bot import Sensors
+    from game.core.bot import Sensors
 
     return Sensors(
         x=x,

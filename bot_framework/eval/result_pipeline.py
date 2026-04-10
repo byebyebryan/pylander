@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from core.bot import (
+from game.core.bot import (
     Bot,
     BotEvalDecision,
     FlightPhaseSnapshot,
     BoostCutoffMetrics,
     resolve_bot_name,
 )
-from core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_BOOST
+from game.core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_BOOST
 from utils.botmetrics import bot_metric_prefix
 
 _SETUP_GATE_RESULT_TO_ATTR: tuple[tuple[str, str], ...] = (
