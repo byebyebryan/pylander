@@ -16,7 +16,7 @@ from bot_framework.bots.common_ballistics import (
 from game.core.components import Engine, FuelTank, LanderState, PhysicsState, Transform
 from game.core.config import GRAVITY_MAG
 from game.core.ecs import require_component
-from utils.tracebundle import sanitize_token
+from tooling.tracebundle import sanitize_token
 
 
 PlotMode = Literal["none", "speed", "thrust", "all"]

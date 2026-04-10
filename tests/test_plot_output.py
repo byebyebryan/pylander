@@ -10,7 +10,7 @@ from game.core.components import FlightState, FuelTank, LanderState, Transform
 from game.core.lander import Lander
 from game.core.maths import Vector2
 from conftest import FlatTerrain
-from utils.plot import (
+from tooling.plot import (
     _ballistic_projection_series,
     _build_plot_context,
     _curve_apex_point,
@@ -39,7 +39,9 @@ def _samples() -> list[tuple[float, float, float, float, float, float, float, fl
     ]
 
 
-def _tall_samples() -> list[tuple[float, float, float, float, float, float, float, float]]:
+def _tall_samples() -> list[
+    tuple[float, float, float, float, float, float, float, float]
+]:
     return [
         (0.0, 0.0, 8.0, 0.1, 0.0, 0.0, 0.0, 8.0),
         (20.0, 180.0, 9.0, 0.5, 0.1, 0.5, 3.0, 11.0),
@@ -48,7 +50,9 @@ def _tall_samples() -> list[tuple[float, float, float, float, float, float, floa
     ]
 
 
-def _shallow_samples() -> list[tuple[float, float, float, float, float, float, float, float]]:
+def _shallow_samples() -> list[
+    tuple[float, float, float, float, float, float, float, float]
+]:
     return [
         (0.0, 0.0, 8.0, 0.2, 0.0, 0.0, 0.0, 3.0),
         (80.0, 12.0, 9.0, 0.4, 0.0, 0.5, 8.0, 2.0),
@@ -214,7 +218,9 @@ def test_projected_apex_point_returns_none_from_descending_final_state() -> None
     assert apex is None
 
 
-def test_projected_apex_point_returns_engine_off_apex_when_ballistic_arc_exists() -> None:
+def test_projected_apex_point_returns_engine_off_apex_when_ballistic_arc_exists() -> (
+    None
+):
     ctx = _build_plot_context(FlatTerrain(), _tall_samples())
     apex = _projected_apex_point(ctx, target={"x": 120.0, "y": 0.0})
     assert apex is not None
@@ -269,7 +275,9 @@ def test_projected_intercept_falls_back_to_apex_when_target_y_is_unreachable() -
     assert intercept.end_y < 80.0
 
 
-def test_idealized_reference_apex_y_raises_uphill_peak_above_target_and_meets_angle_floor() -> None:
+def test_idealized_reference_apex_y_raises_uphill_peak_above_target_and_meets_angle_floor() -> (
+    None
+):
     apex_y = _idealized_reference_apex_y(
         start_x=0.0,
         start_y=0.0,
@@ -311,7 +319,9 @@ def test_idealized_reference_apex_y_raises_peak_for_long_shallow_transfer() -> N
     assert impact_angle_deg >= 45.0
 
 
-def test_idealized_reference_apex_y_keeps_downhill_peak_at_start_height_when_entry_is_already_steep() -> None:
+def test_idealized_reference_apex_y_keeps_downhill_peak_at_start_height_when_entry_is_already_steep() -> (
+    None
+):
     apex_y = _idealized_reference_apex_y(
         start_x=0.0,
         start_y=120.0,
@@ -322,7 +332,9 @@ def test_idealized_reference_apex_y_keeps_downhill_peak_at_start_height_when_ent
     assert apex_y == pytest.approx(120.0)
 
 
-def test_idealized_reference_apex_y_raises_downhill_peak_for_exit_angle_policy() -> None:
+def test_idealized_reference_apex_y_raises_downhill_peak_for_exit_angle_policy() -> (
+    None
+):
     apex_y = _idealized_reference_apex_y(
         start_x=0.0,
         start_y=4.0,
@@ -363,7 +375,9 @@ def test_idealized_reference_apex_y_handles_near_vertical_transfer() -> None:
     assert curve is not None
 
 
-def test_idealized_reference_curve_exists_when_actual_samples_peak_below_target() -> None:
+def test_idealized_reference_curve_exists_when_actual_samples_peak_below_target() -> (
+    None
+):
     apex_y = _idealized_reference_apex_y(
         start_x=0.0,
         start_y=0.0,
@@ -420,7 +434,9 @@ def test_spatial_limits_expand_to_include_overlay_curves() -> None:
     assert lower_y <= ctx.lower_y
 
 
-def test_ballistic_projection_series_uses_apex_while_climbing_and_current_height_while_descending() -> None:
+def test_ballistic_projection_series_uses_apex_while_climbing_and_current_height_while_descending() -> (
+    None
+):
     climb_ctx = _build_plot_context(FlatTerrain(), _tall_samples())
     climb_apex_over_target, climb_projected_dx = _ballistic_projection_series(
         ctx=climb_ctx,
@@ -442,13 +458,17 @@ def test_ballistic_projection_series_uses_apex_while_climbing_and_current_height
 
 def test_compute_figure_size_keeps_spatial_minimums_for_colorbar_space() -> None:
     wide_w, wide_h = _compute_figure_size(640.0, 160.0, layout="single")
-    tall_w, tall_h = _compute_figure_size(160.0, 640.0, layout="all", arrangement="columns")
+    tall_w, tall_h = _compute_figure_size(
+        160.0, 640.0, layout="all", arrangement="columns"
+    )
     assert wide_h >= 6.3
     assert tall_w >= 15.0
     assert tall_h >= 18.8
 
 
-def test_save_trajectory_plots_tall_combined_stays_close_to_square(tmp_path: Path) -> None:
+def test_save_trajectory_plots_tall_combined_stays_close_to_square(
+    tmp_path: Path,
+) -> None:
     out_dir = tmp_path / "tall_combined"
     result = save_trajectory_plots(
         FlatTerrain(),
@@ -464,7 +484,9 @@ def test_save_trajectory_plots_tall_combined_stays_close_to_square(tmp_path: Pat
     assert image.shape[1] / image.shape[0] > 0.84
 
 
-def test_save_trajectory_plots_tall_split_does_not_become_overly_wide(tmp_path: Path) -> None:
+def test_save_trajectory_plots_tall_split_does_not_become_overly_wide(
+    tmp_path: Path,
+) -> None:
     out_dir = tmp_path / "tall_split"
     result = save_trajectory_plots(
         FlatTerrain(),
@@ -480,7 +502,9 @@ def test_save_trajectory_plots_tall_split_does_not_become_overly_wide(tmp_path: 
     assert image.shape[1] / image.shape[0] < 1.3
 
 
-def test_save_trajectory_plots_shallow_split_is_not_extremely_flat(tmp_path: Path) -> None:
+def test_save_trajectory_plots_shallow_split_is_not_extremely_flat(
+    tmp_path: Path,
+) -> None:
     out_dir = tmp_path / "shallow_split"
     result = save_trajectory_plots(
         FlatTerrain(),
@@ -511,10 +535,14 @@ def test_sorted_gate_events_prefers_short_labels_and_time_order() -> None:
     ]
 
 
-def test_plotter_finalize_appends_landing_outcome_event(tmp_path: Path, monkeypatch) -> None:
+def test_plotter_finalize_appends_landing_outcome_event(
+    tmp_path: Path, monkeypatch
+) -> None:
     monkeypatch.chdir(tmp_path)
     lander = Lander(start_pos=Vector2(0.0, 40.0))
-    plotter = Plotter(FlatTerrain(), lander, enabled=True, mode="speed", output_profile="combined")
+    plotter = Plotter(
+        FlatTerrain(), lander, enabled=True, mode="speed", output_profile="combined"
+    )
     plotter.set_selector_tag("landing_case")
     plotter.seed_initial_sample()
 
@@ -528,7 +556,9 @@ def test_plotter_finalize_appends_landing_outcome_event(tmp_path: Path, monkeypa
     result = plotter.finalize()
     manifest = Path(result["plot_manifest_path"])
     payload = json.loads(manifest.read_text(encoding="utf-8"))
-    success_events = [event for event in payload["events"] if event.get("name") == "success"]
+    success_events = [
+        event for event in payload["events"] if event.get("name") == "success"
+    ]
 
     assert len(success_events) == 1
     assert success_events[0]["label"] == "landed"
@@ -541,7 +571,9 @@ def test_plotter_finalize_appends_out_of_fuel_event_when_tank_is_empty(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     lander = Lander(start_pos=Vector2(0.0, 40.0))
-    plotter = Plotter(FlatTerrain(), lander, enabled=True, mode="speed", output_profile="combined")
+    plotter = Plotter(
+        FlatTerrain(), lander, enabled=True, mode="speed", output_profile="combined"
+    )
     plotter.set_selector_tag("fuel_out_case")
     plotter.seed_initial_sample()
 
@@ -558,7 +590,9 @@ def test_plotter_finalize_appends_out_of_fuel_event_when_tank_is_empty(
     result = plotter.finalize()
     manifest = Path(result["plot_manifest_path"])
     payload = json.loads(manifest.read_text(encoding="utf-8"))
-    fuel_events = [event for event in payload["events"] if event.get("name") == "out_of_fuel"]
+    fuel_events = [
+        event for event in payload["events"] if event.get("name") == "out_of_fuel"
+    ]
 
     assert len(fuel_events) == 1
     assert fuel_events[0]["label"] == "fuel out"

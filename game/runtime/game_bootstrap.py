@@ -15,7 +15,7 @@ from game.runtime.sensors import build_vehicle_info
 from game.runtime.terrain_intel import build_bot_environment
 from game.ui.renderer import Renderer
 from game.runtime.input import InputHandler
-from utils.tracepack import TraceRecorder
+from tooling.tracepack import TraceRecorder
 from game.core.level_capabilities import (
     level_name_tag,
     level_trace_detail,

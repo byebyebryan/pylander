@@ -7,7 +7,7 @@ from pathlib import Path
 
 import app.output_viewer as output_viewer
 import app.trace_bundle as trace_bundle
-import utils.traceviewer as traceviewer
+import tooling.traceviewer as traceviewer
 
 
 def test_parse_section_reads_key_value_block() -> None:
@@ -121,8 +121,12 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     baseline_json = outputs_root / "benchmarks" / "base" / "full_pack.tracepack.json"
     baseline_meta = outputs_root / "benchmarks" / "base" / "full_pack.meta.json"
     compare_json = outputs_root / "benchmarks" / "head" / "full_pack.compare.json"
-    intent_json = outputs_root / "benchmarks" / "head" / "full_pack.tracepack.intent.json"
-    analysis_json = outputs_root / "benchmarks" / "head" / "full_pack.tracepack.analysis.json"
+    intent_json = (
+        outputs_root / "benchmarks" / "head" / "full_pack.tracepack.intent.json"
+    )
+    analysis_json = (
+        outputs_root / "benchmarks" / "head" / "full_pack.tracepack.analysis.json"
+    )
     trace_path = trace_dir / "boost_climb_high_full_0.trace.json"
     preview_path = preview_dir / "boost_climb_high_full_0.png"
     baseline_trace_path = baseline_trace_dir / "boost_climb_high_full_0.trace.json"
@@ -326,7 +330,9 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         "schema": "pylander.benchmark.intent.v1",
         "goal_summary": "Check boost climb tuning against the last behavior change",
         "request_source": "mixed",
-        "conversation_context": ["User asked for a full regression pass after boost tuning."],
+        "conversation_context": [
+            "User asked for a full regression pass after boost tuning."
+        ],
         "repo_context": {
             "changed_files": ["bots/pdg.py", "README.md"],
             "touched_areas": ["bot_logic", "docs"],
@@ -356,9 +362,7 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
             "Changed files include bot logic, so guidance behavior is the most likely cause."
         ],
         "confidence": "high",
-        "follow_ups": [
-            "uv run python main.py plot boost:climb:high:full:0 --bot pdg"
-        ],
+        "follow_ups": ["uv run python main.py plot boost:climb:high:full:0 --bot pdg"],
     }
 
     candidate_json.write_text(json.dumps(candidate_payload), encoding="utf-8")
@@ -384,7 +388,11 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
                         "time": {"count": 10, "mean": 12.8, "stddev": 0.75},
                         "landing_offset": {"count": 10, "mean": 4.25, "stddev": 1.25},
                         "trace_ref_gap_mean": {"count": 10, "mean": 3.8, "stddev": 0.6},
-                        "trace_ref_gap_area": {"count": 10, "mean": 11.2, "stddev": 2.4},
+                        "trace_ref_gap_area": {
+                            "count": 10,
+                            "mean": 11.2,
+                            "stddev": 2.4,
+                        },
                         "trace_ref_gap_max": {
                             "count": 10,
                             "mean": 5.4,
@@ -545,11 +553,16 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     assert "ref peak max" in html_payload
     assert "13.500" in html_payload
     assert "9.800" in html_payload
-    assert html_payload.index("<h2>Boost</h2>") < html_payload.index("<h2>Failures</h2>")
-    assert '>latest</a>' in html_payload
+    assert html_payload.index("<h2>Boost</h2>") < html_payload.index(
+        "<h2>Failures</h2>"
+    )
+    assert ">latest</a>" in html_payload
     assert 'href="../../latest/index.html"' in html_payload
-    assert 'document.querySelectorAll(".scenario-table").forEach((table) => {' in html_payload
-    assert 'expandScenarios(table);' in html_payload
+    assert (
+        'document.querySelectorAll(".scenario-table").forEach((table) => {'
+        in html_payload
+    )
+    assert "expandScenarios(table);" in html_payload
     assert (
         "../../../benchmarks/head/full_pack.tracepack/previews/boost_climb_high_full_0.png"
         in html_payload
@@ -559,7 +572,10 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         in html_payload
     )
     assert 'table.classList.toggle("baseline-hidden");' in html_payload
-    assert 'button.textContent = table.classList.contains("baseline-hidden")' in html_payload
+    assert (
+        'button.textContent = table.classList.contains("baseline-hidden")'
+        in html_payload
+    )
     assert "compare-stack" not in html_payload
     assert "plot pack" not in html_payload.lower()
     assert "Tracepacks" not in latest_payload
@@ -642,7 +658,10 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         'return eventName === "success" || eventName === "crash" ? 16.5 : 15;'
         in detail_html
     )
-    assert 'name: String(reference.label || plotPayload.reference_label || "reference")' in detail_html
+    assert (
+        'name: String(reference.label || plotPayload.reference_label || "reference")'
+        in detail_html
+    )
     assert "ballistic ref (vx adjusted)" in detail_html
     assert "bundle report" not in detail_html
     assert "latest page" not in detail_html
@@ -650,9 +669,12 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     assert 'href="../index.html"' in detail_html
     assert "trace json" in detail_html
     assert "plot manifest" not in detail_html
-    assert 'https://cdn.plot.ly/plotly-basic-2.35.2.min.js' in detail_html
+    assert "https://cdn.plot.ly/plotly-basic-2.35.2.min.js" in detail_html
     assert "baseline json" in baseline_detail_html
-    assert "../../../../../benchmarks/base/full_pack.tracepack.json" in baseline_detail_html
+    assert (
+        "../../../../../benchmarks/base/full_pack.tracepack.json"
+        in baseline_detail_html
+    )
     match = re.search(
         r'<script id="trace-plot-json" type="application/json">(.*?)</script>',
         detail_html,
@@ -684,9 +706,7 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
         bundle_id="bundle_report_x",
         candidate_cached="True",
     )
-    rendered_payload = json.loads(
-        rendered.bundle_json_path.read_text(encoding="utf-8")
-    )
+    rendered_payload = json.loads(rendered.bundle_json_path.read_text(encoding="utf-8"))
     assert rendered.bundle_page_path.exists()
     assert (
         rendered_payload["compare"]["json_path"]
@@ -728,7 +748,9 @@ def test_write_bundle_files_renders_tracepack_report(tmp_path: Path) -> None:
     assert ">base<" not in single_html
 
 
-def test_render_bundle_rejects_mismatched_explicit_baseline_json(tmp_path: Path) -> None:
+def test_render_bundle_rejects_mismatched_explicit_baseline_json(
+    tmp_path: Path,
+) -> None:
     outputs_root = tmp_path / "outputs"
     outputs_root.mkdir()
     candidate_json = outputs_root / "benchmarks" / "head" / "pack.tracepack.json"

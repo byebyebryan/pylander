@@ -27,7 +27,7 @@ from game.core.level_capabilities import (
 from game.levels.registry import is_public_level
 from bot_framework.scenarios import ScenarioBinding
 from bot_framework.scenarios import expand_scenario_bindings as expand_selector_bindings
-from utils.tracepack import TRACEPACK_SCHEMA, TRACEPACK_SCHEMA_VERSION
+from tooling.tracepack import TRACEPACK_SCHEMA, TRACEPACK_SCHEMA_VERSION
 
 _AUTO_RANDOMIZED_BATCH_SEEDS: tuple[int, ...] = tuple(range(10))
 
