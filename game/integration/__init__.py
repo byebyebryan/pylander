@@ -2,6 +2,9 @@
 
 This module provides a stable integration point that keeps direct bot_framework
 imports concentrated here rather than scattered through game code.
+
+The profiler interface is owned by game/runtime/profiler.py. This module
+provides the concrete implementation factory.
 """
 
 from __future__ import annotations
@@ -22,6 +25,29 @@ from bot_framework.eval.result_pipeline import (
     resolve_headless_bot_eval_decision,
 )
 
+from game.runtime.profiler import BotProfiler
+
+
+def create_bot_profiler(
+    *,
+    headless: bool,
+    enabled: bool | None = None,
+    interval_s: float | None = None,
+    log_lines: bool | None = None,
+) -> BotProfiler:
+    """Factory to create a bot profiler instance.
+
+    Returns a BotProfiler instance (concrete BotLoopProfiler) configured
+    from settings or environment.
+    """
+    return BotLoopProfiler.from_settings(
+        headless=headless,
+        enabled=enabled,
+        interval_s=interval_s,
+        log_lines=log_lines,
+    )
+
+
 __all__ = [
     "active_actor_bot",
     "attach_primary_bot",
@@ -34,4 +60,5 @@ __all__ = [
     "resolve_headless_bot_eval_decision",
     "merge_bot_snapshots_into_result",
     "apply_bot_eval_to_result",
+    "create_bot_profiler",
 ]

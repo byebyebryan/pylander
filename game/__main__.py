@@ -12,7 +12,7 @@ from game.core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal
 from game.core.level import GameRunState, Level
 from game.core.level_capabilities import level_name_tag, level_scenario_tag
 from game.core.maths import Range1D, Vector2
-from game.integration import active_actor_bot, update_bot_steps, BotLoopProfiler
+from game.integration import active_actor_bot, update_bot_steps, create_bot_profiler
 from game.runtime.actor_policy import find_initial_player_actor_uid
 from game.runtime.actor_registry import collect_actor_entities
 from game.runtime.player_session import set_active_actor, switch_active_actor
@@ -71,7 +71,7 @@ class LanderGame:
         self.eval_goal = normalize_eval_goal(eval_goal)
         seed = random.randint(0, 1000000) if seed is None else seed
         self.seed = int(seed)
-        self._bot_profiler = BotLoopProfiler.from_settings(
+        self._bot_profiler = create_bot_profiler(
             headless=headless,
             enabled=bot_profile_enabled,
             interval_s=bot_profile_interval_s,
