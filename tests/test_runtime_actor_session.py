@@ -20,7 +20,9 @@ from core.ecs import Entity, World
 from core.maths import Vector2
 from bot_framework.bot_actor_session import active_actor_bot, attach_primary_bot
 from runtime.actor_policy import find_initial_player_actor_uid
+from runtime.actor_registry import find_first_actor_for_role
 from runtime.player_session import set_active_actor, switch_active_actor
+from runtime.sensors import build_vehicle_info
 from runtime.terrain_intel import build_bot_environment
 
 
@@ -210,6 +212,9 @@ def test_attach_primary_bot_prefers_actor_with_bot_role() -> None:
         level=_make_level(),
         active_uid="player",
         bot=bot,
+        find_first_actor_for_role=find_first_actor_for_role,
+        build_vehicle_info=build_vehicle_info,
+        build_bot_environment=build_bot_environment,
     )
 
     assert actor_bots == {"wingman": bot}
@@ -252,6 +257,9 @@ def test_attach_primary_bot_falls_back_to_non_active_actor() -> None:
         level=_make_level(),
         active_uid="player",
         bot=bot,
+        find_first_actor_for_role=find_first_actor_for_role,
+        build_vehicle_info=build_vehicle_info,
+        build_bot_environment=build_bot_environment,
     )
 
     assert actor_bots == {"escort": bot}

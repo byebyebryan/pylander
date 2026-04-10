@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from core.bot import Bot
 from core.ecs import World
 from core.ecs import Entity
 from core.level import Level
-
-from runtime.actor_registry import find_first_actor_for_role
-from runtime.sensors import build_vehicle_info
-from runtime.terrain_intel import build_bot_environment
 
 
 def active_actor_bot(
@@ -38,15 +34,17 @@ def install_actor_bot(
     level: Level,
     uid: str,
     bot: Bot,
+    build_vehicle_info: Callable[..., Any] | None = None,
+    build_bot_environment: Callable[..., Any] | None = None,
 ) -> None:
     actor_bots[uid] = bot
     ensure_bot_identity_fields(bot)
     actor = ecs_world.get_entity_by_id(uid)
     if actor is None:
         return
-    if hasattr(bot, "set_vehicle_info"):
+    if hasattr(bot, "set_vehicle_info") and build_vehicle_info is not None:
         bot.set_vehicle_info(build_vehicle_info(actor))
-    if hasattr(bot, "set_environment"):
+    if hasattr(bot, "set_environment") and build_bot_environment is not None:
         environment = build_bot_environment(level=level, actor=actor)
         if environment is not None:
             bot.set_environment(environment)
@@ -60,8 +58,13 @@ def attach_primary_bot(
     level: Level,
     active_uid: str,
     bot: Bot,
+    find_first_actor_for_role: Callable[[list[Entity], str], str | None] | None = None,
+    build_vehicle_info: Callable[..., Any] | None = None,
+    build_bot_environment: Callable[..., Any] | None = None,
 ) -> None:
-    bot_uid = find_first_actor_for_role(actors, "bot")
+    bot_uid: str | None = None
+    if find_first_actor_for_role is not None:
+        bot_uid = find_first_actor_for_role(actors, "bot")
     if bot_uid is None:
         bot_uid = next((a.uid for a in actors if a.uid != active_uid), active_uid)
     install_actor_bot(
@@ -70,6 +73,8 @@ def attach_primary_bot(
         level=level,
         uid=bot_uid,
         bot=bot,
+        build_vehicle_info=build_vehicle_info,
+        build_bot_environment=build_bot_environment,
     )
 
 
@@ -79,6 +84,8 @@ def install_world_actor_bots(
     ecs_world: World,
     level: Level,
     world_bots: Any,
+    build_vehicle_info: Callable[..., Any] | None = None,
+    build_bot_environment: Callable[..., Any] | None = None,
 ) -> None:
     if not isinstance(world_bots, dict):
         return
@@ -90,6 +97,8 @@ def install_world_actor_bots(
                 level=level,
                 uid=uid,
                 bot=actor_bot,
+                build_vehicle_info=build_vehicle_info,
+                build_bot_environment=build_bot_environment,
             )
 
 
