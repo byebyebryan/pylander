@@ -314,7 +314,7 @@ Scope:
 
 Proposed rollout:
 
-1. Add a small helper module, for example `bots/pdg_terrain_divert.py`.
+1. Add a small helper module, for example `bot_framework/bots/pdg_terrain_divert.py`.
    - input: current passive state, target position, terrain query, thrust authority
    - output:
      - `min_margin`
@@ -340,7 +340,7 @@ Proposed rollout:
 
 The first implementation pass was intentionally narrow:
 
-- new helper module: `bots/pdg_terrain_divert.py`
+- new helper module: `bot_framework/bots/pdg_terrain_divert.py`
 - fixed-budget probe beside the existing terminal gate
 - scope limited to `terrain:reactive:terminal_backstop`
 - no `BOOST` ownership change

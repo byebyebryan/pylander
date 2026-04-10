@@ -67,7 +67,7 @@ def _find_lander_class_in_module(module: ModuleType) -> Type["Lander"] | None:
 
 
 def load_lander_class(name: str) -> Type[Lander]:
-    """Import `landers.<name>` and return the primary Lander subclass.
+    """Import `game.landers.<name>` and return the primary Lander subclass.
 
     Raises ImportError/ValueError on failure.
     """
@@ -75,10 +75,12 @@ def load_lander_class(name: str) -> Type[Lander]:
     if not module_name or module_name.startswith("."):
         raise ValueError(f"Invalid lander name: {name!r}")
 
-    module = importlib.import_module(f"landers.{module_name}")
+    module = importlib.import_module(f"game.landers.{module_name}")
     lander_cls = _find_lander_class_in_module(module)
     if lander_cls is None:
-        raise ValueError(f"No Lander subclass found in module 'landers.{module_name}'")
+        raise ValueError(
+            f"No Lander subclass found in module 'game.landers.{module_name}'"
+        )
     return lander_cls
 
 

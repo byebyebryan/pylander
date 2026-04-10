@@ -10,7 +10,7 @@ from game.core.bot import (
     resolve_bot_name,
 )
 from game.core.eval_goals import EVAL_GOAL_LANDING, EVAL_GOAL_BOOST
-from utils.botmetrics import bot_metric_prefix
+from bot_framework.botmetrics import bot_metric_prefix
 
 _SETUP_GATE_RESULT_TO_ATTR: tuple[tuple[str, str], ...] = (
     ("boost_cutoff_time", "time_s"),

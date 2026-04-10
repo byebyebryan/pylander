@@ -14,7 +14,7 @@ from game.runtime.actor_registry import find_first_actor_for_role
 from game.runtime.sensors import build_vehicle_info
 from game.runtime.terrain_intel import build_bot_environment
 from game.ui.renderer import Renderer
-from utils.input import InputHandler
+from game.runtime.input import InputHandler
 from utils.tracepack import TraceRecorder
 from game.core.level_capabilities import (
     level_name_tag,

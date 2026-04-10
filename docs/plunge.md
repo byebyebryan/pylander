@@ -10,7 +10,7 @@ Implementation note:
 
 ## Scenario setup
 
-Defined in [`levels/plunge.py`](../levels/plunge.py):
+Defined in [`game/levels/plunge.py`](../game/levels/plunge.py):
 
 - Spawn centered above target (`start_x = target_x = 0`)
 - Initial attitude upright (`angle = 0`)

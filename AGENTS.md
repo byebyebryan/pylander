@@ -12,12 +12,16 @@ Retro-modern Lunar Lander with deterministic simulation, procedural terrain, and
 
 ## Repo map (where things live)
 - `main.py`: CLI entrypoint (interactive + headless + batch eval).
-- `game.py`: game orchestration (ECS systems + render loop).
-- `core/`: simulation primitives (ECS, physics, terrain, sensors, systems).
-- `core/systems/`: per-tick systems (treat as hot-path code).
-- `levels/`: scenarios/levels and scenario selection.
-- `bots/`: bot implementations (must use sensor/action API).
-- `ui/`: rendering, camera, HUD/overlays.
+- `game/`: game engine package (core simulation, runtime, levels, ui).
+- `game/core/`: simulation primitives (ECS, physics, terrain, sensors, systems).
+- `game/core/systems/`: per-tick systems (treat as hot-path code).
+- `game/levels/`: scenarios/levels and scenario selection.
+- `game/runtime/`: runtime loop, session, bootstrap.
+- `game/ui/`: rendering, camera, HUD/overlays.
+- `landers/`: lander vehicle definitions (simple, classic, differential).
+- `bot_framework/bots/`: bot implementations (pdg, plunge).
+- `app/`: CLI, benchmark orchestration, batch runner.
+- `utils/`: plotting, trace utilities.
 - `tests/`: pytest suite.
 - `level_viewer.py`: quick interactive level/terrain viewer.
 

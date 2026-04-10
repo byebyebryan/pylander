@@ -50,13 +50,13 @@ Core metrics from game + batch aggregation:
 ## Where things live
 
 - CLI + batch evaluation: [`main.py`](../main.py)
-- Game loop + raw metrics: [`game.py`](../game.py)
-- Runtime loop extraction: [`runtime/loop_timing.py`](../runtime/loop_timing.py), [`runtime/sensors.py`](../runtime/sensors.py), [`runtime/bot_loop.py`](../runtime/bot_loop.py)
-- Level capability helpers: [`core/level_capabilities.py`](../core/level_capabilities.py)
-- Bot sensor/action API contract: [`core/bot.py`](../core/bot.py)
-- Metric normalization + aggregation: [`core/eval.py`](../core/eval.py)
-- Scenario levels: [`levels/`](../levels/)
-- Bot implementations: [`bots/`](../bots/)
+- Game orchestration: [`game/__main__.py`](../game/__main__.py) (imported as `game`)
+- Runtime loop extraction: [`game/runtime/loop_timing.py`](../game/runtime/loop_timing.py), [`game/runtime/sensors.py`](../game/runtime/sensors.py), [`bot_framework/bot_loop.py`](../bot_framework/bot_loop.py)
+- Level capability helpers: [`game/core/level_capabilities.py`](../game/core/level_capabilities.py)
+- Bot sensor/action API contract: [`game/core/bot.py`](../game/core/bot.py)
+- Metric normalization + aggregation: [`game/core/eval.py`](../game/core/eval.py)
+- Scenario levels: [`game/levels/`](../game/levels/)
+- Bot implementations: [`bot_framework/bots/`](../bot_framework/bots/) (pdg, plunge)
 - Headless trajectory plots: [`utils/plot.py`](../utils/plot.py)
 
 ## Bot API (sensor/action)
