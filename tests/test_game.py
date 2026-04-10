@@ -11,7 +11,7 @@ import app.run_batch as run_batch_module
 import app.run_single as run_single_module
 from app.cli import build_parser, parse_command
 from app.config import BenchCommand, BenchSettings, BenchTarget, RunCommand
-from bots import create_bot, list_available_bots
+from bot_framework.bots import create_bot, list_available_bots
 from core.bot import Bot, BotAction, BotDisplayState, Sensors, resolve_bot_display_state
 from core.components import CargoHold, LandingSite, PhysicsState, Transform
 from core.ecs import require_component

@@ -28,7 +28,7 @@ from levels.benchmark_catalog import (
 
 def _list_available_bots() -> list[str]:
     try:
-        from bots import list_available_bots
+        from bot_framework.bots import list_available_bots
 
         return list_available_bots()
     except ImportError:
