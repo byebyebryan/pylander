@@ -7,8 +7,8 @@ from game.core.eval_goals import (
     KNOWN_EVAL_GOAL_SET,
     normalize_eval_goal,
 )
+from bot_framework.scenarios import selector_path_looks_like_seed
 from game.levels.registry import list_public_levels
-from game.levels.benchmark_catalog import selector_path_looks_like_seed
 from game.core.selector_codec import (
     render_record_selector as _render_record_selector,
     render_selector as _render_selector,

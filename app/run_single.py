@@ -20,7 +20,8 @@ from game import LanderGame
 from game.runtime.runtime_adapter import make_runtime_adapter
 from game.levels import create_level
 from game.levels.registry import is_public_level
-from game.levels.benchmark_catalog import resolve_selector_binding
+from bot_framework.scenarios import ScenarioBinding
+from bot_framework.scenarios import resolve_scenario_binding as resolve_selector_binding
 
 from app.config import RunSettings, resolve_default_bot as _resolve_default_bot
 from app.reporting import print_headless_results
@@ -44,10 +45,24 @@ def create_level_checked(level_name: str):
         raise ValueError(f"Level '{level_name}' failed to initialize: {exc}") from exc
 
 
+def _resolve_runtime_binding(
+    level_name: str,
+    scenario_path: tuple[str, ...] | list[str] | None = None,
+) -> ScenarioBinding:
+    if is_public_level(level_name):
+        return ScenarioBinding(
+            level_name=str(level_name).strip().lower(),
+            path=(),
+            runtime_level_name=str(level_name).strip().lower(),
+            runtime_scenario_name=None,
+        )
+    return resolve_selector_binding(level_name, scenario_path)
+
+
 def resolve_default_bot(level_name: str) -> str | None:
     runtime_level_name = level_name
     if is_public_level(level_name):
-        runtime_level_name = resolve_selector_binding(level_name).runtime_level_name
+        runtime_level_name = _resolve_runtime_binding(level_name).runtime_level_name
     return _resolve_default_bot(runtime_level_name)
 
 

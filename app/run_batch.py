@@ -23,10 +23,45 @@ from game.core.level_capabilities import (
     set_eval_goal_checked,
     set_eval_scenario_checked,
 )
-from game.levels.benchmark_catalog import expand_selector_bindings
+from game.levels.registry import is_public_level
+from bot_framework.scenarios import ScenarioBinding
+from bot_framework.scenarios import expand_scenario_bindings as expand_selector_bindings
 from utils.tracepack import TRACEPACK_SCHEMA, TRACEPACK_SCHEMA_VERSION
 
 _AUTO_RANDOMIZED_BATCH_SEEDS: tuple[int, ...] = tuple(range(10))
+
+
+def _expand_runtime_bindings(
+    level_name: str,
+    *,
+    scenario_path: tuple[str, ...] | list[str] | None,
+    allow_wildcards: bool,
+) -> list[ScenarioBinding]:
+    if is_public_level(level_name):
+        if scenario_path:
+            raise ValueError(
+                f"Gameplay level '{level_name}' does not accept scenario selectors"
+            )
+        normalized = str(level_name).strip().lower()
+        return [
+            ScenarioBinding(
+                level_name=normalized,
+                path=(),
+                runtime_level_name=normalized,
+                runtime_scenario_name=None,
+            )
+        ]
+    try:
+        return expand_selector_bindings(
+            level_name,
+            scenario_path=scenario_path,
+            allow_wildcards=allow_wildcards,
+        )
+    except ValueError as exc:
+        message = str(exc)
+        if message.startswith("Unknown scenario root "):
+            raise ValueError(f"Unknown level '{level_name}'") from exc
+        raise
 
 
 @dataclass(frozen=True)
@@ -140,7 +175,7 @@ def resolve_selector_plan(
             f"Selector '{target.level_name}' resolved an empty seed list from '{target.seed_spec}'"
         )
 
-    bindings = expand_selector_bindings(
+    bindings = _expand_runtime_bindings(
         target.level_name,
         scenario_path=target.scenario_path,
         allow_wildcards=True,
@@ -208,7 +243,7 @@ def resolve_benchmark_plan(cfg: BenchSettings) -> list[ResolvedBenchRun]:
 def _to_run_settings(
     cfg: BenchSettings, *, trace_root_dir: Path | None = None
 ) -> RunSettings:
-    first_binding = expand_selector_bindings(
+    first_binding = _expand_runtime_bindings(
         cfg.selectors[0].level_name,
         scenario_path=cfg.selectors[0].scenario_path,
         allow_wildcards=True,

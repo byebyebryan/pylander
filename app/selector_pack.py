@@ -11,12 +11,13 @@ from game.core.level_capabilities import (
     LevelBenchmarkProfile,
 )
 from game.core.selector_codec import render_selector
-from game.levels.registry import list_public_levels
-from game.levels.benchmark_catalog import (
-    expand_selector_bindings,
-    resolve_selector_binding,
-    resolve_public_level_benchmark_profile,
+from bot_framework.scenarios import (
+    expand_scenario_bindings as expand_selector_bindings,
+    list_scenario_roots,
+    resolve_scenario_binding as resolve_selector_binding,
+    resolve_public_scenario_benchmark_profile as resolve_public_level_benchmark_profile,
 )
+from game.levels.registry import list_public_levels as list_gameplay_levels
 
 DEFAULT_SEEDS = {
     "smoke": "0-1",
@@ -112,8 +113,13 @@ def _resolve_focused_selector_group(
 
 
 def _load_level_profiles() -> dict[str, LevelBenchmarkProfile]:
+    from game.levels.registry import load_level_class
+
     out: dict[str, LevelBenchmarkProfile] = {}
-    for level_name in list_public_levels():
+    for level_name in list_gameplay_levels():
+        level_cls = load_level_class(level_name)
+        out[level_name] = level_cls.benchmark_profile()
+    for level_name in list_scenario_roots():
         out[level_name] = resolve_public_level_benchmark_profile(level_name)
     return out
 
