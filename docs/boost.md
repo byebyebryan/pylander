@@ -1,8 +1,8 @@
 # Boost Level (`boost`)
 
 `boost` is the pad-to-pad transfer benchmark root. The runtime level is
-implemented in [`game/levels/boost.py`](../game/levels/boost.py), with family-specific
-catalog and transfer helpers in `game/levels/boost_*`.
+implemented in [`bot_framework/scenarios/boost.py`](../bot_framework/scenarios/boost.py), with family-specific
+catalog and transfer helpers in `bot_framework/scenarios/boost_*`.
 
 ## Selector layers
 

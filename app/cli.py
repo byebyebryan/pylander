@@ -21,11 +21,10 @@ from game.core.trace_policy import (
 )
 from game.levels.registry import list_public_levels
 from bot_framework.scenarios import (
-    ScenarioBinding,
     expand_scenario_bindings as expand_selector_bindings,
     list_scenario_roots,
-    resolve_scenario_binding as resolve_selector_binding,
 )
+from app._level_resolve import _resolve_runtime_binding
 
 
 def _list_available_bots() -> list[str]:
@@ -51,21 +50,6 @@ def _default_level(levels: list[str]) -> str | None:
 def _default_bench_workers() -> int:
     cpu_count = int(os.cpu_count() or 1)
     return max(1, cpu_count - 2)
-
-
-def _resolve_runtime_binding(
-    level_name: str,
-    scenario_path: tuple[str, ...] | list[str] | None = None,
-) -> ScenarioBinding:
-    if str(level_name).strip().lower() in set(list_public_levels()):
-        normalized = str(level_name).strip().lower()
-        return ScenarioBinding(
-            level_name=normalized,
-            path=(),
-            runtime_level_name=normalized,
-            runtime_scenario_name=None,
-        )
-    return resolve_selector_binding(level_name, scenario_path)
 
 
 def _add_common_run_args(
