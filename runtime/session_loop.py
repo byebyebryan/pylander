@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from runtime.bootstrap import SystemsBundle
 from runtime.loop_timing import LoopTimers
 from runtime.run_metrics import RunMetricsTracker
-from runtime.bot_profiler import BotLoopProfiler
+from bot_framework.bot_profiler import BotLoopProfiler
 from core.control_types import ControlTuple
 
 

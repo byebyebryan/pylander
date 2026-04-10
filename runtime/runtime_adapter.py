@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from core.bot import Bot, BotEvalDecision
     from core.ecs import World
     from runtime.bootstrap import SystemsBundle
-    from runtime.bot_profiler import BotLoopProfiler
+    from bot_framework.bot_profiler import BotLoopProfiler
     from runtime.game_bootstrap import BotRuntimeBootstrap, TraceRuntimeBootstrap
     from core.physics import PhysicsEngine
 
@@ -142,6 +142,10 @@ class FullBotRuntimeAdapter(BotRuntimeAdapter):
         EvalHooks,
         set[tuple[str, str]],
     ]:
+        from bot_framework.bot_actor_session import (
+            attach_primary_bot,
+            install_world_actor_bots,
+        )
         from runtime.game_bootstrap import (
             bootstrap_bot_runtime,
             bootstrap_trace_runtime,
@@ -158,6 +162,8 @@ class FullBotRuntimeAdapter(BotRuntimeAdapter):
             profiler=profiler,
             terrain=terrain,
             engine=engine,
+            install_world_actor_bots=install_world_actor_bots,
+            attach_primary_bot=attach_primary_bot,
         )
         trace_runtime = bootstrap_trace_runtime(
             terrain=terrain,

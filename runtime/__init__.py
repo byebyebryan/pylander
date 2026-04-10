@@ -15,22 +15,8 @@ __all__ = [
     "create_systems",
     "LoopTimers",
     "BotLoopContext",
-    "update_bot_steps",
     "RunMetricsTracker",
-    "BotLoopProfiler",
     "resolve_eval_target_pos",
     "build_vehicle_info",
     "build_sensors",
 ]
-
-
-def __getattr__(name: str):
-    if name == "update_bot_steps":
-        from bot_framework.bot_loop import update_bot_steps
-
-        return update_bot_steps
-    if name == "BotLoopProfiler":
-        from bot_framework.bot_profiler import BotLoopProfiler
-
-        return BotLoopProfiler
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

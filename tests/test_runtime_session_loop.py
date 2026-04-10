@@ -4,7 +4,7 @@ from core.bot import BotEvalDecision
 from core.components import FlightState, LanderState, Transform
 from core.ecs import Entity
 from runtime.loop_timing import LoopTimers
-from runtime.bot_profiler import BotLoopProfiler
+from bot_framework.bot_profiler import BotLoopProfiler
 from runtime.session_loop import (
     SessionLoopContext,
     capture_actor_states,
