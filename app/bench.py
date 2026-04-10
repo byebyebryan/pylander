@@ -8,8 +8,8 @@ import app.benchmark_context as benchmark_context
 import app.benchmark_promote as benchmark_promote
 import app.run_cached_benchmark as run_cached_benchmark
 import app.selector_pack as selector_pack
-import app.serve_outputs as serve_outputs
-import app.trace_bundle as trace_bundle
+import tooling.serve_outputs as serve_outputs
+import tooling.trace_bundle as trace_bundle
 
 _COMMANDS: dict[str, tuple[str, Callable[[Sequence[str] | None], None]]] = {
     "selectors": (
@@ -89,7 +89,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     entry = _COMMANDS.get(command)
     if entry is None:
         known = ", ".join(sorted(_COMMANDS))
-        raise SystemExit(f"Unknown benchmark command '{command}'. Expected one of: {known}")
+        raise SystemExit(
+            f"Unknown benchmark command '{command}'. Expected one of: {known}"
+        )
     _, handler = entry
     handler(parsed.args)
 

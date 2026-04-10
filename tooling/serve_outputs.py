@@ -7,7 +7,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-from app.output_viewer import HEALTH_PATH, SERVICE_NAME
+from tooling.output_viewer import HEALTH_PATH, SERVICE_NAME
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SERVICE_NAME = SERVICE_NAME

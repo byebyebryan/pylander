@@ -4,7 +4,7 @@ import json
 import signal
 from pathlib import Path
 
-import app.output_viewer as output_viewer
+import tooling.output_viewer as output_viewer
 
 
 def test_ensure_outputs_server_restarts_when_existing_root_differs(
@@ -45,8 +45,12 @@ def test_ensure_outputs_server_restarts_when_existing_root_differs(
         pid = 67890
 
     monkeypatch.setattr(output_viewer, "server_health", _fake_server_health)
-    monkeypatch.setattr(output_viewer.os, "kill", lambda pid, sig: kill_calls.append((pid, sig)))
-    monkeypatch.setattr(output_viewer.subprocess, "Popen", lambda *args, **kwargs: _FakeProc())
+    monkeypatch.setattr(
+        output_viewer.os, "kill", lambda pid, sig: kill_calls.append((pid, sig))
+    )
+    monkeypatch.setattr(
+        output_viewer.subprocess, "Popen", lambda *args, **kwargs: _FakeProc()
+    )
     monkeypatch.setattr(output_viewer.time, "sleep", lambda _secs: None)
 
     status, state_path = output_viewer.ensure_outputs_server(
@@ -91,7 +95,9 @@ def test_stop_existing_server_falls_back_to_listener_pid_when_state_pid_missing(
         lambda _port: next(health_payloads, None),
     )
     monkeypatch.setattr(output_viewer, "_listener_pid_for_port", lambda _port: 54321)
-    monkeypatch.setattr(output_viewer.os, "kill", lambda pid, sig: kill_calls.append((pid, sig)))
+    monkeypatch.setattr(
+        output_viewer.os, "kill", lambda pid, sig: kill_calls.append((pid, sig))
+    )
     monkeypatch.setattr(output_viewer.time, "sleep", lambda _secs: None)
 
     assert output_viewer._stop_existing_server(root, 8765) is True

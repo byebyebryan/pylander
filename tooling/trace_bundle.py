@@ -24,7 +24,7 @@ from app.benchmark_context import (
     load_intent,
 )
 from app.benchmark_cache import load_json, tracepack_meta_path, write_json
-from app.output_viewer import (
+from tooling.output_viewer import (
     bundle_url,
     discover_viewer_hostname,
     ensure_outputs_server,
