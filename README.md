@@ -5,6 +5,7 @@ A retro-modern Lunar Lander-inspired game with deterministic simulation, procedu
 ## Docs
 
 - Start here: [`docs/README.md`](docs/README.md)
+- Web build + publishing workflow: [`docs/pygbag.md`](docs/pygbag.md)
 - Bot framework + API: [`docs/overview.md`](docs/overview.md)
 - Bot docs: [`docs/plunge.md`](docs/plunge.md), [`docs/pdg.md`](docs/pdg.md)
 - Scenario docs: [`docs/terminal.md`](docs/terminal.md), [`docs/boost.md`](docs/boost.md), [`docs/terrain_avoidance.md`](docs/terrain_avoidance.md)

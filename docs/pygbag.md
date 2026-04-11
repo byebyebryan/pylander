@@ -44,9 +44,110 @@ uv sync --group web
 uv run pygbag --port 8000 --template web/default.tmpl --icon web/favicon.png .
 ```
 
+## Local dev workflow
+
+For day-to-day browser iteration, use pygbag's local server rather than opening
+`build/web/index.html` directly from disk.
+
+Recommended workflow:
+
+```bash
+# Start or restart the local web server from the repo root
+uv run pygbag --port 8000 --template web/default.tmpl --icon web/favicon.png .
+```
+
+- Default local URL: `http://127.0.0.1:8000/`
+- Pygbag rebuilds `build/web/` as part of the serve flow.
+- The generated artifacts to care about are:
+  - `build/web/index.html`
+  - `build/web/pylander.apk`
+  - `build/web/pylander.tar.gz`
+
+### Detached tmux workflow
+
+During active development, keep pygbag running in a detached named tmux session
+so browser refreshes and rebuilds are easy to repeat.
+
+Recommended session name:
+
+```bash
+tmux new-session -d -s pylander-web \
+  'uv run pygbag --port 8000 --template web/default.tmpl --icon web/favicon.png . > /tmp/pygbag-serve.log 2>&1'
+```
+
+Useful follow-ups:
+
+```bash
+# Inspect the running pane
+tmux capture-pane -pt pylander-web
+
+# Restart the server inside the existing session
+tmux send-keys -t pylander-web C-c
+tmux send-keys -t pylander-web 'uv run pygbag --port 8000 --template web/default.tmpl --icon web/favicon.png . > /tmp/pygbag-serve.log 2>&1' Enter
+```
+
+This is a dev convenience only. It is not the publishing model.
+
+## Publishing
+
+Publishing should treat `build/web/` as a static site artifact.
+
+That means local `pygbag serve` is mainly for development, while deployment should
+serve the generated files from a normal static host.
+
+### Current target: GitHub Pages
+
+Plan to publish from the `pylander` repo rather than routing the build through the
+`blog` repo.
+
+Recommended shape:
+
+1. Build locally or in CI with pygbag.
+2. Publish the contents of `build/web/` to GitHub Pages.
+3. Keep the playable game hosted from a dedicated Pages path for this repo.
+
+Good options:
+
+- `gh-pages` branch containing the built static files, or
+- GitHub Actions Pages deployment artifact sourced from `build/web/`
+
+Prefer keeping the game deployment owned by the `pylander` repo itself. The blog
+can link to it, but should not be the operational source of truth for the build.
+
+### Self-hosted option
+
+Self-hosting is also straightforward: copy `build/web/` to a static web root and
+serve it with a standard web server or reverse-proxied container.
+
+For the homelab, this likely means a small static container behind Traefik on
+`docker.lan`.
+
+## Dev server vs publishable artifact
+
+Yes: now that the first pygbag build works, the next step is to think in terms of
+**package/build/artifact publishing**, not only `pygbag`'s local dev server.
+
+Use this mental split:
+
+- **Development:** `uv run pygbag ...` for rebuild + localhost testing
+- **Publishing:** serve `build/web/` as static files from GitHub Pages or another host
+
+So the repo should gradually optimize for three things:
+
+1. reproducible web build command
+2. stable generated artifact in `build/web/`
+3. straightforward static hosting target
+
+Residual cleanup still worth doing before calling the publish path polished:
+
+- remove raw `cookiecutter` template remnants from generated `index.html`
+- decide whether CDN-hosted pygbag runtime assets are acceptable for production
+- document the exact Pages deployment flow once selected
+
 The build output goes to `build/web/` with:
 - `index.html` - JavaScript loader
-- `pylander.data`, `pylander.js`, `pylander.wasm` - compiled Python
+- `pylander.apk`, `pylander.tar.gz` - packaged application bundle
+- `browserfs.min.js` and related loader assets as emitted by pygbag
 
 The repo includes a `pygbag.ini` that trims the web bundle to the game-only path by
 excluding `bot_framework/`, `tooling/`, `app/`, tests, docs, and local outputs.

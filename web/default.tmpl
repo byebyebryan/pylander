@@ -1,6 +1,6 @@
 <html lang="en-us"><head>
     <script src="browserfs.min.js"></script>
-</head><script src="{{cookiecutter.cdn}}pythons.js" type=module id="site" data-python="python{{cookiecutter.PYBUILD}}" data-LINES=42 data-COLUMNS=132 data-os="vtx,snd,gui" async defer>#<!--
+</head><script src="{{cookiecutter.cdn}}pythons.js" type=module id="site" data-python="python{{cookiecutter.PYBUILD}}" data-LINES=32 data-COLUMNS=80 data-os="vtx,snd,gui" async defer>#<!--
 
 print("""
 Loading {{cookiecutter.title}} from {{cookiecutter.archive}}.apk
@@ -12,7 +12,7 @@ Loading {{cookiecutter.title}} from {{cookiecutter.archive}}.apk
     Title   : {{cookiecutter.title}}
     Folder  : {{cookiecutter.directory}}
     Authors : {{cookiecutter.authors}}
-    SPDX-License-Identifier: {{cookiecutter.spdx}}
+    SPDX-License-Identifier: NOASSERTION
 
 """)
 
@@ -112,10 +112,6 @@ asyncio.run( custom_site() )
 # --></script><head><!--
 //=============================================================================
 
-    {%- if cookiecutter.comment != "" -%}
-{{cookiecutter.comment}}
-    {% endif %}
-
 --><script type="application/javascript">
 // END BLOCK
 
@@ -125,9 +121,10 @@ config = {
     user_canvas : 0,
     user_canvas_managed : 0,
     gui_divider : 2,
-    ume_block : {{cookiecutter.ume_block}},
+    ume_block : 0,
     can_close : {{cookiecutter.can_close}},
     archive : "{{cookiecutter.archive}}",
+    console : 0,
     gui_debug : 2,
     cdn : "{{cookiecutter.cdn}}",
     autorun : {{cookiecutter.autorun}},
@@ -137,14 +134,16 @@ config = {
     fb_height : "{{cookiecutter.height}}"
 }
 
+let __canvas_view = null;
+
 function show_infobox() {
+    if (infobox.style.display === "none") {
+        return;
+    }
     infobox.style.display = "block";
-    const w = infobox.offsetWidth;
-    const h = infobox.offsetHeight;
-    const left = (window.innerWidth - w) / 2;
-    const top = (window.innerHeight - h) / 2;
-    infobox.style.left = left + "px";
-    infobox.style.top = top + "px";
+    infobox.style.left = "50%";
+    infobox.style.top = "50%";
+    infobox.style.transform = "translate(-50%, -50%)";
 }
 
 </script>
@@ -160,12 +159,196 @@ function show_infobox() {
     <link rel="icon" type="image/png" href="favicon.png" sizes="16x16">
 
     <style>
-        #status { display: inline-block; vertical-align: top; margin-top: 20px; margin-left: 30px; font-weight: bold; color: rgb(120, 120, 120); }
-        #progress { height: 20px; width: 300px; }
-        #infobox { position: fixed; background: green; color: blue; font-weight: bold; padding: 12px 24px; z-index: 999999; }
+        :root {
+            --bg: rgb(10, 10, 15);
+            --bg2: rgb(18, 22, 32);
+            --panel: rgba(12, 16, 24, 0.88);
+            --panel-border: rgba(110, 140, 210, 0.45);
+            --text: rgb(205, 210, 225);
+            --muted: rgb(120, 130, 155);
+            --accent: rgb(100, 150, 255);
+            --accent-2: rgb(80, 255, 80);
+        }
+        #transfer {
+            position: fixed;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 14px;
+            z-index: 20;
+            pointer-events: none;
+        }
+        .loading-card {
+            min-width: min(420px, calc(100vw - 40px));
+            max-width: 520px;
+            padding: 24px 28px;
+            border: 1px solid var(--panel-border);
+            border-radius: 14px;
+            background: linear-gradient(180deg, rgba(20, 26, 39, 0.92), rgba(10, 13, 20, 0.92));
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+            text-align: center;
+            backdrop-filter: blur(4px);
+        }
+        .loading-title {
+            margin: 0 0 6px;
+            color: var(--text);
+            font-size: clamp(28px, 5vw, 42px);
+            font-weight: 700;
+            letter-spacing: 0.18em;
+        }
+        .loading-subtitle {
+            margin: 0 0 16px;
+            color: var(--accent);
+            font-size: 14px;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+        }
+        #status {
+            display: block;
+            margin: 0 0 12px;
+            font-weight: 700;
+            color: var(--text);
+            letter-spacing: 0.04em;
+        }
+        #progress {
+            width: 100%;
+            height: 10px;
+            appearance: none;
+            border: none;
+            border-radius: 999px;
+            overflow: hidden;
+            background: rgba(255, 255, 255, 0.08);
+        }
+        #progress::-webkit-progress-bar {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 999px;
+        }
+        #progress::-webkit-progress-value {
+            background: linear-gradient(90deg, var(--accent), var(--accent-2));
+            border-radius: 999px;
+        }
+        #progress::-moz-progress-bar {
+            background: linear-gradient(90deg, var(--accent), var(--accent-2));
+            border-radius: 999px;
+        }
+        #infobox {
+            position: fixed;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            min-width: 0;
+            max-width: min(560px, calc(100vw - 32px));
+            padding: 10px 14px;
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            background: rgba(12, 16, 24, 0.74);
+            color: var(--text);
+            font-weight: 600;
+            font-size: 14px;
+            line-height: 1.35;
+            text-align: center;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+            z-index: 999999;
+        }
+        #console-toggle {
+            position: fixed;
+            right: 126px;
+            bottom: 14px;
+            z-index: 1000000;
+            padding: 8px 12px;
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            background: rgba(12, 16, 24, 0.82);
+            color: var(--text);
+            font: inherit;
+            font-size: 13px;
+            cursor: pointer;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+        }
+        #console-toggle:hover {
+            background: rgba(18, 24, 36, 0.92);
+        }
+        #autoscroll-toggle {
+            position: fixed;
+            right: 14px;
+            bottom: 14px;
+            z-index: 1000000;
+            padding: 8px 12px;
+            border: 1px solid var(--panel-border);
+            border-radius: 10px;
+            background: rgba(12, 16, 24, 0.82);
+            color: var(--text);
+            font: inherit;
+            font-size: 13px;
+            cursor: pointer;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+        }
+        #autoscroll-toggle:hover,
+        #autoscroll-toggle[aria-pressed="true"] {
+            background: rgba(18, 24, 36, 0.92);
+        }
+        #pyconsole {
+            position: fixed;
+            left: 14px;
+            right: 14px;
+            bottom: 56px;
+            height: min(420px, 52vh);
+            z-index: 999998;
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            background: rgba(8, 11, 18, 0.94);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+            overflow: hidden;
+        }
+        #pyconsole[hidden] {
+            display: none !important;
+        }
+        #terminal {
+            width: 100%;
+            height: 100%;
+            padding: 8px 10px;
+            box-sizing: border-box;
+            overflow: hidden;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+            font-size: 9px;
+            line-height: 1.3;
+            color: var(--text);
+            background: transparent;
+        }
+        #terminal .xterm {
+            font-size: 9px !important;
+            height: 100%;
+        }
+        #terminal .xterm-viewport {
+            overflow-x: hidden !important;
+            overflow-y: auto !important;
+            scrollbar-width: thin;
+        }
+        #terminal .xterm-viewport::-webkit-scrollbar {
+            width: 8px;
+        }
+        #terminal .xterm-screen,
+        #terminal .xterm-rows,
+        #terminal .xterm-scroll-area {
+            width: 100% !important;
+        }
+        #terminal .xterm-screen canvas {
+            image-rendering: pixelated;
+        }
         div.emscripten { text-align: center; }
         canvas.emscripten { border: 0px none; background-color: transparent; width: 100%; height: 100%; z-index: 5; padding: 0; margin: 0 auto; position: absolute; top: 0; bottom: 0; left: 0; right: 0; }
-        body { font-family: arial; margin: 0; padding: none; background-color: powderblue; }
+        body {
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            margin: 0;
+            padding: 0;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top, rgba(70, 110, 220, 0.12), transparent 35%),
+                linear-gradient(180deg, var(--bg2), var(--bg));
+            overflow: hidden;
+        }
         .bottomright { position:absolute; top: 40%; right: 0px; }
         .trinfo { position: relative; right: 0px; border: 1px solid black; }
         .framed { position: relative; top: 150px; right: 10px; border: 1px solid black; }
@@ -175,13 +358,17 @@ function show_infobox() {
 
 <body>
     <div id="transfer" align=center>
-        <div class="emscripten" id="status">Downloading...</div>
-        <div class="emscripten"><progress value="0" max="100" id="progress"></progress></div>
+        <div class="loading-card">
+            <div class="loading-title">PYLANDER</div>
+            <div class="loading-subtitle">Web Build</div>
+            <div class="emscripten" id="status">Downloading...</div>
+            <div class="emscripten"><progress value="0" max="100" id="progress"></progress></div>
+        </div>
     </div>
 
     <canvas class="emscripten" id="canvas" width="1px" height="1px" oncontextmenu="event.preventDefault()" tabindex=1></canvas>
     <canvas class="emscripten" id="canvas3d" width="{{cookiecutter.width}}px" height="{{cookiecutter.height}}px" oncontextmenu="event.preventDefault()" tabindex=1 hidden></canvas>
-    <div id="infobox">Loading, please wait ...</div>
+    <div id="infobox">Loading Pylander...</div>
     <div id=html></div>
 
     <div id=crt class=bottomright>
@@ -200,20 +387,168 @@ function show_infobox() {
         </div>
     </div>
 
-    <div id="pyconsole"><div id="terminal" tabIndex=1 align="left"></div></div>
+    <button id="console-toggle" type="button" aria-controls="pyconsole" aria-expanded="false" hidden>Console: Off</button>
+    <button id="autoscroll-toggle" type="button" aria-pressed="false" hidden>Auto-scroll: Off</button>
+    <div id="pyconsole" hidden><div id="terminal" tabIndex=1 align="left"></div></div>
 
     <script type="application/javascript">
-    globalThis.__canvas_resized = (self, ecw, ech) => { console.warn("TODO: canvas monitor", self, ecw, ech) }
+    globalThis.__canvas_resized = (self, ecw, ech) => {
+        __canvas_view = { width: ecw, height: ech };
+        show_infobox();
+    }
+    function hide_transfer() {
+        transfer.hidden = true;
+        transfer.style.display = "none";
+        transfer.style.visibility = "hidden";
+    }
+    let auto_scroll_console = false;
+
+    function get_xterm_instance() {
+        if (window.VM && window.VM.vt && window.VM.vt.xterm) {
+            return window.VM.vt.xterm;
+        }
+        if (window.python && window.python.vt && window.python.vt.xterm) {
+            return window.python.vt.xterm;
+        }
+        return null;
+    }
+
+    function get_xterm_cell_metrics(xterm) {
+        const cell = xterm && xterm._core && xterm._core._renderService && xterm._core._renderService.dimensions && xterm._core._renderService.dimensions.css && xterm._core._renderService.dimensions.css.cell;
+        if (cell && cell.width > 0 && cell.height > 0) {
+            return cell;
+        }
+
+        const measure = document.querySelector("#terminal .xterm-char-measure-element");
+        if (measure && measure.getBoundingClientRect) {
+            const rect = measure.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+                return { width: rect.width, height: rect.height };
+            }
+        }
+
+        return null;
+    }
+
+    function configure_xterm_console() {
+        const xterm = get_xterm_instance();
+        if (!xterm || pyconsole.hidden) {
+            return false;
+        }
+
+        const fontSize = 12;
+        const lineHeight = 1.1;
+
+        if (xterm.options) {
+            xterm.options.fontSize = fontSize;
+            xterm.options.lineHeight = lineHeight;
+        } else if (typeof xterm.setOption === "function") {
+            xterm.setOption("fontSize", fontSize);
+            xterm.setOption("lineHeight", lineHeight);
+        }
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                const usableWidth = Math.max(320, terminal.clientWidth - 12);
+                const usableHeight = Math.max(160, terminal.clientHeight - 12);
+                const metrics = get_xterm_cell_metrics(xterm);
+                const cellWidth = metrics ? metrics.width : Math.max(7, fontSize * 0.62);
+                const cellHeight = metrics ? metrics.height : Math.max(12, fontSize * 1.45);
+                const cols = Math.max(40, Math.floor(usableWidth / cellWidth));
+                const rows = Math.max(10, Math.floor(usableHeight / cellHeight));
+
+                if (typeof xterm.resize === "function") {
+                    xterm.resize(cols, rows);
+                }
+                if (typeof xterm.refresh === "function") {
+                    xterm.refresh(0, Math.max(0, rows - 1));
+                }
+                if (auto_scroll_console) {
+                    scroll_console_to_bottom();
+                }
+            });
+        });
+        return true;
+    }
+
+    function schedule_xterm_console_config(attempt = 0) {
+        if (configure_xterm_console()) {
+            if (auto_scroll_console) {
+                scroll_console_to_bottom();
+            }
+            return;
+        }
+        if (attempt < 20) {
+            setTimeout(() => schedule_xterm_console_config(attempt + 1), 250);
+        }
+    }
+
+    function set_console_open(open) {
+        pyconsole.hidden = !open;
+        const toggle = document.getElementById("console-toggle");
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        toggle.textContent = open ? "Console: On" : "Console: Off";
+        if (open) {
+            setTimeout(() => schedule_xterm_console_config(), 0);
+            setTimeout(() => schedule_xterm_console_config(), 100);
+            if (auto_scroll_console) {
+                setTimeout(scroll_console_to_bottom, 0);
+                setTimeout(scroll_console_to_bottom, 100);
+            }
+        }
+    }
+    function set_console_autoscroll(enabled) {
+        auto_scroll_console = enabled;
+        const toggle = document.getElementById("autoscroll-toggle");
+        toggle.setAttribute("aria-pressed", enabled ? "true" : "false");
+        toggle.textContent = enabled ? "Auto-scroll: On" : "Auto-scroll: Off";
+    }
+    function scroll_console_to_bottom() {
+        const viewport = document.querySelector("#terminal .xterm-viewport");
+        if (viewport) {
+            viewport.scrollTop = viewport.scrollHeight;
+        }
+    }
     async function custom_onload(debug_hidden) {
-        pyconsole.hidden = debug_hidden;
+        const toggle = document.getElementById("console-toggle");
+        const autoscroll_toggle = document.getElementById("autoscroll-toggle");
+        set_console_open(false);
+        set_console_autoscroll(false);
         system.hidden = debug_hidden;
-        transfer.hidden = debug_hidden;
+        hide_transfer();
         info.hidden = debug_hidden;
         box.hidden = debug_hidden;
         show_infobox();
+        window.addEventListener("resize", show_infobox);
+        window.addEventListener("resize", () => {
+            if (!pyconsole.hidden) {
+                schedule_xterm_console_config();
+            }
+        });
+        toggle.hidden = false;
+        autoscroll_toggle.hidden = false;
+        toggle.addEventListener("click", () => {
+            set_console_open(pyconsole.hidden);
+        });
+        autoscroll_toggle.addEventListener("click", () => {
+            set_console_autoscroll(!auto_scroll_console);
+            if (auto_scroll_console && !pyconsole.hidden) {
+                scroll_console_to_bottom();
+            }
+        });
+        window.setInterval(() => {
+            if (!pyconsole.hidden && auto_scroll_console) {
+                scroll_console_to_bottom();
+            }
+        }, 500);
     }
     function custom_prerun() {}
-    function custom_postrun() {}
+    function custom_postrun() {
+        hide_transfer();
+        setTimeout(hide_transfer, 0);
+        setTimeout(hide_transfer, 250);
+        setTimeout(hide_transfer, 1000);
+    }
     </script>
 
 </body>
