@@ -3,11 +3,11 @@ from __future__ import annotations
 import argparse
 from collections.abc import Callable, Sequence
 
-import app.benchmark_analyze as benchmark_analyze
-import app.benchmark_context as benchmark_context
-import app.benchmark_promote as benchmark_promote
-import app.run_cached_benchmark as run_cached_benchmark
-import app.selector_pack as selector_pack
+import bot_framework.benchmark_analyze as benchmark_analyze
+import bot_framework.benchmark_context as benchmark_context
+import bot_framework.benchmark_promote as benchmark_promote
+import bot_framework.run_cached_benchmark as run_cached_benchmark
+import bot_framework.selector_pack as selector_pack
 import tooling.serve_outputs as serve_outputs
 import tooling.trace_bundle as trace_bundle
 
@@ -61,7 +61,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  serve      Serve outputs/ over HTTP\n"
             "  bundle     Run the full inspect, run, analyze, and report workflow\n"
             "  promote    Promote a dirty cache into a clean commit key after commit\n\n"
-            "Use `uv run python -m app.bench <command> --help` for command-specific options."
+            "Use `uv run python -m bot_framework.bench <command> --help` for command-specific options."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

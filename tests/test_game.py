@@ -7,10 +7,10 @@ from typing import Any
 
 import pytest
 
-import app.run_batch as run_batch_module
+import bot_framework.run_batch as run_batch_module
 import app.run_single as run_single_module
 from app.cli import build_parser, parse_command
-from app.config import BenchCommand, BenchSettings, BenchTarget, RunCommand
+from bot_framework.config import BenchCommand, BenchSettings, BenchTarget, RunCommand
 from bot_framework.bots import create_bot, list_available_bots
 from bot_framework.scenarios import create_scenario_level
 from bot_framework.scenarios import list_available_scenarios
@@ -30,7 +30,11 @@ from game.levels import (
     create_level as create_gameplay_level,
     list_available_levels as list_gameplay_levels,
 )
-from app.run_batch import ResolvedBenchRun, parse_seed_spec, resolve_benchmark_plan
+from bot_framework.run_batch import (
+    ResolvedBenchRun,
+    parse_seed_spec,
+    resolve_benchmark_plan,
+)
 
 
 def _create_level_by_name(name: str):

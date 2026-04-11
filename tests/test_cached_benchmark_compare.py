@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-import app.benchmark_cache as benchmark_cache
-import app.benchmark_compare as benchmark_compare
+import bot_framework.benchmark_cache as benchmark_cache
+import bot_framework.benchmark_compare as benchmark_compare
 
 
 def _record(
@@ -480,8 +480,12 @@ def test_print_compare_uses_shared_run_basis_for_mismatched_packs() -> None:
 
     assert report["global"]["summary_baseline"]["runs"] == pytest.approx(1.0)
     assert report["global"]["summary_candidate"]["runs"] == pytest.approx(1.0)
-    assert report["global"]["summary_baseline"]["fuel_mean_success"] == pytest.approx(20.0)
-    assert report["global"]["summary_candidate"]["fuel_mean_success"] == pytest.approx(21.0)
+    assert report["global"]["summary_baseline"]["fuel_mean_success"] == pytest.approx(
+        20.0
+    )
+    assert report["global"]["summary_candidate"]["fuel_mean_success"] == pytest.approx(
+        21.0
+    )
     assert [row["scenario"] for row in report["global"]["worst_scenarios"]] == [
         "boost:flat:mid:half"
     ]
@@ -716,7 +720,9 @@ def test_print_compare_includes_terminal_post_entry_summary_deltas() -> None:
     )
 
     summary_delta = report["global"]["summary_delta"]
-    assert summary_delta["terminal_post_entry_apex_gain_primary"] == pytest.approx(-28.0)
+    assert summary_delta["terminal_post_entry_apex_gain_primary"] == pytest.approx(
+        -28.0
+    )
     assert summary_delta["terminal_post_entry_time_to_apex_primary"] == pytest.approx(
         -1.2
     )
@@ -725,7 +731,9 @@ def test_print_compare_includes_terminal_post_entry_summary_deltas() -> None:
     )
 
 
-def test_print_compare_marks_terminal_post_entry_unavailable_when_baseline_missing() -> None:
+def test_print_compare_marks_terminal_post_entry_unavailable_when_baseline_missing() -> (
+    None
+):
     baseline = {
         "records": [
             _record(
@@ -770,7 +778,9 @@ def test_print_compare_marks_terminal_post_entry_unavailable_when_baseline_missi
     assert summary_delta["terminal_post_entry_peak_abs_dx_primary"] is None
 
     rows = benchmark_compare.scenario_regressions(baseline, candidate)
-    target_row = next(row for row in rows if row["scenario"] == "terminal:normal:shallower")
+    target_row = next(
+        row for row in rows if row["scenario"] == "terminal:normal:shallower"
+    )
     assert target_row["terminal_post_entry_basis"] == "unavailable"
     assert target_row["delta_terminal_post_entry_apex_gain"] is None
     assert target_row["delta_terminal_post_entry_time_to_apex"] is None

@@ -13,8 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from app.benchmark_analyze import build_analysis_payload
-from app.benchmark_context import (
+from bot_framework.benchmark_analyze import build_analysis_payload
+from bot_framework.benchmark_context import (
     analysis_sidecar_path,
     build_auto_intent,
     build_inspect_payload,
@@ -23,14 +23,14 @@ from app.benchmark_context import (
     intent_sidecar_path,
     load_intent,
 )
-from app.benchmark_cache import load_json, tracepack_meta_path, write_json
+from bot_framework.benchmark_cache import load_json, tracepack_meta_path, write_json
 from tooling.output_viewer import (
     bundle_url,
     discover_viewer_hostname,
     ensure_outputs_server,
     normalize_base_url,
 )
-from app.selector_pack import build_selectors
+from bot_framework.selector_pack import build_selectors
 
 from game.core.selector_codec import render_record_selector
 from bot_framework.scenarios import (

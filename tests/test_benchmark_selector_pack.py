@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-import app.selector_pack as selector_pack
+import bot_framework.selector_pack as selector_pack
 
 
 def test_smoke_pack_uses_profile_policies() -> None:

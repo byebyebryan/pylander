@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 
-from app.config import (
+from bot_framework.config import (
     BenchCommand,
     BenchSettings,
     BenchTarget,
@@ -12,7 +12,7 @@ from app.config import (
     RunSettings,
 )
 from game.landers import list_available_landers
-from app.selector import parse_seed_spec, parse_selector, render_selector
+from bot_framework.selector import parse_seed_spec, parse_selector, render_selector
 from game.core.trace_policy import (
     TRACE_DETAIL_DEBUG,
     TRACE_DETAIL_MODES,

@@ -5,7 +5,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Iterable
 
-from app.selector import parse_selector, parse_seed_spec
+from bot_framework.selector import parse_selector, parse_seed_spec
 from game.core.level_capabilities import (
     BenchmarkLevelPolicy,
     LevelBenchmarkProfile,

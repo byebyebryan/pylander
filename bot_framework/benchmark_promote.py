@@ -8,12 +8,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from app.benchmark_cache import (
+from bot_framework.benchmark_cache import (
     git_rev_parse,
     tracepack_meta_path,
     validate_cached_tracepack_assets,
 )
-from app.benchmark_context import (
+from bot_framework.benchmark_context import (
     analysis_sidecar_path,
     compare_sidecar_candidates,
     intent_sidecar_path,
@@ -102,7 +102,9 @@ def _rewrite_tracepack_payload(
     return out
 
 
-def _add_promotion_block(payload: dict[str, Any], *, source_commit: str, target_commit: str, target_ref: str) -> dict[str, Any]:
+def _add_promotion_block(
+    payload: dict[str, Any], *, source_commit: str, target_commit: str, target_ref: str
+) -> dict[str, Any]:
     out = json.loads(json.dumps(payload))
     promotion = dict(out.get("promotion") or {})
     promotion.update(

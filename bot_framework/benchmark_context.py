@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from app.benchmark_cache import (
+from bot_framework.benchmark_cache import (
     git_rev_parse,
     load_json,
     selector_pack_stem,
@@ -16,20 +16,20 @@ from app.benchmark_cache import (
     workspace_key,
     write_json,
 )
-from app.selector_pack import ResolvedSelectorPack, build_selectors
+from bot_framework.selector_pack import ResolvedSelectorPack, build_selectors
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _SKIPPABLE_AREAS = {"benchmark_tooling", "docs", "skills", "tests"}
 _BENCHMARK_TOOLING_FILES = {
-    "app/bench.py",
-    "app/benchmark_cache.py",
-    "app/benchmark_compare.py",
-    "app/output_viewer.py",
-    "app/plot_pack.py",
-    "app/run_cached_benchmark.py",
-    "app/selector_pack.py",
-    "app/serve_outputs.py",
-    "app/trace_bundle.py",
+    "bot_framework/bench.py",
+    "bot_framework/benchmark_cache.py",
+    "bot_framework/benchmark_compare.py",
+    "tooling/output_viewer.py",
+    "tooling/plot_pack.py",
+    "bot_framework/run_cached_benchmark.py",
+    "bot_framework/selector_pack.py",
+    "tooling/serve_outputs.py",
+    "tooling/trace_bundle.py",
     "utils/tracebundle.py",
     "utils/traceviewer.py",
 }
@@ -55,7 +55,7 @@ def classify_path(path_value: str) -> str:
         return "skills"
     if path.startswith("tests/"):
         return "tests"
-    if path in _BENCHMARK_TOOLING_FILES or path.startswith("app/benchmark_"):
+    if path in _BENCHMARK_TOOLING_FILES or path.startswith("bot_framework/benchmark_"):
         return "benchmark_tooling"
     if path.startswith("bots/"):
         return "bot_logic"
@@ -65,7 +65,7 @@ def classify_path(path_value: str) -> str:
         return "core_runtime"
     if path in {"main.py", "game.py"}:
         return "core_runtime"
-    if path.startswith("app/"):
+    if path.startswith("app/") or path.startswith("bot_framework/"):
         return "app_runtime"
     return "other_code"
 

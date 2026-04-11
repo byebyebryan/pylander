@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from app.cli import announce_command, parse_command
-from app.config import BenchCommand, RunCommand
-from app.run_batch import run_benchmark
+from bot_framework.config import BenchCommand, RunCommand
+from bot_framework.run_batch import run_benchmark
 from app.run_single import resolve_default_bot, run_once
 
 
@@ -25,7 +25,9 @@ def main() -> None:
             if cfg.headless:
                 default_bot_name = resolve_default_bot(cfg.level_name)
                 if not (cfg.bot_name or default_bot_name):
-                    parser.error("Headless run requires a bot name or a level default bot")
+                    parser.error(
+                        "Headless run requires a bot name or a level default bot"
+                    )
                 if cfg.bot_name is None and default_bot_name is not None:
                     print(f"Using level-default bot: {default_bot_name}")
             run_once(
