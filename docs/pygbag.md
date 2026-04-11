@@ -95,6 +95,9 @@ Publishing should treat `build/web/` as a static site artifact.
 That means local `pygbag serve` is mainly for development, while deployment should
 serve the generated files from a normal static host.
 
+This has been validated locally by serving `build/web/` with a plain static server
+(`python -m http.server`) rather than pygbag's local test server.
+
 ### Current target: GitHub Pages
 
 Plan to publish from the `pylander` repo rather than routing the build through the
@@ -113,6 +116,10 @@ Good options:
 
 Prefer keeping the game deployment owned by the `pylander` repo itself. The blog
 can link to it, but should not be the operational source of truth for the build.
+
+Current caveat: the generated page is suitable for static hosting, but it is not
+fully self-contained. It still fetches runtime assets such as `pythons.js` and
+`empty.html` from `https://pygame-web.github.io/cdn/0.9.3/`.
 
 ### Self-hosted option
 
@@ -140,8 +147,8 @@ So the repo should gradually optimize for three things:
 
 Residual cleanup still worth doing before calling the publish path polished:
 
-- remove raw `cookiecutter` template remnants from generated `index.html`
-- decide whether CDN-hosted pygbag runtime assets are acceptable for production
+- decide whether CDN-hosted pygbag runtime assets are acceptable for production,
+  or whether those runtime files should be pinned/vendored for a more self-contained deploy
 - document the exact Pages deployment flow once selected
 
 The build output goes to `build/web/` with:
