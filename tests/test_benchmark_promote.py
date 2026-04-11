@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import app.benchmark_promote as benchmark_promote
+import bot_framework.benchmark_promote as benchmark_promote
 
 
 def _write_candidate_cache(tmp_path: Path) -> tuple[Path, Path]:
@@ -105,7 +105,9 @@ def _write_candidate_cache(tmp_path: Path) -> tuple[Path, Path]:
         encoding="utf-8",
     )
     inspect_path.write_text(
-        json.dumps({"schema": "pylander.benchmark.inspect.v1"}, indent=2, sort_keys=True),
+        json.dumps(
+            {"schema": "pylander.benchmark.inspect.v1"}, indent=2, sort_keys=True
+        ),
         encoding="utf-8",
     )
     compare_path.write_text(
@@ -151,9 +153,7 @@ def test_promote_cache_rewrites_tracepack_and_sidecars(
             encoding="utf-8"
         )
     )
-    promoted_compare = json.loads(
-        result["compare_json"].read_text(encoding="utf-8")
-    )
+    promoted_compare = json.loads(result["compare_json"].read_text(encoding="utf-8"))
 
     assert target_json.parent.name == "ce8fed5"
     assert promoted_payload["trace_root_path"] == str(target_trace_root)
@@ -161,7 +161,9 @@ def test_promote_cache_rewrites_tracepack_and_sidecars(
     assert promoted_payload["run_index"][0]["trace_rel_path"].startswith(
         "benchmarks/ce8fed5/"
     )
-    assert promoted_payload["records"][0]["trace_path"].startswith(str(target_trace_root))
+    assert promoted_payload["records"][0]["trace_path"].startswith(
+        str(target_trace_root)
+    )
     assert promoted_meta["commit"] == "ce8fed5"
     assert promoted_intent["outputs"]["candidate_commit"] == "ce8fed5"
     assert promoted_intent["outputs"]["candidate_json"] == str(target_json)
@@ -170,6 +172,8 @@ def test_promote_cache_rewrites_tracepack_and_sidecars(
     assert promoted_payload["promotion"]["promoted_to_commit"] == "ce8fed5"
     assert (target_trace_root / "traces" / "boost_flat_mid_half_0.trace.json").exists()
     assert (target_trace_root / "previews" / "boost_flat_mid_half_0.png").exists()
-    assert target_json.relative_to(outputs_root).as_posix().startswith(
-        "benchmarks/ce8fed5/"
+    assert (
+        target_json.relative_to(outputs_root)
+        .as_posix()
+        .startswith("benchmarks/ce8fed5/")
     )

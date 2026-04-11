@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import app.benchmark_context as benchmark_context
-from app.selector_pack import ResolvedSelectorPack
+import bot_framework.benchmark_context as benchmark_context
+from bot_framework.selector_pack import ResolvedSelectorPack
 
 
 def test_resolve_auto_baseline_skips_only_irrelevant_commits(
@@ -29,7 +29,7 @@ def test_resolve_auto_baseline_skips_only_irrelevant_commits(
         "commit_changed_files",
         lambda commit: {
             "docs1": ["README.md"],
-            "bench1": ["app/trace_bundle.py", "tests/test_bench_bundle.py"],
+            "bench1": ["tooling/trace_bundle.py", "tests/test_bench_bundle.py"],
             "bot1": ["bots/pdg.py"],
         }[commit],
     )
@@ -104,7 +104,10 @@ def test_build_auto_intent_records_context_and_auto_baseline(
         context_notes=["User asked for a focused boost regression check."],
     )
 
-    assert payload["goal_summary"] == "Validate boost retune against the last behavior change"
+    assert (
+        payload["goal_summary"]
+        == "Validate boost retune against the last behavior change"
+    )
     assert payload["conversation_context"] == [
         "User asked for a focused boost regression check."
     ]

@@ -8,12 +8,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from app.benchmark_context import (
+from bot_framework.benchmark_context import (
     analysis_sidecar_path,
     discover_compare_path,
     load_intent,
 )
-from app.benchmark_context import load_json as load_json_file
+from bot_framework.benchmark_context import load_json as load_json_file
 from game.core.selector_codec import render_record_selector
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]

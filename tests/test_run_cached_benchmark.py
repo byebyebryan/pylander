@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import app.run_cached_benchmark as run_cached_benchmark
-from app.selector_pack import ResolvedSelectorPack
+import bot_framework.run_cached_benchmark as run_cached_benchmark
+from bot_framework.selector_pack import ResolvedSelectorPack
 
 
 def test_auto_baseline_missing_cache_falls_back_to_candidate_only(
@@ -41,7 +41,9 @@ def test_auto_baseline_missing_cache_falls_back_to_candidate_only(
     )
     candidate_json = tmp_path / "candidate.tracepack.json"
     candidate_meta = tmp_path / "candidate.meta.json"
-    candidate_json.write_text(json.dumps({"records": [], "summary": {}}), encoding="utf-8")
+    candidate_json.write_text(
+        json.dumps({"records": [], "summary": {}}), encoding="utf-8"
+    )
     candidate_meta.write_text("{}", encoding="utf-8")
 
     monkeypatch.setattr(
@@ -124,9 +126,13 @@ def test_missing_baseline_seed_uses_worktree_seed_and_continues(
     candidate_meta = tmp_path / "candidate.meta.json"
     baseline_json = tmp_path / "baseline.tracepack.json"
     baseline_meta = tmp_path / "baseline.meta.json"
-    candidate_json.write_text(json.dumps({"records": [], "summary": {}}), encoding="utf-8")
+    candidate_json.write_text(
+        json.dumps({"records": [], "summary": {}}), encoding="utf-8"
+    )
     candidate_meta.write_text("{}", encoding="utf-8")
-    baseline_json.write_text(json.dumps({"records": [], "summary": {}}), encoding="utf-8")
+    baseline_json.write_text(
+        json.dumps({"records": [], "summary": {}}), encoding="utf-8"
+    )
     baseline_meta.write_text("{}", encoding="utf-8")
 
     monkeypatch.setattr(
@@ -163,7 +169,8 @@ def test_missing_baseline_seed_uses_worktree_seed_and_continues(
         run_cached_benchmark,
         "seed_cache_from_worktree",
         lambda **kwargs: (
-            calls.append(("seed_cache_from_worktree", kwargs["commit"])) or (baseline_json, baseline_meta, False)
+            calls.append(("seed_cache_from_worktree", kwargs["commit"]))
+            or (baseline_json, baseline_meta, False)
         ),
     )
     monkeypatch.setattr(
@@ -230,7 +237,9 @@ def test_missing_baseline_error_raises(
     )
     candidate_json = tmp_path / "candidate.tracepack.json"
     candidate_meta = tmp_path / "candidate.meta.json"
-    candidate_json.write_text(json.dumps({"records": [], "summary": {}}), encoding="utf-8")
+    candidate_json.write_text(
+        json.dumps({"records": [], "summary": {}}), encoding="utf-8"
+    )
     candidate_meta.write_text("{}", encoding="utf-8")
 
     monkeypatch.setattr(
@@ -304,7 +313,9 @@ def test_explicit_baseline_without_policy_defaults_to_error(
     )
     candidate_json = tmp_path / "candidate.tracepack.json"
     candidate_meta = tmp_path / "candidate.meta.json"
-    candidate_json.write_text(json.dumps({"records": [], "summary": {}}), encoding="utf-8")
+    candidate_json.write_text(
+        json.dumps({"records": [], "summary": {}}), encoding="utf-8"
+    )
     candidate_meta.write_text("{}", encoding="utf-8")
 
     monkeypatch.setattr(

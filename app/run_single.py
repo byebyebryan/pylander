@@ -19,7 +19,10 @@ from game.core.level_capabilities import (
 from game import LanderGame
 from game.runtime.runtime_adapter import make_runtime_adapter
 
-from app.config import RunSettings, resolve_default_bot as _resolve_default_bot
+from bot_framework.config import (
+    RunSettings,
+    resolve_default_bot as _resolve_default_bot,
+)
 from tooling.reporting import print_headless_results
 from app._level_resolve import _resolve_runtime_binding, create_level_checked
 

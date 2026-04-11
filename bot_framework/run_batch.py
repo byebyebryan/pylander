@@ -9,11 +9,11 @@ from pathlib import Path
 from time import perf_counter
 from typing import Any, Callable
 
-from app.config import BenchSettings, BenchTarget, RunSettings
+from bot_framework.config import BenchSettings, BenchTarget, RunSettings
 from tooling.reporting import print_batch_summary
 from app.run_single import resolve_default_bot, run_once_record
 from app._level_resolve import create_level_checked
-from app.selector import parse_seed_spec, render_selector_group
+from bot_framework.selector import parse_seed_spec, render_selector_group
 from game.core.eval import (
     aggregate_eval_records,
     collision_safe_path,

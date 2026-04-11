@@ -7,22 +7,22 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.benchmark_cache import (
+from bot_framework.benchmark_cache import (
     git_rev_parse,
     load_json,
     load_or_run,
     selector_pack_stem,
     write_json,
 )
-from app.benchmark_context import (
+from bot_framework.benchmark_context import (
     build_auto_intent,
     build_inspect_payload,
     default_missing_baseline_policy,
     load_intent,
 )
-from app.benchmark_compare import print_compare
-from app.benchmark_seed import seed_cache_from_worktree
-from app.selector_pack import (
+from bot_framework.benchmark_compare import print_compare
+from bot_framework.benchmark_seed import seed_cache_from_worktree
+from bot_framework.selector_pack import (
     ResolvedSelectorPack,
     build_bench_command,
     build_selectors,

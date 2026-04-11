@@ -7,7 +7,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from app.benchmark_cache import load_or_run
+from bot_framework.benchmark_cache import load_or_run
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -27,11 +27,17 @@ def _run_git(args: list[str], *, repo_root: Path) -> None:
 def temporary_worktree(commit: str, *, repo_root: Path = _REPO_ROOT) -> Iterator[Path]:
     with tempfile.TemporaryDirectory(prefix="pylander-bench-") as temp_root:
         worktree_path = Path(temp_root) / "repo"
-        _run_git(["worktree", "add", "--detach", str(worktree_path), str(commit)], repo_root=repo_root)
+        _run_git(
+            ["worktree", "add", "--detach", str(worktree_path), str(commit)],
+            repo_root=repo_root,
+        )
         try:
             yield worktree_path
         finally:
-            _run_git(["worktree", "remove", "--force", str(worktree_path)], repo_root=repo_root)
+            _run_git(
+                ["worktree", "remove", "--force", str(worktree_path)],
+                repo_root=repo_root,
+            )
             _run_git(["worktree", "prune"], repo_root=repo_root)
 
 

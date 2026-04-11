@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.selector import parse_selector
+from bot_framework.selector import parse_selector
 from game.core.selector_codec import (
     render_record_selector,
     render_selector,
