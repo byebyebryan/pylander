@@ -15,26 +15,26 @@ Use this skill when the user asks to:
 
 Use the unified benchmark CLI directly:
 
-- `uv run python -m app.bench selectors ...`
-- `uv run python -m app.bench inspect ...`
-- `uv run python -m app.bench run ...`
-- `uv run python -m app.bench analyze ...`
-- `uv run python -m app.bench report ...`
-- `uv run python -m app.bench bundle ...`
-- `uv run python -m app.bench serve ...`
-- `uv run python -m app.bench promote ...`
+- `uv run python -m bot_framework.bench selectors ...`
+- `uv run python -m bot_framework.bench inspect ...`
+- `uv run python -m bot_framework.bench run ...`
+- `uv run python -m bot_framework.bench analyze ...`
+- `uv run python -m bot_framework.bench report ...`
+- `uv run python -m bot_framework.bench bundle ...`
+- `uv run python -m bot_framework.bench serve ...`
+- `uv run python -m bot_framework.bench promote ...`
 
 Implementation lives in reusable modules:
 
 - `app.selector_pack`
-- `app.benchmark_context`
+- `bot_framework.benchmark_context`
 - `app.run_cached_benchmark`
-- `app.benchmark_analyze`
-- `app.trace_bundle`
-- `app.output_viewer`
-- `app.serve_outputs`
-- `app.benchmark_promote`
-- `app.bench`
+- `bot_framework.benchmark_analyze`
+- `tooling.trace_bundle`
+- `tooling.output_viewer`
+- `tooling.serve_outputs`
+- `bot_framework.benchmark_promote`
+- `bot_framework.bench`
 
 ## Inputs
 
@@ -51,7 +51,7 @@ Implementation lives in reusable modules:
 
 When the user says "run the bench", use the full workflow:
 
-1. Inspect repo state and recent first-parent history with `app.bench inspect` or the `bundle` path.
+1. Inspect repo state and recent first-parent history with `bot_framework.bench inspect` or the `bundle` path.
 2. Decide scope conservatively:
    - explicit user scope wins
    - otherwise default to `quick`
@@ -68,7 +68,7 @@ When the user says "run the bench", use the full workflow:
 6. Generate the analysis sidecar.
 7. Render the HTML report with context, baseline rationale, measured outcome, and likely causes.
 
-Use `uv run python -m app.bench bundle ...` for this default path.
+Use `uv run python -m bot_framework.bench bundle ...` for this default path.
 
 Use narrower commands only when the user is explicitly asking for an intermediate phase:
 
@@ -140,14 +140,14 @@ Always include:
 
 Examples:
 
-- `uv run python -m app.bench selectors --mode smoke`
-- `uv run python -m app.bench inspect --mode quick --baseline-ref auto --output-json auto`
-- `uv run python -m app.bench run --mode quick --baseline-ref auto --missing-baseline seed`
-- `uv run python -m app.bench bundle --mode quick --baseline-ref auto --missing-baseline seed --goal-summary "Validate terminal tuning"`
-- `uv run python -m app.bench bundle --mode focused --selectors boost:flat:far:half --seed-spec 0-4 --context-note "Testing boost flare retune"`
-- `uv run python -m app.bench analyze --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json`
-- `uv run python -m app.bench report --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json --compare-json outputs/benchmarks/<ref>/<stem>.compare_vs_<base>.json`
-- `uv run python -m app.bench report --candidate-json outputs/benchmarks/<new-ref>/<new-stem>.tracepack.json --compare-json outputs/benchmarks/<new-ref>/<new-stem>.compare_vs_<base>.json --baseline-json outputs/benchmarks/<old-ref>/<old-stem>.tracepack.json`
+- `uv run python -m bot_framework.bench selectors --mode smoke`
+- `uv run python -m bot_framework.bench inspect --mode quick --baseline-ref auto --output-json auto`
+- `uv run python -m bot_framework.bench run --mode quick --baseline-ref auto --missing-baseline seed`
+- `uv run python -m bot_framework.bench bundle --mode quick --baseline-ref auto --missing-baseline seed --goal-summary "Validate terminal tuning"`
+- `uv run python -m bot_framework.bench bundle --mode focused --selectors boost:flat:far:half --seed-spec 0-4 --context-note "Testing boost flare retune"`
+- `uv run python -m bot_framework.bench analyze --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json`
+- `uv run python -m bot_framework.bench report --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json --compare-json outputs/benchmarks/<ref>/<stem>.compare_vs_<base>.json`
+- `uv run python -m bot_framework.bench report --candidate-json outputs/benchmarks/<new-ref>/<new-stem>.tracepack.json --compare-json outputs/benchmarks/<new-ref>/<new-stem>.compare_vs_<base>.json --baseline-json outputs/benchmarks/<old-ref>/<old-stem>.tracepack.json`
 - when candidate and baseline tracepacks do not cover the same selector/seed set, compare output uses shared runs only rather than treating missing selectors as zero
-- `uv run python -m app.bench serve --port 8765`
-- `uv run python -m app.bench promote --candidate-json outputs/benchmarks/<dirty>/<stem>.tracepack.json --target-ref HEAD`
+- `uv run python -m bot_framework.bench serve --port 8765`
+- `uv run python -m bot_framework.bench promote --candidate-json outputs/benchmarks/<dirty>/<stem>.tracepack.json --target-ref HEAD`

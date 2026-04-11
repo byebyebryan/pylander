@@ -152,7 +152,7 @@ Bench selector format:
 - If seed spec is omitted, deterministic scenarios run with seed `0`.
 - If seed spec is omitted and the selector resolves to a randomized scenario, seeds auto-expand to `0-9`.
 
-Benchmark pack tooling (`uv run python -m app.bench ...`) now reads
+Benchmark pack tooling (`uv run python -m bot_framework.bench ...`) now reads
 level metadata from `benchmark_profile()`:
 
 - scenario sets: `smoke`, `quick`, `full`
@@ -178,7 +178,7 @@ Focused benchmark-pack selectors also accept explicit group aliases:
 Example:
 
 ```bash
-uv run python -m app.bench bundle \
+uv run python -m bot_framework.bench bundle \
   --mode focused \
   --selectors @terminal \
   --seed-spec 0-9 \
@@ -192,10 +192,10 @@ benchmark tracepack and interactive run-detail pages:
 
 ```bash
 # Serve outputs/ once per tmux session
-uv run python -m app.bench serve --port 8765
+uv run python -m bot_framework.bench serve --port 8765
 
 # Generate the latest static bundle with context and analysis
-uv run python -m app.bench bundle \
+uv run python -m bot_framework.bench bundle \
   --mode full \
   --baseline-ref auto \
   --missing-baseline seed \
@@ -208,7 +208,7 @@ as a full report page on each bundle generation, so refreshing the same URL
 always loads the newest bundle. With the example server above, the browser URL
 is `http://myhost:8765/viewer/latest/index.html`.
 
-`app.bench bundle` can also manage the server for you. By default it checks
+`bot_framework.bench bundle` can also manage the server for you. By default it checks
 whether the outputs server is already running on port `8765`, starts it in the
 background if needed, and prints the latest report URL. If `--viewer-base-url`
 is omitted, it prefers the machine's `.lan` hostname when available (for
@@ -315,22 +315,22 @@ Local project skills now stay intentionally small:
 - `pylander-commit-manager`: prompt-only commit playbook for goal-scoped staging and standardized commit messages.
 
 Benchmark implementation lives in reusable app modules, not skill-local logic:
-`app.selector_pack`, `app.benchmark_context`, `app.run_cached_benchmark`,
-`app.benchmark_analyze`, `app.trace_bundle`, `app.output_viewer`,
-`app.serve_outputs`, `app.benchmark_promote`, and `app.bench`.
+`bot_framework.selector_pack`, `bot_framework.benchmark_context`, `bot_framework.run_cached_benchmark`,
+`bot_framework.benchmark_analyze`, `tooling.trace_bundle`, `tooling.output_viewer`,
+`tooling.serve_outputs`, `bot_framework.benchmark_promote`, and `bot_framework.bench`.
 
 Benchmark skill entrypoints:
 
-- `uv run python -m app.bench selectors --mode quick`
-- `uv run python -m app.bench inspect --mode quick --baseline-ref auto --output-json auto`
-- `uv run python -m app.bench run --mode quick --baseline-ref auto --missing-baseline seed`
-- `uv run python -m app.bench analyze --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json`
-- `uv run python -m app.bench report --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json --compare-json outputs/benchmarks/<ref>/<stem>.compare_vs_<base>.json`
-- `uv run python -m app.bench report --candidate-json outputs/benchmarks/<new-ref>/<new-stem>.tracepack.json --compare-json outputs/benchmarks/<new-ref>/<new-stem>.compare_vs_<base>.json --baseline-json outputs/benchmarks/<old-ref>/<old-stem>.tracepack.json`
+- `uv run python -m bot_framework.bench selectors --mode quick`
+- `uv run python -m bot_framework.bench inspect --mode quick --baseline-ref auto --output-json auto`
+- `uv run python -m bot_framework.bench run --mode quick --baseline-ref auto --missing-baseline seed`
+- `uv run python -m bot_framework.bench analyze --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json`
+- `uv run python -m bot_framework.bench report --candidate-json outputs/benchmarks/<ref>/<stem>.tracepack.json --compare-json outputs/benchmarks/<ref>/<stem>.compare_vs_<base>.json`
+- `uv run python -m bot_framework.bench report --candidate-json outputs/benchmarks/<new-ref>/<new-stem>.tracepack.json --compare-json outputs/benchmarks/<new-ref>/<new-stem>.compare_vs_<base>.json --baseline-json outputs/benchmarks/<old-ref>/<old-stem>.tracepack.json`
 - compare renders fall back to shared runs only when the two tracepacks cover different selector/seed sets, so full-vs-partial reports stay on the actual intersection
-- `uv run python -m app.bench bundle --mode quick --baseline-ref auto --missing-baseline seed`
-- `uv run python -m app.bench serve --port 8765`
-- `uv run python -m app.bench promote --candidate-json outputs/benchmarks/<dirty>/<stem>.tracepack.json --target-ref HEAD`
+- `uv run python -m bot_framework.bench bundle --mode quick --baseline-ref auto --missing-baseline seed`
+- `uv run python -m bot_framework.bench serve --port 8765`
+- `uv run python -m bot_framework.bench promote --candidate-json outputs/benchmarks/<dirty>/<stem>.tracepack.json --target-ref HEAD`
 
 Focused plot-pack generation remains available as an app utility rather than a
 separate skill:

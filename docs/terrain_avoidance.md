@@ -144,7 +144,7 @@ Relevant code today:
 - sensor update system: [`../game/core/systems/sensor_update.py`](../game/core/systems/sensor_update.py)
 - bot API: [`../game/core/bot.py`](../game/core/bot.py)
 - terrain helpers: [`../game/core/terrain.py`](../game/core/terrain.py), [`../game/core/sensor.py`](../game/core/sensor.py)
-- trace/plot overlays: [`../utils/plot.py`](../utils/plot.py), [`../utils/traceviewer.py`](../utils/traceviewer.py)
+- trace/plot overlays: [`../tooling/plot.py`](../tooling/plot.py), [`../tooling/traceviewer.py`](../tooling/traceviewer.py)
 
 Observed constraints:
 

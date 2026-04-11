@@ -77,7 +77,7 @@ The goal is a single repo with a build manifest that selects which files to pack
 | `bots/` (~15 files) | ~6,500 | Zero gameplay value for human player. Only consumer of `cvxpy`. |
 | `app/` (~20 files) | ~5,000 | CLI parsing, batch runner, benchmark orchestration. Only consumer of `matplotlib`. |
 | `utils/tracepack.py` | ~1,400 | Trace recording — bot eval infrastructure. |
-| `utils/plot.py` | — | Matplotlib plotting — benchmark only. |
+| `tooling/plot.py` | — | Matplotlib plotting — benchmark only. |
 | `utils/botmetrics.py` | — | Bot metric aggregation. |
 | `core/bot.py` | 386 | Bot abstract base, `BotAction`, `Sensors`, `BotEnvironment`. |
 | `core/sensor.py` | 203 | Radar/proximity sensors — bot-only. |

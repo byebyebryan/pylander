@@ -104,7 +104,7 @@ uv run python main.py sim boost_climb:<scenario>:0 --bot pdg --freq 0
 Command used:
 
 ```bash
-uv run python -m app.bench run \
+uv run python -m bot_framework.bench run \
   --mode quick \
   --baseline-ref auto \
   --missing-baseline seed \

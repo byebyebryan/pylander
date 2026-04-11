@@ -30,8 +30,8 @@ _BENCHMARK_TOOLING_FILES = {
     "bot_framework/selector_pack.py",
     "tooling/serve_outputs.py",
     "tooling/trace_bundle.py",
-    "utils/tracebundle.py",
-    "utils/traceviewer.py",
+    "tooling/tracebundle.py",
+    "tooling/traceviewer.py",
 }
 _DOC_FILES = {"AGENTS.md", "README.md"}
 
