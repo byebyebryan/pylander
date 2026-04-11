@@ -24,7 +24,7 @@ from bot_framework.scenarios import (
     expand_scenario_bindings as expand_selector_bindings,
     list_scenario_roots,
 )
-from app._level_resolve import _resolve_runtime_binding
+from game.runtime._level_resolve import _resolve_runtime_binding
 
 
 def _list_available_bots() -> list[str]:
