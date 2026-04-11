@@ -52,7 +52,7 @@ Body (for non-trivial commits, and recommended generally):
 - commit with drafted message
 
 5. If the commit finalizes a change that was already benchmarked on a dirty workspace, consider promoting the cached benchmark explicitly:
-- `uv run python -m app.bench promote --candidate-json outputs/benchmarks/<dirty>/<stem>.tracepack.json --target-ref HEAD`
+- `uv run python -m bot_framework.bench promote --candidate-json outputs/benchmarks/<dirty>/<stem>.tracepack.json --target-ref HEAD`
 
 6. Verify state after each commit:
 - `git status --short`

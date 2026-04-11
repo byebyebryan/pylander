@@ -57,7 +57,7 @@ Core metrics from game + batch aggregation:
 - Metric normalization + aggregation: [`game/core/eval.py`](../game/core/eval.py)
 - Scenario levels: [`game/levels/`](../game/levels/)
 - Bot implementations: [`bot_framework/bots/`](../bot_framework/bots/) (pdg, plunge)
-- Headless trajectory plots: [`utils/plot.py`](../utils/plot.py)
+- Headless trajectory plots: [`tooling/plot.py`](../tooling/plot.py)
 
 ## Bot API (sensor/action)
 
