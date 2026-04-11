@@ -4,37 +4,28 @@ This document describes the browser-playable web build using pygbag.
 
 ## Architecture
 
-The web build uses a dedicated `pygbag/` entrypoint that bypasses `main.py` and the full CLI to avoid importing `bot_framework`, `tooling/`, and `app/` at module load time.
+The web build bypasses `main.py` and the full CLI to avoid importing `bot_framework`, `tooling/`, and `app/` at module load time.
 
 ### Key design decisions
 
-1. **Separate entrypoint**: `pygbag/__init__.py` provides `run_web_interactive()` which is called by pygbag's JavaScript glue code.
+1. **Separate entrypoint**: `pygbag_main.py` at the project root is the async entry point sourced by the pygbag template. It imports pygame first (so `pygame.math` is registered before game modules load), then delegates to `game/web.py`.
 
-2. **No bot/tooling imports**: The web entrypoint only imports from `game/` and standard library modules. `bot_framework` is never loaded.
+2. **No bot/tooling imports**: `game/web.py` implements a bot-framework-free async game loop using `await asyncio.sleep(0)` each frame. `bot_framework` is never loaded.
 
-3. **Browser-safe rendering**: `game/ui/renderer.py` detects the browser environment via `sys.emscripten` and avoids desktop-specific SDL environment variables.
+3. **Euler physics**: `PYLANDER_PHYSICS=euler` is set before any imports, ensuring the pure-Python Euler backend is used instead of pymunk (which is not available in WASM).
 
-4. **No-bot runtime**: `NoBotRuntimeAdapter` is used since bots require `cvxpy` which is not trivially compiled to WebAssembly.
-
-## Scope (v1)
-
-- **Supported**: Interactive gameplay on `flat` level
-- **Supported (low-risk)**: Interactive gameplay on `mountains` level  
-- **Not supported**: Bots, headless evaluation, benchmark/report tooling
+4. **Error overlay**: Unhandled exceptions are caught and displayed in the browser's infobox overlay (red background, traceback text) so crashes are visible without opening devtools.
 
 ## File structure
 
 ```
-pygbag/
-└── __init__.py          # Web entrypoint (run_web_interactive, main, WebGame)
+pygbag_main.py       # async entry point (must be at project root)
+pygbag.ini           # bundle config: excludes bot_framework/, app/, tests, etc.
+game/web.py          # bot-framework-free async game loop
+web/
+  default.tmpl       # custom HTML template
+  favicon.png        # game icon
 ```
-
-The `pygbag/__init__.py` module provides:
-- `EMSCRIPTEN` constant: True when running under emscripten
-- `is_browser()`: Returns True in browser environments
-- `run_web_interactive()`: Main entrypoint for browser gameplay
-- `build_web_game()`: Builds a minimal WebGame instance for browser play
-- `WebGame`: Minimal game class that avoids bot_framework imports
 
 ## Build requirements
 
@@ -46,24 +37,23 @@ pygbag requires:
 ## Build workflow
 
 ```bash
-# Install pygbag (requires emscripten toolchain)
-pip install pygbag
+# Install web-build tooling only when needed
+uv sync --group web
 
-# Build the web app
-pygbag --dir . --name pylander --app-ttl 300
-
-# Serve locally for testing
-cd build/pylander
-python -m http.server 8080
+# Serve locally (builds automatically and starts CDN-proxy testserver)
+uv run pygbag --port 8000 --template web/default.tmpl --icon web/favicon.png .
 ```
 
-The build output goes to `build/pylander/` with:
+The build output goes to `build/web/` with:
 - `index.html` - JavaScript loader
 - `pylander.data`, `pylander.js`, `pylander.wasm` - compiled Python
 
+The repo includes a `pygbag.ini` that trims the web bundle to the game-only path by
+excluding `bot_framework/`, `tooling/`, `app/`, tests, docs, and local outputs.
+
 ## Running
 
-Open `build/pylander/index.html` in a browser, or serve via http server.
+Open `build/web/index.html` in a browser, or serve via http server.
 
 The game starts automatically in interactive mode on the `flat` level.
 

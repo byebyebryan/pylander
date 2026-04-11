@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from pygame.math import Vector2 as _Vector2
-
-# Export Vector2 alias
-Vector2 = _Vector2
+import pygame as _pygame
+# Access via attribute so pygbag's scanner doesn't treat pygame.math as a
+# separate PyPI package. pygame.__init__ imports pygame.math and sets this up.
+Vector2 = _pygame.math.Vector2
+del _pygame
 
 
 def lander_half_height(height: float) -> float:

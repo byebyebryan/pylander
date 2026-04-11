@@ -22,6 +22,9 @@ dev = [
     "ruff>=0.13.2",
     "vulture>=2.14",
 ]
+web = [
+    "pygbag>=0.9.3",
+]
 # Bot extras (includes cvxpy for PDG optimizer):
 #   uv install --optional bot
 #   uv sync --extra bot
