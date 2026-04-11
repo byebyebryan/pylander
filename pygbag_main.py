@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import traceback
+from typing import Any
 
 os.environ["PYLANDER_PHYSICS"] = "euler"
 
@@ -17,9 +18,12 @@ import pygame  # noqa: F401
 async def _main() -> None:
     import platform
 
+    window: Any | None = getattr(platform, "window", None)
+
     try:
-        platform.window.infobox.innerText = "importing game..."
-        platform.window.infobox.style.display = "block"
+        if window is not None:
+            window.infobox.innerText = "importing game..."
+            window.infobox.style.display = "block"
     except Exception:
         pass
 
@@ -27,7 +31,8 @@ async def _main() -> None:
         from game.web import run_web_game
 
         try:
-            platform.window.infobox.style.display = "none"
+            if window is not None:
+                window.infobox.style.display = "none"
         except Exception:
             pass
         await run_web_game()
@@ -35,12 +40,13 @@ async def _main() -> None:
         msg = f"FATAL: {exc}\n{traceback.format_exc()}"
         print(msg)
         try:
-            platform.window.infobox.innerText = msg[:500]
-            platform.window.infobox.style.display = "block"
-            platform.window.infobox.style.background = "red"
-            platform.window.infobox.style.color = "white"
-            platform.window.infobox.style.whiteSpace = "pre"
-            platform.window.infobox.style.fontSize = "12px"
+            if window is not None:
+                window.infobox.innerText = msg[:500]
+                window.infobox.style.display = "block"
+                window.infobox.style.background = "red"
+                window.infobox.style.color = "white"
+                window.infobox.style.whiteSpace = "pre"
+                window.infobox.style.fontSize = "12px"
         except Exception:
             pass
         # Keep alive so error stays visible
