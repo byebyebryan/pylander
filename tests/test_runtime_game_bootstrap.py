@@ -15,7 +15,9 @@ def test_bootstrap_trace_runtime_sets_selector_tag(monkeypatch) -> None:
         def set_selector_tag(self, value: str) -> None:
             self.selector_tag = value
 
-    monkeypatch.setattr(game_bootstrap, "TraceRecorder", _TraceRecorder)
+    import tooling.tracepack as tracepack
+
+    monkeypatch.setattr(tracepack, "TraceRecorder", _TraceRecorder)
     monkeypatch.setattr(game_bootstrap, "level_name_tag", lambda _level: "launch")
     monkeypatch.setattr(game_bootstrap, "level_scenario_tag", lambda _level: "mid")
     monkeypatch.setattr(game_bootstrap, "level_trace_enabled", lambda _level: True)
@@ -50,9 +52,11 @@ def test_bootstrap_trace_runtime_prefers_explicit_selector_tag(monkeypatch) -> N
         def set_selector_tag(self, value: str) -> None:
             self.selector_tag = value
 
+    import tooling.tracepack as tracepack
+
     level = type("_Level", (Level,), {"setup": lambda self, game, seed: None})()
     level.set_runtime_identity(trace_selector_tag="plunge_low_half_0#2")
-    monkeypatch.setattr(game_bootstrap, "TraceRecorder", _TraceRecorder)
+    monkeypatch.setattr(tracepack, "TraceRecorder", _TraceRecorder)
     monkeypatch.setattr(game_bootstrap, "level_name_tag", lambda _level: "launch")
     monkeypatch.setattr(game_bootstrap, "level_scenario_tag", lambda _level: "mid")
     monkeypatch.setattr(game_bootstrap, "level_trace_enabled", lambda _level: True)

@@ -1,9 +1,12 @@
 """Rendering system for terrain visualization (Level-centric)."""
 
+from __future__ import annotations
+
 import math
 import logging
 import os
 import random
+import sys
 from typing import TYPE_CHECKING
 
 import pygame
@@ -34,8 +37,45 @@ from game.core.terrain import (
 
 logger = logging.getLogger(__name__)
 
+EMSCRIPTEN = hasattr(sys, "emscripten")
+
 if TYPE_CHECKING:
     from game.core.level import Level
+
+
+def _is_browser() -> bool:
+    return EMSCRIPTEN
+
+
+def _apply_desktop_env_hacks() -> None:
+    """Apply desktop-only pygame environment variables.
+
+    These are only applied when NOT running in browser, as they can cause
+    issues when X11/EGL is not properly available.
+    """
+    if _is_browser():
+        return
+    os.environ.pop("PYGAME_FORCE_OPENGL", None)
+    os.environ.setdefault("SDL_VIDEO_X11_FORCE_EGL", "1")
+    os.environ.setdefault("SDL_RENDER_DRIVER", "software")
+
+
+def _safe_pygame_init() -> None:
+    """Initialize pygame with browser-safe font initialization."""
+    import pygame.font
+
+    if _is_browser():
+        _original_font_init = pygame.font.init
+
+        def _safe_font_init():
+            try:
+                _original_font_init()
+            except Exception:
+                pass
+
+        pygame.font.init = _safe_font_init
+
+    pygame.init()
 
 
 class Renderer:
@@ -94,12 +134,8 @@ class Renderer:
         self.level = level
         self.design_width = int(width)
         self.design_height = int(height)
-        # Avoid forcing an OpenGL context; some environments set this and lack GLX.
-        os.environ.pop("PYGAME_FORCE_OPENGL", None)
-        # Prefer EGL or software paths over GLX when available to avoid X_GLXCreateContext failures.
-        os.environ.setdefault("SDL_VIDEO_X11_FORCE_EGL", "1")
-        os.environ.setdefault("SDL_RENDER_DRIVER", "software")
-        pygame.init()
+        _apply_desktop_env_hacks()
+        _safe_pygame_init()
         self.window_surface = pygame.display.set_mode((width, height))
         title = "Lunar Lander"
         pygame.display.set_caption(title)
