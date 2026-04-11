@@ -15,7 +15,6 @@ from game.runtime.sensors import build_vehicle_info
 from game.runtime.terrain_intel import build_bot_environment
 from game.ui.renderer import Renderer
 from game.runtime.input import InputHandler
-from tooling.tracepack import TraceRecorder
 from game.core.level_capabilities import (
     level_name_tag,
     level_trace_detail,
@@ -28,6 +27,7 @@ from game.shared.common_world import get_mass
 if TYPE_CHECKING:
     from game.core.physics import PhysicsEngine
     from game.runtime.profiler import BotProfiler
+    from tooling.tracepack import TraceRecorder
 
 
 @dataclass(frozen=True)
@@ -187,6 +187,8 @@ def bootstrap_trace_runtime(
     level: Any,
     seed: int,
 ) -> TraceRuntimeBootstrap:
+    from tooling.tracepack import TraceRecorder
+
     trace_recorder = TraceRecorder(
         terrain,
         ecs_world,
@@ -270,13 +272,9 @@ def bootstrap_null_trace_runtime(
     level: Any,
     seed: int,
 ) -> TraceRuntimeBootstrap:
-    trace_recorder = TraceRecorder(
-        terrain,
-        ecs_world,
-        actor_bots,
-        active_uid_getter,
-        enabled=False,
-    )
+    from game.runtime.profiler import NullTraceRecorder
+
+    trace_recorder = NullTraceRecorder()
     return TraceRuntimeBootstrap(
         trace_recorder=trace_recorder,
         events_seen=set(),

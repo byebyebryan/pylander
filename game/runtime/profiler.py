@@ -79,3 +79,116 @@ def bot_profiler_percentile_ms(samples_s: Iterable[float], q: float) -> float:
     frac = idx - lo
     v = vals[lo] * (1.0 - frac) + vals[hi] * frac
     return 1000.0 * v
+
+
+class NullBotProfiler:
+    """No-op profiler for environments where profiling is unavailable or disabled."""
+
+    enabled: bool = False
+
+    def record_tick(self, uid: str) -> None:
+        pass
+
+    def record_passive_build(self, uid: str, seconds: float) -> None:
+        pass
+
+    def record_bot_update(self, uid: str, seconds: float) -> None:
+        pass
+
+    def record_tick_costs(
+        self,
+        uid: str,
+        *,
+        passive_s: float,
+        update_s: float,
+    ) -> None:
+        pass
+
+    def maybe_report_lines(self, elapsed_s: float) -> list[str]:
+        return []
+
+    def apply_to_result(self, result: dict) -> None:
+        pass
+
+
+class NullTraceRecorder:
+    """No-op trace recorder for environments where tracing is unavailable or disabled.
+
+    This provides the minimal interface needed by the session loop without
+    requiring imports from tooling.tracepack (which pulls in bot_framework).
+    """
+
+    def seed_initial_sample(self) -> None:
+        pass
+
+    def set_identity(
+        self,
+        *,
+        level_name: str,
+        scenario_name: str | None,
+        seed: int | None,
+        bot_name: str | None,
+        eval_goal: str,
+    ) -> None:
+        pass
+
+    def set_trace_root_dir(self, path: str | None) -> None:
+        pass
+
+    def set_sample_period_s(self, value: float) -> None:
+        pass
+
+    def set_trace_detail(self, value: str) -> None:
+        pass
+
+    def set_target(
+        self,
+        *,
+        x: float,
+        y: float,
+        label: str = "target",
+        size: float | None = None,
+    ) -> None:
+        pass
+
+    def update(self, dt: float, *, elapsed_time_s: float) -> None:
+        pass
+
+    def finalize(self, *, result: dict, elapsed_time_s: float) -> dict:
+        return {}
+
+    def record_controls_map(
+        self,
+        *,
+        elapsed_time_s: float,
+        controls_by_uid: dict,
+    ) -> None:
+        pass
+
+    def record_bot_action(
+        self,
+        *,
+        uid: str,
+        elapsed_time_s: float,
+        bot_dt_s: float,
+        sensors: object,
+        action: object,
+        passive_s: float,
+        update_s: float,
+        bot: object,
+    ) -> None:
+        pass
+
+    def mark_event(
+        self,
+        *,
+        name: str,
+        x: float,
+        y: float,
+        label: str | None = None,
+        metadata: dict | None = None,
+    ) -> None:
+        pass
+
+    def record_eval_decision(self, *, elapsed_time_s: float, decision: object) -> None:
+        pass
