@@ -175,7 +175,7 @@ class Renderer:
         )
 
         # UI fonts
-        self.font = pygame.font.SysFont("monospace", 14)
+        self.font = pygame.font.SysFont("monospace", 16)
         self.large_font = pygame.font.SysFont("monospace", 32, bold=True)
         self.hud = HudOverlay(self.font, self.screen)
 
