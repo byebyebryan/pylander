@@ -28,7 +28,7 @@ async def _main() -> None:
         pass
 
     try:
-        from game.web import run_web_game
+        from game.runtime.web import run_web_game
 
         try:
             if window is not None:

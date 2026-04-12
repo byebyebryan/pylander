@@ -56,6 +56,42 @@ def capture_actor_states(actors: list[Entity]) -> dict[str, str]:
     return state_before
 
 
+def _tick_systems(
+    *,
+    systems: SystemsBundle,
+    trace_recorder: Any,
+    actors: list[Entity],
+    engine: PhysicsEngine,
+    controls_by_uid: dict[str, Any],
+    frame_dt: float,
+    elapsed_time: float,
+    level_update: Callable[[float], None],
+) -> dict[str, str]:
+    state_before = capture_actor_states(actors)
+
+    systems.control_routing.set_controls_map(controls_by_uid)
+    record_controls_map = getattr(trace_recorder, "record_controls_map", None)
+    if callable(record_controls_map):
+        record_controls_map(
+            elapsed_time_s=elapsed_time,
+            controls_by_uid=controls_by_uid,
+        )
+    systems.control_routing.update(frame_dt)
+    systems.refuel.update(frame_dt)
+    systems.state_transition.update(frame_dt)
+    sync_landed_to_flying_engine_state(
+        actors=actors,
+        engine=engine,
+        state_before=state_before,
+    )
+
+    systems.sensor_update.update(frame_dt)
+    level_update(frame_dt)
+    trace_recorder.update(frame_dt, elapsed_time_s=elapsed_time)
+
+    return state_before
+
+
 def sync_landed_to_flying_engine_state(
     *,
     actors: list[Entity],
@@ -159,30 +195,17 @@ def run_session_loop(
             bot_override_timer=context.bot_override_timer,
         )
 
-        state_before = capture_actor_states(context.actors)
-
-        context.systems.control_routing.set_controls_map(controls_by_uid)
-        record_controls_map = getattr(
-            context.trace_recorder, "record_controls_map", None
-        )
-        if callable(record_controls_map):
-            record_controls_map(
-                elapsed_time_s=timers.elapsed_time,
-                controls_by_uid=controls_by_uid,
-            )
-        context.systems.control_routing.update(frame_dt)
-        context.systems.refuel.update(frame_dt)
-        context.systems.state_transition.update(frame_dt)
-        sync_landed_to_flying_engine_state(
+        _tick_systems(
+            systems=context.systems,
+            trace_recorder=context.trace_recorder,
             actors=context.actors,
             engine=context.engine,
-            state_before=state_before,
+            controls_by_uid=controls_by_uid,
+            frame_dt=frame_dt,
+            elapsed_time=timers.elapsed_time,
+            level_update=context.level_update,
         )
-
-        context.systems.sensor_update.update(frame_dt)
-        context.level_update(frame_dt)
         context.track_plot_events()
-        context.trace_recorder.update(frame_dt, elapsed_time_s=timers.elapsed_time)
         frame_dt = context.render(frame_dt)
         step_count += 1
 

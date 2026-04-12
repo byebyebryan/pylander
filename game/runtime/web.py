@@ -37,8 +37,7 @@ from game.runtime.loop_timing import LoopTimers
 from game.runtime.physics_steps import update_physics_steps
 from game.runtime.profiler import NullBotProfiler
 from game.runtime.session_loop import (
-    capture_actor_states,
-    sync_landed_to_flying_engine_state,
+    _tick_systems,
     update_bot_override_timer,
 )
 
@@ -177,21 +176,15 @@ async def run_web_game(
         if user_controls is not None:
             controls_by_uid[active_uid] = user_controls
 
-        state_before = capture_actor_states(actors)
-        core.systems.control_routing.set_controls_map(controls_by_uid)
-        core.systems.control_routing.update(frame_dt)
-        core.systems.refuel.update(frame_dt)
-        core.systems.state_transition.update(frame_dt)
-        sync_landed_to_flying_engine_state(
+        _tick_systems(
+            systems=core.systems,
+            trace_recorder=trace_runtime.trace_recorder,
             actors=actors,
             engine=core.engine,
-            state_before=state_before,
-        )
-
-        core.systems.sensor_update.update(frame_dt)
-        level.update(ctx, frame_dt)
-        trace_runtime.trace_recorder.update(
-            frame_dt, elapsed_time_s=timers.elapsed_time
+            controls_by_uid=controls_by_uid,
+            frame_dt=frame_dt,
+            elapsed_time=timers.elapsed_time,
+            level_update=lambda dt: level.update(ctx, dt),
         )
 
         frame_dt = render_frame(

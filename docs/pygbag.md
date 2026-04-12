@@ -8,9 +8,9 @@ The web build bypasses `main.py` and the full CLI to avoid importing `bot_framew
 
 ### Key design decisions
 
-1. **Separate entrypoint**: `pygbag_main.py` at the project root is the async entry point sourced by the pygbag template. It imports pygame first (so `pygame.math` is registered before game modules load), then delegates to `game/web.py`.
+1. **Separate entrypoint**: `pygbag_main.py` at the project root is the async entry point sourced by the pygbag template. It imports pygame first (so `pygame.math` is registered before game modules load), then delegates to `game/runtime/web.py`.
 
-2. **No bot/tooling imports**: `game/web.py` implements a bot-framework-free async game loop using `await asyncio.sleep(0)` each frame. `bot_framework` is never loaded.
+2. **No bot/tooling imports**: `game/runtime/web.py` implements a bot-framework-free async game loop using `await asyncio.sleep(0)` each frame. `bot_framework` is never loaded.
 
 3. **Euler physics**: `PYLANDER_PHYSICS=euler` is set before any imports, ensuring the pure-Python Euler backend is used instead of pymunk (which is not available in WASM).
 
@@ -21,7 +21,7 @@ The web build bypasses `main.py` and the full CLI to avoid importing `bot_framew
 ```
 pygbag_main.py       # async entry point (must be at project root)
 pygbag.ini           # bundle config: excludes bot_framework/, app/, tests, etc.
-game/web.py          # bot-framework-free async game loop
+game/runtime/web.py  # bot-framework-free async game loop
 web/
   default.tmpl       # custom HTML template
   favicon.png        # game icon
@@ -102,6 +102,11 @@ This has been validated locally by serving `build/web/` with a plain static serv
 
 Plan to publish from the `pylander` repo rather than routing the build through the
 `blog` repo.
+
+Current live deployment:
+
+- <https://dev.byebyebryan.com/pylander/>
+- GitHub Pages canonical URL: <https://byebyebryan.github.io/pylander/>
 
 Recommended shape:
 
