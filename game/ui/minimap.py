@@ -77,13 +77,20 @@ class Minimap:
         cam_min_y = visible.min_y
         cam_max_y = visible.max_y
 
-        # Configure minimap camera to show a fixed world span centered on the main camera
-        minimap_world_width = self.world_span_x
-        # Choose a generous vertical span based on terrain amplitude and aspect ratio
+        # Two-phase minimap zoom:
+        #   Phase 1 — minimap stays at min_span (fixed close-up view);
+        #             viewport box grows as main camera zooms out.
+        #   Phase 2 — when viewport box would exceed 50% of minimap width,
+        #             minimap tracks main camera (box stays at ~50%).
+        # Formula: minimap_world_width = max(min_span, main_visible_width * 2)
+        main_visible_width = max(1.0, cam_max_x - cam_min_x)
+        _min_span = 2000.0
+        minimap_world_width = min(
+            self.world_span_x,
+            max(_min_span, main_visible_width * 2.0),
+        )
         aspect = self.rect.height / self.rect.width if self.rect.width > 0 else 1.0
-        # Estimate vertical span based on a generous constant if amplitude missing
-        terrain_span_y = getattr(self.terrain, "amplitude", 5000.0) * 2.5 * height_scale
-        minimap_world_height = max(terrain_span_y, minimap_world_width * aspect)
+        minimap_world_height = minimap_world_width * aspect
 
         # Center minimap camera on main camera position
         self.camera.x = main_camera.x
@@ -174,7 +181,7 @@ class Minimap:
 
         # Draw landing-site markers.
         if sites is not None and hasattr(sites, "get_sites"):
-            span = Range1D.from_center(self.camera.x, self.world_span_x / 2.0)
+            span = Range1D.from_center(self.camera.x, minimap_world_width / 2.0)
             for s in sites.get_sites(span):
                 world_y = s.y * height_scale
                 pt = oc.world_to_screen(Vector2(s.x, world_y))
