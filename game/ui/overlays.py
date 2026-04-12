@@ -90,7 +90,7 @@ class SensorOverlay:
         cx = screen_rect.centerx
         cy = screen_rect.centery
 
-        for c in contacts:
+        for c in contacts[:2]:
             color = (
                 self.visited_landing_target_color
                 if (getattr(c, "info", None) and c.info.get("award", 1) == 0)
