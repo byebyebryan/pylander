@@ -45,6 +45,7 @@ class RunSettings:
     stop_on_first_land: bool
     headless: bool
     eval_goal: str = "landing"
+    skip_title: bool = False
     bot_profile_enabled: bool | None = None
     bot_profile_interval_s: float | None = None
     bot_profile_log_lines: bool | None = None

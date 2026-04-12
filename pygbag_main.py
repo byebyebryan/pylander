@@ -28,14 +28,27 @@ async def _main() -> None:
         pass
 
     try:
-        from game.runtime.web import run_web_game
+        from game.game_host import GameHost
+        from game.runtime.web import create_web_session
 
         try:
             if window is not None:
                 window.infobox.style.display = "none"
         except Exception:
             pass
-        await run_web_game()
+
+        host = GameHost(
+            session_factory=create_web_session,
+            skip_title=False,
+        )
+
+        while True:
+            if not host.tick():
+                break
+            await asyncio.sleep(0)
+
+        host.shutdown()
+
     except Exception as exc:
         msg = f"FATAL: {exc}\n{traceback.format_exc()}"
         print(msg)
@@ -49,7 +62,6 @@ async def _main() -> None:
                 window.infobox.style.fontSize = "12px"
         except Exception:
             pass
-        # Keep alive so error stays visible
         while True:
             await asyncio.sleep(1)
 

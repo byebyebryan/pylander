@@ -157,6 +157,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     play = sub.add_parser("play", help="Rendered interactive play session")
     _add_common_run_args(play, include_freq=True)
+    play.add_argument(
+        "--skip-title",
+        action="store_true",
+        help="Skip title screen and go directly to gameplay",
+    )
 
     run = sub.add_parser("run", help="Single run (headless by default)")
     _add_common_run_args(run, include_freq=True)
@@ -259,6 +264,7 @@ def _build_run_settings(
     headless: bool,
     default_trace_enabled: bool,
     default_trace_detail: str,
+    skip_title: bool = False,
 ) -> RunSettings:
     if headless:
         print_freq = 60 if args.freq is None else int(args.freq)
@@ -320,6 +326,7 @@ def _build_run_settings(
         stop_on_out_of_fuel=bool(args.stop_on_out_of_fuel),
         stop_on_first_land=bool(args.stop_on_first_land),
         headless=headless,
+        skip_title=skip_title,
         bot_profile_enabled=None,
         bot_profile_interval_s=None,
         bot_profile_log_lines=None,
@@ -349,6 +356,7 @@ def parse_command(
     )
 
     if args.command == "play":
+        skip_title = bool(args.skip_title) or (args.selector is not None)
         return parser, RunCommand(
             run=_build_run_settings(
                 parser,
@@ -358,6 +366,7 @@ def parse_command(
                 headless=False,
                 default_trace_enabled=False,
                 default_trace_detail=TRACE_DETAIL_REPORT,
+                skip_title=skip_title,
             )
         )
 
@@ -372,6 +381,7 @@ def parse_command(
                 headless=headless,
                 default_trace_enabled=False,
                 default_trace_detail=TRACE_DETAIL_REPORT,
+                skip_title=False,
             )
         )
 
@@ -385,6 +395,7 @@ def parse_command(
                 headless=True,
                 default_trace_enabled=False,
                 default_trace_detail=TRACE_DETAIL_REPORT,
+                skip_title=False,
             )
         )
 
@@ -398,6 +409,7 @@ def parse_command(
                 headless=True,
                 default_trace_enabled=True,
                 default_trace_detail=TRACE_DETAIL_DEBUG,
+                skip_title=False,
             )
         )
 
