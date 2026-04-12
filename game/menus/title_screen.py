@@ -9,9 +9,9 @@ class TitleScreen:
     def __init__(self, screen: pygame.Surface):
         """Initialize with the target rendering surface."""
         self.screen = screen
-        self.font_large = pygame.font.SysFont("monospace", 80, bold=True)
-        self.font_medium = pygame.font.SysFont("monospace", 36)
-        self.font_small = pygame.font.SysFont("monospace", 24)
+        self.font_large = pygame.font.SysFont("monospace", 56, bold=True)
+        self.font_medium = pygame.font.SysFont("monospace", 28)
+        self.font_small = pygame.font.SysFont("monospace", 18)
         self.selected_index = 0
         self.levels = [
             {
@@ -82,10 +82,3 @@ class TitleScreen:
 
             y += item_h
 
-        footer_surf = self.font_small.render(
-            "ENTER to start    UP/DOWN to select    ESC to quit", True, (100, 100, 110)
-        )
-        footer_rect = footer_surf.get_rect(
-            centerx=cx, bottom=self.screen.get_height() - 30
-        )
-        self.screen.blit(footer_surf, footer_rect)
