@@ -7,6 +7,7 @@ from bot_framework.config import BenchCommand, RunCommand
 from bot_framework.run_batch import run_benchmark
 from app.run_single import resolve_default_bot, run_once
 from game.runtime.runtime_adapter import make_runtime_adapter
+from game.core.config import DEFAULT_SCREEN_WIDTH, DEFAULT_SCREEN_HEIGHT, DEFAULT_WINDOW_SCALE
 
 
 def main() -> None:
@@ -57,6 +58,9 @@ def main() -> None:
                     skip_title=cfg.skip_title,
                     level_name=cfg.level_name,
                     seed=cfg.seed,
+                    width=DEFAULT_SCREEN_WIDTH,
+                    height=DEFAULT_SCREEN_HEIGHT,
+                    window_scale=DEFAULT_WINDOW_SCALE,
                 )
                 host.run()
         except ValueError as exc:
