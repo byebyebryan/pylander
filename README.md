@@ -2,6 +2,11 @@
 
 A retro-modern Lunar Lander-inspired game with deterministic simulation, procedural terrain, and bot-driven play.
 
+## Play in browser
+
+- Live web build: <https://dev.byebyebryan.com/pylander/>
+- Web build docs: [`docs/pygbag.md`](docs/pygbag.md)
+
 ## Docs
 
 - Start here: [`docs/README.md`](docs/README.md)
