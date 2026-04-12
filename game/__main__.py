@@ -6,7 +6,14 @@ import random
 from typing import Any, Iterable, cast
 
 from game.core.bot import Bot, BotEvalDecision, resolve_bot_name
-from game.core.components import Transform
+from game.core.components import (
+    Engine,
+    FlightState,
+    FuelTank,
+    LanderState,
+    PhysicsState,
+    Transform,
+)
 from game.core.ecs import Entity, require_component
 from game.core.eval_goals import EVAL_GOAL_LANDING, normalize_eval_goal
 from game.core.level import GameRunState, Level
@@ -33,7 +40,11 @@ from game.runtime.runtime_adapter import (
     EvalHooks,
     make_runtime_adapter,
 )
-from game.runtime.session_loop import SessionLoopContext, run_session_loop
+from game.runtime.session_loop import (
+    SessionLoopContext,
+    SessionTickState,
+    tick_session,
+)
 from game.runtime.sensors import resolve_eval_target_pos
 from game.core.sensor import reset_proximity_cache
 
@@ -202,16 +213,43 @@ class LanderGame:
             return
         self.active_player_actor_uid, self.lander = switched
 
-    def run(
-        self,
-        print_freq: int = 60,
-        max_time: float | None = None,
-        max_steps: int | None = None,
-    ):
+    def reset_actor(self) -> None:
+        """Reset the active actor to start position, keep world/economy/credits."""
+        actor = self.get_active_actor()
+        trans = require_component(actor, Transform)
+        phys = require_component(actor, PhysicsState)
+        tank = require_component(actor, FuelTank)
+        eng = require_component(actor, Engine)
+        ls = require_component(actor, LanderState)
+
+        start_pos = getattr(actor, "start_pos", Vector2(0.0, 0.0))
+        trans.pos = Vector2(start_pos)
+        trans.rotation = 0.0
+        phys.vel.update(0.0, 0.0)
+        phys.acc.update(0.0, 0.0)
+        tank.fuel = tank.max_fuel
+        eng.thrust_level = 0.0
+        eng.target_thrust = 0.0
+        eng.target_angle = 0.0
+        ls.state = FlightState.FLYING
+
+        self.engine.teleport(
+            trans.pos, angle=trans.rotation, clear_velocity=True, uid=actor.uid
+        )
+
+        if self.renderer is not None:
+            cam = self.renderer.main_camera
+            cam.x = trans.pos.x
+            cam.y = trans.pos.y
+
+    def _init_session(self) -> None:
+        """Initialize session state for tick-based execution."""
         physics_dt = 1.0 / PHYSICS_FPS
         bot_dt = 1.0 / BOT_FPS
         frame_dt = 1.0 / TARGET_RENDERING_FPS
-        timers = LoopTimers(physics_dt=physics_dt, bot_dt=bot_dt, frame_dt=frame_dt)
+        self._timers = LoopTimers(
+            physics_dt=physics_dt, bot_dt=bot_dt, frame_dt=frame_dt
+        )
 
         reset_proximity_cache()
         self.trace_recorder.seed_initial_sample()
@@ -222,8 +260,10 @@ class LanderGame:
         initial_actor = self.get_active_actor()
         initial_trans = require_component(initial_actor, Transform)
         start_pos = Vector2(getattr(initial_actor, "start_pos", initial_trans.pos))
-        eval_target_pos = resolve_eval_target_pos(self.level, self.sites, start_pos)
-        if eval_target_pos is not None:
+        self._eval_target_pos = resolve_eval_target_pos(
+            self.level, self.sites, start_pos
+        )
+        if self._eval_target_pos is not None:
             target_size: float | None = None
             get_sites = getattr(self.sites, "get_sites", None)
             if callable(get_sites):
@@ -231,7 +271,7 @@ class LanderGame:
                     site_iterable = cast(
                         Iterable[Any],
                         get_sites(
-                            Range1D.from_center(float(eval_target_pos.x), 1000.0)
+                            Range1D.from_center(float(self._eval_target_pos.x), 1000.0)
                         ),
                     )
                     nearby_sites = list(site_iterable)
@@ -241,21 +281,21 @@ class LanderGame:
                     nearest_site = min(
                         nearby_sites,
                         key=lambda site: (
-                            (float(site.x) - float(eval_target_pos.x)) ** 2
-                            + (float(site.y) - float(eval_target_pos.y)) ** 2
+                            (float(site.x) - float(self._eval_target_pos.x)) ** 2
+                            + (float(site.y) - float(self._eval_target_pos.y)) ** 2
                         ),
                     )
                     target_size = float(getattr(nearest_site, "size", 0.0) or 0.0)
             self.trace_recorder.set_target(
-                x=float(eval_target_pos.x),
-                y=float(eval_target_pos.y),
+                x=float(self._eval_target_pos.x),
+                y=float(self._eval_target_pos.y),
                 label="landing target",
                 size=target_size,
             )
-        metrics = RunMetricsTracker.from_actor(
+        self._metrics = RunMetricsTracker.from_actor(
             initial_actor,
             start_pos=start_pos,
-            eval_target_pos=eval_target_pos,
+            eval_target_pos=self._eval_target_pos,
         )
 
         def process_input_step(
@@ -283,83 +323,116 @@ class LanderGame:
             self.running = result.running
             return result.user_controls, result.input_events
 
-        loop_result = run_session_loop(
-            context=SessionLoopContext(
+        self._session_context = SessionLoopContext(
+            headless=self.headless,
+            actors=self.actors,
+            engine=self.engine,
+            systems=self.systems,
+            trace_recorder=self.trace_recorder,
+            bot_profiler=self._bot_profiler,
+            metrics=self._metrics,
+            bot_override_delay=self.bot_override_delay,
+            bot_override_timer=self._bot_override_timer,
+            is_running=lambda: self.running,
+            active_uid=lambda: self.active_player_actor_uid,
+            get_active_actor=self.get_active_actor,
+            process_input=process_input_step,
+            set_elapsed_time=lambda elapsed: setattr(self, "_elapsed_time", elapsed),
+            update_physics_steps=lambda timers: update_physics_steps(
+                timers,
+                context=self._physics_step_context,
+            ),
+            update_bot_steps=lambda timers: update_bot_steps(
+                timers,
+                context=self._bot_loop_context,
+            ),
+            level_update=lambda dt: self.level.update(self, dt),
+            track_plot_events=lambda: self._eval_hooks.track_plot_events(
+                actor_bots=self.actor_bots,
+                ecs_world=self.ecs_world,
+                plotter=self.trace_recorder,
+                events_seen=self._plot_events_seen,
+            ),
+            render=lambda frame_dt: render_frame(
                 headless=self.headless,
-                actors=self.actors,
-                engine=self.engine,
-                systems=self.systems,
-                trace_recorder=self.trace_recorder,
-                bot_profiler=self._bot_profiler,
-                metrics=metrics,
-                bot_override_delay=self.bot_override_delay,
-                bot_override_timer=self._bot_override_timer,
-                is_running=lambda: self.running,
-                active_uid=lambda: self.active_player_actor_uid,
-                get_active_actor=self.get_active_actor,
-                process_input=process_input_step,
-                set_elapsed_time=lambda elapsed: setattr(
-                    self, "_elapsed_time", elapsed
-                ),
-                update_physics_steps=lambda timers: update_physics_steps(
-                    timers,
-                    context=self._physics_step_context,
-                ),
-                update_bot_steps=lambda timers: update_bot_steps(
-                    timers,
-                    context=self._bot_loop_context,
-                ),
-                level_update=lambda dt: self.level.update(self, dt),
-                track_plot_events=lambda: self._eval_hooks.track_plot_events(
+                renderer=self.renderer,
+                active_bot=active_actor_bot(
                     actor_bots=self.actor_bots,
-                    ecs_world=self.ecs_world,
-                    plotter=self.trace_recorder,
-                    events_seen=self._plot_events_seen,
+                    active_uid=self.active_player_actor_uid,
+                    primary_bot=self.bot,
                 ),
-                render=lambda frame_dt: render_frame(
+                frame_dt=frame_dt,
+                target_fps=TARGET_RENDERING_FPS,
+            ),
+            print_headless_stats=lambda timers: self._eval_hooks.print_headless_stats(
+                elapsed_time=timers.elapsed_time,
+                active_actor=self.get_active_actor(),
+                terrain=self.terrain,
+                actor_bots=self.actor_bots,
+            ),
+            resolve_headless_bot_eval_decision=lambda: (
+                self._eval_hooks.resolve_headless_bot_eval_decision(
                     headless=self.headless,
-                    renderer=self.renderer,
-                    active_bot=active_actor_bot(
+                    bot=active_actor_bot(
                         actor_bots=self.actor_bots,
                         active_uid=self.active_player_actor_uid,
                         primary_bot=self.bot,
                     ),
-                    frame_dt=frame_dt,
-                    target_fps=TARGET_RENDERING_FPS,
-                ),
-                print_headless_stats=lambda timers: (
-                    self._eval_hooks.print_headless_stats(
-                        elapsed_time=timers.elapsed_time,
-                        active_actor=self.get_active_actor(),
-                        terrain=self.terrain,
-                        actor_bots=self.actor_bots,
-                    )
-                ),
-                resolve_headless_bot_eval_decision=lambda: (
-                    self._eval_hooks.resolve_headless_bot_eval_decision(
-                        headless=self.headless,
-                        bot=active_actor_bot(
-                            actor_bots=self.actor_bots,
-                            active_uid=self.active_player_actor_uid,
-                            primary_bot=self.bot,
-                        ),
-                    )
-                ),
-                level_should_end=lambda: self.level.should_end(self),
+                )
             ),
-            timers=timers,
-            print_freq=print_freq,
-            max_time=max_time,
-            max_steps=max_steps,
+            level_should_end=lambda: self.level.should_end(self),
+        )
+        self._tick_state = SessionTickState(
+            frame_dt=self._timers.frame_dt,
+            bot_override_timer=self._bot_override_timer,
+        )
+        self._session_active = True
+
+    def tick(self, *, external_events: list | None = None) -> dict:
+        """Execute one frame of simulation + rendering.
+
+        Args:
+            external_events: Pre-polled pygame events. If None, InputHandler polls internally.
+
+        Returns:
+            dict with keys:
+              - 'running': bool (False if session should end)
+              - 'input_events': dict from InputHandler (for GameHost to check)
+              - 'actor_state': str ('flying', 'landed', 'crashed', 'out_of_fuel')
+        """
+        if not getattr(self, "_session_active", False):
+            self._init_session()
+
+        if external_events is not None:
+            self.input_handler._external_events = external_events
+
+        result = tick_session(
+            context=self._session_context,
+            timers=self._timers,
+            state=self._tick_state,
+            print_freq=0,
         )
 
-        if self.renderer:
-            self.renderer.shutdown()
+        if external_events is not None:
+            self.input_handler._external_events = None
 
-        timers = loop_result.timers
-        metrics = loop_result.metrics
-        self._bot_eval_decision = loop_result.bot_eval_decision
-        self._bot_override_timer = loop_result.bot_override_timer
+        self._bot_override_timer = self._tick_state.bot_override_timer
+
+        actor = self.get_active_actor()
+        ls = actor.get_component(LanderState)
+        actor_state = ls.state if ls is not None else "flying"
+
+        return {
+            "running": result.running,
+            "actor_state": str(actor_state),
+        }
+
+    def _finalize_session(self) -> dict:
+        """Finalize session and return result dict. Does NOT shutdown renderer."""
+        timers = self._timers
+        metrics = self._metrics
+        self._bot_eval_decision = self._tick_state.bot_eval_decision
+        self._bot_override_timer = self._tick_state.bot_override_timer
         self._elapsed_time = timers.elapsed_time
         self.run_state.elapsed_time = timers.elapsed_time
         self._landing_count = metrics.landing_count
@@ -397,6 +470,44 @@ class LanderGame:
         )
         if trace_extras:
             result.update(trace_extras)
+        self._session_active = False
+        return result
+
+    def run(
+        self,
+        print_freq: int = 60,
+        max_time: float | None = None,
+        max_steps: int | None = None,
+    ):
+        self._init_session()
+
+        while self._session_context.is_running():
+            if (
+                self.headless
+                and max_time is not None
+                and self._timers.elapsed_time >= max_time
+            ):
+                break
+            if max_steps is not None and self._tick_state.step_count >= max_steps:
+                break
+
+            result = tick_session(
+                context=self._session_context,
+                timers=self._timers,
+                state=self._tick_state,
+                print_freq=print_freq,
+            )
+
+            self._bot_override_timer = self._tick_state.bot_override_timer
+
+            if not result.running:
+                break
+
+        result = self._finalize_session()
+
+        if self.renderer:
+            self.renderer.shutdown()
+
         return result
 
     @property

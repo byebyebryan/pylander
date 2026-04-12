@@ -10,7 +10,7 @@ class InputHandler:
     """Collects input events and key states, without applying any game logic."""
 
     def __init__(self):
-        pass
+        self._external_events: list | None = None
 
     def get_events(self) -> dict:
         """Poll pygame events and return (running, signals).
@@ -24,9 +24,13 @@ class InputHandler:
           - pan_left, pan_right, pan_up, pan_down (I/J/K/L)
         """
         signals: dict = {"quit": False, "reset": False, "toggle_ballistic": False}
-        # No mouse-based camera control; only handle quit/reset keys here
 
-        for event in pygame.event.get():
+        if self._external_events is not None:
+            events = self._external_events
+        else:
+            events = pygame.event.get()
+
+        for event in events:
             if event.type == pygame.QUIT:
                 signals["quit"] = True
             elif event.type == pygame.KEYDOWN:

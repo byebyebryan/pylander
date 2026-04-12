@@ -206,6 +206,15 @@ class Renderer:
         """Tick internal clock and return frame dt in seconds."""
         return self.clock.tick(target_fps) / 1000.0
 
+    def present(self) -> None:
+        """Push current design surface to window and flip display.
+
+        Call this when drawing overlays onto ``self.screen`` without going
+        through the full ``draw()`` pipeline (e.g. pause/crash menus).
+        """
+        self._present_to_window()
+        pygame.display.flip()
+
     def update(self, dt: float):
         """Update camera follow and auto-zoom based on level state."""
         lander = self.level.lander
