@@ -1,4 +1,4 @@
-"""Auto-zoom controller for maintaining terrain distance within a screen-space band."""
+"""Auto-zoom controller driven by predicted ballistic impact point."""
 
 from __future__ import annotations
 
@@ -6,69 +6,81 @@ import math
 from typing import Callable
 from game.core.maths import Vector2
 
+# Impact point target fraction of screen half-extent from center.
+# 0.8 means the impact sits at 80% of the way to the edge (20% margin).
+_FILL = 0.8
+
 
 class AutoZoomController:
-    """Maintains camera zoom so nearest terrain distance stays within a pixel band.
+    """Keeps the predicted ballistic impact point in view.
+
+    Zoom-out is fast; zoom-in is deliberately slow to prevent thrashing
+    when the trajectory shortens momentarily.
+
+    Falls back to terrain-distance framing when no impact point is provided.
 
     Usage per frame:
-        controller.update(frame_dt, get_height_at, camera, screen_height)
+        controller.update(dt, camera, screen_width, screen_height,
+                          impact_point=vec2_or_None,
+                          get_height_at=callable_or_None)
     """
 
-    def __init__(self, delay_seconds: float = 3.0, response_rate: float = 1.0):
-        self.delay_seconds = delay_seconds
+    def __init__(self, response_rate: float = 1.0):
         self.response_rate = response_rate
-        self._timer = 0.0
+        # Zoom-out tracks the target quickly; zoom-in eases back very slowly.
+        self._zoom_out_rate = response_rate * 3.0
+        self._zoom_in_rate = response_rate * 0.4
 
     def reset(self):
-        self._timer = 0.0
+        pass
 
     def update(
         self,
         frame_dt: float,
-        get_height_at: Callable[[float], float],
         camera,
+        screen_width: int,
         screen_height: int,
-    ):
-        """Update camera zoom to keep closest terrain distance within a band.
-
-        Args:
-            frame_dt: Seconds since last frame
-            get_height_at: function x->height for terrain sampling
-            camera: object with x, y, zoom, min_zoom, max_zoom
-            screen_height: height in pixels
-        """
-        # Lazy import to avoid module cycles
-        from game.core.sensor import closest_point_on_terrain
-
-        # Search radius in world units based on screen height and current zoom
-        search_radius = (screen_height / max(camera.zoom, 1e-6)) * 1.0
-        _, _, dist_world = closest_point_on_terrain(
-            get_height_at, Vector2(camera.x, camera.y), search_radius=search_radius
+        *,
+        impact_point: Vector2 | None = None,
+        get_height_at: Callable[[float], float] | None = None,
+    ) -> None:
+        target_zoom = self._compute_target_zoom(
+            camera, screen_width, screen_height, impact_point, get_height_at
         )
+        target_zoom = max(camera.min_zoom, min(camera.max_zoom, target_zoom))
 
-        # Desired on-screen distance band (diameter ~80% of screen height)
-        h = float(screen_height)
-        target_px = h * 0.40  # center of band (40% of height)
-        min_px = h * 0.35  # lower bound of band
-        max_px = h * 0.45  # upper bound of band
+        # Pick rate: fast out, slow in.
+        rate = self._zoom_out_rate if target_zoom < camera.zoom else self._zoom_in_rate
+        alpha = 1.0 - math.exp(-rate * frame_dt)
+        camera.zoom += (target_zoom - camera.zoom) * alpha
+        camera.zoom = max(camera.min_zoom, min(camera.max_zoom, camera.zoom))
 
-        dist_px = dist_world * camera.zoom
-        need_zoom_in = dist_px < min_px  # too close -> increase zoom immediately
-        need_zoom_out = dist_px > max_px  # too far  -> decrease zoom after delay
+    # ------------------------------------------------------------------
+    def _compute_target_zoom(
+        self,
+        camera,
+        screen_width: int,
+        screen_height: int,
+        impact_point: Vector2 | None,
+        get_height_at: Callable[[float], float] | None,
+    ) -> float:
+        if impact_point is not None:
+            dx = abs(impact_point.x - camera.x)
+            dy = abs(impact_point.y - camera.y)
+            # Zoom required to fit the impact at _FILL fraction of each half-extent.
+            zoom_x = (_FILL * screen_width * 0.5) / max(dx, 1.0)
+            zoom_y = (_FILL * screen_height * 0.5) / max(dy, 1.0)
+            return min(zoom_x, zoom_y)
 
-        # Update dwell timer only for zoom-out; decay otherwise
-        if need_zoom_out:
-            self._timer = min(self.delay_seconds * 2.0, self._timer + frame_dt)
-        else:
-            # need_zoom_in case: no dwell accumulation; gentle decay
-            self._timer = max(0.0, self._timer - frame_dt)
+        # Fallback: keep closest terrain distance in a screen-height band.
+        if get_height_at is not None:
+            from game.core.sensor import closest_point_on_terrain
 
-        if need_zoom_in or (need_zoom_out and self._timer >= self.delay_seconds):
-            # Compute target zoom and ease toward it
-            target_zoom = target_px / max(dist_world, 1e-3)
-            target_zoom = max(camera.min_zoom, min(camera.max_zoom, target_zoom))
-            # Time-based smoothing to avoid abrupt changes
-            alpha = 1.0 - math.exp(-self.response_rate * frame_dt)
-            camera.zoom = camera.zoom + (target_zoom - camera.zoom) * alpha
-            # Final clamp
-            camera.zoom = max(camera.min_zoom, min(camera.max_zoom, camera.zoom))
+            search_radius = (screen_height / max(camera.zoom, 1e-6)) * 1.0
+            _, _, dist_world = closest_point_on_terrain(
+                get_height_at, Vector2(camera.x, camera.y), search_radius=search_radius
+            )
+            target_px = float(screen_height) * 0.40
+            return target_px / max(dist_world, 1e-3)
+
+        return camera.zoom  # nothing to go on — hold current

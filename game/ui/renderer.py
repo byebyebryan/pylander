@@ -147,7 +147,8 @@ class Renderer:
         # Renderer owns the main camera
         self.main_camera = Camera(self.design_width, self.design_height)
         # Auto-zoom controller is owned by the renderer
-        self.auto_zoom = AutoZoomController(delay_seconds=3.0, response_rate=1.0)
+        self.auto_zoom = AutoZoomController(response_rate=1.0)
+        self._trajectory_points: list[tuple[float, float]] = []
 
         # Colors
         self.bg_color = (20, 20, 25)
@@ -216,7 +217,7 @@ class Renderer:
         pygame.display.flip()
 
     def update(self, dt: float):
-        """Update camera follow and auto-zoom based on level state."""
+        """Update camera follow, trajectory cache, and auto-zoom."""
         lander = self.level.lander
         if lander:
             trans = require_component(lander, Transform)
@@ -225,11 +226,24 @@ class Renderer:
                 self.main_camera.x = trans.pos.x
                 self.main_camera.y = trans.pos.y
 
+        # Compute trajectory once; reused by draw() this frame.
+        self._trajectory_points = self._build_ballistic_points()
+
+        impact_point = None
+        if self._trajectory_points:
+            wx, wy = self._trajectory_points[-1]
+            impact_point = Vector2(wx, wy * self.height_scale)
+
         def _height_at(xx: float) -> float:
             return self.level.terrain(xx)
 
         self.auto_zoom.update(
-            dt, _height_at, self.main_camera, self.get_screen_height()
+            dt,
+            self.main_camera,
+            self.design_width,
+            self.design_height,
+            impact_point=impact_point,
+            get_height_at=_height_at,
         )
 
     def get_screen_height(self) -> int:
@@ -487,7 +501,7 @@ class Renderer:
             self.main_camera,
             contacts,
         )
-        trajectory_points = self._build_ballistic_points()
+        trajectory_points = self._trajectory_points
         self._draw_ballistic_path(self.main_camera, trajectory_points)
 
         # Draw actors and thrust flames
