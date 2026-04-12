@@ -55,8 +55,9 @@ class GameHost:
         skip_title: bool = False,
         level_name: str | None = None,
         seed: int | None = None,
-        width: int = 1280,
-        height: int = 720,
+        width: int = 640,
+        height: int = 480,
+        window_scale: int = 1,
         target_fps: int = 60,
     ):
         self._session_factory = session_factory
@@ -65,10 +66,14 @@ class GameHost:
         self._seed = seed if seed is not None else random.randint(0, 1_000_000)
         self._width = width
         self._height = height
+        self._window_scale = max(1, window_scale)
         self._target_fps = target_fps
 
+        window_w = width * self._window_scale
+        window_h = height * self._window_scale
+
         pygame.init()
-        self._screen = pygame.display.set_mode((width, height))
+        self._screen = pygame.display.set_mode((window_w, window_h))
         pygame.display.set_caption("Lunar Lander")
         self._clock = pygame.time.Clock()
 
@@ -205,7 +210,9 @@ class GameHost:
 
         if action == MenuAction.QUIT_TO_TITLE:
             self._session = None
-            self._screen = pygame.display.set_mode((self._width, self._height))
+            window_w = self._width * self._window_scale
+            window_h = self._height * self._window_scale
+            self._screen = pygame.display.set_mode((window_w, window_h))
             self._title_screen = TitleScreen(self._screen)
             self._pause_menu = PauseMenu(self._screen)
             self._state = GameState.TITLE
