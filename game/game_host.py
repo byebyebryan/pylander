@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Callable, Protocol
 
 import pygame
 
+from game.core.config import DEFAULT_SCREEN_HEIGHT, DEFAULT_SCREEN_WIDTH, DEFAULT_WINDOW_SCALE
 from game.game_state import GameState, PauseReason
 from game.menus.pause_menu import MenuAction, PauseMenu
 from game.menus.title_screen import TitleScreen
@@ -55,9 +56,9 @@ class GameHost:
         skip_title: bool = False,
         level_name: str | None = None,
         seed: int | None = None,
-        width: int = 640,
-        height: int = 480,
-        window_scale: int = 1,
+        width: int = DEFAULT_SCREEN_WIDTH,
+        height: int = DEFAULT_SCREEN_HEIGHT,
+        window_scale: int = DEFAULT_WINDOW_SCALE,
         target_fps: int = 60,
     ):
         self._session_factory = session_factory

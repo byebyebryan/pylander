@@ -34,7 +34,7 @@ jobs:
         run: uv sync --group web
 
       - name: Build pygbag web artifact
-        run: uv run python -m pygbag --build --template web/default.tmpl --icon web/favicon.png .
+        run: uv run python -m pygbag --build --template web/default.tmpl --icon web/favicon.png main_pygbag.py
 
       - name: Disable Jekyll processing
         run: touch build/web/.nojekyll

@@ -13,7 +13,7 @@ import pygame
 
 from .auto_zoom import AutoZoomController
 from .camera import Camera, OffsetCamera
-from .fps_overlay import FpsOverlay
+
 from .hud import HudOverlay
 from .minimap import Minimap
 from .overlays import SensorOverlay
@@ -212,9 +212,9 @@ class Renderer:
         )
 
         # UI fonts
-        self.font = pygame.font.SysFont("monospace", 16)
-        self.large_font = pygame.font.SysFont("monospace", 32, bold=True)
-        self.hud = HudOverlay(self.font, self.screen)
+        self.font = pygame.font.SysFont("monospace", 24)
+        self.large_font = pygame.font.SysFont("monospace", 48, bold=True)
+        self.hud = HudOverlay(self.font, self.screen, self.clock)
 
         self.indicator_circle_size = 0.8
 
@@ -229,7 +229,7 @@ class Renderer:
             self.indicator_circle_size,
             self.height_scale,
         )
-        self.fps_overlay = FpsOverlay(self.font, self.screen, self.clock)
+
         self.show_ballistic_trajectory = True
         self.ballistic_color = (110, 170, 255)
         self.ballistic_target_segment_px = 10.0
@@ -556,7 +556,7 @@ class Renderer:
         self.draw_ui(bot=bot)
 
         # Always draw FPS overlay (top-right)
-        self.fps_overlay.draw()
+
         self._present_to_window()
         pygame.display.flip()
 
@@ -596,7 +596,7 @@ class Renderer:
 
     # draw_proximity_ui/draw_radar_ui moved to SensorOverlay
 
-    # draw_fps moved to FpsOverlay
+    # draw_fps is rendered as the last line of HudOverlay
 
     def draw_lander_orientation_inset(
         self,

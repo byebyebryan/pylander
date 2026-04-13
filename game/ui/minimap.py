@@ -25,7 +25,7 @@ class Minimap:
             w=int(screen_width * minimap_scale),
             h=int(screen_height * minimap_scale),
         )
-        self.margin = 10
+        self.margin = 16
 
         # Position (top-right corner)
         self.rect = Rect(

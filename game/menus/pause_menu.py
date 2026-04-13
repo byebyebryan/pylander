@@ -18,8 +18,8 @@ class MenuAction(StrEnum):
 class PauseMenu:
     def __init__(self, screen: pygame.Surface):
         self.screen = screen
-        self.font = pygame.font.SysFont("monospace", 40, bold=True)
-        self.font_small = pygame.font.SysFont("monospace", 28)
+        self.font = pygame.font.SysFont("monospace", 60, bold=True)
+        self.font_small = pygame.font.SysFont("monospace", 40)
         self.selected_index = 0
         self._items: list[tuple[str, MenuAction]] = []
         self._reason: PauseReason | None = None
@@ -75,13 +75,13 @@ class PauseMenu:
         # Measure content: title height + gap + items
         title_surf = self.font.render(title, True, title_color)
         title_h = title_surf.get_height()
-        gap = 24
-        item_h = self.font_small.get_height() + 16
+        gap = 36
+        item_h = self.font_small.get_height() + 20
         content_h = title_h + gap + len(self._items) * item_h
 
         # Box wraps content with padding
-        pad_top, pad_bottom = 32, 32
-        box_w = 420
+        pad_top, pad_bottom = 48, 48
+        box_w = 580
         box_h = pad_top + content_h + pad_bottom
 
         # Center the box on screen
