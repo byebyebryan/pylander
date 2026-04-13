@@ -19,7 +19,7 @@ The web build bypasses `main.py` and the full CLI to avoid importing `bot_framew
 ## File structure
 
 ```
-pygbag_main.py       # async entry point (must be at project root)
+main_pygbag.py       # async entry point (must be at project root)
 pygbag.ini           # bundle config: excludes bot_framework/, app/, tests, etc.
 game/runtime/web.py  # bot-framework-free async game loop
 web/
@@ -41,7 +41,7 @@ pygbag requires:
 uv sync --group web
 
 # Serve locally (builds automatically and starts CDN-proxy testserver)
-uv run pygbag --port 8000 --template web/default.tmpl --icon web/favicon.png .
+uv run pygbag --port 8000 --template web/default.tmpl --icon web/favicon.png main_pygbag.py
 ```
 
 ## Local dev workflow
@@ -53,7 +53,7 @@ Recommended workflow:
 
 ```bash
 # Start or restart the local web server from the repo root
-uv run pygbag --port 8000 --template web/default.tmpl --icon web/favicon.png .
+uv run pygbag --port 8000 --template web/default.tmpl --icon web/favicon.png main_pygbag.py
 ```
 
 - Default local URL: `http://127.0.0.1:8000/`
@@ -72,7 +72,7 @@ Recommended session name:
 
 ```bash
 tmux new-session -d -s pylander-web \
-  'uv run pygbag --port 8000 --template web/default.tmpl --icon web/favicon.png . > /tmp/pygbag-serve.log 2>&1'
+  'uv run pygbag --port 8000 --template web/default.tmpl --icon web/favicon.png main_pygbag.py > /tmp/pygbag-serve.log 2>&1'
 ```
 
 Useful follow-ups:
@@ -83,7 +83,7 @@ tmux capture-pane -pt pylander-web
 
 # Restart the server inside the existing session
 tmux send-keys -t pylander-web C-c
-tmux send-keys -t pylander-web 'uv run pygbag --port 8000 --template web/default.tmpl --icon web/favicon.png . > /tmp/pygbag-serve.log 2>&1' Enter
+tmux send-keys -t pylander-web 'uv run pygbag --port 8000 --template web/default.tmpl --icon web/favicon.png main_pygbag.py > /tmp/pygbag-serve.log 2>&1' Enter
 ```
 
 This is a dev convenience only. It is not the publishing model.

@@ -1,9 +1,9 @@
 """Centralized configuration constants."""
 
 # Screen defaults
-DEFAULT_SCREEN_WIDTH = 640
-DEFAULT_SCREEN_HEIGHT = 480
-DEFAULT_WINDOW_SCALE = 2  # Desktop: render at design res, display at Nx (e.g. 1280x960)
+DEFAULT_SCREEN_WIDTH = 1280
+DEFAULT_SCREEN_HEIGHT = 720
+DEFAULT_WINDOW_SCALE = 1  # Render natively at design resolution
 
 # Update rates
 TARGET_RENDERING_FPS = 60

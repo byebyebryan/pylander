@@ -9,9 +9,9 @@ class TitleScreen:
     def __init__(self, screen: pygame.Surface):
         """Initialize with the target rendering surface."""
         self.screen = screen
-        self.font_large = pygame.font.SysFont("monospace", 56, bold=True)
-        self.font_medium = pygame.font.SysFont("monospace", 28)
-        self.font_small = pygame.font.SysFont("monospace", 18)
+        self.font_large = pygame.font.SysFont("monospace", 88, bold=True)
+        self.font_medium = pygame.font.SysFont("monospace", 40)
+        self.font_small = pygame.font.SysFont("monospace", 26)
         self.selected_index = 0
         self.levels = [
             {
@@ -48,8 +48,8 @@ class TitleScreen:
         title_surf = self.font_large.render("PYLANDER", True, (220, 220, 220))
         title_h = title_surf.get_height()
 
-        gap = 60
-        item_spacing = 24
+        gap = 80
+        item_spacing = 32
         item_h = (
             self.font_medium.get_height() + self.font_small.get_height() + item_spacing
         )

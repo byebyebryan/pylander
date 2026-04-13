@@ -27,17 +27,22 @@ def _stable(value: float, digits: int = 1) -> float:
 class HudOverlay:
     """Draw heads-up display text for lander status."""
 
-    LINE_SPACING = 20
+    LINE_SPACING = 30
 
-    def __init__(self, font, screen):
+    def __init__(self, font, screen, clock=None):
         self.font = font
         self.screen = screen
+        self.clock = clock
 
     def draw(self, level, bot=None, actor=None) -> None:
         focus_actor = actor if actor is not None else level.lander
         if not focus_actor:
             return
         specs = self._build_info_line_specs(level, focus_actor)
+        if self.clock is not None:
+            fps = self.clock.get_fps()
+            ft = self.clock.get_rawtime()
+            specs.append((f"FPS: {fps:.1f}  FT: {ft:.2f}ms", (160, 160, 160)))
         self._draw_text_lines(specs, 10, (220, 220, 220))
 
     def _build_info_line_specs(self, level, actor):
