@@ -77,6 +77,14 @@ class GameHost:
         pygame.display.set_caption("Lunar Lander")
         self._clock = pygame.time.Clock()
 
+        # Open all joysticks so hat/button events appear in the event queue
+        # even before a game session (and its InputHandler) is created.
+        pygame.joystick.init()
+        self._joysticks = [
+            pygame.joystick.Joystick(i)
+            for i in range(pygame.joystick.get_count())
+        ]
+
         self._state = GameState.PLAYING if skip_title else GameState.TITLE
         self._session: GameSession | None = None
         self._title_screen = TitleScreen(self._screen)
@@ -129,8 +137,30 @@ class GameHost:
 
         return False
 
+    @staticmethod
+    def _expand_controller(events: list) -> list:
+        """Append synthetic KEYDOWN events for joystick inputs so menus respond to gamepad."""
+        extra: list[pygame.event.Event] = []
+        for event in events:
+            if event.type == pygame.JOYBUTTONDOWN:
+                # A(0)→return  B(1)→escape  Y(3)→r
+                key = {0: pygame.K_RETURN, 1: pygame.K_ESCAPE, 3: pygame.K_r}.get(event.button)
+                if key is not None:
+                    extra.append(pygame.event.Event(pygame.KEYDOWN, key=key, mod=0, unicode="", scancode=0))
+            elif event.type == pygame.JOYHATMOTION:
+                hx, hy = event.value
+                if hy > 0:
+                    extra.append(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_UP,    mod=0, unicode="", scancode=0))
+                elif hy < 0:
+                    extra.append(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_DOWN,  mod=0, unicode="", scancode=0))
+                if hx < 0:
+                    extra.append(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_LEFT,  mod=0, unicode="", scancode=0))
+                elif hx > 0:
+                    extra.append(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RIGHT, mod=0, unicode="", scancode=0))
+        return events + extra
+
     def _tick_title(self) -> bool:
-        for event in pygame.event.get():
+        for event in self._expand_controller(pygame.event.get()):
             if event.type == pygame.QUIT:
                 self._running = False
                 return False
@@ -161,6 +191,12 @@ class GameHost:
                 self._state = GameState.PAUSED
                 self._pause_menu.configure(PauseReason.USER_REQUESTED)
                 return True
+            # B button (gamepad) → pause (same as Escape)
+            if event.type == pygame.JOYBUTTONDOWN and event.button == 1:
+                self._paused_frame = self._capture_design_surface()
+                self._state = GameState.PAUSED
+                self._pause_menu.configure(PauseReason.USER_REQUESTED)
+                return True
             game_events.append(event)
 
         if self._session is None:
@@ -183,7 +219,7 @@ class GameHost:
         return True
 
     def _tick_paused(self) -> bool:
-        for event in pygame.event.get():
+        for event in self._expand_controller(pygame.event.get()):
             if event.type == pygame.QUIT:
                 self._running = False
                 return False
