@@ -1,6 +1,6 @@
 import math
 from game.core.ecs import System, Entity
-from game.core.components import Engine, Transform
+from game.core.components import Engine, FlightState, LanderState, Transform
 from game.core.maths import Vector2
 
 
@@ -34,8 +34,14 @@ class ForceApplicationSystem(System):
         self.engine.apply_force(force, uid=entity.uid)
 
     def _apply_rotation_override(self, entity: Entity) -> None:
-        """Push current rotation to the physics body (kinematic override)."""
+        """Push current rotation to the physics body (kinematic override).
+
+        Only applied while FLYING. For CRASHED/LANDED entities the physics
+        backend drives rotation (tumble / rest) and PhysicsSyncSystem reads
+        it back — kinematic override would fight that.
+        """
+        ls = entity.get_component(LanderState)
+        if ls is not None and ls.state != FlightState.FLYING:
+            return
         trans = entity.get_component(Transform)
-        # Rotation is kinematically driven by PropulsionSystem; we tell the
-        # physics engine the current angle so the collision shape stays in sync.
         self.engine.override(trans.rotation, uid=entity.uid)

@@ -311,6 +311,7 @@ class PhysicsEngine:
         pos: Vector2,
         angle: float | None = None,
         clear_velocity: bool = True,
+        clear_angular: bool = True,
         uid: str | None = None,
     ) -> None:
         """Instantly move an actor body to a new pose."""
@@ -321,7 +322,30 @@ class PhysicsEngine:
         if angle is not None:
             self._backend.set_angle(actor_uid, float(angle))
         if clear_velocity:
-            self._backend.set_velocity(actor_uid, (0.0, 0.0), 0.0)
+            if clear_angular:
+                self._backend.set_velocity(actor_uid, (0.0, 0.0), 0.0)
+            else:
+                # Zero linear velocity but preserve angular (e.g. crash tumble)
+                state = self._backend.get_state(actor_uid)
+                self._backend.set_velocity(actor_uid, (0.0, 0.0), state.angular_velocity)
+
+    def freeze(self, uid: str | None = None) -> None:
+        """Freeze a body: no gravity, no integration. Call after crash/landing."""
+        actor_uid = self._resolve_uid(uid)
+        if actor_uid is None:
+            return
+        freeze_fn = getattr(self._backend, "freeze_body", None)
+        if callable(freeze_fn):
+            freeze_fn(actor_uid)
+
+    def unfreeze(self, uid: str | None = None) -> None:
+        """Restore normal physics integration. Call on takeoff."""
+        actor_uid = self._resolve_uid(uid)
+        if actor_uid is None:
+            return
+        unfreeze_fn = getattr(self._backend, "unfreeze_body", None)
+        if callable(unfreeze_fn):
+            unfreeze_fn(actor_uid)
 
     def set_primary_actor(self, uid: str | None) -> None:
         if uid is None:

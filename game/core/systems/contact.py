@@ -207,6 +207,11 @@ class ContactSystem(System):
         wrapped = (float(angle) + math.pi) % (2.0 * math.pi) - math.pi
         return abs(wrapped)
 
+    def _freeze_entity(self, entity: Entity) -> None:
+        freeze_fn = getattr(self.engine, "freeze", None)
+        if callable(freeze_fn):
+            freeze_fn(uid=entity.uid)
+
     def _apply_landing(self, entity: Entity, site, half_h: float) -> None:
         ls = entity.get_component(LanderState)
         phys = entity.get_component(PhysicsState)
@@ -239,29 +244,31 @@ class ContactSystem(System):
             wallet.credits += award
 
         self._teleport_entity(entity, trans)
+        self._freeze_entity(entity)
 
     def _apply_crash(self, entity: Entity) -> None:
         ls = entity.get_component(LanderState)
-        phys = entity.get_component(PhysicsState)
-        if ls is None or phys is None:
+        if ls is None:
             return
 
         ls.state = FlightState.CRASHED
-        phys.vel.update(0.0, 0.0)
 
         eng = entity.get_component(Engine)
         if eng is not None:
             eng.thrust_level = 0.0
             eng.target_thrust = 0.0
 
-        trans = entity.get_component(Transform)
-        if trans is not None:
-            self._teleport_entity(entity, trans)
+        # Do NOT freeze or zero velocity here. The physics body keeps its
+        # post-collision velocity (tangential slide + angular spin) and
+        # EulerBackend continues to handle terrain collisions naturally
+        # during the crash animation window. The entity is only frozen once
+        # the pause menu appears (or when reset_actor() clears the state).
 
-    def _teleport_entity(self, entity: Entity, trans: Transform) -> None:
+    def _teleport_entity(self, entity: Entity, trans: Transform, *, clear_angular: bool = True) -> None:
         self.engine.teleport(
             Vector2(trans.pos.x, trans.pos.y),
             angle=trans.rotation,
             clear_velocity=True,
+            clear_angular=clear_angular,
             uid=entity.uid,
         )

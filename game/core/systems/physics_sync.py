@@ -3,11 +3,14 @@ from game.core.components import PhysicsState, Transform
 
 
 class PhysicsSyncSystem(System):
-    """Post-physics: sync position and velocity FROM the physics engine into components.
+    """Post-physics: sync position, velocity, and angle FROM the physics engine into components.
 
     Called after engine.step() so it always reads the freshly integrated state.
-    Rotation is intentionally NOT synced here: rotation is kinematic, driven by
-    PropulsionSystem (authoritative) and pushed to the physics body by ForceApplicationSystem.
+    For FLYING entities rotation is also kinematically driven by PropulsionSystem and
+    pushed to the physics body by ForceApplicationSystem each step, so syncing angle
+    back here is a no-op for them (body.angle == trans.rotation). For CRASHED entities
+    ForceApplicationSystem skips the override, so the physics-integrated angle (tumble)
+    propagates here into trans.rotation.
     """
 
     def __init__(self, engine):
@@ -26,7 +29,7 @@ class PhysicsSyncSystem(System):
 
     def _sync_from_physics(self, entity: Entity) -> None:
         """Read pose/velocity from physics engine and update components."""
-        pose, _angle = self.engine.get_pose(uid=entity.uid)
+        pose, angle = self.engine.get_pose(uid=entity.uid)
         vel, _ang_vel = self.engine.get_velocity(uid=entity.uid)
 
         trans = entity.get_component(Transform)
@@ -34,6 +37,7 @@ class PhysicsSyncSystem(System):
 
         if trans:
             trans.pos = pose
+            trans.rotation = angle
 
         if phys:
             phys.vel = vel

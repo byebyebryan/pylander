@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import bisect
 import math
+
+# Angular velocity damping coefficient (rad/s per rad/s per second).
+# Controls how quickly the tumble settles after a crash.
+_ANGULAR_DAMPING = 1.5
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -50,9 +54,24 @@ class EulerBackend:
         self._segments: dict[int, _Segment] = {}
         self._next_handle: int = 0
         self._prev_colliding: dict[str, bool] = {}
+        self._frozen: set[str] = set()
         # Spatial index: sorted list of (min_x, handle) for fast x-range lookup
         self._seg_index: list[tuple[float, int]] = []
         self._index_dirty: bool = False
+
+    def freeze_body(self, uid: str) -> None:
+        """Freeze linear motion; angular velocity is preserved for tumble."""
+        self._frozen.add(uid)
+        body = self._bodies.get(uid)
+        if body is not None:
+            body.vx = 0.0
+            body.vy = 0.0
+            body.fx = 0.0
+            body.fy = 0.0
+
+    def unfreeze_body(self, uid: str) -> None:
+        """Restore normal physics integration for a body."""
+        self._frozen.discard(uid)
 
     def configure(self, gravity: tuple[float, float]) -> None:
         self._gravity = gravity
@@ -170,7 +189,17 @@ class EulerBackend:
         contact_reports: dict[str, ContactReport] = {}
         gravity_x, gravity_y = self._gravity
 
-        for body in self._bodies.values():
+        damping_factor = max(0.0, 1.0 - _ANGULAR_DAMPING * dt)
+
+        for uid, body in self._bodies.items():
+            if uid in self._frozen:
+                body.fx = 0.0
+                body.fy = 0.0
+                # Linear is frozen, but angular still integrates (tumble after crash)
+                body.angle += body.angular_velocity * dt
+                body.angular_velocity *= damping_factor
+                continue
+
             body.vx += gravity_x * dt
             body.vy += gravity_y * dt
 
@@ -183,27 +212,46 @@ class EulerBackend:
             body.px += body.vx * dt
             body.py += body.vy * dt
 
+            body.angle += body.angular_velocity * dt
+            body.angular_velocity *= damping_factor
+
         for uid, body in self._bodies.items():
+            if uid in self._frozen:
+                if self._prev_colliding.get(uid, False):
+                    contact_reports[uid] = ContactReport(colliding=False)
+                self._prev_colliding[uid] = False
+                continue
+
             colliding, normal, point, penetration = self._detect_collisions(body)
 
             if colliding:
+                impact_speed = 0.0
                 if normal is not None and penetration > 0:
                     body.px += normal[0] * penetration
                     body.py += normal[1] * penetration
 
                     v_dot_n = body.vx * normal[0] + body.vy * normal[1]
                     if v_dot_n < 0:
+                        # Capture impact speed BEFORE zeroing the normal velocity
+                        impact_speed = abs(v_dot_n)
                         body.vx -= v_dot_n * normal[0]
                         body.vy -= v_dot_n * normal[1]
 
-                rel_speed = abs(
-                    body.vx * (normal[0] if normal else 0.0)
-                    + body.vy * (normal[1] if normal else 0.0)
-                )
+                        # Angular impulse from off-centre contact point
+                        if point is not None and body.moment > 0:
+                            rx = point[0] - body.px
+                            ry = point[1] - body.py
+                            # J = -mass * v_dot_n (linear impulse magnitude)
+                            jx = -body.mass * v_dot_n * normal[0]
+                            jy = -body.mass * v_dot_n * normal[1]
+                            # 2D cross product: r × J
+                            tau = rx * jy - ry * jx
+                            body.angular_velocity += tau / body.moment
+
                 contact_reports[uid] = ContactReport(
                     colliding=True,
                     normal=normal,
-                    rel_speed=rel_speed,
+                    rel_speed=impact_speed,
                     point=point,
                 )
                 self._prev_colliding[uid] = True

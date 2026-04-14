@@ -105,6 +105,7 @@ def sync_landed_to_flying_engine_state(
         if before != "landed" or ls is None or trans is None:
             continue
         if ls.state == "flying":
+            engine.unfreeze(uid=actor.uid)
             engine.teleport(
                 trans.pos,
                 angle=trans.rotation,
