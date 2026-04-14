@@ -50,6 +50,7 @@ def reset_active_actor_session(
 ) -> float:
     reset_lander_entity(active_actor)
     trans = require_component(active_actor, Transform)
+    engine.unfreeze(uid=active_actor.uid)
     engine.teleport(
         trans.pos,
         angle=trans.rotation,

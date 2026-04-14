@@ -156,6 +156,7 @@ class WebGameSession:
 
         self._bot_override_delay = 1.0
         self._bot_override_timer = 0.0
+        self._crash_animation_timer: float | None = None
         self._running = True
 
     @property
@@ -186,9 +187,11 @@ class WebGameSession:
         eng.target_angle = 0.0
         ls.state = FlightState.FLYING
 
+        self._engine.unfreeze(uid=self._lander.uid)
         self._engine.teleport(
             trans.pos, angle=trans.rotation, clear_velocity=True, uid=self._lander.uid
         )
+        self._crash_animation_timer = None
 
         if self._renderer is not None:
             cam = self._renderer.main_camera
@@ -262,12 +265,26 @@ class WebGameSession:
         ls = self._lander.get_component(LanderState)
         actor_state = str(ls.state) if ls is not None else "flying"
 
+        # Buffer the "crashed" signal so the physics tumble plays for ~1.5 s
+        # before the pause menu appears.
+        from game.core.components import FlightState
+
+        if ls is not None and ls.state == FlightState.CRASHED:
+            if self._crash_animation_timer is None:
+                self._crash_animation_timer = 0.0
+            self._crash_animation_timer += 1.0 / TARGET_RENDERING_FPS
+            if self._crash_animation_timer < 1.5:
+                actor_state = "flying"
+        else:
+            self._crash_animation_timer = None
+
         return {
             "running": self._running,
             "actor_state": actor_state,
         }
 
     def _on_reset(self) -> None:
+        self._crash_animation_timer = None
         self._bot_override_timer = reset_active_actor_session(
             active_actor=self._lander,
             engine=self._engine,
